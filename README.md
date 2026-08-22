@@ -1,6 +1,6 @@
 # 🤖 KERONG Penguin
 
-> ⚠️ **此插件是 [HuHoBot](https://github.com/HuHoBot) 的魔改分支**
+> ⚠️ **此插件是 HuHoBot 的魔改分支**
 
 Minecraft QQ 机器人插件，通过 QQ 官方机器人 API 实现 QQ 群与服务器的深度交互。
 
@@ -32,7 +32,3 @@ Minecraft QQ 机器人插件，通过 QQ 官方机器人 API 实现 QQ 群与服
 ## 版本
 
 当前版本：**1.0.3.3**
-
-## 致谢
-
-基于 [HuHoBot-Penguin](https://github.com/HuHoBot) 项目修改开发。
