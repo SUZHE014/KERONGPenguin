@@ -1,0 +1,124 @@
+config-version: 9
+
+# 服务器显示名称
+serverName: "KERONGPenguin"
+
+bot:
+  app-id: ""
+  secret: ""
+  name: "KERONGPenguin"
+  groups: []
+  suppress-console-output: true
+
+chat-format:
+  from-game: "[游戏] {message}"
+  from-group: "[QQ] {name}: {message}"
+  post-chat: true
+  start-with: "#"
+
+player-events:
+  join:
+    enabled: true
+    format: "[游戏] {name} 加入了服务器"
+  quit:
+    enabled: true
+    format: "[游戏] {name} 离开了服务器"
+
+# 查在线命令模板配置
+# use-markdown: true 时读取 Markdown/queryOnline 指定的 .md 文件，支持 {online}/{players} 占位符
+# use-markdown: false 时使用 motd.text 模板，支持 {online}/{players} 占位符
+markdown:
+  queryOnline: "online.md"
+
+command-sender: "Hybrid"
+
+motd:
+  server-ip: "127.0.0.1"
+  server-port: 25565
+  # 服务器状态图片 API，支持 {ip} {port} 变量（自动检测填入当前服务器）
+  api: "http://motd.txssb.cn/api/app_img?ip={ip}&port={port}&dark=true&lang=zh-CN"
+  text: ""
+  post-img: false
+  use-markdown: false
+
+# 死亡通报：玩家死亡时向 QQ 群发送通报（默认关闭）
+death-notify:
+  # 是否开启死亡通报
+  enabled: false
+  # 通报前缀（死亡消息会自动跟在前缀后）
+  prefix: "[死亡通报]"
+
+# QQ 绑定
+qq-bind:
+  enabled: false
+  kick-message:
+    - "&c===== QQ 绑定验证 ====="
+    - "&f你还未绑定 QQ，无法进入服务器。"
+    - ""
+    - "&e你的专属绑定码: &a&l{code}"
+    - "&7请在 QQ 群发送: &f/绑定 {code}"
+    - "&7（绑定码 {expire} 分钟内有效）"
+  code-expire-minutes: 10
+  code-length: 5
+
+filter-regex: []
+
+# 管理员判定方式（1.0.0.7 移除查管理/加管理/删管理/管理方式命令后，默认 qq）
+# qq: 仅群主/QQ 群管理员；config: 仅手动名单；both: 任一满足
+admin:
+  mode: qq
+  openids: []
+
+features:
+  full-amount: false
+
+# QQ 群命令开关（关闭后对应快捷菜单按钮也会消失）
+commands:
+  帮助: true
+  查信息: true
+  绑定: true
+  重新绑定: true
+  查在线: true
+  在线服务器: true
+  发信息: true
+  执行命令: true
+  执行: true
+  管理员执行: true
+  全量: true
+  motd: true
+  AI对话上下文: true
+  清除当前上下文: true
+  黑名单: true
+  解除黑名单: true
+
+# AI 对话：@机器人 + 非 / 开头的消息 → 调用 OpenAI 兼容接口
+ai:
+  # QQ 群 AI 对话是否开启（@机器人触发）
+  enabled: false
+  # 服务器 AI 对话是否开启（玩家输入前缀触发，默认关闭）
+  server-enabled: false
+  # 服务器呼出 AI 的前缀（玩家输入 <前缀> <内容> 触发）
+  server-prefix: "ai"
+  # 服务器 AI 输出前缀（AI 回复在游戏内显示的前缀）
+  server-output-prefix: "[AI]"
+  # QQ AI 输出前缀（AI 回复在 QQ 群内显示的前缀）
+  qq-output-prefix: "[AI]"
+  # OpenAI: https://api.openai.com/v1
+  # DeepSeek: https://api.deepseek.com （不用加 /v1）
+  base-url: "https://api.deepseek.com"
+  api-key: ""
+  model: "deepseek-chat"
+  system-prompt: "你是一个友好的游戏群助手，请简洁回答。"
+  # 是否自动补充 API 链接后缀（默认开启）
+  url-auto-append: true
+  # AI 对话上下文保留轮数（全局开关，/AI对话上下文 开 后生效，服务器和QQ共享）
+  context-limit: 6
+
+custom-commands: []
+# 示例：
+# - key: "公告"
+#   # 触发命令
+#   command: "say {params}"
+#   # 触发命令后，控制台执行的指令，{params}=输入完触发命令后空一格写入的内容
+#   permission: 1
+#   # 权限，1=管理员可执行，2=所有人可执行

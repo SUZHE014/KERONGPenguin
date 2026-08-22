@@ -1,0 +1,20 @@
+name: KERONGPenguin
+version: '1.0.3.3'
+
+main: cn.huohuas001.huhobotPenguin.spigot.HuHoBotSpigot
+api-version: '1.18'
+
+commands:
+  huhobot:
+    description: KERONG Penguin control command
+    usage: "/huhobot reload|info|panel|help"
+    aliases: [hb]
+    permission: huhobot.command
+  qq:
+    description: QQ binding management command
+    usage: "/qq help|rebind|qxqq|skip|unskip"
+
+permissions:
+  huhobot.command:
+    description: Allows use of KERONG Penguin control commands
+    default: op
