@@ -251,8 +251,6 @@ public final class ConfigManager {
         linkedHashMap.put("motd.text", "");
         linkedHashMap.put("motd.post-img", false);
         linkedHashMap.put("motd.use-markdown", false);
-        linkedHashMap.put("death-notify.enabled", false);
-        linkedHashMap.put("death-notify.prefix", "[\u6b7b\u4ea1\u901a\u62a5]");
         linkedHashMap.put("filter-regex", Collections.emptyList());
         linkedHashMap.put("admin.mode", "qq");
         linkedHashMap.put("admin.openids", Collections.emptyList());

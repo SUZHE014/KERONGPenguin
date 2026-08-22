@@ -225,24 +225,6 @@ public final class QqBindManager {
         }
     }
 
-    public boolean isDeathNotifyEnabled() {
-        try {
-            return this.plugin.getConfig().getBoolean("death-notify.enabled", false);
-        }
-        catch (Throwable throwable) {
-            return false;
-        }
-    }
-
-    public String getDeathNotifyPrefix() {
-        try {
-            return this.plugin.getConfig().getString("death-notify.prefix", "[\u6b7b\u4ea1\u901a\u62a5]");
-        }
-        catch (Throwable throwable) {
-            return "[\u6b7b\u4ea1\u901a\u62a5]";
-        }
-    }
-
     public List<String> getKickMessageLines() {
         ArrayList<String> arrayList = new ArrayList<String>();
         List<String> list = this.plugin.getConfig().getStringList("qq-bind.kick-message");

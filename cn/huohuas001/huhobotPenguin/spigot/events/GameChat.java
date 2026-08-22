@@ -43,7 +43,6 @@ import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerLoginEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.plugin.Plugin;
 
 public final class GameChat
@@ -161,44 +160,6 @@ implements Listener {
     @EventHandler
     public final void onPlayerQuit(PlayerQuitEvent playerQuitEvent) {
         QClient.INSTANCE.broadcastPlayerQuit(playerQuitEvent.getPlayer().getName());
-    }
-
-    @EventHandler
-    public final void onPlayerDeath(PlayerDeathEvent playerDeathEvent) {
-        try {
-            QqBindManager mgr;
-            try { mgr = QqBindManager.getInstance(); } catch (Throwable t) { return; }
-            if (!mgr.isDeathNotifyEnabled()) {
-                return;
-            }
-            String deathMessage = playerDeathEvent.getDeathMessage();
-            if (deathMessage == null || deathMessage.trim().isEmpty()) {
-                return;
-            }
-            String prefix = mgr.getDeathNotifyPrefix();
-            if (prefix == null || prefix.isEmpty()) {
-                prefix = "[\u6b7b\u4ea1\u901a\u62a5]";
-            }
-            final String content = prefix + " " + deathMessage;
-            final Plugin plugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin");
-            if (plugin == null) {
-                return;
-            }
-            Bukkit.getScheduler().runTaskAsynchronously(plugin, new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        Method method = QClient.class.getDeclaredMethod("sendTextToGroups", String.class, String.class);
-                        method.setAccessible(true);
-                        method.invoke(QClient.INSTANCE, content, "\u53d1\u9001\u6b7b\u4ea1\u901a\u62a5");
-                    } catch (Throwable t) {
-                        QqBindManager.logQuiet("[\u6b7b\u4ea1\u901a\u62a5] \u53d1\u9001\u5931\u8d25: " + GameChat.safeMessage(t));
-                    }
-                }
-            });
-        } catch (Throwable throwable) {
-            // empty catch block
-        }
     }
 
     @EventHandler(priority=EventPriority.LOW)

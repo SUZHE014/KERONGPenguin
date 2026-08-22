@@ -41,13 +41,6 @@ motd:
   post-img: false
   use-markdown: false
 
-# 死亡通报：玩家死亡时向 QQ 群发送通报（默认关闭）
-death-notify:
-  # 是否开启死亡通报
-  enabled: false
-  # 通报前缀（死亡消息会自动跟在前缀后）
-  prefix: "[死亡通报]"
-
 # QQ 绑定
 qq-bind:
   enabled: false
