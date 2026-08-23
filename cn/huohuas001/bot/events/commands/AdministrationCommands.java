@@ -20,13 +20,7 @@ extends CommandSupport {
             return;
         }
         if (string == null || string.trim().isEmpty()) {
-            String userId = null;
-            try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
-            String content = "参数不正确";
-            if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
-                content = "<@" + userId + ">\n参数不正确";
-            }
-            cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender.sendWithMention(groupMessageEvent, content);
+            groupMessageEvent.sendMessage("参数不正确");
             return;
         }
         this.executeGameCommand(huHoBot, groupMessageEvent, string, true);
@@ -38,13 +32,7 @@ extends CommandSupport {
             return;
         }
         if (string == null || string.trim().isEmpty()) {
-            String userId = null;
-            try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
-            String content = "参数不正确";
-            if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
-                content = "<@" + userId + ">\n参数不正确";
-            }
-            cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender.sendWithMention(groupMessageEvent, content);
+            groupMessageEvent.sendMessage("参数不正确");
             return;
         }
         this.executeCustomCommand(huHoBot, groupMessageEvent, string, true);
@@ -59,13 +47,7 @@ extends CommandSupport {
         boolean bl = CommandRepositories.INSTANCE.getGroupSettings().fullForwarding(string2, huHoBot.getFullAmount());
         boolean bl2 = !bl;
         CommandRepositories.INSTANCE.getGroupSettings().setFullForwarding(string2, bl2);
-        String userId = null;
-        try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
-        String content = "本群全量转发已" + (bl2 ? "开启" : "关闭");
-        if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
-            content = "<@" + userId + ">\n" + content;
-        }
-        cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender.sendWithMention(groupMessageEvent, content);
+        this.reply(huHoBot, groupMessageEvent, "本群全量转发已" + (bl2 ? "开启" : "关闭"));
     }
 }
 
