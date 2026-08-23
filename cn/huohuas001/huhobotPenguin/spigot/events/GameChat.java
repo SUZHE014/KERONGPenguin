@@ -84,6 +84,9 @@ implements Listener {
                     GameChat.tryRegisterBind();
                 }
             }, 40L);
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                GameChat.checkEconomyForCheckin();
+            }, 60L);
         }
     }
 
@@ -240,6 +243,45 @@ implements Listener {
             return String.valueOf((long)amount);
         }
         return String.valueOf(amount);
+    }
+
+    private static void checkEconomyForCheckin() {
+        try {
+            QqBindManager mgr = QqBindManager.getInstance();
+            if (!mgr.isCheckinEnabled()) {
+                return;
+            }
+            Plugin vault = Bukkit.getPluginManager().getPlugin("Vault");
+            if (vault != null && vault.isEnabled()) {
+                boolean economyReady = false;
+                try {
+                    Class<?> economyClass = Class.forName("net.milkbowl.vault.economy.Economy");
+                    Method getServicesManager = Bukkit.getServer().getClass().getMethod("getServicesManager", new Class[0]);
+                    Object servicesManager = getServicesManager.invoke(Bukkit.getServer(), new Object[0]);
+                    Method getRegistration = servicesManager.getClass().getMethod("getRegistration", Class.class);
+                    Object rsp = getRegistration.invoke(servicesManager, economyClass);
+                    if (rsp != null) {
+                        Class<?> registeredServiceProviderClass = Class.forName("org.bukkit.plugin.RegisteredServiceProvider");
+                        Method getProvider = registeredServiceProviderClass.getMethod("getProvider", new Class[0]);
+                        Object economy = getProvider.invoke(rsp, new Object[0]);
+                        if (economy != null) {
+                            economyReady = true;
+                        }
+                    }
+                } catch (Throwable t) {
+                    // empty catch block
+                }
+                if (economyReady) {
+                    Bukkit.getConsoleSender().sendMessage("\u00a7a[KERONGPenguin] \u7b7e\u5230\u529f\u80fd\u5df2\u5f00\u542f\uff0c\u5df2\u68c0\u6d4b\u5230\u7ecf\u6d4e\u63d2\u4ef6 Vault\uff08Economy \u5c31\u7eea\uff09\u3002");
+                } else {
+                    Bukkit.getConsoleSender().sendMessage("\u00a7c[KERONGPenguin] \u7b7e\u5230\u529f\u80fd\u5df2\u5f00\u542f\uff0c\u4f46\u672a\u68c0\u6d4b\u5230\u7ecf\u6d4e\u524d\u7f6e\uff08Economy \u672a\u5c31\u7eea\uff09\u3002\u8bf7\u5b89\u88c5 Vault \u53ca\u4efb\u4e00\u7ecf\u6d4e\u63d2\u4ef6\uff08\u5982 EssentialsX\uff09\u3002");
+                }
+            } else {
+                Bukkit.getConsoleSender().sendMessage("\u00a7c[KERONGPenguin] \u7b7e\u5230\u529f\u80fd\u5df2\u5f00\u542f\uff0c\u4f46\u672a\u68c0\u6d4b\u5230 Vault \u7ecf\u6d4e\u63d2\u4ef6\u3002\u8bf7\u5b89\u88c5 Vault \u53ca\u4efb\u4e00\u7ecf\u6d4e\u63d2\u4ef6\uff08\u5982 EssentialsX\uff09\u3002");
+            }
+        } catch (Throwable t) {
+            QqBindManager.logQuiet("[GameChat] \u7b7e\u5230\u7ecf\u6d4e\u68c0\u6d4b\u5931\u8d25: " + GameChat.safeMessage(t));
+        }
     }
 
     @EventHandler
