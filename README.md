@@ -46,6 +46,10 @@ boolean bound = api.isPlayerBound(playerName);
 
 查看 [安装教程](https://kerong.xin/penguin/tutorial.html)
 
+## API 文档
+
+查看 [API 文档](docs/API.md) — 包含 Spigot 适配器 API、公共 API、当前可用 API 及开发者 API（KERONGPenguinAPI）。
+
 ## 版本
 
 当前版本：**1.0.3.7**
