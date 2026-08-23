@@ -31,7 +31,7 @@ Minecraft QQ 机器人插件，通过 QQ 官方机器人 API 实现 QQ 群与服
 
 ## API 文档
 
-查看 [API 文档](docs/API.md) — 包含 Spigot 适配器 API、公共 API、当前可用 API 及开发者 API（KERONGPenguinAPI）。
+查看 [API 文档](docs/API.md) — 包含 QClient、HuHoBotSpigot、NicknameManager、BindingRepository 等完整 API 及开发者 API。
 
 ## 版本
 
