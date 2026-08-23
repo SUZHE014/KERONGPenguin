@@ -7,7 +7,9 @@ import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent;
+import io.github.kloping.qqbot.entities.ex.MessagePreBuilder;
 import io.github.kloping.qqbot.entities.qqpd.User;
+import io.github.kloping.qqbot.entities.qqpd.message.RawMessage;
 import io.github.kloping.qqbot.entities.qqpd.v2.Contact;
 import io.github.kloping.qqbot.impl.ListenerHost;
 import io.github.kloping.qqbot.impl.message.v2.BaseMessageEvent;
@@ -51,7 +53,20 @@ public final class GroupMessageHandler extends ListenerHost {
             text = text.trim(); if (text.isEmpty()) { event.sendMessage("请在 @我 之后输入你想说的话～"); return; }
             String userId = safeUserId(event);
             String reply = AiChat.chat(text, mgr, groupId, userId);
-            event.sendMessage(mgr.getQqAiOutputPrefix() + " " + reply);
+            String aiContent = mgr.getQqAiOutputPrefix() + " " + reply;
+            try {
+                RawMessage rawMsg = event.getRawMessage();
+                if (rawMsg != null && rawMsg.getId() != null && !rawMsg.getId().isEmpty()) {
+                    MessagePreBuilder builder = new MessagePreBuilder();
+                    builder.reply(rawMsg);
+                    builder.append(aiContent);
+                    event.sendMessage(builder.build());
+                } else {
+                    event.sendMessage(aiContent);
+                }
+            } catch (Throwable replyEx) {
+                event.sendMessage(aiContent);
+            }
         } catch (Throwable t) { event.sendMessage("AI 对话失败：" + t.getMessage()); }
     }
     private String safeUserId(GroupMessageEvent event) { try { Contact c = event.getSender(); if (c == null) return "<unknown>"; String oid = c.getOpenid(); if (oid == null) oid = c.getId(); return oid == null ? "<unknown>" : oid; } catch (Throwable t) { return "<unknown>"; } }
@@ -64,7 +79,10 @@ public final class GroupMessageHandler extends ListenerHost {
             BaseMessageEvent baseMsg = event instanceof BaseMessageEvent ? (BaseMessageEvent) event : null;
             JSONObject metadata = baseMsg != null ? baseMsg.getMetadata() : null;
             JSONArray atts = metadata != null ? metadata.getJSONArray("attachments") : null;
-            List<String> parts = new ArrayList<>(); String raw = event.getRawMessage().getContent(); String tc = raw != null ? raw.trim() : ""; if (tc.length() > 0) parts.add(tc);
+            List<String> parts = new ArrayList<>(); String raw = event.getRawMessage().getContent(); String tc = raw != null ? raw.trim() : "";
+            boolean hasImage = false;
+            if (atts != null) { int n = ((Collection<Object>) atts).size(); for (int i = 0; i < n; i++) { JSONObject a = atts.getJSONObject(i); if (a == null) continue; String ct = a.getString("content_type"); if (ct == null) ct = ""; if (ct.startsWith("image/")) { hasImage = true; break; } } }
+            if (!hasImage && tc.length() > 0) parts.add(tc);
             if (atts != null) { int n = ((Collection<Object>) atts).size(); for (int i = 0; i < n; i++) { JSONObject a = atts.getJSONObject(i); if (a == null) continue; String ct = a.getString("content_type"); if (ct == null) ct = ""; if ("voice".equals(ct)) { String asr = a.getString("asr_refer_text"); parts.add(asr != null && !asr.trim().isEmpty() ? "[语音] [" + asr.trim() + "]" : "[语音]"); } else if (ct.startsWith("image/")) parts.add("[图片]"); else if ("image/gif".equals(ct)) parts.add("[表情包]"); else if (ct.startsWith("video/")) parts.add("[视频]"); else { String fn = a.getString("filename"); parts.add("[文件: " + (fn == null ? "文件" : fn) + "]"); } } }
             if (parts.isEmpty()) return; StringBuilder sb = new StringBuilder(); for (int i = 0; i < parts.size(); i++) { if (i > 0) sb.append(' '); sb.append(parts.get(i)); } String msg = sb.toString();
             User[] mentions = event.getRawMessage().getMentions(); if (mentions != null) for (int i = 0; i < mentions.length; i++) { User m = mentions[i]; String mid = m.getId(), mname = m.getUsername(); if (mid == null || mname == null) continue; msg = msg.replace("<@!" + mid + ">", "@" + mname).replace("<@" + mid + ">", "@" + mname).replace("<" + mid + ">", "@" + mname).replace(mid, "@" + mname); }

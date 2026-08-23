@@ -318,7 +318,7 @@ extends CommandSupport {
     @Commands(value={"\u6267\u884c"})
     public void runCustomCommand(HuHoBot huHoBot, GroupMessageEvent groupMessageEvent, String string) {
         if (string == null || string.trim().isEmpty()) {
-            groupMessageEvent.sendMessage("\u53c2\u6570\u4e0d\u6b63\u786e");
+            this.sendDirect(groupMessageEvent, "\u53c2\u6570\u4e0d\u6b63\u786e");
             return;
         }
         this.executeCustomCommand(huHoBot, groupMessageEvent, string, false);
@@ -326,7 +326,13 @@ extends CommandSupport {
 
     private void sendDirect(GroupMessageEvent groupMessageEvent, String string) {
         try {
-            groupMessageEvent.sendMessage(string);
+            String userId = null;
+            try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
+            String content = string;
+            if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
+                content = "<qqbot-at-user id=\"" + userId + "\" />\n" + string;
+            }
+            groupMessageEvent.sendMessage(content);
         }
         catch (Throwable throwable) {
             // empty catch block

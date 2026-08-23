@@ -20,7 +20,13 @@ extends CommandSupport {
             return;
         }
         if (string == null || string.trim().isEmpty()) {
-            groupMessageEvent.sendMessage("\u53c2\u6570\u4e0d\u6b63\u786e");
+            String userId = null;
+            try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
+            String content = "参数不正确";
+            if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
+                content = "<qqbot-at-user id=\"" + userId + "\" />\n参数不正确";
+            }
+            groupMessageEvent.sendMessage(content);
             return;
         }
         this.executeGameCommand(huHoBot, groupMessageEvent, string, true);
@@ -32,7 +38,13 @@ extends CommandSupport {
             return;
         }
         if (string == null || string.trim().isEmpty()) {
-            groupMessageEvent.sendMessage("\u53c2\u6570\u4e0d\u6b63\u786e");
+            String userId = null;
+            try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
+            String content = "参数不正确";
+            if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
+                content = "<qqbot-at-user id=\"" + userId + "\" />\n参数不正确";
+            }
+            groupMessageEvent.sendMessage(content);
             return;
         }
         this.executeCustomCommand(huHoBot, groupMessageEvent, string, true);
@@ -47,7 +59,13 @@ extends CommandSupport {
         boolean bl = CommandRepositories.INSTANCE.getGroupSettings().fullForwarding(string2, huHoBot.getFullAmount());
         boolean bl2 = !bl;
         CommandRepositories.INSTANCE.getGroupSettings().setFullForwarding(string2, bl2);
-        this.reply(huHoBot, groupMessageEvent, "\u672c\u7fa4\u5168\u91cf\u8f6c\u53d1\u5df2" + (bl2 ? "\u5f00\u542f" : "\u5173\u95ed"));
+        String userId = null;
+        try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
+        String content = "本群全量转发已" + (bl2 ? "开启" : "关闭");
+        if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
+            content = "<qqbot-at-user id=\"" + userId + "\" />\n" + content;
+        }
+        groupMessageEvent.sendMessage(content);
     }
 }
 
