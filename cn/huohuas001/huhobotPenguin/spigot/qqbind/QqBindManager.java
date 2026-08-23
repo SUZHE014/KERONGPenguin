@@ -321,6 +321,58 @@ public final class QqBindManager {
         return current;
     }
 
+    public String getCheckinDate(String quuid) {
+        if (quuid == null || quuid.isEmpty()) {
+            return "";
+        }
+        File file = new File(this.quuidFolder, quuid + ".yml");
+        if (!file.exists()) {
+            return "";
+        }
+        return YamlConfiguration.loadConfiguration((File)file).getString("lastCheckinDate", "");
+    }
+
+    public void setCheckinDate(String quuid, String date) {
+        if (quuid == null || quuid.isEmpty() || date == null) {
+            return;
+        }
+        File file = new File(this.quuidFolder, quuid + ".yml");
+        YamlConfiguration yamlConfiguration = file.exists() ? YamlConfiguration.loadConfiguration((File)file) : new YamlConfiguration();
+        yamlConfiguration.set("lastCheckinDate", (Object)date);
+        try {
+            yamlConfiguration.save(file);
+        }
+        catch (IOException iOException) {
+            // empty catch block
+        }
+    }
+
+    public int getCheckinStreak(String quuid) {
+        if (quuid == null || quuid.isEmpty()) {
+            return 0;
+        }
+        File file = new File(this.quuidFolder, quuid + ".yml");
+        if (!file.exists()) {
+            return 0;
+        }
+        return YamlConfiguration.loadConfiguration((File)file).getInt("checkinStreak", 0);
+    }
+
+    public void setCheckinStreak(String quuid, int streak) {
+        if (quuid == null || quuid.isEmpty()) {
+            return;
+        }
+        File file = new File(this.quuidFolder, quuid + ".yml");
+        YamlConfiguration yamlConfiguration = file.exists() ? YamlConfiguration.loadConfiguration((File)file) : new YamlConfiguration();
+        yamlConfiguration.set("checkinStreak", (Object)streak);
+        try {
+            yamlConfiguration.save(file);
+        }
+        catch (IOException iOException) {
+            // empty catch block
+        }
+    }
+
     public String formatKickMessage(String string, String string2) {
         int n = this.getCodeExpireMinutes();
         StringBuilder stringBuilder = new StringBuilder();

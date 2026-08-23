@@ -27,9 +27,11 @@ public final class MenuManager {
             new PanelItem("AI对话上下文","AI对话上下文","AI对话上下文 "),
             new PanelItem("清除当前上下文","AI清除","清除当前上下文"),
             new PanelItem("黑名单","黑名单","黑名单 "),
-            new PanelItem("解除黑名单","解除黑名单","解除黑名单")
+            new PanelItem("解除黑名单","解除黑名单","解除黑名单"),
+            new PanelItem("签到","每日签到领金币","签到")
     ));
     private static final Set<String> QQ_BIND_PANEL_NAMES = new HashSet<>(Arrays.asList("绑定","重新绑定","黑名单","解除黑名单"));
+    private static final Set<String> CHECKIN_PANEL_NAMES = new HashSet<>(Arrays.asList("签到"));
     private MenuManager() {}
     public void syncGroupPanels(Starter starter, List<String> groupOpenIds) {
         if (groupOpenIds == null || groupOpenIds.isEmpty()) return;
@@ -38,10 +40,10 @@ public final class MenuManager {
             String token = start0.getAccessToken(); if (token == null) return;
             String authHeader = "QQBot " + token;
             List<JSONObject> panels = listPanels(authHeader, "group"); for (int i = 0; i < panels.size(); i++) { JSONObject panel = panels.get(i); String id = panel.getString("panel_id"); if (id != null) deletePanel(authHeader, id); }
-            Map<String,Boolean> cmdList = Collections.emptyMap(); boolean qqBindEnabled = false;
-            try { HuHoBot huHoBot = BotShared.INSTANCE.getPlugin(); if (huHoBot != null) { cmdList = huHoBot.getCommandList(); qqBindEnabled = cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager.getInstance().isEnabled(); } } catch (Throwable ignored) {}
+            Map<String,Boolean> cmdList = Collections.emptyMap(); boolean qqBindEnabled = false; boolean checkinEnabled = false;
+            try { HuHoBot huHoBot = BotShared.INSTANCE.getPlugin(); if (huHoBot != null) { cmdList = huHoBot.getCommandList(); cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager mgr = cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager.getInstance(); qqBindEnabled = mgr.isEnabled(); checkinEnabled = mgr.isCheckinEnabled(); } } catch (Throwable ignored) {}
             List<PanelItem> visible = new ArrayList<>();
-            for (int i = 0; i < PANEL_ITEMS.size(); i++) { PanelItem item = PANEL_ITEMS.get(i); if (!qqBindEnabled && QQ_BIND_PANEL_NAMES.contains(item.getName())) continue; Boolean enabled = cmdList.get(item.getName()); if (enabled == null || enabled) visible.add(item); }
+            for (int i = 0; i < PANEL_ITEMS.size(); i++) { PanelItem item = PANEL_ITEMS.get(i); if (!qqBindEnabled && QQ_BIND_PANEL_NAMES.contains(item.getName())) continue; if (!checkinEnabled && CHECKIN_PANEL_NAMES.contains(item.getName())) continue; Boolean enabled = cmdList.get(item.getName()); if (enabled == null || enabled) visible.add(item); }
             JSONObject body = new JSONObject(); body.put("scope","group"); body.put("target_type","specific");
             JSONArray gids = new JSONArray(); gids.addAll(groupOpenIds); body.put("group_openids", gids);
             JSONObject panel = new JSONObject(); panel.put("remark","KERONG Penguin");

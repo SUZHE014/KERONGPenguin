@@ -39,15 +39,48 @@ extends CommandSupport {
         }
         String playerName = mgr.findPlayerByQq(qq);
         if (playerName == null || playerName.isEmpty()) {
-            this.sendDirect(groupMessageEvent, "\u274c \u4f60\u8fd8\u672a\u7ed1\u5b9a\u6e38\u620f\u8d26\u53f7\uff0c\u8bf7\u5148\u8fdb\u5165\u670d\u52a1\u5668\u7ed1\u5b9a QQ \u540e\u518d\u7b7e\u5230\u3002");
+            String prefix = mgr.getCheckinPrefix();
+            String msg = prefix + "  \u274c\u7b7e\u5230\u5931\u8d25\uff01\n\u60a8\u7684QQ\u53f7\u6682\u672a\u7ed1\u5b9a\u4efb\u4f55\u73a9\u5bb6\uff0c\u8bf7\u8fdb\u5165\u670d\u52a1\u5668\u83b7\u53d6\u9a8c\u8bc1\u7801\u540e\u7ed1\u5b9aQQ\u53f7";
+            this.sendDirect(groupMessageEvent, msg);
+            return;
+        }
+        String quuid = mgr.getQuuid(playerName);
+        if (quuid == null || quuid.isEmpty()) {
+            this.sendDirect(groupMessageEvent, mgr.getCheckinPrefix() + "  \u274c\u7b7e\u5230\u5931\u8d25\uff01\n\u6570\u636e\u5f02\u5e38\uff0c\u8bf7\u8054\u7cfb\u7ba1\u7406\u5458");
+            return;
+        }
+        // 联网获取北京时间（异步）
+        String today;
+        try {
+            today = cn.huohuas001.huhobotPenguin.spigot.qqbind.BeijingTimeUtil.getBeijingDate();
+        } catch (Throwable t) {
+            today = "";
+        }
+        if (today == null || today.isEmpty()) {
+            this.sendDirect(groupMessageEvent, mgr.getCheckinPrefix() + "  \u274c\u7b7e\u5230\u5931\u8d25\uff01\n\u83b7\u53d6\u670d\u52a1\u5668\u65f6\u95f4\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5");
+            return;
+        }
+        // 检查今日是否已签到
+        String lastDate = mgr.getCheckinDate(quuid);
+        String prefix = mgr.getCheckinPrefix();
+        if (today.equals(lastDate)) {
+            this.sendDirect(groupMessageEvent, prefix + "  \u274c\u7b7e\u5230\u5931\u8d25\uff0c\ud83d\udcb0\u4f60\u592a\u8d2a\u4e86\ud83d\ude21\n\u4eca\u65e5\u5df2\u7ecf\u7b7e\u5230\u8fc7\u4e86\uff0c\u8bf7\u660e\u5929\u518d\u8bd5...");
             return;
         }
         double reward = mgr.getCheckinReward();
         if (reward <= 0) {
-            this.sendDirect(groupMessageEvent, "\u274c \u7b7e\u5230\u5956\u52b1\u91d1\u5e01\u6570\u91cf\u914d\u7f6e\u9519\u8bef");
+            this.sendDirect(groupMessageEvent, prefix + "  \u274c\u7b7e\u5230\u5931\u8d25\uff01\n\u5956\u52b1\u91d1\u5e01\u6570\u91cf\u914d\u7f6e\u9519\u8bef");
             return;
         }
-        String quuid = mgr.getQuuid(playerName);
+        // 计算连续签到天数
+        int streak = mgr.getCheckinStreak(quuid);
+        String yesterday = cn.huohuas001.huhobotPenguin.spigot.qqbind.BeijingTimeUtil.nextDay(lastDate);
+        if (lastDate.isEmpty() || !yesterday.equals(today)) {
+            streak = 1;
+        } else {
+            streak = streak + 1;
+        }
+        // 发放金币
         boolean online = false;
         try {
             online = Bukkit.getPlayerExact(playerName) != null;
@@ -55,26 +88,20 @@ extends CommandSupport {
         catch (Throwable throwable) {
             // empty catch block
         }
-        String prefix = mgr.getCheckinPrefix();
         boolean paid;
         if (online) {
             paid = CheckInCommands.depositPlayer(playerName, reward);
         } else {
-            if (quuid != null && !quuid.isEmpty()) {
-                mgr.addPendingCoins(quuid, reward);
-                paid = true;
-            } else {
-                paid = false;
-            }
+            mgr.addPendingCoins(quuid, reward);
+            paid = true;
         }
         if (paid) {
-            if (online) {
-                this.sendDirect(groupMessageEvent, prefix + " \u7b7e\u5230\u6210\u529f\uff01\u5956\u52b1 " + CheckInCommands.formatMoney(reward) + " \u91d1\u5e01\u5df2\u53d1\u653e\u7ed9\u5728\u7ebf\u73a9\u5bb6 " + playerName + "\u3002");
-            } else {
-                this.sendDirect(groupMessageEvent, prefix + " \u7b7e\u5230\u6210\u529f\uff01\u5956\u52b1 " + CheckInCommands.formatMoney(reward) + " \u91d1\u5e01\u5df2\u6682\u5b58\uff0c\u73a9\u5bb6 " + playerName + " \u4e0a\u7ebf\u540e\u81ea\u52a8\u9886\u53d6\u3002");
-            }
+            mgr.setCheckinDate(quuid, today);
+            mgr.setCheckinStreak(quuid, streak);
+            String msg = prefix + "  \u2714\ufe0f\u7b7e\u5230\u6210\u529f\uff01\n\u73a9\u5bb6 " + playerName + " \u83b7\u5f97\u4e86" + CheckInCommands.formatMoney(reward) + "\u91d1\u5e01\uff0c\u5df2\u8fde\u7eed\u7b7e\u5230" + streak + "\u5929";
+            this.sendDirect(groupMessageEvent, msg);
         } else {
-            this.sendDirect(groupMessageEvent, "\u274c \u7b7e\u5230\u5931\u8d25\uff1a\u91d1\u5e01\u7cfb\u7edf\u672a\u5c31\u7eea\u6216\u6570\u636e\u5f02\u5e38\uff0c\u8bf7\u8054\u7cfb\u7ba1\u7406\u5458\u3002");
+            this.sendDirect(groupMessageEvent, prefix + "  \u274c\u7b7e\u5230\u5931\u8d25\uff01\n\u91d1\u5e01\u7cfb\u7edf\u672a\u5c31\u7eea\u6216\u6570\u636e\u5f02\u5e38\uff0c\u8bf7\u8054\u7cfb\u7ba1\u7406\u5458");
         }
     }
 
@@ -127,10 +154,16 @@ extends CommandSupport {
 
     private void sendDirect(GroupMessageEvent groupMessageEvent, String string) {
         try {
-            groupMessageEvent.sendMessage(string);
+            String userId = null;
+            try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
+            String content = string;
+            if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
+                content = "<@" + userId + ">\n" + string;
+            }
+            cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender.sendWithMention(groupMessageEvent, content);
         }
         catch (Throwable throwable) {
-            // empty catch block
+            try { groupMessageEvent.sendMessage(string); } catch (Throwable ignored) {}
         }
     }
 }

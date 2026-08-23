@@ -326,10 +326,16 @@ extends CommandSupport {
 
     private void sendDirect(GroupMessageEvent groupMessageEvent, String string) {
         try {
-            groupMessageEvent.sendMessage(string);
+            String userId = null;
+            try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
+            String content = string;
+            if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
+                content = "<@" + userId + ">\n" + string;
+            }
+            cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender.sendWithMention(groupMessageEvent, content);
         }
         catch (Throwable throwable) {
-            // empty catch block
+            try { groupMessageEvent.sendMessage(string); } catch (Throwable ignored) {}
         }
     }
 }

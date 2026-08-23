@@ -20,7 +20,7 @@ extends CommandSupport {
             return;
         }
         if (string == null || string.trim().isEmpty()) {
-            groupMessageEvent.sendMessage("参数不正确");
+            this.sendDirect(groupMessageEvent, "参数不正确");
             return;
         }
         this.executeGameCommand(huHoBot, groupMessageEvent, string, true);
@@ -32,7 +32,7 @@ extends CommandSupport {
             return;
         }
         if (string == null || string.trim().isEmpty()) {
-            groupMessageEvent.sendMessage("参数不正确");
+            this.sendDirect(groupMessageEvent, "参数不正确");
             return;
         }
         this.executeCustomCommand(huHoBot, groupMessageEvent, string, true);
@@ -47,7 +47,22 @@ extends CommandSupport {
         boolean bl = CommandRepositories.INSTANCE.getGroupSettings().fullForwarding(string2, huHoBot.getFullAmount());
         boolean bl2 = !bl;
         CommandRepositories.INSTANCE.getGroupSettings().setFullForwarding(string2, bl2);
-        this.reply(huHoBot, groupMessageEvent, "本群全量转发已" + (bl2 ? "开启" : "关闭"));
+        this.sendDirect(groupMessageEvent, "本群全量转发已" + (bl2 ? "开启" : "关闭"));
+    }
+
+    private void sendDirect(GroupMessageEvent groupMessageEvent, String string) {
+        try {
+            String userId = null;
+            try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
+            String content = string;
+            if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
+                content = "<@" + userId + ">\n" + string;
+            }
+            cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender.sendWithMention(groupMessageEvent, content);
+        }
+        catch (Throwable throwable) {
+            try { groupMessageEvent.sendMessage(string); } catch (Throwable ignored) {}
+        }
     }
 }
 
