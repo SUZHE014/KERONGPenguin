@@ -28,7 +28,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 public final class ConfigManager {
     private static final String CONFIG_VERSION_PATH = "config-version";
     private static final int CURRENT_CONFIG_VERSION = 9;
-    private static final List<String> COMMAND_NAMES = Collections.unmodifiableList(Arrays.asList("\u67e5\u4fe1\u606f", "\u7ed1\u5b9a", "\u91cd\u65b0\u7ed1\u5b9a", "\u67e5\u5728\u7ebf", "\u5728\u7ebf\u670d\u52a1\u5668", "\u53d1\u4fe1\u606f", "\u6267\u884c\u547d\u4ee4", "\u6267\u884c", "\u7ba1\u7406\u5458\u6267\u884c", "\u5168\u91cf", "motd", "\u5e2e\u52a9", "AI\u5bf9\u8bdd\u4e0a\u4e0b\u6587", "\u6e05\u9664\u5f53\u524d\u4e0a\u4e0b\u6587", "\u9ed1\u540d\u5355", "\u89e3\u9664\u9ed1\u540d\u5355"));
+    private static final List<String> COMMAND_NAMES = Collections.unmodifiableList(Arrays.asList("\u67e5\u4fe1\u606f", "\u7ed1\u5b9a", "\u91cd\u65b0\u7ed1\u5b9a", "\u67e5\u5728\u7ebf", "\u5728\u7ebf\u670d\u52a1\u5668", "\u53d1\u4fe1\u606f", "\u6267\u884c\u547d\u4ee4", "\u6267\u884c", "\u7ba1\u7406\u5458\u6267\u884c", "\u5168\u91cf", "motd", "\u5e2e\u52a9", "AI\u5bf9\u8bdd\u4e0a\u4e0b\u6587", "\u6e05\u9664\u5f53\u524d\u4e0a\u4e0b\u6587", "\u9ed1\u540d\u5355", "\u89e3\u9664\u9ed1\u540d\u5355", "\u7b7e\u5230"));
     private static final Map<String, Object> DEFAULT_VALUES;
     private final HuHoBotSpigot plugin;
 
@@ -259,6 +259,9 @@ public final class ConfigManager {
         linkedHashMap.put("qq-bind.enabled", false);
         linkedHashMap.put("qq-bind.code-expire-minutes", 10);
         linkedHashMap.put("qq-bind.code-length", 5);
+        linkedHashMap.put("qq-bind.checkin.enabled", false);
+        linkedHashMap.put("qq-bind.checkin.prefix", "[\u7b7e\u5230]");
+        linkedHashMap.put("qq-bind.checkin.reward", 100.0);
         linkedHashMap.put("ai.enabled", false);
         linkedHashMap.put("ai.server-enabled", false);
         linkedHashMap.put("ai.server-prefix", "ai");

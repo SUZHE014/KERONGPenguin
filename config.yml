@@ -53,6 +53,14 @@ qq-bind:
     - "&7（绑定码 {expire} 分钟内有效）"
   code-expire-minutes: 10
   code-length: 5
+  # 群内签到功能（需要 Vault 经济插件）
+  checkin:
+    # 是否开启签到（默认关闭）
+    enabled: false
+    # 签到回复前缀
+    prefix: "[签到]"
+    # 签到奖励金币数量
+    reward: 100.0
 
 filter-regex: []
 
@@ -83,6 +91,7 @@ commands:
   清除当前上下文: true
   黑名单: true
   解除黑名单: true
+  签到: true
 
 # AI 对话：@机器人 + 非 / 开头的消息 → 调用 OpenAI 兼容接口
 ai:

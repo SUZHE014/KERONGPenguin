@@ -154,7 +154,92 @@ implements Listener {
 
     @EventHandler
     public final void onPlayerJoin(PlayerJoinEvent playerJoinEvent) {
-        QClient.INSTANCE.broadcastPlayerJoin(playerJoinEvent.getPlayer().getName());
+        final String playerName = playerJoinEvent.getPlayer().getName();
+        QClient.INSTANCE.broadcastPlayerJoin(playerName);
+        Plugin plugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin");
+        if (plugin == null) {
+            return;
+        }
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    QqBindManager mgr = QqBindManager.getInstance();
+                    String quuid = mgr.getQuuid(playerName);
+                    if (quuid == null || quuid.isEmpty()) {
+                        return;
+                    }
+                    final double pending = mgr.takePendingCoins(quuid);
+                    if (pending > 0) {
+                        Bukkit.getScheduler().runTask(Bukkit.getPluginManager().getPlugin("KERONGPenguin"), new Runnable() {
+                            @Override
+                            public void run() {
+                                try {
+                                    org.bukkit.entity.Player player = Bukkit.getPlayerExact(playerName);
+                                    if (player != null && player.isOnline()) {
+                                        boolean ok = depositToPlayer(playerName, pending);
+                                        if (ok) {
+                                            player.sendMessage("\u00a7a[\u7b7e\u5230\u5956\u52b1] \u9886\u53d6\u7b7e\u5230\u5956\u52b1 " + formatMoney(pending) + " \u91d1\u5e01");
+                                        } else {
+                                            QqBindManager.logQuiet("[\u7b7e\u5230\u5956\u52b1] \u7ed9\u4e88\u73a9\u5bb6 " + playerName + " \u91d1\u5e01\u5931\u8d25\uff08Vault\uff09");
+                                        }
+                                    }
+                                } catch (Throwable t) {
+                                    QqBindManager.logQuiet("[\u7b7e\u5230\u5956\u52b1] \u73a9\u5bb6\u4e0a\u7ebf\u9886\u53d6\u5f02\u5e38: " + GameChat.safeMessage(t));
+                                }
+                            }
+                        });
+                    }
+                } catch (Throwable t) {
+                    // empty catch block
+                }
+            }
+        });
+    }
+
+    public static boolean depositToPlayer(String playerName, double amount) {
+        try {
+            Plugin vault = Bukkit.getPluginManager().getPlugin("Vault");
+            if (vault == null) {
+                return false;
+            }
+            org.bukkit.OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(playerName);
+            Class<?> economyClass = Class.forName("net.milkbowl.vault.economy.Economy");
+            Class<?> registeredServiceProviderClass = Class.forName("org.bukkit.plugin.RegisteredServiceProvider");
+            Method getServicesManager = Bukkit.getServer().getClass().getMethod("getServicesManager", new Class[0]);
+            Object servicesManager = getServicesManager.invoke(Bukkit.getServer(), new Object[0]);
+            Method getRegistration = servicesManager.getClass().getMethod("getRegistration", Class.class);
+            Object rsp = getRegistration.invoke(servicesManager, economyClass);
+            if (rsp == null) {
+                return false;
+            }
+            Method getProvider = registeredServiceProviderClass.getMethod("getProvider", new Class[0]);
+            Object economy = getProvider.invoke(rsp, new Object[0]);
+            if (economy == null) {
+                return false;
+            }
+            Method depositPlayer = economyClass.getMethod("depositPlayer", org.bukkit.OfflinePlayer.class, Double.TYPE);
+            Object result = depositPlayer.invoke(economy, offlinePlayer, amount);
+            if (result == null) {
+                return false;
+            }
+            try {
+                Method transactionSuccess = result.getClass().getMethod("transactionSuccess", new Class[0]);
+                Object success = transactionSuccess.invoke(result, new Object[0]);
+                return Boolean.TRUE.equals(success);
+            } catch (Throwable throwable) {
+                return true;
+            }
+        } catch (Throwable throwable) {
+            return false;
+        }
+    }
+
+    public static String formatMoney(double amount) {
+        if (amount == (long)amount) {
+            return String.valueOf((long)amount);
+        }
+        return String.valueOf(amount);
     }
 
     @EventHandler

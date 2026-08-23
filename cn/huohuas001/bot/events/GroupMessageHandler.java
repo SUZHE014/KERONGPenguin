@@ -19,7 +19,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public final class GroupMessageHandler extends ListenerHost {
     private final HuHoBot plugin;
     private final CopyOnWriteArrayList<BaseCommand> commands = new CopyOnWriteArrayList<>();
-    public GroupMessageHandler(HuHoBot plugin) { this.plugin = plugin; this.commands.add(new PublicCommands()); this.commands.add(new AdministrationCommands()); this.commands.add(new MotdCommands()); this.commands.add(new BindCommands()); }
+    public GroupMessageHandler(HuHoBot plugin) { this.plugin = plugin; this.commands.add(new PublicCommands()); this.commands.add(new AdministrationCommands()); this.commands.add(new MotdCommands()); this.commands.add(new BindCommands()); this.commands.add(new CheckInCommands()); }
     public void registerCommand(BaseCommand command) { if (command != null) this.commands.add(command); }
     @ListenerHost.EventReceiver
     public void onGroupMessage(GroupMessageEvent event) {

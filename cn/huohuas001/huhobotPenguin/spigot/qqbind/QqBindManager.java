@@ -245,6 +245,82 @@ public final class QqBindManager {
         return arrayList;
     }
 
+    public boolean isCheckinEnabled() {
+        try {
+            return this.plugin.getConfig().getBoolean("qq-bind.checkin.enabled", false);
+        }
+        catch (Throwable throwable) {
+            return false;
+        }
+    }
+
+    public String getCheckinPrefix() {
+        try {
+            return this.plugin.getConfig().getString("qq-bind.checkin.prefix", "[\u7b7e\u5230]");
+        }
+        catch (Throwable throwable) {
+            return "[\u7b7e\u5230]";
+        }
+    }
+
+    public double getCheckinReward() {
+        try {
+            return this.plugin.getConfig().getDouble("qq-bind.checkin.reward", 100.0);
+        }
+        catch (Throwable throwable) {
+            return 100.0;
+        }
+    }
+
+    public double getPendingCoins(String quuid) {
+        if (quuid == null || quuid.isEmpty()) {
+            return 0.0;
+        }
+        File file = new File(this.quuidFolder, quuid + ".yml");
+        if (!file.exists()) {
+            return 0.0;
+        }
+        return YamlConfiguration.loadConfiguration((File)file).getDouble("pendingCoins", 0.0);
+    }
+
+    public void addPendingCoins(String quuid, double amount) {
+        if (quuid == null || quuid.isEmpty() || amount <= 0) {
+            return;
+        }
+        File file = new File(this.quuidFolder, quuid + ".yml");
+        YamlConfiguration yamlConfiguration = file.exists() ? YamlConfiguration.loadConfiguration((File)file) : new YamlConfiguration();
+        double current = yamlConfiguration.getDouble("pendingCoins", 0.0);
+        yamlConfiguration.set("pendingCoins", (Object)(current + amount));
+        try {
+            yamlConfiguration.save(file);
+        }
+        catch (IOException iOException) {
+            // empty catch block
+        }
+    }
+
+    public double takePendingCoins(String quuid) {
+        if (quuid == null || quuid.isEmpty()) {
+            return 0.0;
+        }
+        File file = new File(this.quuidFolder, quuid + ".yml");
+        if (!file.exists()) {
+            return 0.0;
+        }
+        YamlConfiguration yamlConfiguration = YamlConfiguration.loadConfiguration((File)file);
+        double current = yamlConfiguration.getDouble("pendingCoins", 0.0);
+        if (current > 0) {
+            yamlConfiguration.set("pendingCoins", (Object)0.0);
+            try {
+                yamlConfiguration.save(file);
+            }
+            catch (IOException iOException) {
+                // empty catch block
+            }
+        }
+        return current;
+    }
+
     public String formatKickMessage(String string, String string2) {
         int n = this.getCodeExpireMinutes();
         StringBuilder stringBuilder = new StringBuilder();
