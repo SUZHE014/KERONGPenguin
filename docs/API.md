@@ -1,21 +1,19 @@
 # KERONGPenguin API 文档
 
-> 本文档基于 [HuHoBot 官方文档](http://huhobot.txssb.cn/develop/) 整理，并补充了 KERONGPenguin 魔改版特有的 API。
-
 ## 目录
 
-1. [Spigot/Paper 适配器 API](#1-spigotpaper-适配器-api)
-2. [公共 API（MsgPack 与事件）](#2-公共-apimsgpack-与事件)
-3. [当前可用 API（QClient / HuHoBotSpigot）](#3-当前可用-apiqclient--huhobotspigot)
-4. [开发者 API（KERONGPenguinAPI）](#4-开发者-apikerongpenguinapi)
+1. [引入 SDK](#1-引入-sdk)
+2. [QClient API](#2-qclient-api)
+3. [HuHoBotSpigot 主类 API](#3-huhobotspigot-主类-api)
+4. [NicknameManager 昵称管理](#4-nicknamemanager-昵称管理)
+5. [BindingRepository 绑定仓库](#5-bindingrepository-绑定仓库)
+6. [BindingInfo 绑定信息](#6-bindinginfo-绑定信息)
+7. [QQ 群命令](#7-qq-群命令)
+8. [开发者 API（KERONGPenguinAPI）](#8-开发者-apikerongpenguinapi)
 
 ---
 
-## 1. Spigot/Paper 适配器 API
-
-> 参考来源：<http://huhobot.txssb.cn/develop/spigot/>
-
-### 引入 SDK
+## 1. 引入 SDK
 
 将 `KERONGPenguin_Spigot-x.y.z.jar` 放到项目的 `libs` 目录：
 
@@ -39,57 +37,6 @@ depend:
 
 > ⚠️ **注意**：魔改版插件名为 `KERONGPenguin`（非 `HuHoBotPenguin`），`depend` 需使用 `KERONGPenguin`。
 
-### 监听 QQ 群消息
-
-事件类：`cn.huohuas001.huhobotPenguin.spigot.events.OnBotRecvMsg`
-
-```java
-package com.example.myaddon;
-
-import cn.huohuas001.huhobotPenguin.spigot.events.OnBotRecvMsg;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
-
-public final class BotListener implements Listener {
-    @EventHandler
-    public void onBotMessage(OnBotRecvMsg event) {
-        String user = event.getMessage().getSender().getUsername();
-        String content = event.getMessage().getContent();
-        if (content.equalsIgnoreCase("/hello")) {
-            event.replyText("你好，" + user);
-            event.setCancelled(true);
-        }
-    }
-}
-```
-
-在 `onEnable` 注册：
-
-```java
-getServer().getPluginManager().registerEvents(new BotListener(), this);
-```
-
-> 取消事件会阻止后续的默认全量转发。
-
-### 自定义命令事件
-
-事件类：`cn.huohuas001.huhobotPenguin.spigot.events.OnBotCommand`
-
-```java
-@EventHandler
-public void onBotCommand(OnBotCommand event) {
-    if ("hello".equals(event.getMessage().getCommandKey())) {
-        String args = event.getMessage().getCommandArguments();
-        event.replyText("参数: " + args);
-        event.setCancelled(true);
-    }
-}
-```
-
-消息 `/hello world` 对应：
-- `commandKey = hello`
-- `commandArguments = world`
-
 ### 获取主插件实例
 
 ```java
@@ -102,178 +49,9 @@ if (raw instanceof HuHoBotSpigot) {
 }
 ```
 
-### 查询认证 QQ 号
-
-查询指定群中某个 OpenID 已绑定的 QQ 号；如果没有认证，返回 `null`：
-
-```java
-String qq = bot.getAuthenticatedQQ(groupOpenId, openId);
-if (qq == null) {
-    // 当前 OpenID 未认证
-} else {
-    getLogger().info("已认证 QQ: " + qq);
-}
-```
-
-方法签名：
-
-```java
-String getAuthenticatedQQ(String groupOpenId, String openId);
-```
-
-### 注册命令和发送消息
-
-```java
-HuHoBotSpigot bot = (HuHoBotSpigot) raw;
-
-// 注册自定义命令
-bot.registerBotCommand("hello", "say Hello {params}", 0, true);
-
-// 发送文本消息
-bot.sendBotText("发送到配置中的所有 QQ 群");
-bot.sendBotText(groupOpenId, "发送到指定 QQ 群");
-
-// 发送 Markdown
-bot.sendBotMarkdown("# Markdown");
-bot.sendBotMarkdown(groupOpenId, markdown, keyboard);
-
-// 注销命令
-bot.unregisterBotCommand("hello");
-```
-
-方法说明：
-
-| 方法 | 说明 |
-|------|------|
-| `registerBotCommand(key, command, permission, pushMenu)` | 注册运行时命令 |
-| `unregisterBotCommand(key)` | 移除运行时命令 |
-| `sendBotText(text)` | 发送到所有配置群 |
-| `sendBotText(groupOpenId, text)` | 发送到指定群，返回 boolean |
-| `sendBotMarkdown(md)` | 发送 Markdown 到所有群 |
-| `sendBotMarkdown(groupOpenId, md, keyboard)` | 发送 Markdown 到指定群 |
-
-参数说明：
-- `permission > 0`：仅管理员可执行
-- `pushMenu = true`：同步到 QQ 指令面板
-
-命令模板占位符：
-- `{params}` — 完整参数
-- `{group}` — 群 ID
-- `{user}` — 用户 ID
-- `{0}` `{1}` — 按空格拆分后的参数
-- `&1` `&2` — 按空格拆分后的参数
-
-### 回复事件
-
-```java
-event.reply("普通文本");
-event.replyText("普通文本");
-event.replyMarkdown("Markdown 内容");
-event.replyMarkdown("Markdown 内容", keyboard);
-```
-
-> 回复会自动使用原消息的消息 ID 和序号。
-
-### 注意事项
-
-- 事件会在 Bukkit 主线程触发
-- 监听器中不要进行同步网络请求或长时间数据库操作
-- 必要时使用 Bukkit Scheduler 异步执行
-
 ---
 
-## 2. 公共 API（MsgPack 与事件）
-
-> 参考来源：<http://huhobot.txssb.cn/develop/adapter-api/>
-
-所有适配器都提供以下能力：
-
-- 监听 QQ 群消息：`OnBotRecvMsg`
-- 监听自定义命令：`OnBotCommand`
-- 读取统一的 `MsgPack` 消息快照
-- 取消事件，阻止后续默认转发
-- 回复触发消息
-- 注册和注销运行时自定义命令
-- 向所有配置群或指定群发送文本、Markdown
-
-各平台的事件类位于不同包中，但 API 结构保持一致。
-
-### MsgPack 消息快照
-
-`MsgPack` 是不可变消息快照，不直接暴露 QQ SDK 的原始事件对象。
-
-```java
-import cn.huohuas001.huhobotPenguin.adapter.api.MsgPack;
-```
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `messageId` | String | QQ 消息 ID |
-| `groupOpenId` | String | QQ 群 OpenID，用于回复和指定群发送 |
-| `groupId` | String? | QQ 群 ID，可能为空 |
-| `sender` | Sender | 消息发送者 |
-| `content` | String | 消息文本 |
-| `rawContent` | String | 原始消息文本 |
-| `timestamp` | String? | 消息时间戳 |
-| `messageSequence` | Int | 回复消息所需的消息序号 |
-| `commandKey` | String? | 自定义命令键 |
-| `commandArguments` | String? | 自定义命令参数 |
-| `mentions` | List\<Mention\> | At 用户列表 |
-| `attachments` | List\<Attachment\> | 附件列表 |
-
-Java 通过 `getMessageId()`、`getGroupOpenId()`、`getSender()` 等方法访问字段。
-
-### 事件
-
-#### OnBotRecvMsg
-
-在 QQ 消息进入公共命令处理前触发。适合进行消息过滤、审计或自定义回复。
-
-#### OnBotCommand
-
-在消息命中运行时注册的自定义命令时触发。此时 `MsgPack` 中会额外填充 `commandKey` 和 `commandArguments`。
-
-两个事件都支持：
-
-```java
-event.replyText("普通文本");
-event.replyMarkdown("Markdown 内容");
-event.setCancelled(true);
-```
-
-> `replyText` 和 `replyMarkdown` 返回 boolean。`true` 表示发送请求已提交，`false` 表示机器人未启动、参数为空或发送失败。
-
-### 查询认证 QQ 号
-
-所有适配器主类都提供同名方法：
-
-```java
-// 返回 null 表示未认证
-String qq = bot.getAuthenticatedQQ(groupOpenId, openId);
-```
-
-### 线程约束
-
-- QQ 消息回调来自 QQ 客户端线程
-- Spigot、Nukkit、Allay 会切换到平台服务器线程后触发事件
-- Bungee 使用 Bungee 事件总线
-- Velocity 等待 EventManager.fire 完成后再读取取消状态
-
-> 监听器中不要执行长时间阻塞操作。网络请求、数据库操作和复杂计算应提交到平台异步调度器。
-
-### 版本
-
-附属插件应使用与服务器中相同版本的适配器 JAR 编译，并使用 `compileOnly`，避免将另一份 HuHoBot 类打包进附属插件。
-
----
-
-## 3. 当前可用 API（QClient / HuHoBotSpigot）
-
-> ⚠️ **一致性说明**：上述第 1、2 章的适配器 API（`OnBotRecvMsg`/`OnBotCommand`/`MsgPack`/`getAuthenticatedQQ`/`registerBotCommand`/`sendBotText`/`sendBotMarkdown`）属于 HuHoBot 更新版本，**当前魔改版基于 1.2.0.1，尚未包含这些 API**。
->
-> 当前 jar 实际可用的 API 如下：
-
-### QClient 单例
+## 2. QClient API
 
 `cn.huohuas001.bot.QClient`，通过 `QClient.INSTANCE` 访问。
 
@@ -289,11 +67,23 @@ String qq = bot.getAuthenticatedQQ(groupOpenId, openId);
 | `sendMarkdownToGroup(groupOpenId, md, keyboard)` | `void` | 向指定群发送 Markdown |
 | `replyMarkdown(event, md, keyboard)` | `void` | 回复消息（Markdown） |
 | `replyWithImg(event, text, imgUrl)` | `void` | 回复消息（含图片） |
+| `sendAtToGroups(nickname, content)` | `void` | 向所有群发送艾特消息（通过昵称艾特） |
 | `shutdown()` | `void` | 关闭客户端 |
+
+### sendAtToGroups 用法
 
 ```java
 import cn.huohuas001.bot.QClient;
 
+// 向所有群发送艾特消息（nickname 对应已注册的昵称）
+QClient.INSTANCE.sendAtToGroups("张三", "你被点名了");
+```
+
+> `nickname` 参数会通过 `NicknameManager` 解析为对应的 OpenId，生成 `<qqbot-at-user id="..." />` 艾特标签。
+
+### 广播消息示例
+
+```java
 // 广播游戏消息
 QClient.INSTANCE.broadcastGameMessage("Steve", "大家好");
 
@@ -301,33 +91,36 @@ QClient.INSTANCE.broadcastGameMessage("Steve", "大家好");
 QClient.INSTANCE.sendMarkdownToGroup(groupOpenId, "# 标题", null);
 ```
 
-### HuHoBotSpigot 主类
+---
+
+## 3. HuHoBotSpigot 主类 API
 
 `cn.huohuas001.huhobotPenguin.spigot.HuHoBotSpigot`，实现 `HuHoBot` 接口。
 
-#### 消息发送
+### 消息发送
 
 | 方法 | 说明 |
 |------|------|
 | `broadcastMessage(text)` | 向所有配置群发送文本 |
+| `broadcastMessage(text, mentions)` | 向所有配置群发送文本（带艾特列表） |
 | `sendMarkdown(md, keyboard)` | 向所有群发送 Markdown |
 | `sendMarkdownToGroup(groupOpenId, md, keyboard)` | 向指定群发送 Markdown |
 | `replyMarkdown(event, md, keyboard)` | 回复群消息（Markdown） |
 | `replyWithImg(event, text, imgUrl)` | 回复群消息（含图片） |
 
-#### 消息格式化
+### 消息格式化
 
 | 方法 | 说明 |
 |------|------|
 | `auditText(text)` | 文本审核（过滤敏感词） |
 | `filterText(text)` | 过滤文本 |
 | `formatGroupMessage(senderName, msg)` | 格式化 QQ→游戏消息 |
-| `formatGameMessage(playerName, msg)` | 格式化 游戏→QQ 消息 |
+| `formatGameMessage(playerName, msg)` | 格式化游戏→QQ 消息 |
 | `formatPlayerJoinMessage(name)` | 格式化玩家加入消息 |
 | `formatPlayerQuitMessage(name)` | 格式化玩家退出消息 |
 | `formatPlayerEventMessage(name, event)` | 格式化玩家事件消息 |
 
-#### 数据查询
+### 数据查询
 
 | 方法 | 说明 |
 |------|------|
@@ -351,7 +144,7 @@ QClient.INSTANCE.sendMarkdownToGroup(groupOpenId, "# 标题", null);
 | `getSensitiveWords()` | 敏感词列表 |
 | `getAgentConfig()` | Agent 配置 |
 
-#### 调度器
+### 调度器
 
 | 方法 | 说明 |
 |------|------|
@@ -360,7 +153,7 @@ QClient.INSTANCE.sendMarkdownToGroup(groupOpenId, "# 标题", null);
 | `submitLater(delay, runnable)` | 延迟同步执行 |
 | `submitTimer(delay, period, runnable)` | 定时同步执行 |
 
-#### 命令执行
+### 命令执行
 
 | 方法 | 说明 |
 |------|------|
@@ -368,13 +161,13 @@ QClient.INSTANCE.sendMarkdownToGroup(groupOpenId, "# 标题", null);
 | `dispatchCommand(command)` | 分发命令 |
 
 ```java
-import cn.huohuas001.huhobotPenguin.spigot.HuHoBotSpigot;
-
 Plugin raw = getServer().getPluginManager().getPlugin("KERONGPenguin");
 if (raw instanceof HuHoBotSpigot) {
     HuHoBotSpigot bot = (HuHoBotSpigot) raw;
-    // 广播消息
-    bot.broadcastMessage("服务器公告");
+    // 广播消息（带艾特）
+    java.util.List<String> mentions = new ArrayList<>();
+    mentions.add("张三");
+    bot.broadcastMessage("通知内容", mentions);
     // 格式化消息
     String formatted = bot.formatGameMessage("Steve", "Hello");
     // 获取在线列表
@@ -384,9 +177,145 @@ if (raw instanceof HuHoBotSpigot) {
 
 ---
 
-## 4. 开发者 API（KERONGPenguinAPI）
+## 4. NicknameManager 昵称管理
 
-> 这是 KERONGPenguin 魔改版特有的公开 API 入口类，封装了 QQ 绑定查询、金币发放、签到等功能。
+`cn.huohuas001.bot.NicknameManager`，通过 `NicknameManager.INSTANCE` 访问。
+
+管理 QQ 群昵称 ↔ OpenId 的映射，用于 `sendAtToGroups` 解析艾特目标。
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `load()` | `void` | 从文件加载昵称映射 |
+| `save()` | `void` | 保存昵称映射到文件 |
+| `put(nickname, openId)` | `void` | 添加昵称→OpenId 映射 |
+| `getOpenId(nickname)` | `String` | 通过昵称查 OpenId |
+| `getNickname(openId)` | `String` | 通过 OpenId 查昵称 |
+| `matchByPrefix(prefix)` | `List<Pair<String,String>>` | 按前缀匹配昵称（返回 Pair 列表：nickname, openId） |
+| `all()` | `List<Pair<String,String>>` | 获取所有映射 |
+| `clear()` | `void` | 清空所有映射 |
+| `size()` | `int` | 获取映射数量 |
+
+```java
+import cn.huohuas001.bot.NicknameManager;
+
+// 添加昵称映射
+NicknameManager.INSTANCE.put("张三", "openId_xxx");
+
+// 查询
+String openId = NicknameManager.INSTANCE.getOpenId("张三");
+String nickname = NicknameManager.INSTANCE.getNickname("openId_xxx");
+
+// 前缀匹配
+for (kotlin.Pair<String, String> pair : NicknameManager.INSTANCE.matchByPrefix("张")) {
+    System.out.println(pair.getFirst() + " -> " + getSecond());
+}
+```
+
+---
+
+## 5. BindingRepository 绑定仓库
+
+`cn.huohuas001.bot.state.BindingRepository`
+
+管理群级 QQ 绑定关系（按 groupOpenId 分组）。每个绑定记录是 `BindingInfo`。
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `getBinding(groupOpenId, openId)` | `BindingInfo?` | 获取指定群中某 OpenId 的绑定信息 |
+| `setBinding(groupOpenId, openId, playerName)` | `boolean` | 设置绑定，成功返回 true |
+| `removeBinding(groupOpenId, openId)` | `boolean` | 移除绑定，成功返回 true |
+| `findByPlayerName(groupOpenId, playerName)` | `Entry<String, BindingInfo>?` | 按玩家名查找绑定 |
+| `allInGroup(groupOpenId)` | `Map<String, BindingInfo>` | 获取指定群的所有绑定 |
+| `updateSettings(groupOpenId, openId, qqDisplayName, mcDisplayName)` | `boolean` | 更新显示名设置 |
+| `allBindings()` | `Map<String, Map<String, BindingInfo>>` | 获取所有群的绑定（外层 key=groupOpenId，内层 key=openId） |
+| `replaceAll(bindings)` | `void` | 替换全部绑定数据 |
+
+```java
+import cn.huohuas001.bot.state.BindingRepository;
+import cn.huohuas001.bot.datapack.BindingInfo;
+
+BindingRepository repo = new BindingRepository(() -> kotlin.Unit.INSTANCE);
+
+// 设置绑定
+boolean ok = repo.setBinding(groupOpenId, openId, "Steve");
+
+// 查询绑定
+BindingInfo info = repo.getBinding(groupOpenId, openId);
+if (info != null) {
+    String player = info.getPlayerName();
+    String qqDisplay = info.getQqDisplayNameMode();
+    String mcDisplay = info.getMcDisplayNameMode();
+}
+
+// 移除绑定
+repo.removeBinding(groupOpenId, openId);
+
+// 获取群内所有绑定
+Map<String, BindingInfo> all = repo.allInGroup(groupOpenId);
+```
+
+---
+
+## 6. BindingInfo 绑定信息
+
+`cn.huohuas001.bot.datapack.BindingInfo`
+
+不可变数据类，存储单个绑定记录。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `playerName` | `String` | 绑定的游戏玩家名 |
+| `qqDisplayNameMode` | `String` | QQ 端显示名模式 |
+| `mcDisplayNameMode` | `String` | 游戏端显示名模式 |
+
+访问方法：`getPlayerName()`、`getQqDisplayNameMode()`、`getMcDisplayNameMode()`
+
+```java
+BindingInfo info = new BindingInfo("Steve", "default", "default");
+String player = info.getPlayerName();        // "Steve"
+String qqMode = info.getQqDisplayNameMode();  // "default"
+String mcMode = info.getMcDisplayNameMode();  // "default"
+
+// 复制创建
+BindingInfo copy = info.copy("Alex", "nickname", "default");
+```
+
+---
+
+## 7. QQ 群命令
+
+### 绑定相关命令
+
+| 命令 | 说明 |
+|------|------|
+| `/绑定 <绑定码>` 或 `/bind <绑定码>` | 绑定 QQ |
+| `/unbind` | 解除当前 QQ 绑定 |
+| `/setMcDisplayName <名称>` | 设置游戏端显示名 |
+| `/setQqDisplayName <名称>` | 设置 QQ 端显示名 |
+| `/version` | 查询插件版本 |
+
+### 服务器内命令
+
+| 命令 | 说明 |
+|------|------|
+| `/huhobot reload` | 重载配置 |
+| `/huhobot info` | 查看适配器信息 |
+| `/huhobot panel` | 重新同步 QQ 快捷指令面板 |
+| `/at <昵称> <消息>` | 向 QQ 群发送艾特消息（通过 NicknameManager 解析昵称） |
+
+### /at 命令用法
+
+```
+/at 张三 你好
+```
+
+该命令会向所有配置的 QQ 群发送一条艾特"张三"的消息。昵称需已在 `NicknameManager` 中注册。
+
+---
+
+## 8. 开发者 API（KERONGPenguinAPI）
+
+这是 KERONGPenguin 魔改版特有的公开 API 入口类，封装了 QQ 绑定查询、金币发放、签到等功能。
 
 ### 包路径
 
@@ -402,9 +331,7 @@ import cn.huohuas001.huhobotPenguin.spigot.api.KERONGPenguinAPI;
 KERONGPenguinAPI api = KERONGPenguinAPI.getInstance();
 ```
 
-### API 方法
-
-#### 绑定查询
+### 绑定查询
 
 | 方法 | 签名 | 说明 |
 |------|------|------|
@@ -414,14 +341,14 @@ KERONGPenguinAPI api = KERONGPenguinAPI.getInstance();
 | `isPlayerBound(playerName)` | `boolean` | 检查玩家是否已绑定 QQ |
 | `isBlacklisted(qqOpenId)` | `boolean` | 检查 QQ 是否在黑名单中 |
 
-#### 金币操作（Vault）
+### 金币操作（Vault）
 
 | 方法 | 签名 | 说明 |
 |------|------|------|
 | `depositCoins(playerName, amount)` | `boolean` | 给玩家发放金币（通过 Vault），成功返回 true |
 | `getPendingCoins(playerName)` | `double` | 获取玩家在 QUUID 中暂存的待领金币（签到等产生的离线奖励） |
 
-#### 签到配置
+### 签到配置
 
 | 方法 | 签名 | 说明 |
 |------|------|------|

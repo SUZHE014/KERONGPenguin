@@ -14,23 +14,6 @@ Minecraft QQ 机器人插件，通过 QQ 官方机器人 API 实现 QQ 群与服
 - **消息转发** — QQ 群 ↔ 游戏双向消息转发
 - **自定义执行指令** — QQ 群触发自定义服务器命令
 - **群内签到** — @机器人 /签到 领取金币奖励（需 Vault，离线暂存自动发放）
-- **开发者 API** — 提供 `KERONGPenguinAPI` 入口类，供其他插件调用绑定查询/金币发放等功能
-
-## 开发者 API
-
-其他插件可通过 `KERONGPenguinAPI` 调用本插件功能：
-
-```java
-import cn.huohuas001.huhobotPenguin.spigot.api.KERONGPenguinAPI;
-
-KERONGPenguinAPI api = KERONGPenguinAPI.getInstance();
-// 通过 QQ 查绑定玩家
-String player = api.getBoundPlayer(qqOpenId);
-// 给玩家发放金币（Vault）
-boolean ok = api.depositCoins(playerName, 100.0);
-// 检查玩家是否绑定 QQ
-boolean bound = api.isPlayerBound(playerName);
-```
 
 ## 环境
 
