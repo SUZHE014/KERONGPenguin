@@ -7,9 +7,7 @@ import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent;
-import io.github.kloping.qqbot.entities.ex.MessagePreBuilder;
 import io.github.kloping.qqbot.entities.qqpd.User;
-import io.github.kloping.qqbot.entities.qqpd.message.RawMessage;
 import io.github.kloping.qqbot.entities.qqpd.v2.Contact;
 import io.github.kloping.qqbot.impl.ListenerHost;
 import io.github.kloping.qqbot.impl.message.v2.BaseMessageEvent;
@@ -55,17 +53,9 @@ public final class GroupMessageHandler extends ListenerHost {
             String reply = AiChat.chat(text, mgr, groupId, userId);
             String aiContent = mgr.getQqAiOutputPrefix() + " " + reply;
             try {
-                RawMessage rawMsg = event.getRawMessage();
-                if (rawMsg != null && rawMsg.getId() != null && !rawMsg.getId().isEmpty()) {
-                    MessagePreBuilder builder = new MessagePreBuilder();
-                    builder.reply(rawMsg);
-                    builder.append(aiContent);
-                    event.sendMessage(builder.build());
-                } else {
-                    event.sendMessage(aiContent);
-                }
+                cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender.sendReply(event, aiContent);
             } catch (Throwable replyEx) {
-                event.sendMessage(aiContent);
+                try { event.sendMessage(aiContent); } catch (Throwable ignored) {}
             }
         } catch (Throwable t) { event.sendMessage("AI 对话失败：" + t.getMessage()); }
     }

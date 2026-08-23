@@ -24,9 +24,9 @@ extends CommandSupport {
             try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
             String content = "参数不正确";
             if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
-                content = "<qqbot-at-user id=\"" + userId + "\" />\n参数不正确";
+                content = "<@" + userId + ">\n参数不正确";
             }
-            groupMessageEvent.sendMessage(content);
+            cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender.sendWithMention(groupMessageEvent, content);
             return;
         }
         this.executeGameCommand(huHoBot, groupMessageEvent, string, true);
@@ -42,9 +42,9 @@ extends CommandSupport {
             try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
             String content = "参数不正确";
             if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
-                content = "<qqbot-at-user id=\"" + userId + "\" />\n参数不正确";
+                content = "<@" + userId + ">\n参数不正确";
             }
-            groupMessageEvent.sendMessage(content);
+            cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender.sendWithMention(groupMessageEvent, content);
             return;
         }
         this.executeCustomCommand(huHoBot, groupMessageEvent, string, true);
@@ -63,9 +63,9 @@ extends CommandSupport {
         try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
         String content = "本群全量转发已" + (bl2 ? "开启" : "关闭");
         if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
-            content = "<qqbot-at-user id=\"" + userId + "\" />\n" + content;
+            content = "<@" + userId + ">\n" + content;
         }
-        groupMessageEvent.sendMessage(content);
+        cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender.sendWithMention(groupMessageEvent, content);
     }
 }
 

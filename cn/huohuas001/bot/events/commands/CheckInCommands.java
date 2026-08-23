@@ -136,12 +136,12 @@ extends CommandSupport {
             }
             String content = string;
             if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
-                content = "<qqbot-at-user id=\"" + userId + "\" />\n" + string;
+                content = "<@" + userId + ">\n" + string;
             }
-            groupMessageEvent.sendMessage(content);
+            cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender.sendWithMention(groupMessageEvent, content);
         }
         catch (Throwable throwable) {
-            // empty catch block
+            try { groupMessageEvent.sendMessage(string); } catch (Throwable ignored) {}
         }
     }
 }

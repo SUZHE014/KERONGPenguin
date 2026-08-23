@@ -130,7 +130,30 @@ public final class ConfigManager {
     }
 
     public Motd motd() {
-        return new Motd(this.plugin.getConfig().getString("motd.server-ip", "127.0.0.1"), this.plugin.getConfig().getInt("motd.server-port", this.plugin.getServer().getPort()), this.plugin.getConfig().getString("motd.api", "http://motd.txssb.cn/api/app_img?ip={ip}&port={port}&dark=true&lang=zh-CN"), this.plugin.getConfig().getString("motd.text", ""), this.plugin.getConfig().getBoolean("motd.post-img", false), this.plugin.getConfig().getBoolean("motd.use-markdown", false));
+        String serverIp = this.plugin.getConfig().getString("motd.server-ip", "");
+        if (serverIp == null || serverIp.isEmpty() || "127.0.0.1".equals(serverIp) || "0.0.0.0".equals(serverIp) || "localhost".equals(serverIp)) {
+            serverIp = this.detectServerIp();
+        }
+        int serverPort = this.plugin.getConfig().getInt("motd.server-port", 0);
+        if (serverPort <= 0) {
+            serverPort = this.plugin.getServer().getPort();
+        }
+        String api = this.plugin.getConfig().getString("motd.api", "http://motd.txssb.cn/api/app_img?ip={ip}&port={port}&dark=true&lang=zh-CN");
+        return new Motd(serverIp, serverPort, api, this.plugin.getConfig().getString("motd.text", ""), this.plugin.getConfig().getBoolean("motd.post-img", false), this.plugin.getConfig().getBoolean("motd.use-markdown", false));
+    }
+
+    private String detectServerIp() {
+        try {
+            String ip = this.plugin.getServer().getIp();
+            if (ip != null && !ip.isEmpty() && !"0.0.0.0".equals(ip) && !"127.0.0.1".equals(ip) && !"localhost".equals(ip)) {
+                return ip;
+            }
+        } catch (Throwable ignored) {}
+        try {
+            java.net.InetAddress addr = java.net.InetAddress.getLocalHost();
+            return addr.getHostAddress();
+        } catch (Throwable ignored) {}
+        return "127.0.0.1";
     }
 
     public List<String> filterRegexList() {

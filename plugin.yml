@@ -1,5 +1,5 @@
 name: KERONGPenguin
-version: '1.0.3.8'
+version: '1.0.3.9'
 
 main: cn.huohuas001.huhobotPenguin.spigot.HuHoBotSpigot
 api-version: '1.18'
