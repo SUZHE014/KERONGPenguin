@@ -52,9 +52,14 @@ public final class GroupMessageHandler extends ListenerHost {
             String userId = safeUserId(event);
             String reply = AiChat.chat(text, mgr, groupId, userId);
             String aiContent = mgr.getQqAiOutputPrefix() + " " + reply;
+            QqBindManager.logQuiet("[AI对话] 回复内容长度=" + aiContent.length() + " 准备发送");
             try {
+                String msgId = null;
+                try { msgId = event.getRawMessage().getId(); } catch (Throwable ignored) {}
+                QqBindManager.logQuiet("[AI对话] 引用消息ID=" + msgId);
                 cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender.sendReply(event, aiContent);
             } catch (Throwable replyEx) {
+                QqBindManager.logQuiet("[AI对话] GroupMsgSender 异常: " + replyEx.getMessage());
                 try { event.sendMessage(aiContent); } catch (Throwable ignored) {}
             }
         } catch (Throwable t) { event.sendMessage("AI 对话失败：" + t.getMessage()); }

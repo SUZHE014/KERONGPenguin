@@ -64,7 +64,7 @@ extends CommandSupport {
         String lastDate = mgr.getCheckinDate(quuid);
         String prefix = mgr.getCheckinPrefix();
         if (today.equals(lastDate)) {
-            this.sendDirect(groupMessageEvent, prefix + "  \u274c\u7b7e\u5230\u5931\u8d25\uff0c\ud83d\udcb0\u4f60\u592a\u8d2a\u4e86\ud83d\ude21\n\u4eca\u65e5\u5df2\u7ecf\u7b7e\u5230\u8fc7\u4e86\uff0c\u8bf7\u660e\u5929\u518d\u8bd5...");
+            this.sendDirect(groupMessageEvent, prefix + "  \u274c\u7b7e\u5230\u5931\u8d25\uff0c\ud83d\udcb0\u4f60\u592a\u8d2a\u4e86\n\u4eca\u65e5\u5df2\u7ecf\u7b7e\u5230\u8fc7\u4e86\uff0c\u8bf7\u660e\u5929\u518d\u8bd5...");
             return;
         }
         double reward = mgr.getCheckinReward();
@@ -154,16 +154,10 @@ extends CommandSupport {
 
     private void sendDirect(GroupMessageEvent groupMessageEvent, String string) {
         try {
-            String userId = null;
-            try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
-            String content = string;
-            if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
-                content = "<@" + userId + ">\n" + string;
-            }
-            cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender.sendWithMention(groupMessageEvent, content);
+            groupMessageEvent.sendMessage(string);
         }
         catch (Throwable throwable) {
-            try { groupMessageEvent.sendMessage(string); } catch (Throwable ignored) {}
+            // empty catch block
         }
     }
 }

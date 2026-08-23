@@ -42,7 +42,7 @@ extends CommandSupport {
             } catch (Throwable ignored) {}
             huHoBot.broadcastMessage(huHoBot.formatGroupMessage(senderName, string2));
         } else {
-            groupMessageEvent.sendMessage("\u7fa4\u804a\u8f6c\u53d1\u529f\u80fd\u5df2\u5173\u95ed");
+            this.sendDirect(groupMessageEvent, "\u7fa4\u804a\u8f6c\u53d1\u529f\u80fd\u5df2\u5173\u95ed");
         }
     }
 
@@ -326,16 +326,10 @@ extends CommandSupport {
 
     private void sendDirect(GroupMessageEvent groupMessageEvent, String string) {
         try {
-            String userId = null;
-            try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
-            String content = string;
-            if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
-                content = "<@" + userId + ">\n" + string;
-            }
-            cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender.sendWithMention(groupMessageEvent, content);
+            groupMessageEvent.sendMessage(string);
         }
         catch (Throwable throwable) {
-            try { groupMessageEvent.sendMessage(string); } catch (Throwable ignored) {}
+            // empty catch block
         }
     }
 }
