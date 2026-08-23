@@ -67,19 +67,8 @@ if (raw instanceof HuHoBotSpigot) {
 | `sendMarkdownToGroup(groupOpenId, md, keyboard)` | `void` | 向指定群发送 Markdown |
 | `replyMarkdown(event, md, keyboard)` | `void` | 回复消息（Markdown） |
 | `replyWithImg(event, text, imgUrl)` | `void` | 回复消息（含图片） |
-| `sendAtToGroups(nickname, content)` | `void` | 向所有群发送艾特消息（通过昵称艾特） |
+| `sendAtToGroups(nickname, content)` | `void` | ⚠️ 尚未同步（1.2.2 新增，依赖 BindingLookupResult/resolveAtMentions 内部类） |
 | `shutdown()` | `void` | 关闭客户端 |
-
-### sendAtToGroups 用法
-
-```java
-import cn.huohuas001.bot.QClient;
-
-// 向所有群发送艾特消息（nickname 对应已注册的昵称）
-QClient.INSTANCE.sendAtToGroups("张三", "你被点名了");
-```
-
-> `nickname` 参数会通过 `NicknameManager` 解析为对应的 OpenId，生成 `<qqbot-at-user id="..." />` 艾特标签。
 
 ### 广播消息示例
 
@@ -102,7 +91,7 @@ QClient.INSTANCE.sendMarkdownToGroup(groupOpenId, "# 标题", null);
 | 方法 | 说明 |
 |------|------|
 | `broadcastMessage(text)` | 向所有配置群发送文本 |
-| `broadcastMessage(text, mentions)` | 向所有配置群发送文本（带艾特列表） |
+| `broadcastMessage(text, mentions)` | ⚠️ 尚未同步（1.2.2 新增重载） |
 | `sendMarkdown(md, keyboard)` | 向所有群发送 Markdown |
 | `sendMarkdownToGroup(groupOpenId, md, keyboard)` | 向指定群发送 Markdown |
 | `replyMarkdown(event, md, keyboard)` | 回复群消息（Markdown） |
@@ -164,10 +153,8 @@ QClient.INSTANCE.sendMarkdownToGroup(groupOpenId, "# 标题", null);
 Plugin raw = getServer().getPluginManager().getPlugin("KERONGPenguin");
 if (raw instanceof HuHoBotSpigot) {
     HuHoBotSpigot bot = (HuHoBotSpigot) raw;
-    // 广播消息（带艾特）
-    java.util.List<String> mentions = new ArrayList<>();
-    mentions.add("张三");
-    bot.broadcastMessage("通知内容", mentions);
+    // 广播消息
+    bot.broadcastMessage("通知内容");
     // 格式化消息
     String formatted = bot.formatGameMessage("Steve", "Hello");
     // 获取在线列表
@@ -178,6 +165,8 @@ if (raw instanceof HuHoBotSpigot) {
 ---
 
 ## 4. NicknameManager 昵称管理
+
+> ✅ **已同步**（1.0.3.8 起）
 
 `cn.huohuas001.bot.NicknameManager`，通过 `NicknameManager.INSTANCE` 访问。
 
@@ -214,6 +203,8 @@ for (kotlin.Pair<String, String> pair : NicknameManager.INSTANCE.matchByPrefix("
 ---
 
 ## 5. BindingRepository 绑定仓库
+
+> ✅ **已同步**（1.0.3.8 起）
 
 `cn.huohuas001.bot.state.BindingRepository`
 
@@ -258,6 +249,8 @@ Map<String, BindingInfo> all = repo.allInGroup(groupOpenId);
 
 ## 6. BindingInfo 绑定信息
 
+> ✅ **已同步**（1.0.3.8 起）
+
 `cn.huohuas001.bot.datapack.BindingInfo`
 
 不可变数据类，存储单个绑定记录。
@@ -286,30 +279,26 @@ BindingInfo copy = info.copy("Alex", "nickname", "default");
 
 ### 绑定相关命令
 
-| 命令 | 说明 |
-|------|------|
-| `/绑定 <绑定码>` 或 `/bind <绑定码>` | 绑定 QQ |
-| `/unbind` | 解除当前 QQ 绑定 |
-| `/setMcDisplayName <名称>` | 设置游戏端显示名 |
-| `/setQqDisplayName <名称>` | 设置 QQ 端显示名 |
-| `/version` | 查询插件版本 |
+> ⚠️ `/unbind`、`/setMcDisplayName`、`/setQqDisplayName`、`/version` 来自 1.2.2 的 `BindingCommands`，**尚未同步**（依赖 `CommandRepositories.getBindings()` 方法，需整体替换）。
+>
+> 当前魔改版仍使用旧版 `/绑定 <绑定码>`（魔改版自有 BindCommands）。
+
+| 命令 | 说明 | 同步状态 |
+|------|------|------|
+| `/绑定 <绑定码>` | 绑定 QQ | ✅ 魔改版自有 |
+| `/unbind` | 解除当前 QQ 绑定 | ⚠️ 尚未同步 |
+| `/setMcDisplayName <名称>` | 设置游戏端显示名 | ⚠️ 尚未同步 |
+| `/setQqDisplayName <名称>` | 设置 QQ 端显示名 | ⚠️ 尚未同步 |
+| `/version` | 查询插件版本 | ⚠️ 尚未同步 |
 
 ### 服务器内命令
 
-| 命令 | 说明 |
-|------|------|
-| `/huhobot reload` | 重载配置 |
-| `/huhobot info` | 查看适配器信息 |
-| `/huhobot panel` | 重新同步 QQ 快捷指令面板 |
-| `/at <昵称> <消息>` | 向 QQ 群发送艾特消息（通过 NicknameManager 解析昵称） |
-
-### /at 命令用法
-
-```
-/at 张三 你好
-```
-
-该命令会向所有配置的 QQ 群发送一条艾特"张三"的消息。昵称需已在 `NicknameManager` 中注册。
+| 命令 | 说明 | 同步状态 |
+|------|------|------|
+| `/huhobot reload` | 重载配置 | ✅ 可用 |
+| `/huhobot info` | 查看适配器信息 | ✅ 可用 |
+| `/huhobot panel` | 重新同步 QQ 快捷指令面板 | ✅ 可用 |
+| `/at <昵称> <消息>` | 向 QQ 群发送艾特消息 | ⚠️ 尚未同步（依赖 QClient.sendAtToGroups） |
 
 ---
 
