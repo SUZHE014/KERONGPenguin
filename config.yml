@@ -33,9 +33,11 @@ markdown:
 command-sender: "Hybrid"
 
 motd:
-  server-ip: "127.0.0.1"
-  server-port: 25565
-  # 服务器状态图片 API，支持 {ip} {port} 变量（自动检测填入当前服务器）
+  # 服务器 IP（请填写你的服务器公网 IP，用于 {ip} 变量替换）
+  server-ip: ""
+  # 服务器端口（请填写你的服务器端口，用于 {port} 变量替换）
+  server-port: 0
+  # 服务器状态图片 API，支持 {ip} {port} 变量（自动替换为上面的 server-ip / server-port）
   api: "http://motd.txssb.cn/api/app_img?ip={ip}&port={port}&dark=true&lang=zh-CN"
   text: ""
   post-img: false
