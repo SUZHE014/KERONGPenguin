@@ -40,8 +40,8 @@ motd:
   # 服务器状态图片 API，支持 {ip} {port} 变量（自动替换为上面的 server-ip / server-port）
   api: "http://motd.txssb.cn/api/app_img?ip={ip}&port={port}&dark=true&lang=zh-CN"
   text: ""
-  post-img: false
-  use-markdown: false
+  post-img: true
+  use-markdown: true
 
 # QQ 绑定
 qq-bind:

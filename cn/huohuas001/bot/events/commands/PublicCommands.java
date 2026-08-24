@@ -41,7 +41,7 @@ extends CommandSupport {
                 io.github.kloping.qqbot.entities.qqpd.v2.Contact contact = groupMessageEvent.getSender();
                 if (contact != null && contact.getUsername() != null) senderName = contact.getUsername();
             } catch (Throwable ignored) {}
-            senderName = senderName.replaceAll("[<>@\\[\\]#*`_~\\\\|]", "").trim();
+            senderName = senderName.replaceAll("[<>@\\[\\]()【】（）#*`_~\\\\|\\s]", "").trim();
             huHoBot.broadcastMessage(huHoBot.formatGroupMessage(senderName, string2));
         } else {
             groupMessageEvent.sendMessage("\u7fa4\u804a\u8f6c\u53d1\u529f\u80fd\u5df2\u5173\u95ed");

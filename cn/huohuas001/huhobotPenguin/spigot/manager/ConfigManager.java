@@ -133,7 +133,7 @@ public final class ConfigManager {
         String serverIp = this.plugin.getConfig().getString("motd.server-ip", "");
         int serverPort = this.plugin.getConfig().getInt("motd.server-port", 0);
         String api = this.plugin.getConfig().getString("motd.api", "http://motd.txssb.cn/api/app_img?ip={ip}&port={port}&dark=true&lang=zh-CN");
-        return new Motd(serverIp, serverPort, api, this.plugin.getConfig().getString("motd.text", ""), this.plugin.getConfig().getBoolean("motd.post-img", false), this.plugin.getConfig().getBoolean("motd.use-markdown", false));
+        return new Motd(serverIp, serverPort, api, this.plugin.getConfig().getString("motd.text", ""), this.plugin.getConfig().getBoolean("motd.post-img", true), this.plugin.getConfig().getBoolean("motd.use-markdown", true));
     }
 
     public List<String> filterRegexList() {
@@ -252,8 +252,8 @@ public final class ConfigManager {
         linkedHashMap.put("motd.server-port", 0);
         linkedHashMap.put("motd.api", "http://motd.txssb.cn/api/app_img?ip={ip}&port={port}&dark=true&lang=zh-CN");
         linkedHashMap.put("motd.text", "");
-        linkedHashMap.put("motd.post-img", false);
-        linkedHashMap.put("motd.use-markdown", false);
+        linkedHashMap.put("motd.post-img", true);
+        linkedHashMap.put("motd.use-markdown", true);
         linkedHashMap.put("filter-regex", Collections.emptyList());
         linkedHashMap.put("admin.mode", "qq");
         linkedHashMap.put("admin.openids", Collections.emptyList());

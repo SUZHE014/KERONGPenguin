@@ -65,8 +65,9 @@ public final class GroupMessageHandler extends ListenerHost {
     /** 过滤昵称中的 Markdown/艾特标签注入字符（防止修改QQ名称进行注入攻击） */
     private static String sanitizeName(String name) {
         if (name == null) return "";
-        // 移除 Markdown 特殊字符和艾特标签相关字符
-        return name.replaceAll("[<>@\\[\\]#*`_~\\\\|]", "").trim();
+        // 移除所有可能触发艾特或 Markdown 格式的字符
+        // 包括：< > @ [ ] ( ) 【 】 （ ） # * ` _ ~ \ | 空格
+        return name.replaceAll("[<>@\\[\\]()【】（）#*`_~\\\\|\\s]", "").trim();
     }
     @SuppressWarnings("unchecked")
     private void forwardFullGroupMessage(String groupId, GroupMessageEvent event) {
