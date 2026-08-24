@@ -154,17 +154,16 @@ extends CommandSupport {
 
     private void sendDirect(GroupMessageEvent groupMessageEvent, String string) {
         try {
-            String userId = null;
-            try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
-            String content = string;
-            if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
-                content = "<@" + userId + ">\n" + string;
-            }
+            String senderName = null;
             try {
-                cn.huohuas001.bot.QClient.INSTANCE.replyMarkdown(groupMessageEvent, content, null);
-            } catch (Throwable t) {
-                groupMessageEvent.sendMessage(content);
+                io.github.kloping.qqbot.entities.qqpd.v2.Contact contact = groupMessageEvent.getSender();
+                if (contact != null && contact.getUsername() != null) senderName = contact.getUsername();
+            } catch (Throwable ignored) {}
+            String content = string;
+            if (senderName != null && !senderName.isEmpty()) {
+                content = "@" + senderName + "\n" + string;
             }
+            groupMessageEvent.sendMessage(content);
         }
         catch (Throwable throwable) {
             try { groupMessageEvent.sendMessage(string); } catch (Throwable ignored) {}
