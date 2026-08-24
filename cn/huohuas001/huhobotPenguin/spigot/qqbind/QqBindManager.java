@@ -642,12 +642,36 @@ public final class QqBindManager {
         return null;
     }
 
+    /**
+     * 通过玩家名查找 QUUID（遍历匹配 playerName 字段，支持 UUID 绑定机制）。
+     */
+    public String findQuuidByPlayerName(String playerName) {
+        if (playerName == null || playerName.isEmpty()) {
+            return null;
+        }
+        for (Map.Entry<String, String> entry : this.nameToQuuid.entrySet()) {
+            File file = new File(this.quuidFolder, entry.getValue() + ".yml");
+            if (!file.exists()) continue;
+            String savedName = YamlConfiguration.loadConfiguration((File)file).getString("playerName", "");
+            if (playerName.equalsIgnoreCase(savedName)) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
     public String unbindAndKickByQq(String string) {
         String string2 = this.findPlayerByQq(string);
         if (string2 == null) {
             return null;
         }
-        this.unbind(string2);
+        // 用 QUUID 解绑（支持 UUID 绑定机制）
+        String quuid = this.findQuuidByQq(string);
+        if (quuid != null && !quuid.isEmpty()) {
+            this.unbindByQuuid(quuid, string2);
+        } else {
+            this.unbind(string2);
+        }
         QqBindManager.logQuiet("[\u89e3\u7ed1\u8e22\u51fa] QQ=" + string + " \u73a9\u5bb6=" + string2 + " \u5df2\u89e3\u7ed1");
         try {
             Player player = Bukkit.getPlayerExact((String)string2);
@@ -724,11 +748,25 @@ public final class QqBindManager {
         if (string2 == null) {
             return false;
         }
-        File file = new File(this.quuidFolder, string2 + ".yml");
+        return this.unbindByQuuid(string2, string);
+    }
+
+    /**
+     * 通过 QUUID 解除绑定（支持 UUID 绑定机制）。
+     */
+    public synchronized boolean unbindByQuuid(String quuid, String playerName) {
+        if (quuid == null || quuid.isEmpty()) {
+            return false;
+        }
+        File file = new File(this.quuidFolder, quuid + ".yml");
         if (!file.exists()) {
             return false;
         }
         YamlConfiguration yamlConfiguration = YamlConfiguration.loadConfiguration((File)file);
+        String currentQq = yamlConfiguration.getString("qq", "");
+        if (currentQq == null || currentQq.isEmpty()) {
+            return false;
+        }
         yamlConfiguration.set("qq", (Object)"");
         yamlConfiguration.set("boundAt", (Object)0L);
         try {
@@ -737,8 +775,22 @@ public final class QqBindManager {
         catch (IOException iOException) {
             // empty catch block
         }
-        QqBindManager.logQuiet("[\u89e3\u9664\u7ed1\u5b9a] \u73a9\u5bb6=" + string + " QUUID=" + string2);
+        QqBindManager.logQuiet("[\u89e3\u9664\u7ed1\u5b9a] \u73a9\u5bb6=" + playerName + " QUUID=" + quuid);
         return true;
+    }
+
+    /**
+     * 通过玩家名+服务器UUID解绑。
+     */
+    public boolean unbindByUuid(String playerName, String playerUuid) {
+        String quuid = this.getQuuidByUuid(playerName, playerUuid);
+        if (quuid == null || quuid.isEmpty()) {
+            quuid = this.getQuuid(playerName);
+        }
+        if (quuid == null || quuid.isEmpty()) {
+            return false;
+        }
+        return this.unbindByQuuid(quuid, playerName);
     }
 
     private String ctxKey(String string, String string2) {

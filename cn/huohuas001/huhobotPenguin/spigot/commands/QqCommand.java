@@ -83,6 +83,7 @@ implements TabExecutor {
             return;
         }
         String string2 = ((Player)commandSender).getName();
+        String playerUuid = ((Player)commandSender).getUniqueId().toString();
         try {
             qqBindManager = QqBindManager.getInstance();
         }
@@ -90,7 +91,7 @@ implements TabExecutor {
             commandSender.sendMessage(String.valueOf(ChatColor.RED) + "\u7ba1\u7406\u5668\u672a\u5c31\u7eea");
             return;
         }
-        boolean bl = qqBindManager.unbind(string2);
+        boolean bl = qqBindManager.unbindByUuid(string2, playerUuid);
         if (bl) {
             QqBindManager.logQuiet("[MC\u547d\u4ee4] /" + string + " rebind \u73a9\u5bb6=" + string2 + " \u81ea\u884c\u89e3\u9664\u7ed1\u5b9a");
             commandSender.sendMessage(String.valueOf(ChatColor.GREEN) + "\u2705 \u5df2\u89e3\u9664\u4f60\u7684 QQ \u7ed1\u5b9a\u3002\u4f60\u4e0b\u6b21\u767b\u5f55\u5c06\u91cd\u65b0\u83b7\u53d6\u7ed1\u5b9a\u7801\u3002");
@@ -113,7 +114,14 @@ implements TabExecutor {
             commandSender.sendMessage(String.valueOf(ChatColor.RED) + "\u7ba1\u7406\u5668\u672a\u5c31\u7eea");
             return;
         }
-        boolean bl = qqBindManager.unbind(string3);
+        // 用玩家名查找 QUUID（支持 UUID 绑定机制）
+        String quuid = qqBindManager.findQuuidByPlayerName(string3);
+        boolean bl;
+        if (quuid != null && !quuid.isEmpty()) {
+            bl = qqBindManager.unbindByQuuid(quuid, string3);
+        } else {
+            bl = qqBindManager.unbind(string3);
+        }
         if (bl) {
             QqBindManager.logQuiet("[MC\u547d\u4ee4] /" + string + " " + string2 + " " + string3 + " \u6210\u529f by " + commandSender.getName());
             commandSender.sendMessage(String.valueOf(ChatColor.GREEN) + "\u2705 \u5df2\u89e3\u9664\u73a9\u5bb6 " + string3 + " \u7684 QQ \u7ed1\u5b9a\u3002\u8be5\u73a9\u5bb6\u4e0b\u6b21\u767b\u5f55\u5c06\u91cd\u65b0\u83b7\u53d6\u7ed1\u5b9a\u7801\u3002");
