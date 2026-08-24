@@ -61,12 +61,19 @@ public final class GroupMessageHandler extends ListenerHost {
         } catch (Throwable t) { event.sendMessage("AI 对话失败：" + t.getMessage()); }
     }
     private String safeUserId(GroupMessageEvent event) { try { Contact c = event.getSender(); if (c == null) return "<unknown>"; String oid = c.getOpenid(); if (oid == null) oid = c.getId(); return oid == null ? "<unknown>" : oid; } catch (Throwable t) { return "<unknown>"; } }
+
+    /** 过滤昵称中的艾特标签注入字符（防止修改QQ名称进行艾特注入攻击） */
+    private static String sanitizeName(String name) {
+        if (name == null) return "";
+        // 移除 < @ > 等 Markdown/艾特标签相关字符
+        return name.replaceAll("[<>@]", "").trim();
+    }
     @SuppressWarnings("unchecked")
     private void forwardFullGroupMessage(String groupId, GroupMessageEvent event) {
         try {
             boolean enabled = CommandRepositories.INSTANCE.getGroupSettings().fullForwarding(groupId, plugin.getFullAmount());
             if (!enabled || !plugin.getChatFormat().getPostChat()) return;
-            String senderName = "unknown"; Contact contact = event.getSender(); if (contact != null) { String un = contact.getUsername(); if (un != null) senderName = un; }
+            String senderName = "unknown"; Contact contact = event.getSender(); if (contact != null) { String un = contact.getUsername(); if (un != null) senderName = sanitizeName(un); }
             BaseMessageEvent baseMsg = event instanceof BaseMessageEvent ? (BaseMessageEvent) event : null;
             JSONObject metadata = baseMsg != null ? baseMsg.getMetadata() : null;
             JSONArray atts = metadata != null ? metadata.getJSONArray("attachments") : null;
@@ -76,7 +83,7 @@ public final class GroupMessageHandler extends ListenerHost {
             if (!hasImage && tc.length() > 0) parts.add(tc);
             if (atts != null) { int n = ((Collection<Object>) atts).size(); for (int i = 0; i < n; i++) { JSONObject a = atts.getJSONObject(i); if (a == null) continue; String ct = a.getString("content_type"); if (ct == null) ct = ""; if ("voice".equals(ct)) { String asr = a.getString("asr_refer_text"); parts.add(asr != null && !asr.trim().isEmpty() ? "[语音] [" + asr.trim() + "]" : "[语音]"); } else if (ct.startsWith("image/")) parts.add("[图片]"); else if ("image/gif".equals(ct)) parts.add("[表情包]"); else if (ct.startsWith("video/")) parts.add("[视频]"); else { String fn = a.getString("filename"); parts.add("[文件: " + (fn == null ? "文件" : fn) + "]"); } } }
             if (parts.isEmpty()) return; StringBuilder sb = new StringBuilder(); for (int i = 0; i < parts.size(); i++) { if (i > 0) sb.append(' '); sb.append(parts.get(i)); } String msg = sb.toString();
-            User[] mentions = event.getRawMessage().getMentions(); if (mentions != null) for (int i = 0; i < mentions.length; i++) { User m = mentions[i]; String mid = m.getId(), mname = m.getUsername(); if (mid == null || mname == null) continue; msg = msg.replace("<@!" + mid + ">", "@" + mname).replace("<@" + mid + ">", "@" + mname).replace("<" + mid + ">", "@" + mname).replace(mid, "@" + mname); }
+            User[] mentions = event.getRawMessage().getMentions(); if (mentions != null) for (int i = 0; i < mentions.length; i++) { User m = mentions[i]; String mid = m.getId(), mname = m.getUsername(); if (mid == null || mname == null) continue; msg = msg.replace("<@!" + mid + ">", "@" + sanitizeName(mname)).replace("<@" + mid + ">", "@" + sanitizeName(mname)).replace("<" + mid + ">", "@" + sanitizeName(mname)).replace(mid, "@" + sanitizeName(mname)); }
             plugin.broadcastMessage(plugin.formatGroupMessage(senderName, plugin.auditText(msg)));
         } catch (Throwable ignored) {}
     }

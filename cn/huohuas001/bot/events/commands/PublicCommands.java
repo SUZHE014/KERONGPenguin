@@ -35,12 +35,13 @@ extends CommandSupport {
         }
         String string2 = huHoBot.auditText(string);
         if (huHoBot.getChatFormat().getPostChat()) {
-            // 获取发送者QQ名称（而非OpenId）
+            // 获取发送者QQ名称（而非OpenId），过滤注入字符
             String senderName = this.userId(groupMessageEvent);
             try {
                 io.github.kloping.qqbot.entities.qqpd.v2.Contact contact = groupMessageEvent.getSender();
                 if (contact != null && contact.getUsername() != null) senderName = contact.getUsername();
             } catch (Throwable ignored) {}
+            senderName = senderName.replaceAll("[<>@]", "").trim();
             huHoBot.broadcastMessage(huHoBot.formatGroupMessage(senderName, string2));
         } else {
             groupMessageEvent.sendMessage("\u7fa4\u804a\u8f6c\u53d1\u529f\u80fd\u5df2\u5173\u95ed");
