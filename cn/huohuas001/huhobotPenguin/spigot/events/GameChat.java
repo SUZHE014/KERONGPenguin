@@ -158,6 +158,7 @@ implements Listener {
     @EventHandler
     public final void onPlayerJoin(PlayerJoinEvent playerJoinEvent) {
         final String playerName = playerJoinEvent.getPlayer().getName();
+        final String playerUuid = playerJoinEvent.getPlayer().getUniqueId().toString();
         QClient.INSTANCE.broadcastPlayerJoin(playerName);
         Plugin plugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin");
         if (plugin == null) {
@@ -168,7 +169,11 @@ implements Listener {
             public void run() {
                 try {
                     QqBindManager mgr = QqBindManager.getInstance();
-                    String quuid = mgr.getQuuid(playerName);
+                    String quuid = mgr.getQuuidByUuid(playerName, playerUuid);
+                    if (quuid == null || quuid.isEmpty()) {
+                        // 兼容旧版：尝试纯玩家名查找
+                        quuid = mgr.getQuuid(playerName);
+                    }
                     if (quuid == null || quuid.isEmpty()) {
                         return;
                     }

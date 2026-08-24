@@ -357,16 +357,20 @@ extends CommandSupport {
 
     private void sendDirect(GroupMessageEvent groupMessageEvent, String string) {
         try {
-            String senderName = null;
-            try {
-                io.github.kloping.qqbot.entities.qqpd.v2.Contact contact = groupMessageEvent.getSender();
-                if (contact != null && contact.getUsername() != null) senderName = contact.getUsername();
-            } catch (Throwable ignored) {}
-            String content = string;
-            if (senderName != null && !senderName.isEmpty()) {
-                content = "@" + senderName + "\n" + string;
+            String userId = null;
+            try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
+            if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
+                try {
+                    io.github.kloping.qqbot.entities.ex.MessagePreBuilder builder = new io.github.kloping.qqbot.entities.ex.MessagePreBuilder();
+                    builder.append(new io.github.kloping.qqbot.entities.ex.At(userId));
+                    builder.append("\n" + string);
+                    groupMessageEvent.sendMessage(builder.build());
+                    return;
+                } catch (Throwable atEx) {
+                    // 回退到纯文本
+                }
             }
-            groupMessageEvent.sendMessage(content);
+            groupMessageEvent.sendMessage(string);
         }
         catch (Throwable throwable) {
             // empty catch block
