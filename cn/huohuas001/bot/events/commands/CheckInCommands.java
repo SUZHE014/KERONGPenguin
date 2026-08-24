@@ -44,7 +44,7 @@ extends CommandSupport {
             this.sendDirect(groupMessageEvent, msg);
             return;
         }
-        String quuid = mgr.getQuuid(playerName);
+        String quuid = mgr.findQuuidByQq(qq);
         if (quuid == null || quuid.isEmpty()) {
             this.sendDirect(groupMessageEvent, mgr.getCheckinPrefix() + "  \u274c\u7b7e\u5230\u5931\u8d25\uff01\n\u6570\u636e\u5f02\u5e38\uff0c\u8bf7\u8054\u7cfb\u7ba1\u7406\u5458");
             return;
@@ -158,12 +158,12 @@ extends CommandSupport {
             try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
             String content = string;
             if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
-                content = "<qqbot-at-user id=\"" + userId + "\" />\n" + string;
+                content = "<@" + userId + ">\n" + string;
             }
-            groupMessageEvent.sendMessage(content);
+            cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender.sendWithMention(groupMessageEvent, content);
         }
         catch (Throwable throwable) {
-            // empty catch block
+            try { groupMessageEvent.sendMessage(string); } catch (Throwable ignored) {}
         }
     }
 }

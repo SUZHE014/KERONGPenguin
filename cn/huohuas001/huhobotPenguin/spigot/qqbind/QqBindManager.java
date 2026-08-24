@@ -624,6 +624,24 @@ public final class QqBindManager {
         return null;
     }
 
+    /**
+     * 通过 QQ OpenId 查找对应的 QUUID（支持 UUID 绑定机制）。
+     */
+    public String findQuuidByQq(String qq) {
+        if (qq == null || qq.isEmpty()) {
+            return null;
+        }
+        for (Map.Entry<String, String> entry : this.nameToQuuid.entrySet()) {
+            File file = new File(this.quuidFolder, entry.getValue() + ".yml");
+            if (!file.exists()) continue;
+            String boundQq = YamlConfiguration.loadConfiguration((File)file).getString("qq", "");
+            if (qq.equals(boundQq)) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
     public String unbindAndKickByQq(String string) {
         String string2 = this.findPlayerByQq(string);
         if (string2 == null) {

@@ -15,6 +15,7 @@ import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager;
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent;
 import io.github.kloping.qqbot.entities.qqpd.User;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 public final class PublicCommands
 extends CommandSupport {
@@ -321,7 +322,37 @@ extends CommandSupport {
             this.sendDirect(groupMessageEvent, "\u53c2\u6570\u4e0d\u6b63\u786e");
             return;
         }
-        this.executeCustomCommand(huHoBot, groupMessageEvent, string, false);
+        String cmd = "huhobot run " + this.groupId(groupMessageEvent) + ' ' + this.userId(groupMessageEvent) + ' ' + string;
+        this.executeGameCommandWithMention(huHoBot, groupMessageEvent, cmd, true);
+    }
+
+    private void executeGameCommandWithMention(HuHoBot huHoBot, GroupMessageEvent groupMessageEvent, String command, boolean direct) {
+        try {
+            CompletableFuture<cn.huohuas001.bot.provider.HExecution> future = huHoBot.sendCommand(command);
+            final HuHoBot fHuHoBot = huHoBot;
+            final GroupMessageEvent fEvent = groupMessageEvent;
+            future.whenComplete(new java.util.function.BiConsumer<cn.huohuas001.bot.provider.HExecution, Throwable>() {
+                @Override
+                public void accept(cn.huohuas001.bot.provider.HExecution result, Throwable error) {
+                    try {
+                        if (error != null || result == null) {
+                            sendDirect(fEvent, "\u6e38\u620f\u6865\u63a5\u672a\u914d\u7f6e\u6216\u6267\u884c\u5931\u8d25");
+                        } else {
+                            String raw = result.getRawString();
+                            if (raw == null || raw.trim().isEmpty()) {
+                                sendDirect(fEvent, "\u5df2\u53d1\u9001\u6267\u884c\u8bf7\u6c42");
+                            } else {
+                                sendDirect(fEvent, fHuHoBot.auditText(raw));
+                            }
+                        }
+                    } catch (Throwable t) {
+                        // empty catch block
+                    }
+                }
+            });
+        } catch (Throwable t) {
+            this.sendDirect(groupMessageEvent, "\u6267\u884c\u5931\u8d25: " + t.getMessage());
+        }
     }
 
     private void sendDirect(GroupMessageEvent groupMessageEvent, String string) {
@@ -330,12 +361,12 @@ extends CommandSupport {
             try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
             String content = string;
             if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
-                content = "<qqbot-at-user id=\"" + userId + "\" />\n" + string;
+                content = "<@" + userId + ">\n" + string;
             }
-            groupMessageEvent.sendMessage(content);
+            cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender.sendWithMention(groupMessageEvent, content);
         }
         catch (Throwable throwable) {
-            // empty catch block
+            try { groupMessageEvent.sendMessage(string); } catch (Throwable ignored) {}
         }
     }
 }
