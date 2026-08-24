@@ -304,16 +304,18 @@ implements Listener {
         if (!qqBindManager.isEnabled()) {
             return;
         }
-        String string = playerLoginEvent.getPlayer().getName();
-        if (qqBindManager.isSkipped(string)) {
+        String playerName = playerLoginEvent.getPlayer().getName();
+        String playerUuid = playerLoginEvent.getPlayer().getUniqueId().toString();
+        if (qqBindManager.isSkipped(playerName)) {
             return;
         }
-        qqBindManager.getOrCreateQuuid(string);
-        if (qqBindManager.isBound(string)) {
+        // 基于 UUID 的绑定机制
+        qqBindManager.getOrCreateQuuidByUuid(playerName, playerUuid);
+        if (qqBindManager.isBoundByUuid(playerName, playerUuid)) {
             return;
         }
-        String string2 = qqBindManager.generateCode(string);
-        playerLoginEvent.disallow(PlayerLoginEvent.Result.KICK_OTHER, qqBindManager.formatKickMessage(string2, string));
+        String code = qqBindManager.generateCode(playerName, playerUuid);
+        playerLoginEvent.disallow(PlayerLoginEvent.Result.KICK_OTHER, qqBindManager.formatKickMessage(code, playerName));
     }
 
     private static String safeMessage(Throwable throwable) {

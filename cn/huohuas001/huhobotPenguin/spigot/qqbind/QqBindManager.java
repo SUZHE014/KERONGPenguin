@@ -101,6 +101,112 @@ public final class QqBindManager {
         return string == null ? "" : string.toLowerCase();
     }
 
+    /**
+     * 生成玩家名[服务器UUID]格式的绑定 key。
+     * 用于基于服务器 UUID 的绑定机制。
+     */
+    public static String keyWithUuid(String playerName, String playerUuid) {
+        if (playerName == null) playerName = "";
+        if (playerUuid == null) playerUuid = "";
+        return playerName.toLowerCase() + "[" + playerUuid + "]";
+    }
+
+    /**
+     * 通过玩家名和服务器UUID查找QUUID（新版绑定机制）。
+     * 兼容旧版：如果只有玩家名（无UUID）的旧 key 存在，自动迁移。
+     */
+    public synchronized String getOrCreateQuuidByUuid(String playerName, String playerUuid) {
+        String newKey = QqBindManager.keyWithUuid(playerName, playerUuid);
+        String quuid = this.nameToQuuid.get(newKey);
+        if (quuid != null) {
+            return quuid;
+        }
+        // 兼容旧版：检查纯玩家名 key 是否存在
+        String oldKey = QqBindManager.key(playerName);
+        String oldQuuid = this.nameToQuuid.get(oldKey);
+        if (oldQuuid != null) {
+            // 迁移旧 key 到新 key
+            this.nameToQuuid.remove(oldKey);
+            this.nameToQuuid.put(newKey, oldQuuid);
+            this.saveIndex();
+            // 更新 QUUID yml 的 playerUuid
+            this.setQuuidPlayerUuid(oldQuuid, playerUuid);
+            QqBindManager.logQuiet("[QUUID 迁移] 玩家=" + playerName + " 旧key=" + oldKey + " 新key=" + newKey + " QUUID=" + oldQuuid);
+            return oldQuuid;
+        }
+        // 全新创建
+        String newQuuid = UUID.randomUUID().toString();
+        this.nameToQuuid.put(newKey, newQuuid);
+        this.saveIndex();
+        File file = new File(this.quuidFolder, newQuuid + ".yml");
+        if (!file.exists()) {
+            try {
+                file.createNewFile();
+            }
+            catch (IOException iOException) {
+                // empty catch block
+            }
+        }
+        this.saveQuuidRecord(newQuuid, playerName, null, 0L, false);
+        this.setQuuidPlayerUuid(newQuuid, playerUuid);
+        QqBindManager.logQuiet("[QUUID 新建] 玩家=" + playerName + " UUID=" + playerUuid + " QUUID=" + newQuuid);
+        return newQuuid;
+    }
+
+    /**
+     * 检查玩家（通过UUID）是否已绑定QQ。
+     */
+    public boolean isBoundByUuid(String playerName, String playerUuid) {
+        String newKey = QqBindManager.keyWithUuid(playerName, playerUuid);
+        String quuid = this.nameToQuuid.get(newKey);
+        if (quuid == null) {
+            // 兼容旧版：检查纯玩家名 key
+            String oldKey = QqBindManager.key(playerName);
+            quuid = this.nameToQuuid.get(oldKey);
+            if (quuid == null) {
+                return false;
+            }
+        }
+        File file = new File(this.quuidFolder, quuid + ".yml");
+        if (!file.exists()) {
+            return false;
+        }
+        String qq = YamlConfiguration.loadConfiguration((File)file).getString("qq", "");
+        return qq != null && !qq.isEmpty();
+    }
+
+    /**
+     * 通过玩家名+UUID获取QUUID。
+     */
+    public String getQuuidByUuid(String playerName, String playerUuid) {
+        String newKey = QqBindManager.keyWithUuid(playerName, playerUuid);
+        String quuid = this.nameToQuuid.get(newKey);
+        if (quuid != null) {
+            return quuid;
+        }
+        // 兼容旧版
+        String oldKey = QqBindManager.key(playerName);
+        return this.nameToQuuid.get(oldKey);
+    }
+
+    /**
+     * 设置 QUUID yml 的 playerUuid 字段。
+     */
+    public void setQuuidPlayerUuid(String quuid, String playerUuid) {
+        if (quuid == null || quuid.isEmpty() || playerUuid == null) {
+            return;
+        }
+        File file = new File(this.quuidFolder, quuid + ".yml");
+        YamlConfiguration yamlConfiguration = file.exists() ? YamlConfiguration.loadConfiguration((File)file) : new YamlConfiguration();
+        yamlConfiguration.set("playerUuid", (Object)playerUuid);
+        try {
+            yamlConfiguration.save(file);
+        }
+        catch (IOException iOException) {
+            // empty catch block
+        }
+    }
+
     public boolean isEnabled() {
         try {
             return this.plugin.getConfig().getBoolean("qq-bind.enabled", false);
@@ -539,22 +645,31 @@ public final class QqBindManager {
     }
 
     public synchronized String generateCode(String string) {
-        String string2;
+        return this.generateCode(string, null);
+    }
+
+    public synchronized String generateCode(String playerName, String playerUuid) {
+        String code;
         this.cleanExpiredCodes();
-        String string3 = this.getOrCreateQuuid(string);
-        String string4 = QqBindManager.key(string);
-        for (Map.Entry<String, PendingBind> object2 : new ArrayList<Map.Entry<String, PendingBind>>(this.pendingCodes.entrySet())) {
-            if (!string4.equals(object2.getValue().playerKey)) continue;
-            this.pendingCodes.remove(object2.getKey());
+        String quuid;
+        if (playerUuid != null && !playerUuid.isEmpty()) {
+            quuid = this.getOrCreateQuuidByUuid(playerName, playerUuid);
+        } else {
+            quuid = this.getOrCreateQuuid(playerName);
+        }
+        String playerKey = QqBindManager.key(playerName);
+        for (Map.Entry<String, PendingBind> entry : new ArrayList<Map.Entry<String, PendingBind>>(this.pendingCodes.entrySet())) {
+            if (!playerKey.equals(entry.getValue().playerKey)) continue;
+            this.pendingCodes.remove(entry.getKey());
         }
         int n = this.getCodeLength();
         Random random = new Random();
         int n2 = 0;
-        while (this.pendingCodes.containsKey(string2 = QqBindManager.randomDigits(n, random)) && ++n2 < 50) {
+        while (this.pendingCodes.containsKey(code = QqBindManager.randomDigits(n, random)) && ++n2 < 50) {
         }
         long l = System.currentTimeMillis() + (long)this.getCodeExpireMinutes() * 60000L;
-        this.pendingCodes.put(string2, new PendingBind(string, string4, string3, l));
-        return string2;
+        this.pendingCodes.put(code, new PendingBind(playerName, playerKey, quuid, l));
+        return code;
     }
 
     public synchronized boolean confirmBinding(String string, String string2) {

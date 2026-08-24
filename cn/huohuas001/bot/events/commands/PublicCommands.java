@@ -42,7 +42,7 @@ extends CommandSupport {
             } catch (Throwable ignored) {}
             huHoBot.broadcastMessage(huHoBot.formatGroupMessage(senderName, string2));
         } else {
-            this.sendDirect(groupMessageEvent, "\u7fa4\u804a\u8f6c\u53d1\u529f\u80fd\u5df2\u5173\u95ed");
+            groupMessageEvent.sendMessage("\u7fa4\u804a\u8f6c\u53d1\u529f\u80fd\u5df2\u5173\u95ed");
         }
     }
 
@@ -326,7 +326,13 @@ extends CommandSupport {
 
     private void sendDirect(GroupMessageEvent groupMessageEvent, String string) {
         try {
-            groupMessageEvent.sendMessage(string);
+            String userId = null;
+            try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
+            String content = string;
+            if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
+                content = "<qqbot-at-user id=\"" + userId + "\" />\n" + string;
+            }
+            groupMessageEvent.sendMessage(content);
         }
         catch (Throwable throwable) {
             // empty catch block
