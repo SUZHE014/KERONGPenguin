@@ -62,11 +62,11 @@ public final class GroupMessageHandler extends ListenerHost {
     }
     private String safeUserId(GroupMessageEvent event) { try { Contact c = event.getSender(); if (c == null) return "<unknown>"; String oid = c.getOpenid(); if (oid == null) oid = c.getId(); return oid == null ? "<unknown>" : oid; } catch (Throwable t) { return "<unknown>"; } }
 
-    /** 过滤昵称中的艾特标签注入字符（防止修改QQ名称进行艾特注入攻击） */
+    /** 过滤昵称中的 Markdown/艾特标签注入字符（防止修改QQ名称进行注入攻击） */
     private static String sanitizeName(String name) {
         if (name == null) return "";
-        // 移除 < @ > 等 Markdown/艾特标签相关字符
-        return name.replaceAll("[<>@]", "").trim();
+        // 移除 Markdown 特殊字符和艾特标签相关字符
+        return name.replaceAll("[<>@\\[\\]#*`_~\\\\|]", "").trim();
     }
     @SuppressWarnings("unchecked")
     private void forwardFullGroupMessage(String groupId, GroupMessageEvent event) {
