@@ -53,21 +53,18 @@ extends CommandSupport {
         try {
             String userId = null;
             try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
+            String content = string;
             if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
-                try {
-                    io.github.kloping.qqbot.entities.ex.MessagePreBuilder builder = new io.github.kloping.qqbot.entities.ex.MessagePreBuilder();
-                    builder.append(new io.github.kloping.qqbot.entities.ex.At(userId));
-                    builder.append("\n" + string);
-                    groupMessageEvent.sendMessage(builder.build());
-                    return;
-                } catch (Throwable atEx) {
-                    // 回退到纯文本
-                }
+                content = "<@" + userId + ">\n" + string;
             }
-            groupMessageEvent.sendMessage(string);
+            try {
+                cn.huohuas001.bot.QClient.INSTANCE.replyMarkdown(groupMessageEvent, content, null);
+            } catch (Throwable t) {
+                groupMessageEvent.sendMessage(content);
+            }
         }
         catch (Throwable throwable) {
-            // empty catch block
+            try { groupMessageEvent.sendMessage(string); } catch (Throwable ignored) {}
         }
     }
 
