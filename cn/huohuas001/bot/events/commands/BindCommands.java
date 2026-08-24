@@ -51,16 +51,19 @@ extends CommandSupport {
 
     private void sendDirect(GroupMessageEvent groupMessageEvent, String string) {
         try {
-            String userId = null;
-            try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
+            String senderName = null;
+            try {
+                io.github.kloping.qqbot.entities.qqpd.v2.Contact contact = groupMessageEvent.getSender();
+                if (contact != null && contact.getUsername() != null) senderName = contact.getUsername();
+            } catch (Throwable ignored) {}
             String content = string;
-            if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
-                content = "<@" + userId + ">\n" + string;
+            if (senderName != null && !senderName.isEmpty()) {
+                content = "@" + senderName + "\n" + string;
             }
-            cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender.sendWithMention(groupMessageEvent, content);
+            groupMessageEvent.sendMessage(content);
         }
         catch (Throwable throwable) {
-            try { groupMessageEvent.sendMessage(string); } catch (Throwable ignored) {}
+            // empty catch block
         }
     }
 
