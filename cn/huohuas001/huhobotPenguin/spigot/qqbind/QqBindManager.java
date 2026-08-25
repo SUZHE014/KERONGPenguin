@@ -665,7 +665,7 @@ public final class QqBindManager {
         if (string2 == null) {
             return null;
         }
-        // 用 QUUID 解绑（支持 UUID 绑定机制）
+        // 用 QUUID 解绑（unbindByQuuid 内部会踢出在线玩家）
         String quuid = this.findQuuidByQq(string);
         if (quuid != null && !quuid.isEmpty()) {
             this.unbindByQuuid(quuid, string2);
@@ -673,16 +673,6 @@ public final class QqBindManager {
             this.unbind(string2);
         }
         QqBindManager.logQuiet("[\u89e3\u7ed1\u8e22\u51fa] QQ=" + string + " \u73a9\u5bb6=" + string2 + " \u5df2\u89e3\u7ed1");
-        try {
-            Player player = Bukkit.getPlayerExact((String)string2);
-            if (player != null && player.isOnline()) {
-                Bukkit.getScheduler().runTask((Plugin)this.plugin, () -> player.kickPlayer("\u00a7c\u4f60\u7684 QQ \u5df2\u88ab\u89e3\u9664\u7ed1\u5b9a\uff0c\u8bf7\u91cd\u65b0\u7ed1\u5b9a\u540e\u8fdb\u5165\u670d\u52a1\u5668\u3002"));
-                QqBindManager.logQuiet("[\u89e3\u7ed1\u8e22\u51fa] \u73a9\u5bb6=" + string2 + " \u5df2\u8e22\u51fa\u670d\u52a1\u5668");
-            }
-        }
-        catch (Throwable throwable) {
-            QqBindManager.logQuiet("[\u89e3\u7ed1\u8e22\u51fa] \u8e22\u51fa\u5931\u8d25: " + throwable.getMessage());
-        }
         return string2;
     }
 
@@ -776,6 +766,19 @@ public final class QqBindManager {
             // empty catch block
         }
         QqBindManager.logQuiet("[\u89e3\u9664\u7ed1\u5b9a] \u73a9\u5bb6=" + playerName + " QUUID=" + quuid);
+        // 踢出在线玩家
+        if (playerName != null && !playerName.isEmpty()) {
+            try {
+                Player player = Bukkit.getPlayerExact((String)playerName);
+                if (player != null && player.isOnline()) {
+                    Bukkit.getScheduler().runTask((Plugin)this.plugin, () -> player.kickPlayer("\u00a7c\u4f60\u7684 QQ \u5df2\u88ab\u89e3\u9664\u7ed1\u5b9a\uff0c\u8bf7\u91cd\u65b0\u7ed1\u5b9a\u540e\u8fdb\u5165\u670d\u52a1\u5668\u3002"));
+                    QqBindManager.logQuiet("[\u89e3\u7ed1\u8e22\u51fa] \u73a9\u5bb6=" + playerName + " \u5df2\u8e22\u51fa\u670d\u52a1\u5668");
+                }
+            }
+            catch (Throwable throwable) {
+                QqBindManager.logQuiet("[\u89e3\u7ed1\u8e22\u51fa] \u8e22\u51fa\u5931\u8d25: " + throwable.getMessage());
+            }
+        }
         return true;
     }
 

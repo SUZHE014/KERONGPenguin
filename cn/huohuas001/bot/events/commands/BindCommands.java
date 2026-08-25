@@ -42,7 +42,7 @@ extends CommandSupport {
         }
         if (bl) {
             QqBindManager.logQuiet("[QQ\u547d\u4ee4] /\u7ed1\u5b9a \u6210\u529f code=" + string2 + " qq=" + string4);
-            groupMessageEvent.sendMessage("\u2705 QQ \u7ed1\u5b9a\u6210\u529f\uff01\u73b0\u5728\u53ef\u4ee5\u91cd\u65b0\u8fdb\u5165\u670d\u52a1\u5668\u4e86\u3002");
+            this.sendDirect(groupMessageEvent, "\u2705 QQ \u7ed1\u5b9a\u6210\u529f\uff01\u73b0\u5728\u53ef\u4ee5\u91cd\u65b0\u8fdb\u5165\u670d\u52a1\u5668\u4e86\u3002");
         } else {
             QqBindManager.logQuiet("[QQ\u547d\u4ee4] /\u7ed1\u5b9a \u5931\u8d25 code=" + string2 + " \u65e0\u6548\u6216\u8fc7\u671f");
             this.sendDirect(groupMessageEvent, "\u274c \u7ed1\u5b9a\u7801\u65e0\u6548\u6216\u5df2\u8fc7\u671f\u3002\n\u8bf7\u91cd\u65b0\u8fdb\u5165\u670d\u52a1\u5668\u83b7\u53d6\u65b0\u7684\u7ed1\u5b9a\u7801\u540e\u518d\u8bd5\u3002");
