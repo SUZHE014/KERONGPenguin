@@ -46,8 +46,17 @@ public final class ConfigManager {
     }
 
     public void reload() {
-        this.plugin.reloadConfig();
+        try {
+            this.plugin.reloadConfig();
+        } catch (Throwable t) {
+            this.plugin.getLogger().warning("\u914d\u7f6e\u6587\u4ef6\u683c\u5f0f\u9519\u8bef\uff0c\u8df3\u8fc7\u91cd\u8f7d\u4ee5\u907f\u514d\u6570\u636e\u4e22\u5931: " + t.getMessage());
+            return;
+        }
         FileConfiguration fileConfiguration = this.plugin.getConfig();
+        if (fileConfiguration == null || fileConfiguration.getKeys(false).isEmpty()) {
+            this.plugin.getLogger().warning("\u914d\u7f6e\u6587\u4ef6\u4e3a\u7a7a\u6216\u683c\u5f0f\u9519\u8bef\uff0c\u8df3\u8fc7\u4fdd\u5b58\u4ee5\u907f\u514d\u6570\u636e\u4e22\u5931");
+            return;
+        }
         boolean bl = false;
         for (Map.Entry<String, Object> stringArray : DEFAULT_VALUES.entrySet()) {
             String string = stringArray.getKey();
