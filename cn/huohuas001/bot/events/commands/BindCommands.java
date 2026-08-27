@@ -53,15 +53,15 @@ extends CommandSupport {
         try {
             String userId = null;
             try { userId = this.userId(groupMessageEvent); } catch (Throwable ignored) {}
-            // 先用 replyMarkdown 发艾特（蓝色渲染），再用 sendMessage 发内容（emoji 正常显示）
+            String content = string;
             if (userId != null && !userId.isEmpty() && !"<unknown>".equals(userId)) {
-                try {
-                    cn.huohuas001.bot.QClient.INSTANCE.replyMarkdown(groupMessageEvent, "<@" + userId + ">", null);
-                } catch (Throwable t) {
-                    // 艾特失败不影响内容发送
-                }
+                content = "<@" + userId + ">\n" + string;
             }
-            groupMessageEvent.sendMessage(string);
+            try {
+                cn.huohuas001.bot.QClient.INSTANCE.replyMarkdown(groupMessageEvent, content, null);
+            } catch (Throwable t) {
+                groupMessageEvent.sendMessage(content);
+            }
         }
         catch (Throwable throwable) {
             try { groupMessageEvent.sendMessage(string); } catch (Throwable ignored) {}
