@@ -9,6 +9,7 @@ import cn.huohuas001.bot.provider.Motd
 import cn.huohuas001.bot.provider.PlayerEventFormat
 import cn.huohuas001.bot.provider.WhiteList
 import cn.huohuas001.bot.tools.Cancelable
+import cn.huohuas001.bot.tools.PluginFileLog
 import cn.huohuas001.huhobotPenguin.spigot.commands.BukkitConsoleSender
 import cn.huohuas001.huhobotPenguin.spigot.commands.CommandOutputAppender
 import cn.huohuas001.huhobotPenguin.spigot.commands.HuHoBotCommand
@@ -283,15 +284,22 @@ class HuHoBotSpigot : JavaPlugin(), HuHoBot {
 
     // ---------- 日志 ----------
 
+    // 0.1.5.5：警告与错误改为“控制台 + 插件日志文件”双写。
+    // 此前仅走 Bukkit Logger（只进控制台 / latest.log 路由不稳定的混合端），
+    // 渲染失败、发送失败等报错事后无法从文件追溯——即用户反馈的
+    // “部分报错没有记录在日志里面”的问题。info 级保持仅控制台
+    // （数据保存等留档日志走 PluginFileLog.write 仅写文件，互不影响）。
     override fun log_info(msg: String) {
         logger.info(msg)
     }
 
     override fun log_warning(msg: String) {
         logger.warning(msg)
+        PluginFileLog.write("[警告] $msg")
     }
 
     override fun log_error(msg: String) {
         logger.severe(msg)
+        PluginFileLog.write("[错误] $msg")
     }
 }

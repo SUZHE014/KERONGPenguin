@@ -29,7 +29,8 @@ import javax.imageio.ImageIO
  * 以 Java2D 绘制毛玻璃风格统计卡片：
  * - 顶部欢迎区（玩家名 + 问候 + MC 头像正面贴图）
  * - 玩家身份条
- * - 生涯统计网格（3 列 × 5 行 = 15 项）
+ * - 统计面板（0.1.5.5 起按用户需求精简为 4 项：金币 / 称号 / 在线时长 / 今日在线时长，
+ *   2 列 × 2 行布局，卡片高度随之收紧为 660）
  *
  * 0.1.5.2 性能修复：
  * - 背景与头像处理结果按文件 / 玩家缓存，不再每次渲染重新解码处理；
@@ -38,12 +39,16 @@ import javax.imageio.ImageIO
  *
  * 0.1.5.3 随机背景：背景图从 img/ 目录候选图中随机挑选，
  * 处理结果按张缓存，随机切换零额外解码开销。
+ *
+ * 0.1.5.5 彩色称号：数值支持 MC 旧版颜色码（&/§ + 0-9a-fk-or 与 &#RRGGBB），
+ * 解析为彩色分段后按原色渲染（DeluxeTags 称号颜色得以真实还原）；
+ * 背景图改为子采样解码，超长边限制在约 1600px，防止大尺寸照片整图解码导致内存峰值 / OOM。
  */
 object InfoCardRenderer {
 
-    /** 画布尺寸。 */
+    /** 画布尺寸（0.1.5.5：统计项精简为 4 项后高度收紧）。 */
     internal const val WIDTH = 900
-    internal const val HEIGHT = 948
+    internal const val HEIGHT = 660
 
     /** 配色（毛玻璃深色系）。 */
     private val COLOR_EYEBROW = Color(0x93, 0xA7, 0xBC)
@@ -187,7 +192,8 @@ object InfoCardRenderer {
         g.drawString(playerName, 190f, y + 42f)
     }
 
-    /** 生涯统计面板（3 列 × 5 行网格）。 */
+    /**
+     * 生涯统计面板（0.1.5.5：4 项 → 2 列 × 2 行；≥6 项时回退 3 列）。 */
     private fun drawStatsPanel(g: Graphics2D, items: List<CardItem>) {
         val x = 24f
         val y = 336f
@@ -200,7 +206,7 @@ object InfoCardRenderer {
         // 面板标题
         g.font = font(30f, true)
         g.color = COLOR_VALUE
-        g.drawString("生涯统计", 52f, y + 46f)
+        g.drawString("统计信息", 52f, y + 46f)
 
         // 项数徽标
         val badgeText = "${items.size} 项"
@@ -212,8 +218,8 @@ object InfoCardRenderer {
         g.color = COLOR_BADGE
         g.drawString(badgeText, badgeX + 14f, y + 42f)
 
-        // 网格
-        val columns = 3
+        // 网格（0.1.5.5：项数少时用 2 列避免最后一行孤项，格子更宽适合称号）
+        val columns = if (items.size >= 6) 3 else 2
         val gridLeft = 52f
         val gridTop = y + 84f
         val gridWidth = w - 56f
@@ -241,10 +247,8 @@ object InfoCardRenderer {
             g.color = COLOR_LABEL
             g.drawString(item.label, cellX + 16f, cellY + 34f)
 
-            // 数值
-            g.font = font(29f, true)
-            g.color = COLOR_VALUE
-            g.drawString(item.value, cellX + 16f, cellY + 70f)
+            // 数值（0.1.5.5：支持颜色码分段彩色渲染与超宽截断，用于称号等彩色文本）
+            drawItemValue(g, item.value, cellX + 16f, cellY + 72f, cw - 32f)
 
             // 右下角序号水印
             g.font = font(16f, true)
@@ -265,6 +269,166 @@ object InfoCardRenderer {
         val text = "MC"
         val metrics = g.getFontMetrics()
         g.drawString(text, x + (size - metrics.stringWidth(text)) / 2f, y + size / 2f + 9f)
+    }
+
+    // ---------- 彩色文本（0.1.5.5，称号颜色码还原） ----------
+
+    /** MC 旧版 16 色板（索引 0-9a-f）。 */
+    private val CHAT_COLORS: Map<Char, Color> = mapOf(
+        '0' to Color(0x000000), '1' to Color(0x0000AA), '2' to Color(0x00AA00), '3' to Color(0x00AAAA),
+        '4' to Color(0xAA0000), '5' to Color(0xAA00AA), '6' to Color(0xFFAA00), '7' to Color(0xAAAAAA),
+        '8' to Color(0x555555), '9' to Color(0x5555FF), 'a' to Color(0x55FF55), 'b' to Color(0x55FFFF),
+        'c' to Color(0xFF5555), 'd' to Color(0xFF55FF), 'e' to Color(0xFFFF55), 'f' to Color(0xFFFFFF),
+    )
+
+    /** 彩色文本段。 */
+    data class TextSegment(val text: String, val color: Color, val bold: Boolean)
+
+    /**
+     * 解析 MC 旧版颜色码（& / § 前缀）：
+     * - `&c` / `§c`：颜色 0-9 a-f；`&#RRGGBB` / `§#RRGGBB`：十六进制色；
+     * - `&l` 粗体、`&r` 重置；其余格式码（k n m o）忽略；
+     * - 非法/未知码原样输出（不影响普通文本）；
+     * - 顺带剔除常见 MiniMessage 标签（<gold> 等），避免渲染出尖括号原文。
+     */
+    internal fun parseLegacyColors(raw: String): List<TextSegment> {
+        if (raw.isEmpty()) return emptyList()
+        val text = raw.replace(MINI_MESSAGE_TAG, "")
+        val segments = ArrayList<TextSegment>()
+        val builder = StringBuilder()
+        var color = COLOR_VALUE
+        var bold = false
+
+        fun flush() {
+            if (builder.isNotEmpty()) {
+                segments.add(TextSegment(builder.toString(), ensureReadable(color), bold))
+                builder.setLength(0)
+            }
+        }
+
+        var i = 0
+        while (i < text.length) {
+            val ch = text[i]
+            if ((ch == '&' || ch == '§') && i + 1 < text.length) {
+                val next = text[i + 1]
+                if (next == '#' && i + 7 <= text.length) {
+                    val hex = text.substring(i + 2, i + 8)
+                    val parsed = parseHexColor(hex)
+                    if (parsed != null) {
+                        flush()
+                        color = parsed
+                        bold = false
+                        i += 8
+                        continue
+                    }
+                }
+                val lower = next.lowercaseChar()
+                if (CHAT_COLORS.containsKey(lower)) {
+                    flush()
+                    color = CHAT_COLORS.getValue(lower)
+                    bold = false
+                    i += 2
+                    continue
+                }
+                if (lower == 'l') {
+                    flush()
+                    bold = true
+                    i += 2
+                    continue
+                }
+                if (lower == 'r') {
+                    flush()
+                    color = COLOR_VALUE
+                    bold = false
+                    i += 2
+                    continue
+                }
+                if (lower in "kmno") {
+                    // 混淆/下划线/删除线/斜体：图片上不支持，直接吞掉
+                    i += 2
+                    continue
+                }
+            }
+            builder.append(ch)
+            i++
+        }
+        flush()
+        return segments
+    }
+
+    /** 常见 MiniMessage 标签（含闭合与带参形式），用于剔除。 */
+    private val MINI_MESSAGE_TAG = Regex("</?(?:gold|red|blue|green|dark_green|dark_blue|dark_red|dark_aqua|dark_purple|dark_gray|gray|black|white|yellow|aqua|light_purple|bold|italic|obfuscated|strikethrough|underlined|underline|reset|gradient|transition|rainbow|color|font|newline|br)(?::[^>]*)?>", RegexOption.IGNORE_CASE)
+
+    /** 十六进制颜色解析（不合法返回 null）。 */
+    private fun parseHexColor(hex: String): Color? = try {
+        Color(hex.toInt(16))
+    } catch (_: Throwable) {
+        null
+    }
+
+    /** 过暗颜色提亮到可读亮度（黑色称号在深色卡片上直接渲染会看不见）。 */
+    private fun ensureReadable(color: Color): Color {
+        val luminance = (0.299 * color.red + 0.587 * color.green + 0.114 * color.blue) / 255.0
+        if (luminance >= 0.22) return color
+        val mix = 0.55
+        return Color(
+            (color.red + (255 - color.red) * mix).toInt().coerceIn(0, 255),
+            (color.green + (255 - color.green) * mix).toInt().coerceIn(0, 255),
+            (color.blue + (255 - color.blue) * mix).toInt().coerceIn(0, 255),
+        )
+    }
+
+    /**
+     * 绘制项数值：无颜色码时按白色粗体单次绘制；
+     * 含颜色码时按分段彩色绘制；超宽时截断加省略号。
+     */
+    private fun drawItemValue(g: Graphics2D, raw: String, x: Float, y: Float, maxWidth: Float) {
+        val segments = parseLegacyColors(raw)
+        if (segments.size == 1 && segments[0].color == COLOR_VALUE && !segments[0].bold) {
+            g.font = font(29f, true)
+            g.color = COLOR_VALUE
+            g.drawString(ellipsize(g, segments[0].text, maxWidth), x, y)
+            return
+        }
+        var cursor = x
+        val ellipsisWidth = g.getFontMetrics(font(29f, false)).stringWidth("…")
+        for (segment in segments) {
+            // 数值基础样式为粗体（与旧版一致），&l 解析结果保留在段属性中
+            g.font = font(29f, true)
+            g.color = segment.color
+            var text = segment.text
+            val width = g.getFontMetrics().stringWidth(text)
+            if (cursor + width > x + maxWidth) {
+                // 当前段放不下：截到剩余宽度内并终止
+                val remain = (x + maxWidth - cursor - ellipsisWidth).toInt()
+                if (remain > 12) {
+                    text = clipToWidth(g, text, remain)
+                    g.drawString(text, cursor, y)
+                    cursor += g.getFontMetrics().stringWidth(text)
+                }
+                g.font = font(29f, false)
+                g.color = COLOR_VALUE
+                g.drawString("…", cursor, y)
+                return
+            }
+            g.drawString(text, cursor, y)
+            cursor += width
+        }
+    }
+
+    /** 按最大宽度截断文本（尾部加省略号）。 */
+    private fun ellipsize(g: Graphics2D, text: String, maxWidth: Float): String {
+        if (g.getFontMetrics().stringWidth(text) <= maxWidth) return text
+        return clipToWidth(g, text, (maxWidth - g.getFontMetrics().stringWidth("…")).toInt()) + "…"
+    }
+
+    /** 截取不超给定宽度的最长前缀。 */
+    private fun clipToWidth(g: Graphics2D, text: String, maxWidth: Int): String {
+        val metrics = g.getFontMetrics()
+        if (metrics.stringWidth(text) <= maxWidth) return text
+        var end = text.length
+        while (end > 0 && metrics.stringWidth(text.substring(0, end)) > maxWidth) end--
+        return text.substring(0, end)
     }
 
     /** 圆角头像。 */
@@ -362,6 +526,12 @@ object InfoCardAssets {
 
     /** 背景缓存容量上限（张）；超出时淘汰最久未使用的，控制内存占用。 */
     private const val BACKGROUND_CACHE_MAX = 8
+
+    /** 背景图子采样解码的最长边限制（像素）：超长边照片降采样后再解码，防整图解码 OOM（0.1.5.5）。 */
+    private const val BACKGROUND_MAX_DIM = 1600
+
+    /** 近期解码失败的背景文件（路径 → 失败时间），10 分钟内不再抽中，避免坏图反复触发解码（0.1.5.5）。 */
+    private val backgroundFailures = ConcurrentHashMap<String, Long>()
 
     /** 记录的玩家名 → 正版 UUID（Mojang API），含未查到的负缓存。 */
     private val premiumUuidCache = ConcurrentHashMap<String, Any>()
@@ -687,12 +857,24 @@ object InfoCardAssets {
      * 0.1.5.3：从 img/ 目录全部候选图中随机挑选一张（旧版固定取第一张），
      * 每张图的处理结果按文件路径 + 修改时间 + 大小缓存；图片更换后自动重新处理。
      * 同一张图重复抽中时直接命中缓存，随机切换不额外增加 CPU 开销。
+     *
+     * 0.1.5.5：
+     * - 解码改用 ImageReader 子采样（最长边限制约 1600px），超大尺寸照片
+     *   （如手机原图 4000×3000）不再整图解码，避免内存峰值 / OOM 导致卡片生成失败；
+     * - 解码失败的文件进入 10 分钟负缓存，随机挑选时自动跳过。
      */
     @Synchronized
     fun processedBackground(dataDirectory: File, width: Int, height: Int): BufferedImage? {
         val folder = File(dataDirectory, "img")
+        val now = System.currentTimeMillis()
+        // 偶发清理负缓存（容量极小，仅防泄漏）
+        if (backgroundFailures.size > 32) {
+            backgroundFailures.entries.removeIf { now - it.value > 10 * 60_000L }
+        }
         val candidates = folder.listFiles { file ->
-            file.isFile && file.extension.lowercase() in setOf("png", "jpg", "jpeg", "bmp", "gif")
+            file.isFile && file.length() > 0 &&
+                file.extension.lowercase() in setOf("png", "jpg", "jpeg", "bmp", "gif") &&
+                (backgroundFailures[file.absolutePath] ?: 0L).let { now - it > 10 * 60_000L }
         }?.toList() ?: emptyList()
         if (candidates.isEmpty()) return null
 
@@ -704,22 +886,73 @@ object InfoCardAssets {
         val sizeKey = width.toLong() * 4096 + height
         val cached = backgroundCache[path]
         if (cached != null && cached.stamp == stamp && cached.sizeKey == sizeKey) {
-            cached.lastUsedAt = System.currentTimeMillis()
+            cached.lastUsedAt = now
             return cached.image
         }
 
-        // 解码并处理（仅在文件变化或首次抽中时执行）
-        val decoded = try {
-            ImageIO.read(file)
-        } catch (_: Exception) {
-            null
-        } ?: return null
+        // 解码并处理（仅在文件变化或首次抽中时执行；子采样限制解码尺寸）
+        val decoded = decodeBackground(file) ?: return null
         if (decoded.width <= 0 || decoded.height <= 0) return null
 
         val processed = darken(softBlur(coverImage(decoded, width, height)))
-        backgroundCache[path] = BackgroundEntry(stamp, sizeKey, processed, System.currentTimeMillis())
+        backgroundCache[path] = BackgroundEntry(stamp, sizeKey, processed, now)
         evictBackgroundsIfOversized()
         return processed
+    }
+
+    /**
+     * 子采样解码背景图（0.1.5.5）：先读尺寸，再按 2 的幂降采样到
+     * 最长边约 [BACKGROUND_MAX_DIM] 以内后读取像素，控制解码内存。
+     * 解码失败返回 null（不抛异常）。
+     */
+    private fun decodeBackground(file: File): BufferedImage? {
+        var input: javax.imageio.stream.ImageInputStream? = null
+        var reader: javax.imageio.ImageReader? = null
+        return try {
+            input = ImageIO.createImageInputStream(file) ?: return null
+            val readerIterator = ImageIO.getImageReaders(input)
+            if (!readerIterator.hasNext()) return null
+            reader = readerIterator.next()
+            reader.setInput(input, true, false)
+            val sourceWidth = try {
+                reader.getWidth(0)
+            } catch (_: Throwable) {
+                -1
+            }
+            val sourceHeight = try {
+                reader.getHeight(0)
+            } catch (_: Throwable) {
+                -1
+            }
+            if (sourceWidth <= 0 || sourceHeight <= 0) {
+                backgroundFailures[file.absolutePath] = System.currentTimeMillis()
+                return null
+            }
+            val longest = maxOf(sourceWidth, sourceHeight)
+            var subsampling = 1
+            while (longest / (subsampling.toLong() * 2) >= BACKGROUND_MAX_DIM) subsampling *= 2
+            val param = reader.defaultReadParam
+            param.setSourceSubsampling(subsampling, subsampling, 0, 0)
+            val image = reader.read(0, param)
+            if (image.width <= 0 || image.height <= 0) {
+                backgroundFailures[file.absolutePath] = System.currentTimeMillis()
+                null
+            } else {
+                image
+            }
+        } catch (_: Throwable) {
+            backgroundFailures[file.absolutePath] = System.currentTimeMillis()
+            null
+        } finally {
+            try {
+                reader?.dispose()
+            } catch (_: Throwable) {
+            }
+            try {
+                input?.close()
+            } catch (_: Throwable) {
+            }
+        }
     }
 
     /** 背景缓存超限时淘汰最久未使用的条目，控制图像内存占用。 */

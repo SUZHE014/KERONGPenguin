@@ -19,6 +19,10 @@ import java.util.Date
  *
  * 写入为逐行追加、按需打开即关，无后台线程、无内存缓存、无锁竞争
  * （低频日志，单行写入原子性由追加模式保证），开销可忽略。
+ *
+ * 0.1.5.5：警告/错误统一双写——平台 log_warning/log_error
+ * 本身已改为“控制台 + 本文件”双写（见 HuHoBotSpigot），
+ * 此处 warnAndKeep/errorAndKeep 直接委托，避免双写重复。
  */
 object PluginFileLog {
 
@@ -49,15 +53,13 @@ object PluginFileLog {
         write(message)
     }
 
-    /** 警告：控制台 + 日志文件双写。 */
+    /** 警告：控制台 + 日志文件双写（log_warning 已双写，直接委托）。 */
     fun warnAndKeep(message: String) {
         plugin.log_warning(message)
-        write("[警告] $message")
     }
 
-    /** 错误：控制台 + 日志文件双写。 */
+    /** 错误：控制台 + 日志文件双写（log_error 已双写，直接委托）。 */
     fun errorAndKeep(message: String) {
         plugin.log_error(message)
-        write("[错误] $message")
     }
 }

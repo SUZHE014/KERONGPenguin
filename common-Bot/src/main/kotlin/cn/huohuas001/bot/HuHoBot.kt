@@ -86,8 +86,8 @@ interface HuHoBot : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPr
         LoggerImpl.setLogSink(object : LoggerImpl.LogSink {
             override fun log(message: String, level: Int) {
                 if (level == -1) {
-                    log_error(message)
-                    PluginFileLog.write("[Bot][错误] $message")
+                    // 0.1.5.5：log_error 已双写（控制台 + 文件），直接委托避免重复写文件
+                    log_error("[Bot] $message")
                 } else {
                     PluginFileLog.write("[Bot] $message")
                 }

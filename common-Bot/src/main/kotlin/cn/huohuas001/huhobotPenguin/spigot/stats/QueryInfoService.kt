@@ -18,14 +18,23 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * 流程：
  * 1. 通过 QQ OpenId 查找绑定的玩家（未绑定则直接提示）；
- * 2. 汇总数据：金币（Vault）、签到次数（绑定系统）、其余生涯统计（本插件自记录）；
- * 3. 异步渲染毛玻璃风格统计卡片（0.1.5.3 起背景从插件目录 img/ 随机挑选，无图用黑色）；
- * 4. 以图片消息发送到群（不 @ 提及）。
+ * 2. 汇总数据：金币（Vault）、称号（0.1.5.5 默认 DeluxeTags，含颜色码）、
+ *    在线时长与今日在线（本插件自记录）；
+ * 3. 异步渲染毛玻璃风格统计卡片（0.1.5.3 起背景从插件目录 img/ 随机挑选，无图用黑色；
+ *    0.1.5.5 起仅展示 4 项：金币 / 称号 / 在线时长 / 今日在线时长，高度收紧为 660）；
+ * 4. 以图片消息发送到群（不 @ 提及）；发送失败时以文本回退提示，
+ *    与“生成失败”区分开，便于定位是渲染问题还是机器人连接问题。
  *
  * 0.1.5.2 性能修复：
  * - 单用户查询冷却，防止连续触发导致 CPU / 内存狂飙；
  * - 皮肤信息（贴图 URL / playerdata 目录）一次性主线程捕获，避免渲染线程触碰非线程安全 API；
  * - 背景与头像均走 [InfoCardAssets] 缓存，重复查询不再重复解码 / 请求。
+ *
+ * 0.1.5.5：
+ * - 称号接入 DeluxeTags（反射调用，优先于 Vault 前缀；返回带颜色码的原文，
+ *   由卡片按 MC 色板真实渲染彩色，离线玩家回退到持久化保存的标签选择）；
+ * - 渲染/发送失败日志带上堆栈前几帧，且 log_error 已双写插件日志文件，事后可从
+ *   logs/qq/qq-bind-日期.log 完整追溯（修复“部分报错没有记录在日志里面”）。
  */
 object QueryInfoService {
 
@@ -68,7 +77,6 @@ object QueryInfoService {
         // 2. 组装数据（在异步线程渲染前先取好主线程数据）
         val playerUuid: UUID? = parseUuid(bindManager.getPlayerUuidByQuuid(quuid))
         val stats = if (playerUuid != null) PlayerStatsManager.query(playerUuid) else PlayerStatsManager.PlayerStats()
-        val checkinTotal = bindManager.getCheckinTotal(quuid)
         val vaultData = readVaultDataOnMainThread(playerName, playerUuid)
         val title = vaultData.first
         val balance = vaultData.second
@@ -90,7 +98,7 @@ object QueryInfoService {
                     InfoCardAssets.processedBackground(it, InfoCardRenderer.WIDTH, InfoCardRenderer.HEIGHT)
                 }
 
-                val items = buildItems(stats, balance, checkinTotal, title)
+                val items = buildItems(stats, balance, title)
                 val bytes = InfoCardRenderer.render(
                     InfoCardRenderer.CardData(
                         playerName = playerName,
@@ -100,37 +108,37 @@ object QueryInfoService {
                     )
                 )
 
-                // 4. 发送图片（不 @）
-                QClient.replyWithImgBytes(event, bytes)
+                // 4. 发送图片（不 @）；发送失败与生成失败分开提示，便于定位问题
+                val sent = QClient.replyWithImgBytes(event, bytes)
+                if (!sent) {
+                    replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
+                }
             } catch (error: Throwable) {
+                // 0.1.5.5：失败日志带堆栈前几帧且双写日志文件，事后可从
+                // logs/qq/qq-bind-日期.log 追溯具体失败原因
                 plugin.log_error("[个人信息] 渲染卡片失败: ${error.message}")
+                plugin.log_error(
+                    "[个人信息] 失败堆栈: " +
+                        error.stackTraceToString().lineSequence().take(8).joinToString(" | ")
+                )
                 replyText(event, "❌ 信息卡片生成失败，请稍后重试或联系管理员")
             }
         }
     }
 
-    /** 组装 15 项生涯统计数据（顺序与卡片网格一致）。 */
+    /**
+     * 组装统计项（0.1.5.5：按用户需求精简为 4 项，布局 2 列 × 2 行）。
+     * 顺序：金币 / 称号 / 在线时长 / 今日在线时长。
+     */
     private fun buildItems(
         stats: PlayerStatsManager.PlayerStats,
         balance: Double?,
-        checkinTotal: Long,
         title: String,
     ): List<InfoCardRenderer.CardItem> = listOf(
-        InfoCardRenderer.CardItem("游戏时间", formatPlayTime(stats.playSeconds)),
-        InfoCardRenderer.CardItem("今日在线", formatTodayTime(stats.todaySeconds)),
+        InfoCardRenderer.CardItem("金币", if (balance != null) formatAmount(balance) else "暂无"),
         InfoCardRenderer.CardItem("称号", title),
-        InfoCardRenderer.CardItem("金币数量", if (balance != null) formatAmount(balance) else "暂无"),
-        InfoCardRenderer.CardItem("击杀怪物", formatNumber(stats.mobKills)),
-        InfoCardRenderer.CardItem("签到次数", formatNumber(checkinTotal) + " 次"),
-        InfoCardRenderer.CardItem("挖掘残骸", formatNumber(stats.ancientDebris)),
-        InfoCardRenderer.CardItem("死亡次数", formatNumber(stats.deaths)),
-        InfoCardRenderer.CardItem("触发袭击", formatNumber(stats.raidTriggers)),
-        InfoCardRenderer.CardItem("飞行距离", formatDistance(stats.flyCm)),
-        InfoCardRenderer.CardItem("屠龙数量", formatNumber(stats.dragonKills)),
-        InfoCardRenderer.CardItem("钓鱼数量", formatNumber(stats.fishCaught)),
-        InfoCardRenderer.CardItem("走过的路", formatDistance(stats.walkCm)),
-        InfoCardRenderer.CardItem("繁殖动物", formatNumber(stats.animalsBred)),
-        InfoCardRenderer.CardItem("造成伤害", formatNumber(stats.damageDealt)),
+        InfoCardRenderer.CardItem("在线时长", formatPlayTime(stats.playSeconds)),
+        InfoCardRenderer.CardItem("今日在线时长", formatTodayTime(stats.todaySeconds)),
     )
 
     /** 在主线程读取 Vault 称号与金币（异步调用时自动切换；超时返回默认值）。 */
@@ -186,43 +194,110 @@ object QueryInfoService {
         return skinUrl to playerDataDir
     }
 
-    /** 解析玩家称号。 */
+    /**
+     * 解析玩家称号（0.1.5.5）：
+     * 1. DeluxeTags（用户服务器默认称号插件，反射调用，返回带颜色码的原文，
+     *    卡片端按 MC 色板彩色渲染；在线取激活标签，离线回退到持久化保存的选择）；
+     * 2. Vault Chat 前缀（无 DeluxeTags 或无标签时，清理颜色码的纯文本）；
+     * 3. 主权限组；
+     * 4. 均无 → “暂无”。
+     */
     private fun resolveTitle(playerName: String, playerUuid: UUID?): String {
         return try {
-        val vault = Bukkit.getPluginManager().getPlugin("Vault") ?: return "暂无"
-        if (!vault.isEnabled) return "暂无"
-        val offlinePlayer: OfflinePlayer = playerUuid?.let { Bukkit.getOfflinePlayer(it) }
-            ?: Bukkit.getOfflinePlayer(playerName)
-        // 1) Vault Chat 前缀
-        try {
-            val chatClass = Class.forName("net.milkbowl.vault.chat.Chat")
-            val rsp = Bukkit.getServicesManager().getRegistration(chatClass)
-            if (rsp != null) {
-                val chat = rsp.provider
-                val prefix = chat.javaClass.getMethod("getPlayerPrefix", String::class.java, OfflinePlayer::class.java)
-                    .invoke(chat, "world", offlinePlayer) as? String
-                val cleaned = prefix?.replace("§.".toRegex(), "")?.trim()
-                if (!cleaned.isNullOrEmpty()) return cleaned.take(12)
-            }
-        } catch (_: Throwable) {
-        }
-        // 2) 主权限组
-        try {
-            val permClass = Class.forName("net.milkbowl.vault.permission.Permission")
-            val rsp = Bukkit.getServicesManager().getRegistration(permClass)
-            if (rsp != null) {
-                val permission = rsp.provider
-                val groups = permission.javaClass
-                    .getMethod("getPlayerGroups", String::class.java, OfflinePlayer::class.java)
-                    .invoke(permission, "world", offlinePlayer) as? Array<*>
-                val group = groups?.firstOrNull()?.toString()
-                if (!group.isNullOrEmpty()) return group
-            }
-        } catch (_: Throwable) {
-        }
-        "暂无"
+            resolveDeluxeTagsTitle(playerUuid)
+                ?: resolveVaultTitle(playerName, playerUuid)
+                ?: "暂无"
         } catch (_: Throwable) {
             "暂无"
+        }
+    }
+
+    /**
+     * DeluxeTags 称号（反射调用，插件不存在 / 无标签返回 null）。
+     * 返回值为称号原文（含 & / § 颜色码，如 "&7[&6Vip&7]&f"），
+     * 由 [InfoCardRenderer] 解析后按原色渲染。
+     */
+    private fun resolveDeluxeTagsTitle(playerUuid: UUID?): String? {
+        if (playerUuid == null) return null
+        return try {
+            val deluxeTags = Bukkit.getPluginManager().getPlugin("DeluxeTags") ?: return null
+            if (!deluxeTags.isEnabled) return null
+            val handler = deluxeTags.javaClass.getMethod("getTagsHandler").invoke(deluxeTags) ?: return null
+
+            // 1) 当前激活的标签（玩家在线时必有；离线玩家可能已从内存卸载）
+            val activeTag = try {
+                handler.javaClass.getMethod("getPlayerActiveTag", java.util.UUID::class.java)
+                    .invoke(handler, playerUuid)
+            } catch (_: Throwable) {
+                null
+            }
+
+            // 2) 离线玩家：读取 userdata/player_tags.yml 持久化的标签标识，再按 id 查标签对象
+            val tagObject = activeTag ?: try {
+                val identifier = deluxeTags.javaClass.getMethod("getSavedTagIdentifier", String::class.java)
+                    .invoke(deluxeTags, playerUuid.toString()) as? String
+                if (identifier.isNullOrEmpty()) null else try {
+                    handler.javaClass.getMethod("getTagByIdentifier", String::class.java)
+                        .invoke(handler, identifier)
+                } catch (_: Throwable) {
+                    null
+                }
+            } catch (_: Throwable) {
+                null
+            }
+
+            if (tagObject != null) {
+                val display = try {
+                    tagObject.javaClass.getMethod("getDisplayTag").invoke(tagObject) as? String
+                } catch (_: Throwable) {
+                    null
+                }
+                // 保留颜色码原文，卡片按颜色码彩色渲染；空白视为无称号
+                if (!display.isNullOrBlank()) return display.trim()
+            }
+            null
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /** Vault 前缀 / 权限组称号（无 DeluxeTags 时的回退链，返回纯文本）。 */
+    private fun resolveVaultTitle(playerName: String, playerUuid: UUID?): String? {
+        return try {
+            val vault = Bukkit.getPluginManager().getPlugin("Vault") ?: return null
+            if (!vault.isEnabled) return null
+            val offlinePlayer: OfflinePlayer = playerUuid?.let { Bukkit.getOfflinePlayer(it) }
+                ?: Bukkit.getOfflinePlayer(playerName)
+            // 1) Vault Chat 前缀（去除颜色码）
+            try {
+                val chatClass = Class.forName("net.milkbowl.vault.chat.Chat")
+                val rsp = Bukkit.getServicesManager().getRegistration(chatClass)
+                if (rsp != null) {
+                    val chat = rsp.provider
+                    val prefix = chat.javaClass.getMethod("getPlayerPrefix", String::class.java, OfflinePlayer::class.java)
+                        .invoke(chat, "world", offlinePlayer) as? String
+                    val cleaned = prefix?.replace("§.".toRegex(), "")?.replace("&[0-9a-fk-or]".toRegex(), "")?.trim()
+                    if (!cleaned.isNullOrEmpty()) return cleaned
+                }
+            } catch (_: Throwable) {
+            }
+            // 2) 主权限组
+            try {
+                val permClass = Class.forName("net.milkbowl.vault.permission.Permission")
+                val rsp = Bukkit.getServicesManager().getRegistration(permClass)
+                if (rsp != null) {
+                    val permission = rsp.provider
+                    val groups = permission.javaClass
+                        .getMethod("getPlayerGroups", String::class.java, OfflinePlayer::class.java)
+                        .invoke(permission, "world", offlinePlayer) as? Array<*>
+                    val group = groups?.firstOrNull()?.toString()
+                    if (!group.isNullOrEmpty()) return group
+                }
+            } catch (_: Throwable) {
+            }
+            null
+        } catch (_: Throwable) {
+            null
         }
     }
 
