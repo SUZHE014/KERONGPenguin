@@ -22,7 +22,7 @@ object GroupMsgSender {
         try {
             QClient.replyMarkdown(event, content, null)
         } catch (t: Throwable) {
-            QqBindManager.logQuiet("[消息发送] replyMarkdown 失败: ${t.message}，回退 sendMessage")
+            QqBindManager.logVerbose("[消息发送] replyMarkdown 失败: ${t.message}，回退 sendMessage")
             try {
                 event.sendMessage(content)
             } catch (_: Throwable) {
@@ -34,14 +34,14 @@ object GroupMsgSender {
     fun sendReply(event: GroupMessageEvent, content: String) {
         try {
             QClient.replyMarkdown(event, content, null)
-            QqBindManager.logQuiet("[AI引用] replyMarkdown 发送成功，内容长度=${content.length}")
+            QqBindManager.logVerbose("[AI引用] replyMarkdown 发送成功，内容长度=${content.length}")
         } catch (t: Throwable) {
-            QqBindManager.logQuiet("[AI引用] replyMarkdown 失败: ${t.message}，回退 sendMessage")
+            QqBindManager.logVerbose("[AI引用] replyMarkdown 失败: ${t.message}，回退 sendMessage")
             try {
                 event.sendMessage(content)
-                QqBindManager.logQuiet("[AI引用] sendMessage 回退发送成功")
+                QqBindManager.logVerbose("[AI引用] sendMessage 回退发送成功")
             } catch (t2: Throwable) {
-                QqBindManager.logQuiet("[AI引用] sendMessage 也失败: ${t2.message}")
+                QqBindManager.logVerbose("[AI引用] sendMessage 也失败: ${t2.message}")
             }
         }
     }

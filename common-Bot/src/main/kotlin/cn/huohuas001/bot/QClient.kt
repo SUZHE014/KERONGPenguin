@@ -4,7 +4,6 @@ import cn.huohuas001.bot.events.GroupMessageHandler
 import cn.huohuas001.bot.events.commands.BaseCommand
 import cn.huohuas001.bot.provider.BotShared
 import cn.huohuas001.bot.provider.plugin
-import cn.huohuas001.bot.tools.QqBotConsoleOutputFilter
 import com.alibaba.fastjson.JSON
 import io.github.kloping.qqbot.Starter
 import io.github.kloping.qqbot.api.Intents
@@ -39,18 +38,17 @@ object QClient {
 
     /**
      * 启动 QQ 客户端。
+     *
+     * 0.1.5.2：移除了 System.out 输出过滤器（旧实现对每次控制台输出
+     * 都捕获全线程栈，是 CPU / 内存占用的重要来源）；SDK 日志已通过
+     * LogSink 全量接管（见 HuHoBot.initializeRuntime），不会再进入控制台。
+     *
      * @param appid         QQ 机器人 AppId
      * @param secret        QQ 机器人 Secret
      * @param logFilePattern SDK 日志文件名模板（null 表示不落盘）
      */
     fun launchClient(appid: String, secret: String, logFilePattern: String? = null) {
         val currentPlugin = plugin
-        val suppressConsoleOutput = currentPlugin.shouldSuppressQqBotConsoleOutput()
-        if (suppressConsoleOutput) {
-            QqBotConsoleOutputFilter.install()
-        } else {
-            QqBotConsoleOutputFilter.uninstall()
-        }
         try {
             currentPlugin.log_info("QQ 机器人客户端初始化（AppID: $appid）…")
             groupMessageHandler = GroupMessageHandler(currentPlugin)
@@ -87,9 +85,6 @@ object QClient {
             // 异步轮询 WebSocket 连接状态，输出明确的连接成功/失败日志
             watchConnectionState(currentPlugin)
         } catch (error: Exception) {
-            if (suppressConsoleOutput) {
-                QqBotConsoleOutputFilter.uninstall()
-            }
             throw error
         }
     }
@@ -276,12 +271,11 @@ object QClient {
         }
     }
 
-    /** 停止客户端并还原控制台输出。 */
+    /** 停止客户端。 */
     fun shutdown() {
         try {
             starter?.shutdown()
-        } finally {
-            QqBotConsoleOutputFilter.uninstall()
+        } catch (_: Throwable) {
         }
     }
 }

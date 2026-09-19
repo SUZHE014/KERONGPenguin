@@ -17,6 +17,7 @@ import cn.huohuas001.huhobotPenguin.spigot.commands.HybridCommandExecutor
 import cn.huohuas001.huhobotPenguin.spigot.events.GameChat
 import cn.huohuas001.huhobotPenguin.spigot.events.PlayerEventsListener
 import cn.huohuas001.huhobotPenguin.spigot.manager.ConfigManager
+import cn.huohuas001.huhobotPenguin.spigot.render.InfoCardAssets
 import cn.huohuas001.huhobotPenguin.spigot.stats.PlayerStatsManager
 import com.alibaba.fastjson.JSONArray
 import com.alibaba.fastjson.JSONObject
@@ -76,6 +77,11 @@ class HuHoBotSpigot : JavaPlugin(), HuHoBot {
         // 保存统计数据
         try {
             PlayerStatsManager.shutdown()
+        } catch (_: Throwable) {
+        }
+        // 释放卡片图片缓存（头像 / 背景占用的堆内存）
+        try {
+            InfoCardAssets.clearCaches()
         } catch (_: Throwable) {
         }
         shutdownRuntime()
@@ -221,8 +227,6 @@ class HuHoBotSpigot : JavaPlugin(), HuHoBot {
     override fun adminList(): List<String> = configManager.adminOpenIds()
 
     override fun groupOpenIdList(): List<String> = configManager.groupOpenIds()
-
-    override fun shouldSuppressQqBotConsoleOutput(): Boolean = configManager.suppressQqBotConsoleOutput()
 
     override val fullAmount: Boolean
         get() = configManager.fullForwardingByDefault()

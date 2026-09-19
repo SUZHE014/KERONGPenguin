@@ -80,9 +80,6 @@ interface ConfigProvider {
     /** 插件版本。 */
     val pluginVersion: String
 
-    /** 是否屏蔽 QQ SDK 的控制台输出。 */
-    fun shouldSuppressQqBotConsoleOutput(): Boolean = true
-
     /** 敏感词审核接口地址（环境变量 HUHOBOT_AUDIT_BASE_URL）。 */
     fun auditBaseUrl(): String? = System.getenv("HUHOBOT_AUDIT_BASE_URL")
 

@@ -14,15 +14,16 @@ import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerLoginEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.plugin.Plugin
-import java.text.SimpleDateFormat
-import java.util.Date
 
 /**
  * 游戏事件监听：
  * - 聊天转发到 QQ 群（含服务器内 AI 对话前缀）；
  * - 玩家进入/退出播报（进入时补发离线签到奖励）；
  * - 未绑定 QQ 的玩家登录时拒入并发绑定码；
- * - 抑制 Forge 网络日志刷屏、重定向 Bot SDK 日志到文件。
+ * - 抑制 Forge 网络日志刷屏。
+ *
+ * 0.1.5.2：Bot SDK 日志接管统一在 HuHoBot.initializeRuntime 中完成
+ * （错误上控制台、其余写文件），此处不再重复重定向。
  */
 class GameChat : Listener {
     internal companion object {
@@ -68,7 +69,6 @@ class GameChat : Listener {
             QqBindManager.logQuiet("QqBindManager 初始化失败: ${safeMessage(t)}")
         }
         suppressForgeNetworkLogs()
-        redirectSdkLogs()
         tryRegisterBind()
 
         var plugin: Plugin? = Bukkit.getPluginManager().getPlugin("KERONGPenguin")
@@ -137,7 +137,7 @@ class GameChat : Listener {
                                 Bukkit.broadcastMessage("$outputPrefix $reply")
                             })
                         } catch (t: Throwable) {
-                            QqBindManager.logQuiet("[AI对话] 服务器调用失败: ${t.message}")
+                            QqBindManager.logVerbose("[AI对话] 服务器调用失败: ${t.message}")
                             val outputPrefix = manager.serverAiOutputPrefix()
                             Bukkit.getScheduler().runTask(bukkitPlugin, Runnable {
                                 Bukkit.broadcastMessage("$outputPrefix AI 对话失败: ${t.message}")
@@ -259,7 +259,6 @@ class GameChat : Listener {
     private fun safeMessage(throwable: Throwable): String =
         throwable.message?.takeIf { it.isNotEmpty() } ?: throwable.toString()
 
-    /** 抑制 Forge 网络握手日志刷屏（混合端）。 */
     private fun suppressForgeNetworkLogs() {
         try {
             val loggers = listOf(
@@ -292,36 +291,6 @@ class GameChat : Listener {
                 }
             }
             QqBindManager.logQuiet("[GameChat] 已抑制 Forge 网络日志")
-        } catch (_: Throwable) {
-        }
-    }
-
-    /** 将 Bot SDK 日志重定向到文件（不刷服务器控制台）。 */
-    private fun redirectSdkLogs() {
-        try {
-            val sinkClass = Class.forName("io.github.kloping.qqbot.utils.LoggerImpl\$LogSink")
-            val loggerClass = Class.forName("io.github.kloping.qqbot.utils.LoggerImpl")
-            val setLogSink = loggerClass.getMethod("setLogSink", sinkClass)
-            val sink = java.lang.reflect.Proxy.newProxyInstance(
-                sinkClass.classLoader, arrayOf(sinkClass),
-            ) { _, method, args ->
-                if (method.name == "log" && args != null && args.isNotEmpty()) {
-                    val message = args[0]?.toString() ?: ""
-                    try {
-                        val file = QqBindManager.currentLogFile()
-                        if (file != null) {
-                            java.io.PrintWriter(java.io.FileWriter(file, true)).use { writer ->
-                                val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())
-                                writer.println("[$timestamp] [Bot] $message")
-                            }
-                        }
-                    } catch (_: Throwable) {
-                    }
-                }
-                null
-            }
-            setLogSink.invoke(null, sink)
-            QqBindManager.logQuiet("[GameChat] 已重定向 Bot SDK 日志到文件")
         } catch (_: Throwable) {
         }
     }

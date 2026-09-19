@@ -76,8 +76,6 @@ class ConfigManager(private val plugin: HuHoBotSpigot) {
 
     fun groupOpenIds(): List<String> = plugin.config.getStringList("bot.groups")
 
-    fun suppressQqBotConsoleOutput(): Boolean = plugin.config.getBoolean("bot.suppress-console-output", true)
-
     /**
      * 命令执行器配置。
      * 可取值：Auto（自动检测，推荐）/ Hybrid（混合控制台）/ 其他（模拟控制台）。
@@ -183,7 +181,6 @@ class ConfigManager(private val plugin: HuHoBotSpigot) {
             "bot.secret" to "",
             "bot.name" to "KERONGPenguin",
             "bot.groups" to emptyList<Any>(),
-            "bot.suppress-console-output" to true,
             "serverName" to "KERONGPenguin",
             "chat-format.from-game" to "[游戏] {message}",
             "chat-format.from-group" to "[QQ] {name}: {message}",

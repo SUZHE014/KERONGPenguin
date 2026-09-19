@@ -184,9 +184,10 @@ object PlayerStatsManager {
             queryOnMainThread(uuid, session, stored)
         } else {
             try {
+                // 限时等待，避免主线程卡顿时拖死消息线程
                 Bukkit.getScheduler()
                     .callSyncMethod(bukkitPlugin) { queryOnMainThread(uuid, session, stored) }
-                    .get()
+                    .get(3, java.util.concurrent.TimeUnit.SECONDS)
             } catch (_: Exception) {
                 copyOf(stored)
             }

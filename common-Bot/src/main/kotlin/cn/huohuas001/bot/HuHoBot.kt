@@ -10,6 +10,7 @@ import cn.huohuas001.bot.provider.LoggerProvider
 import cn.huohuas001.bot.provider.MessageProvider
 import cn.huohuas001.bot.provider.SchedulerProvider
 import cn.huohuas001.bot.state.CommandRepositories
+import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
 import cn.huohuas001.bot.web.WebUiServer
 import com.alibaba.fastjson.JSONObject
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
@@ -77,13 +78,15 @@ interface HuHoBot : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPr
     fun initializeRuntime() {
         BotShared.setInstance(this)
 
-        // 将 SDK 日志转发到插件日志
+        // SDK 日志接管（0.1.5.2 隐私 / 控制台刷屏修复）：
+        // 仅错误级别上控制台（log_error），其余一律写入插件日志文件（logVerbose），
+        // 避免含消息内容的 Info / Debug 日志（如事件分发、WSS 帧）泄露到控制台。
         LoggerImpl.setLogSink(object : LoggerImpl.LogSink {
             override fun log(message: String, level: Int) {
-                when (level) {
-                    -1 -> log_error(message)
-                    2 -> log_debug(message)
-                    else -> log_info(message)
+                if (level == -1) {
+                    log_error(message)
+                } else {
+                    QqBindManager.logVerbose("[Bot] $message")
                 }
             }
         })

@@ -155,11 +155,12 @@ class GroupMessageHandler(private val plugin: HuHoBot) : ListenerHost() {
             val userId = safeUserId(event)
             val reply = AiChat.chat(text, manager, groupId, userId)
             val aiContent = "${manager.qqAiOutputPrefix} $reply"
-            QqBindManager.logQuiet("[AI对话] 回复内容长度=${aiContent.length} 准备发送")
+            // 0.1.5.2：AI 对话日志仅写入文件，不再上控制台（隐私泄露修复）
+            QqBindManager.logVerbose("[AI对话] 回复内容长度=${aiContent.length} 准备发送")
             try {
                 event.sendMessage(aiContent)
             } catch (replyError: Throwable) {
-                QqBindManager.logQuiet("[AI对话] sendMessage 失败: ${replyError.message}")
+                QqBindManager.logVerbose("[AI对话] sendMessage 失败: ${replyError.message}")
             }
         } catch (t: Throwable) {
             event.sendMessage("AI 对话失败：${t.message}")

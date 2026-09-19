@@ -42,7 +42,6 @@ object WebUiSchema {
         FieldSpec("bot.secret", "Secret", "password", "QQ 开放平台机器人密钥"),
         FieldSpec("bot.name", "机器人名称", "text", "机器人显示的昵称"),
         FieldSpec("bot.groups", "群列表", "list", "允许机器人工作的群 OpenID（每行一个）"),
-        FieldSpec("bot.suppress-console-output", "屏蔽 SDK 控制台输出", "boolean", "关闭 QQ Bot SDK 直接写入 System.out 的调试输出"),
     ))
 
     private val SERVER_SECTION = SectionSpec("server", "服务器", listOf(

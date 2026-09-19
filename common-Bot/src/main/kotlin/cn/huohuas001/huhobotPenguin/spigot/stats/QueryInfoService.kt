@@ -9,7 +9,9 @@ import cn.huohuas001.huhobotPenguin.spigot.render.InfoCardRenderer
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import org.bukkit.Bukkit
 import org.bukkit.OfflinePlayer
+import java.io.File
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * /个人信息 命令服务：QQ → 玩家 UUID → 数据组装 → 卡片渲染 → 图片发送。
@@ -19,11 +21,32 @@ import java.util.UUID
  * 2. 汇总数据：金币（Vault）、签到次数（绑定系统）、其余生涯统计（本插件自记录）；
  * 3. 异步渲染毛玻璃风格统计卡片（背景取插件目录 img/，无图用黑色）；
  * 4. 以图片消息发送到群（不 @ 提及）。
+ *
+ * 0.1.5.2 性能修复：
+ * - 单用户查询冷却，防止连续触发导致 CPU / 内存狂飙；
+ * - 皮肤信息（贴图 URL / playerdata 目录）一次性主线程捕获，避免渲染线程触碰非线程安全 API；
+ * - 背景与头像均走 [InfoCardAssets] 缓存，重复查询不再重复解码 / 请求。
  */
 object QueryInfoService {
 
+    /** 单用户查询冷却（毫秒）。 */
+    private const val USER_COOLDOWN_MILLIS = 5_000L
+
+    /** 用户冷却记录：OpenId → 上次触发时间。 */
+    private val lastQueryAt = ConcurrentHashMap<String, Long>()
+
     /** 渲染与发送的全部流程在异步线程执行，避免阻塞消息线程。 */
     fun handle(plugin: HuHoBot, event: GroupMessageEvent, qqOpenId: String) {
+        // 查询冷却：同一用户 5 秒内只允许一次，防止刷屏导致渲染风暴
+        val now = System.currentTimeMillis()
+        val lastAt = lastQueryAt[qqOpenId] ?: 0L
+        if (now - lastAt < USER_COOLDOWN_MILLIS) {
+            replyText(event, "查询太频繁了，请稍后再试")
+            return
+        }
+        lastQueryAt[qqOpenId] = now
+        if (lastQueryAt.size > 1024) lastQueryAt.clear()
+
         val bindManager = try {
             QqBindManager.getInstance()
         } catch (_: Throwable) {
@@ -49,17 +72,23 @@ object QueryInfoService {
         val vaultData = readVaultDataOnMainThread(playerName, playerUuid)
         val title = vaultData.first
         val balance = vaultData.second
+        val skinInfo = readSkinInfoOnMainThread(playerUuid)
 
         // 3. 拉取头像与背景并渲染
         plugin.submitAsync {
             try {
-                val avatar = if (playerUuid != null) {
-                    InfoCardAssets.fetchAvatar(playerUuid.toString(), playerName)
-                } else {
-                    InfoCardAssets.fetchAvatar(playerName, playerName)
-                }
+                val avatar = InfoCardAssets.fetchAvatar(
+                    InfoCardAssets.AvatarRequest(
+                        uuid = playerUuid,
+                        playerName = playerName,
+                        skinUrl = skinInfo?.first,
+                        playerDataDir = skinInfo?.second,
+                    )
+                )
                 val dataDirectory = plugin.configFile?.parentFile
-                val background = dataDirectory?.let { InfoCardAssets.loadBackground(it) }
+                val background = dataDirectory?.let {
+                    InfoCardAssets.processedBackground(it, InfoCardRenderer.WIDTH, InfoCardRenderer.HEIGHT)
+                }
 
                 val items = buildItems(stats, balance, checkinTotal, title)
                 val bytes = InfoCardRenderer.render(
@@ -120,6 +149,41 @@ object QueryInfoService {
         } catch (_: Exception) {
             "暂无" to null
         }
+    }
+
+    /**
+     * 主线程读取在线玩家皮肤贴图 URL 与 playerdata 目录（异步调用时自动切换；超时返回 null）。
+     * 返回 (皮肤 URL, playerdata 目录)。
+     */
+    private fun readSkinInfoOnMainThread(playerUuid: UUID?): Pair<String?, File?>? {
+        if (playerUuid == null) return null
+        if (Bukkit.isPrimaryThread()) {
+            return querySkinInfo(playerUuid)
+        }
+        val bukkitPlugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin") ?: return null
+        return try {
+            Bukkit.getScheduler().callSyncMethod(bukkitPlugin) { querySkinInfo(playerUuid) }
+                .get(3, java.util.concurrent.TimeUnit.SECONDS)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** 主线程查询：在线玩家取 Profile 皮肤 URL；同时定位 playerdata 目录（离线玩家 NBT 解析用）。 */
+    private fun querySkinInfo(playerUuid: UUID): Pair<String?, File?> {
+        val playerDataDir = try {
+            Bukkit.getWorlds().firstOrNull()?.worldFolder?.resolve("playerdata")
+        } catch (_: Throwable) {
+            null
+        }
+        val skinUrl = try {
+            val player = Bukkit.getPlayer(playerUuid) ?: return null to playerDataDir
+            // 在线玩家：Profile 贴图 URL（含 SkinsRestorer 等皮肤插件修改后的结果）
+            player.playerProfile.textures.skin?.toString()
+        } catch (_: Throwable) {
+            null
+        }
+        return skinUrl to playerDataDir
     }
 
     /** 解析玩家称号。 */

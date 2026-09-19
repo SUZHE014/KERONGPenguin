@@ -8,7 +8,6 @@ bot:
   secret: ""
   name: "KERONGPenguin"
   groups: []
-  suppress-console-output: true
 
 chat-format:
   from-game: "[游戏] {message}"
