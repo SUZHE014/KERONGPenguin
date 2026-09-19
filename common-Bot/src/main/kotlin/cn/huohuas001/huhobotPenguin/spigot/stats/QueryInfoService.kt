@@ -9,9 +9,16 @@ import cn.huohuas001.huhobotPenguin.spigot.render.InfoCardRenderer
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import org.bukkit.Bukkit
 import org.bukkit.OfflinePlayer
+import org.bukkit.entity.Player
+import org.bukkit.plugin.java.JavaPlugin
 import java.io.File
+import java.lang.reflect.Method
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 /**
  * /个人信息 命令服务：QQ → 玩家 UUID → 数据组装 → 卡片渲染 → 图片发送。
@@ -35,6 +42,15 @@ import java.util.concurrent.ConcurrentHashMap
  *   由卡片按 MC 色板真实渲染彩色，离线玩家回退到持久化保存的标签选择）；
  * - 渲染/发送失败日志带上堆栈前几帧，且 log_error 已双写插件日志文件，事后可从
  *   logs/qq/qq-bind-日期.log 完整追溯（修复“部分报错没有记录在日志里面”）。
+ * 1.5.0：
+ * - 渲染性能限制（用户可配）：卡片渲染从 Bukkit 通用异步线程池迁到专用低优先级线程池，
+ *   线程数由 qq-bind.render.threads 控制（默认 1，即渲染最多占用 1 核 CPU），
+ *   队列积压超过 8 直接回忙不渲染；同一玩家的渲染结果在 TTL 内复用（默认 60 秒，
+ *   qq-bind.render.result-cache-seconds 可调），重复查询秒回零渲染；
+ * - 修复图片有概率加载失败（coverImage 浮点截断越界，见 InfoCardRenderer）；
+ * - 修复称号无法检测：DeluxeTags 反射改为方法名宽容匹配（兼容不同版本重载），
+ *   在线玩家直接取内存中的实际显示标签（含默认/强制标签），
+ *   离线玩家回退持久化保存的标签选择，占位符文本自动剔除。
  */
 object QueryInfoService {
 
@@ -43,6 +59,24 @@ object QueryInfoService {
 
     /** 用户冷却记录：OpenId → 上次触发时间。 */
     private val lastQueryAt = ConcurrentHashMap<String, Long>()
+
+    // ---------- 1.5.0：渲染性能限制（线程池 + 结果缓存） ----------
+
+    /** 渲染队列长度上限：积压超过此值视为过载，直接回忙（防刷屏堆积）。 */
+    private const val RENDER_QUEUE_LIMIT = 8
+
+    /** 渲染结果缓存容量上限（超出先清过期再整体清空，防膨胀）。 */
+    private const val CARD_CACHE_MAX = 32
+
+    /** 渲染结果条目：PNG 字节 + 生成时间。 */
+    private data class CachedCard(val bytes: ByteArray, val at: Long)
+
+    /** 渲染结果缓存：玩家标识 → 最近一次卡片。 */
+    private val cardCache = ConcurrentHashMap<String, CachedCard>()
+
+    /** 专用渲染线程池（惰性创建；大小取自 qq-bind.render.threads，默认 1）。 */
+    @Volatile
+    private var renderPool: ThreadPoolExecutor? = null
 
     /** 渲染与发送的全部流程在异步线程执行，避免阻塞消息线程。 */
     fun handle(plugin: HuHoBot, event: GroupMessageEvent, qqOpenId: String) {
@@ -82,49 +116,130 @@ object QueryInfoService {
         val balance = vaultData.second
         val skinInfo = readSkinInfoOnMainThread(playerUuid)
 
-        // 3. 拉取头像与背景并渲染
-        plugin.submitAsync {
-            try {
-                val avatar = InfoCardAssets.fetchAvatar(
-                    InfoCardAssets.AvatarRequest(
-                        uuid = playerUuid,
-                        playerName = playerName,
-                        skinUrl = skinInfo?.first,
-                        playerDataDir = skinInfo?.second,
-                    )
-                )
-                val dataDirectory = plugin.configFile?.parentFile
-                val background = dataDirectory?.let {
-                    InfoCardAssets.processedBackground(it, InfoCardRenderer.WIDTH, InfoCardRenderer.HEIGHT)
-                }
-
-                val items = buildItems(stats, balance, title)
-                val bytes = InfoCardRenderer.render(
-                    InfoCardRenderer.CardData(
-                        playerName = playerName,
-                        items = items,
-                        avatar = avatar,
-                        background = background,
-                    )
-                )
-
-                // 4. 发送图片（不 @）；发送失败与生成失败分开提示，便于定位问题
-                val sent = QClient.replyWithImgBytes(event, bytes)
-                if (!sent) {
-                    replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
-                }
-            } catch (error: Throwable) {
-                // 0.1.5.5：失败日志带堆栈前几帧且双写日志文件，事后可从
-                // logs/qq/qq-bind-日期.log 追溯具体失败原因
-                plugin.log_error("[个人信息] 渲染卡片失败: ${error.message}")
-                plugin.log_error(
-                    "[个人信息] 失败堆栈: " +
-                        error.stackTraceToString().lineSequence().take(8).joinToString(" | ")
-                )
-                replyText(event, "❌ 信息卡片生成失败，请稍后重试或联系管理员")
+        // 3. 拉取头像与背景并渲染（1.5.0：专用渲染池 + 结果缓存）
+        //    TTL 内同一玩家直接复用上次渲染的 PNG，零渲染开销秒回
+        val cacheKey = playerUuid?.toString() ?: playerName
+        val ttlMillis = resultCacheMillis()
+        val cached = if (ttlMillis > 0) cardCache[cacheKey] else null
+        if (cached != null && System.currentTimeMillis() - cached.at < ttlMillis) {
+            val sent = QClient.replyWithImgBytes(event, cached.bytes)
+            if (!sent) {
+                replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
             }
+            return
+        }
+
+        val pool = try {
+            renderPool().also { current ->
+                if (current.queue.size >= RENDER_QUEUE_LIMIT) {
+                    replyText(event, "当前查询人数较多，请稍后再试")
+                    return
+                }
+            }
+        } catch (_: RejectedExecutionException) {
+            replyText(event, "当前查询人数较多，请稍后再试")
+            return
+        }
+
+        try {
+            pool.execute {
+                try {
+                    val avatar = InfoCardAssets.fetchAvatar(
+                        InfoCardAssets.AvatarRequest(
+                            uuid = playerUuid,
+                            playerName = playerName,
+                            skinUrl = skinInfo?.first,
+                            playerDataDir = skinInfo?.second,
+                        )
+                    )
+                    val dataDirectory = plugin.configFile?.parentFile
+                    val background = dataDirectory?.let {
+                        InfoCardAssets.processedBackground(it, InfoCardRenderer.WIDTH, InfoCardRenderer.HEIGHT)
+                    }
+
+                    val items = buildItems(stats, balance, title)
+                    val bytes = InfoCardRenderer.render(
+                        InfoCardRenderer.CardData(
+                            playerName = playerName,
+                            items = items,
+                            avatar = avatar,
+                            background = background,
+                        )
+                    )
+
+                    // 1.5.0：渲染成功写入结果缓存（TTL 内重复查询直接复用）
+                    if (ttlMillis > 0 && bytes.isNotEmpty()) {
+                        cardCache[cacheKey] = CachedCard(bytes, System.currentTimeMillis())
+                        if (cardCache.size > CARD_CACHE_MAX) {
+                            cardCache.entries.removeIf { System.currentTimeMillis() - it.value.at >= ttlMillis }
+                            if (cardCache.size > CARD_CACHE_MAX) cardCache.clear()
+                        }
+                    }
+
+                    // 4. 发送图片（不 @）；发送失败与生成失败分开提示，便于定位问题
+                    val sent = QClient.replyWithImgBytes(event, bytes)
+                    if (!sent) {
+                        replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
+                    }
+                } catch (error: Throwable) {
+                    // 失败日志带堆栈前几帧且双写日志文件，事后可从
+                    // logs/qq/qq-bind-日期.log 追溯具体失败原因
+                    plugin.log_error("[个人信息] 渲染卡片失败: ${error.message}")
+                    plugin.log_error(
+                        "[个人信息] 失败堆栈: " +
+                            error.stackTraceToString().lineSequence().take(8).joinToString(" | ")
+                    )
+                    replyText(event, "❌ 信息卡片生成失败，请稍后重试或联系管理员")
+                }
+            }
+        } catch (_: RejectedExecutionException) {
+            replyText(event, "当前查询人数较多，请稍后再试")
         }
     }
+
+    // ---------- 1.5.0：渲染池 / 结果缓存实现 ----------
+
+    /**
+     * 专用渲染线程池：固定 [qqBindRenderThreads]（默认 1，即渲染最多占用 1 核 CPU），
+     * 低优先级守护线程（不与服务器主线程 / 机器人消息线程争抢 CPU），空闲自动回收。
+     * 线程数在首次渲染时读取配置并固定，修改配置后重启服务器生效。
+     */
+    private fun renderPool(): ThreadPoolExecutor {
+        renderPool?.let { return it }
+        synchronized(this) {
+            renderPool?.let { return it }
+            val threads = qqBindRenderThreads()
+            val pool = ThreadPoolExecutor(
+                threads, threads,
+                60L, TimeUnit.SECONDS,
+                LinkedBlockingQueue(RENDER_QUEUE_LIMIT),
+            ) { runnable ->
+                Thread(runnable, "PenguinCardRender").apply {
+                    isDaemon = true
+                    priority = Thread.MIN_PRIORITY
+                }
+            }
+            pool.allowCoreThreadTimeOut(true)
+            renderPool = pool
+            return pool
+        }
+    }
+
+    /** qq-bind.render.threads：渲染线程数（默认 1 = 1 核，范围 1-4）。 */
+    private fun qqBindRenderThreads(): Int = try {
+        (Bukkit.getPluginManager().getPlugin("KERONGPenguin") as? JavaPlugin)
+            ?.config?.getInt("qq-bind.render.threads", 1) ?: 1
+    } catch (_: Throwable) {
+        1
+    }.coerceIn(1, 4)
+
+    /** qq-bind.render.result-cache-seconds：渲染结果复用秒数（默认 60，0 = 关闭，上限 600）。 */
+    private fun resultCacheMillis(): Long = try {
+        (Bukkit.getPluginManager().getPlugin("KERONGPenguin") as? JavaPlugin)
+            ?.config?.getLong("qq-bind.render.result-cache-seconds", 60L) ?: 60L
+    } catch (_: Throwable) {
+        60L
+    }.coerceIn(0L, 600L) * 1000L
 
     /**
      * 组装统计项（0.1.5.5：按用户需求精简为 4 项，布局 2 列 × 2 行）。
@@ -212,50 +327,143 @@ object QueryInfoService {
         }
     }
 
+    // ---------- 1.5.0：DeluxeTags 宽容反射 ----------
+
+    /** DeluxeTags 玩家明确选择"无标签"时持久化的哨兵值（官方源码常量）。 */
+    private const val DELUXETAGS_NO_TAG = "__deluxetags_no_tag__"
+
+    /** 未解析的 PlaceholderAPI 占位符（如 %deluxetags_tag%），渲染前剔除避免出现百分号原文。 */
+    private val UNRESOLVED_PLACEHOLDER = Regex("%[^%\\s]{1,64}%")
+
     /**
      * DeluxeTags 称号（反射调用，插件不存在 / 无标签返回 null）。
      * 返回值为称号原文（含 & / § 颜色码，如 "&7[&6Vip&7]&f"），
      * 由 [InfoCardRenderer] 解析后按原色渲染。
+     *
+     * 1.5.0 修复"称号无法检测"：
+     * - 反射改为按方法名遍历公共方法并自适应参数类型（UUID / Player / OfflinePlayer / String），
+     *   不再依赖精确签名，兼容不同版本 DeluxeTags 的重载差异；
+     * - 在线玩家直接取内存中的实际显示标签（DeluxeTags 对默认 / 强制 / 玩家自选标签
+     *   统一写入内存表，即游戏内聊天显示的称号）；
+     * - displayTag 优先取带 OfflinePlayer 的重载（内部应用 PAPI 占位符，
+     *   还原游戏内实际显示文本），未解析的占位符兜底剔除；
+     * - 玩家明确选择"无标签"（哨兵值）或从未选择时返回 null，交由 Vault 链兜底。
      */
     private fun resolveDeluxeTagsTitle(playerUuid: UUID?): String? {
         if (playerUuid == null) return null
         return try {
             val deluxeTags = Bukkit.getPluginManager().getPlugin("DeluxeTags") ?: return null
             if (!deluxeTags.isEnabled) return null
-            val handler = deluxeTags.javaClass.getMethod("getTagsHandler").invoke(deluxeTags) ?: return null
+            val handler = findMethod(deluxeTags, "getTagsHandler", 0)?.invoke(deluxeTags) ?: return null
 
-            // 1) 当前激活的标签（玩家在线时必有；离线玩家可能已从内存卸载）
-            val activeTag = try {
-                handler.javaClass.getMethod("getPlayerActiveTag", java.util.UUID::class.java)
-                    .invoke(handler, playerUuid)
+            // 在线玩家对象（本函数在主线程调用，Bukkit.getPlayer 线程安全）
+            val onlinePlayer = try {
+                Bukkit.getPlayer(playerUuid)
             } catch (_: Throwable) {
                 null
             }
 
-            // 2) 离线玩家：读取 userdata/player_tags.yml 持久化的标签标识，再按 id 查标签对象
-            val tagObject = activeTag ?: try {
-                val identifier = deluxeTags.javaClass.getMethod("getSavedTagIdentifier", String::class.java)
-                    .invoke(deluxeTags, playerUuid.toString()) as? String
-                if (identifier.isNullOrEmpty()) null else try {
-                    handler.javaClass.getMethod("getTagByIdentifier", String::class.java)
-                        .invoke(handler, identifier)
+            // 1) 当前激活的标签（在线玩家必有——DeluxeTags 把默认/强制/自选标签统一写入内存表；
+            //    离线玩家可能已从内存卸载；getPlayerActiveTag 兼容老版本命名 getActiveTag）
+            val activeTag = invokeActiveTagLookup(handler, "getPlayerActiveTag", playerUuid, onlinePlayer)
+                ?: invokeActiveTagLookup(handler, "getActiveTag", playerUuid, onlinePlayer)
+
+            // 2) 离线回退：读取持久化的标签标识（玩家手动选过才有记录），再按标识查标签对象
+            val tagObject = activeTag ?: run {
+                val identifier = try {
+                    val method = findMethod(deluxeTags, "getSavedTagIdentifier", 1)
+                    if (method != null && method.parameterTypes[0] == String::class.java) {
+                        method.invoke(deluxeTags, playerUuid.toString()) as? String
+                    } else {
+                        null
+                    }
                 } catch (_: Throwable) {
                     null
                 }
-            } catch (_: Throwable) {
-                null
+                if (identifier.isNullOrEmpty() || identifier == DELUXETAGS_NO_TAG) {
+                    null
+                } else {
+                    try {
+                        val method = findMethod(handler, "getTagByIdentifier", 1)
+                        if (method != null && method.parameterTypes[0] == String::class.java) {
+                            method.invoke(handler, identifier)
+                        } else {
+                            null
+                        }
+                    } catch (_: Throwable) {
+                        null
+                    }
+                }
             }
 
             if (tagObject != null) {
-                val display = try {
-                    tagObject.javaClass.getMethod("getDisplayTag").invoke(tagObject) as? String
-                } catch (_: Throwable) {
-                    null
-                }
-                // 保留颜色码原文，卡片按颜色码彩色渲染；空白视为无称号
-                if (!display.isNullOrBlank()) return display.trim()
+                val offlineForDisplay: OfflinePlayer = onlinePlayer ?: Bukkit.getOfflinePlayer(playerUuid)
+                val display = readDisplayTag(tagObject, offlineForDisplay)
+                // 剔除未解析占位符；保留颜色码原文（卡片按颜色码彩色渲染）；空白视为无称号
+                val cleaned = display?.replace(UNRESOLVED_PLACEHOLDER, "")?.trim()
+                if (!cleaned.isNullOrEmpty()) return cleaned
             }
             null
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /** 按名称（与可选参数个数）查找对象的公共方法，找不到返回 null。 */
+    private fun findMethod(target: Any, name: String, parameterCount: Int?): Method? = try {
+        target.javaClass.methods.firstOrNull { method ->
+            method.name == name && (parameterCount == null || method.parameterCount == parameterCount)
+        }
+    } catch (_: Throwable) {
+        null
+    }
+
+    /**
+     * 反射调用"查玩家激活标签"类方法（单参数）。
+     * 按目标方法形参类型自适应传参：UUID / Player / OfflinePlayer / String(离线 UUID 字符串)，
+     * 兼容不同版本 DeluxeTags 的重载差异；玩家不在线时跳过需要 Player 实参的重载。
+     */
+    private fun invokeActiveTagLookup(
+        handler: Any,
+        name: String,
+        playerUuid: UUID,
+        onlinePlayer: Player?,
+    ): Any? {
+        val methods = try {
+            handler.javaClass.methods.filter { it.name == name && it.parameterCount == 1 }
+        } catch (_: Throwable) {
+            return null
+        }
+        for (method in methods) {
+            val argument: Any? = when (method.parameterTypes[0]) {
+                java.util.UUID::class.java -> playerUuid
+                Player::class.java -> onlinePlayer ?: continue
+                OfflinePlayer::class.java -> onlinePlayer ?: Bukkit.getOfflinePlayer(playerUuid)
+                String::class.java -> playerUuid.toString()
+                else -> continue
+            }
+            try {
+                return method.invoke(handler, argument)
+            } catch (_: Throwable) {
+                // 该重载调用失败（含内部 NPE 等），换下一个重载继续尝试
+            }
+        }
+        return null
+    }
+
+    /** 读取标签显示文本：优先带 OfflinePlayer 的重载（内部应用 PAPI 占位符），否则无参版。 */
+    private fun readDisplayTag(tagObject: Any, offlinePlayer: OfflinePlayer): String? {
+        val withPlayer = try {
+            tagObject.javaClass.methods.firstOrNull {
+                it.name == "getDisplayTag" && it.parameterCount == 1 &&
+                    OfflinePlayer::class.java.isAssignableFrom(it.parameterTypes[0])
+            }?.invoke(tagObject, offlinePlayer) as? String
+        } catch (_: Throwable) {
+            null
+        }
+        if (withPlayer != null) return withPlayer
+        return try {
+            findMethod(tagObject, "getDisplayTag", 0)?.invoke(tagObject) as? String
         } catch (_: Throwable) {
             null
         }

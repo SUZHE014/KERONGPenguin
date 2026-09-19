@@ -965,14 +965,25 @@ object InfoCardAssets {
             .forEach { backgroundCache.remove(it.key, it.value) }
     }
 
-    /** cover 铺满裁剪。 */
+    /**
+     * cover 铺满裁剪。
+     *
+     * 1.5.0 修复：浮点缩放宽度经 toInt() 截断可能比目标小 1px（如 900 * (660/900f) = 659.999…），
+     * 此时 getSubimage(0, 0, targetW, targetH) 的 (x + width) 会超出 raster 触发
+     * RasterFormatException —— 概率随背景图尺寸不同而不同（随机背景下"有概率加载失败"）。
+     * 修复：向上取整（ceil）并保证缩放结果不小于目标尺寸，使居中偏移恒为非负且不越界。
+     */
     private fun coverImage(source: BufferedImage, targetWidth: Int, targetHeight: Int): BufferedImage {
+        if (source.width <= 0 || source.height <= 0) {
+            // 退化输入兜底：返回纯黑目标尺寸画布，不再传播异常
+            return BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_RGB)
+        }
         val scale = maxOf(
             targetWidth.toFloat() / source.width,
             targetHeight.toFloat() / source.height,
         )
-        val scaledWidth = (source.width * scale).toInt().coerceAtLeast(1)
-        val scaledHeight = (source.height * scale).toInt().coerceAtLeast(1)
+        val scaledWidth = kotlin.math.ceil(source.width * scale).toInt().coerceAtLeast(targetWidth)
+        val scaledHeight = kotlin.math.ceil(source.height * scale).toInt().coerceAtLeast(targetHeight)
         val scaled = BufferedImage(scaledWidth, scaledHeight, BufferedImage.TYPE_INT_RGB)
         val g = scaled.createGraphics()
         try {
@@ -981,9 +992,10 @@ object InfoCardAssets {
         } finally {
             g.dispose()
         }
+        // 缩放尺寸 ≥ 目标尺寸恒成立（见上），偏移非负且偏移+目标 ≤ 缩放尺寸
         val offsetX = (scaledWidth - targetWidth) / 2
         val offsetY = (scaledHeight - targetHeight) / 2
-        return scaled.getSubimage(offsetX.coerceAtLeast(0), offsetY.coerceAtLeast(0), targetWidth, targetHeight)
+        return scaled.getSubimage(offsetX, offsetY, targetWidth, targetHeight)
     }
 
     /** 轻度模糊（降采样-升采样，开销极低）。 */
