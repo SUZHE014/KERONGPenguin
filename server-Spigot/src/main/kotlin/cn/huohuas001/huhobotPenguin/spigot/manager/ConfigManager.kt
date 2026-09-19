@@ -54,7 +54,8 @@ class ConfigManager(private val plugin: HuHoBotSpigot) {
             changed = true
         }
         // 清理已废弃的配置段
-        for (removed in listOf("agent", "audit", "whitelist")) {
+        // 1.5.1：移除 query-online 段（图片输出改为 markdown 关闭时自动启用）与 motd.text（文本模板已删除）
+        for (removed in listOf("agent", "audit", "whitelist", "query-online", "motd.text")) {
             if (config.contains(removed)) {
                 config.set(removed, null)
                 changed = true
@@ -118,7 +119,6 @@ class ConfigManager(private val plugin: HuHoBotSpigot) {
             "motd.api",
             "http://motd.txssb.cn/api/app_img?ip={ip}&port={port}&dark=true&lang=zh-CN",
         ) ?: "",
-        plugin.config.getString("motd.text", "") ?: "",
         plugin.config.getBoolean("motd.post-img", true),
         plugin.config.getBoolean("motd.use-markdown", true),
     )
@@ -165,7 +165,7 @@ class ConfigManager(private val plugin: HuHoBotSpigot) {
 
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
-        private const val CURRENT_CONFIG_VERSION = 11
+        private const val CURRENT_CONFIG_VERSION = 12
 
         /** 支持开关的群命令名单。 */
         private val COMMAND_NAMES = listOf(
@@ -191,13 +191,13 @@ class ConfigManager(private val plugin: HuHoBotSpigot) {
             "player-events.quit.enabled" to true,
             "player-events.quit.format" to "[游戏] {name} 离开了服务器",
             "markdown.queryOnline" to "online.md",
-            "query-online.image-output" to false,
+            // 1.5.1：query-online.image-output 已移除（markdown 关闭时自动启用图片输出）
             // 默认 Auto：自动检测混合端，纯 Spigot/Paper 不再误提示“已启用混合控制台”
             "command-sender" to "Auto",
             "motd.server-ip" to "",
             "motd.server-port" to 0,
             "motd.api" to "http://motd.txssb.cn/api/app_img?ip={ip}&port={port}&dark=true&lang=zh-CN",
-            "motd.text" to "",
+            // 1.5.1：motd.text（文本模板）已移除
             "motd.post-img" to true,
             "motd.use-markdown" to true,
             "filter-regex" to emptyList<Any>(),

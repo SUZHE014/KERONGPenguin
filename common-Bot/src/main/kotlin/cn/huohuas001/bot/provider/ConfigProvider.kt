@@ -37,8 +37,8 @@ data class Motd(
     val serverIP: String,
     val serverPort: Int,
     val api: String,
-    val text: String,
     val postImg: Boolean,
+    /** Markdown 开关：false 时 /查在线 自动改用渲染图片输出（1.5.1）。 */
     val useMarkdown: Boolean,
 )
 

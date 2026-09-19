@@ -2,13 +2,11 @@ package cn.huohuas001.huhobotPenguin.spigot.stats
 
 import cn.huohuas001.bot.HuHoBot
 import cn.huohuas001.bot.QClient
-import cn.huohuas001.bot.provider.plugin
 import cn.huohuas001.huhobotPenguin.spigot.render.CardRenderPool
 import cn.huohuas001.huhobotPenguin.spigot.render.InfoCardAssets
 import cn.huohuas001.huhobotPenguin.spigot.render.OnlineListRenderer
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import org.bukkit.Bukkit
-import org.bukkit.plugin.java.JavaPlugin
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -20,15 +18,20 @@ import java.util.concurrent.TimeUnit
 import java.awt.image.BufferedImage
 
 /**
- * /查在线 命令图片输出服务（1.5.0 覆盖更新新增）。
+ * /查在线 命令图片输出服务（1.5.0 覆盖更新新增，1.5.1 起为 markdown 关闭时的默认输出）。
  *
- * 开关：query-online.image-output（默认关闭；关闭时保持原有 Markdown / 文本模板输出，
- * 由 PublicCommands 分流）。开启后：
- * 1. 主线程快照在线玩家（名字 / UUID / 皮肤贴图 URL），避免渲染线程触碰非线程安全 API；
+ * 触发方式（1.5.1 简化）：motd.use-markdown 关闭（或模板缺失）时由 PublicCommands
+ * 自动分流到本服务，不再需要 query-online.image-output 配置。
+ *
+ * 1. 全流程异步（1.5.1）：机器人消息线程只做 5 秒冷却判断，其余全部进入
+ *    [CardRenderPool] —— 包括主线程在线名单快照（异步调用时自动切回主线程，
+ *    3 秒超时保护），不再阻塞消息线程；
  * 2. 并发预热头像（4 线程小池 + 8 秒总预算，超时未取到的玩家渲染占位块，
  *    下次查询命中缓存后展示真实头像，避免大量玩家时首查等待过久）；
  * 3. [OnlineListRenderer] 渲染毛玻璃卡片（人数多自动切长图），
- *    背景与个人信息卡共用 img/ 目录随机图与缓存；
+ *    背景与个人信息卡共用 img/ 目录随机图与缓存；长图背景处理高度封顶
+ *    （[InfoCardAssets.ONLINE_BACKGROUND_MAX_HEIGHT]），渲染时拉伸铺满，
+ *    控制内存占用；
  * 4. 渲染走 [CardRenderPool]（硬编码 CPU 上限），完成后自动节流 GC；
  * 5. 结果缓存 20 秒（在线名单不变时重复查询秒回），单用户 5 秒冷却防刷屏。
  */
@@ -70,15 +73,10 @@ object OnlineListService {
         }
     }
 
-    /** query-online.image-output：查在线是否用渲染图片输出（默认 false）。 */
-    fun imageOutputEnabled(): Boolean = try {
-        (Bukkit.getPluginManager().getPlugin("KERONGPenguin") as? JavaPlugin)
-            ?.config?.getBoolean("query-online.image-output", false) ?: false
-    } catch (_: Throwable) {
-        false
-    }
-
-    /** 渲染与发送全流程在共享渲染池执行，避免阻塞机器人消息线程。 */
+    /**
+     * 渲染与发送全流程在共享渲染池执行（1.5.1：快照也移入池内），
+     * 机器人消息线程仅做冷却判断，立即返回不阻塞。
+     */
     fun handle(plugin: HuHoBot, event: GroupMessageEvent, qqOpenId: String) {
         // 查询冷却：同一用户 5 秒内只允许一次，防止刷屏导致渲染风暴
         val now = System.currentTimeMillis()
@@ -90,38 +88,41 @@ object OnlineListService {
         lastQueryAt[qqOpenId] = now
         if (lastQueryAt.size > 1024) lastQueryAt.clear()
 
-        // 1. 主线程快照在线玩家（名字 / UUID / 皮肤 URL）
-        val snapshot = snapshotOnlinePlayers()
-        if (snapshot == null) {
-            replyText(event, "❌ 服务器数据暂不可用，请稍后再试")
-            return
-        }
-
-        // 2. 名单未变化且缓存新鲜：直接复用上次渲染结果秒回
-        val cacheKey = snapshot.players.joinToString(",") { it.first }.hashCode()
-        val cached = resultCache[cacheKey]
-        if (cached != null && System.currentTimeMillis() - cached.at < RESULT_TTL_MILLIS) {
-            if (!QClient.replyWithImgBytes(event, cached.bytes)) {
-                replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
-            }
-            return
-        }
-
         try {
-            // 3. 共享渲染池（CardRenderPool：硬编码核数一半 1..4 线程；完成后自动节流 GC）
+            // 1.5.1：全部工作（主线程快照 / 缓存判断 / 头像预热 / 渲染 / 发送）
+            // 都在共享渲染池执行，消息线程不等待任何主线程或磁盘操作
             CardRenderPool.submit {
                 try {
-                    // 3.1 并发预热头像（8 秒预算，超时的玩家画占位块）
+                    // 1. 主线程快照在线玩家（名字 / UUID / 皮肤 URL）
+                    val snapshot = snapshotOnlinePlayers()
+                    if (snapshot == null) {
+                        replyText(event, "❌ 服务器数据暂不可用，请稍后再试")
+                        return@submit
+                    }
+
+                    // 2. 名单未变化且缓存新鲜：直接复用上次渲染结果秒回
+                    val cacheKey = snapshot.players.joinToString(",") { it.first }.hashCode()
+                    val cached = resultCache[cacheKey]
+                    if (cached != null && System.currentTimeMillis() - cached.at < RESULT_TTL_MILLIS) {
+                        if (!QClient.replyWithImgBytes(event, cached.bytes)) {
+                            replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
+                        }
+                        return@submit
+                    }
+
+                    // 3. 并发预热头像（8 秒预算，超时的玩家画占位块）
                     val avatars = fetchAvatars(snapshot)
                     val entries = snapshot.players.map {
                         OnlineListRenderer.OnlineEntry(it.first, avatars[it.first])
                     }
 
-                    // 3.2 背景与渲染（人数多时高度自动加长为长图）
+                    // 4. 背景与渲染（人数多时高度自动加长为长图）；
+                    //    长图背景处理高度封顶（1.5.1 内存限制），渲染器拉伸铺满
                     val height = OnlineListRenderer.measureHeight(entries.size)
                     val dataDirectory = plugin.configFile?.parentFile
+                    val backgroundHeight = height.coerceAtMost(InfoCardAssets.ONLINE_BACKGROUND_MAX_HEIGHT)
                     val background = dataDirectory?.let {
-                        InfoCardAssets.processedBackground(it, OnlineListRenderer.WIDTH, height)
+                        InfoCardAssets.processedBackground(it, OnlineListRenderer.WIDTH, backgroundHeight)
                     }
                     val updateTime = SimpleDateFormat("HH:mm").format(Date())
                     val bytes = OnlineListRenderer.render(
@@ -133,7 +134,7 @@ object OnlineListService {
                         )
                     )
 
-                    // 3.3 写入结果缓存（名单不变时 20 秒内重复查询复用）
+                    // 5. 写入结果缓存（名单不变时 20 秒内重复查询复用）
                     if (bytes.isNotEmpty()) {
                         resultCache[cacheKey] = CachedList(bytes, System.currentTimeMillis())
                         if (resultCache.size > RESULT_CACHE_MAX) {
@@ -142,7 +143,7 @@ object OnlineListService {
                         }
                     }
 
-                    // 4. 发送图片
+                    // 6. 发送图片
                     if (!QClient.replyWithImgBytes(event, bytes)) {
                         replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
                     }

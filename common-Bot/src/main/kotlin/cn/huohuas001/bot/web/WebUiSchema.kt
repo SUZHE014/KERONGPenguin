@@ -71,9 +71,8 @@ object WebUiSchema {
         FieldSpec("motd.server-ip", "服务器 IP", "text", "用于 MOTD 查询显示的服务器地址", placeholder = "127.0.0.1"),
         FieldSpec("motd.server-port", "服务器端口", "number", "用于 MOTD 查询的端口"),
         FieldSpec("motd.api", "MOTD API 地址", "text", "可选：自定义 MOTD 查询接口"),
-        FieldSpec("motd.text", "MOTD 文本", "textarea", "默认展示的 MOTD 内容"),
         FieldSpec("motd.post-img", "发送图片", "boolean", "MOTD 结果附带图片"),
-        FieldSpec("motd.use-markdown", "使用 Markdown", "boolean", "MOTD 结果使用 Markdown 卡片"),
+        FieldSpec("motd.use-markdown", "使用 Markdown", "boolean", "关闭后 /查在线 改用渲染图片输出（1.5.1）"),
     ))
 
     private val WHITELIST_SECTION = SectionSpec("whitelist", "白名单命令", listOf(

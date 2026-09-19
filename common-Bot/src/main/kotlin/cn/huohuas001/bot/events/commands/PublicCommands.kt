@@ -89,11 +89,14 @@ class PublicCommands : CommandSupport() {
         }
     }
 
-    /** /查在线 —— 查询在线玩家列表（支持 Markdown 模板；1.5.0 起可选图片输出）。 */
+    /** /查在线 —— 查询在线玩家列表：markdown 开启走模板，关闭自动渲染图片（1.5.1）。 */
     @Commands("查在线")
     fun queryOnline(plugin: HuHoBot, event: GroupMessageEvent, params: String) {
-        // 1.5.0：图片输出模式（query-online.image-output，默认关闭；关闭时走原模板路径）
-        if (OnlineListService.imageOutputEnabled()) {
+        // 1.5.1：移除 text 模板回退与 query-online.image-output 配置，行为固定二选一：
+        // motd.use-markdown 开启且模板文件存在 → Markdown 模板输出；
+        // 关闭（或模板缺失）→ 自动改用渲染图片输出（见 OnlineListService）。
+        val template = if (plugin.motd.useMarkdown) plugin.markdown("queryOnline") else null
+        if (template == null) {
             val qq = try {
                 userId(event)
             } catch (_: Throwable) {
@@ -105,14 +108,6 @@ class PublicCommands : CommandSupport() {
         }
         val online = plugin.onlineList
         val motd = plugin.motd
-        val template = plugin.markdown("queryOnline")
-        if (template == null) {
-            var text = motd.text
-            if (text.isEmpty()) text = "在线人数: {online}\n{players}"
-            val players = online.joinToString("\n") { "${online.indexOf(it) + 1}. $it" }
-            sendDirect(event, text.replace("{online}", online.size.toString()).replace("{players}", players))
-            return
-        }
         val players = online.joinToString("\n") { "${online.indexOf(it) + 1}. **$it**" }
         var imgUrl = motd.api
             .replace("{ip}", motd.serverIP)
@@ -142,10 +137,7 @@ class PublicCommands : CommandSupport() {
     @Commands("在线服务器")
     fun queryServers(plugin: HuHoBot, event: GroupMessageEvent, params: String) {
         val motd = plugin.motd
-        val text = if (motd.text.isEmpty()) {
-            "服务器: ${motd.serverIP}:${motd.serverPort}"
-        } else motd.text
-        sendDirect(event, text)
+        sendDirect(event, "服务器: ${motd.serverIP}:${motd.serverPort}")
     }
 
     /** /AI对话上下文 开|关 —— 切换全局 AI 对话上下文（管理员）。 */
@@ -320,10 +312,7 @@ class PublicCommands : CommandSupport() {
     @Commands("motd")
     fun motd(plugin: HuHoBot, event: GroupMessageEvent, params: String) {
         val config = plugin.motd
-        val text = if (config.text.isEmpty()) {
-            "服务器: ${config.serverIP}:${config.serverPort}"
-        } else config.text
-        sendDirect(event, text)
+        sendDirect(event, "服务器: ${config.serverIP}:${config.serverPort}")
     }
 
     /** /执行 <key> —— 执行自定义命令（普通权限）。 */

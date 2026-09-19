@@ -518,11 +518,12 @@ object InfoCardAssets {
     /** 近期失败记录：键 → 时间。 */
     private val missCache = ConcurrentHashMap<String, NegativeEntry>()
 
-    /** 预处理背景缓存条目：文件签名 + 尺寸签名 + 处理完的图 + 最近使用时间。 */
+    /** 预处理背景缓存条目：文件签名 + 尺寸签名 + 处理完的图 + 最近使用时间 + 占用字节。 */
     private class BackgroundEntry(
         val stamp: Long,
         val sizeKey: Long,
         val image: BufferedImage,
+        val bytes: Long,
         @Volatile var lastUsedAt: Long,
     )
 
@@ -531,6 +532,20 @@ object InfoCardAssets {
 
     /** 背景缓存容量上限（张）；超出时淘汰最久未使用的，控制内存占用。 */
     private const val BACKGROUND_CACHE_MAX = 8
+
+    /**
+     * 背景缓存字节预算（1.5.1）：缓存图像栅格总占用上限。
+     * 大画布（查在线长图）背景单张可达 MB 级，仅按张数限制不足以约束内存，
+     * 超预算时按最久未使用淘汰，配合张数上限双保险。
+     */
+    private const val BACKGROUND_CACHE_MAX_BYTES = 36L * 1024 * 1024
+
+    /**
+     * 在线列表背景处理高度上限（1.5.1）：长图背景不再按整幅画布高度处理，
+     * 而是封顶后由渲染器拉伸铺满（毛玻璃模糊背景下视觉无差异），
+     * 避免百人在线时背景栅格膨胀到数十 MB。
+     */
+    internal const val ONLINE_BACKGROUND_MAX_HEIGHT = 1600
 
     /** 背景图子采样解码的最长边限制（像素）：超长边照片降采样后再解码，防整图解码 OOM（0.1.5.5）。 */
     private const val BACKGROUND_MAX_DIM = 1600
@@ -581,6 +596,11 @@ object InfoCardAssets {
         premiumUuidCache.clear()
         backgroundCache.clear()
     }
+
+    /** 全部素材缓存当前占用估算（字节，诊断/日志用）。 */
+    fun estimatedCacheBytes(): Long =
+        backgroundCache.values.sumOf { it.bytes } +
+            avatarCache.size * (FACE_SIZE.toLong() * FACE_SIZE * 4)
 
     /** 缓存超限时淘汰最旧条目。 */
     private fun evictIfOversized() {
@@ -867,6 +887,13 @@ object InfoCardAssets {
      * - 解码改用 ImageReader 子采样（最长边限制约 1600px），超大尺寸照片
      *   （如手机原图 4000×3000）不再整图解码，避免内存峰值 / OOM 导致卡片生成失败；
      * - 解码失败的文件进入 10 分钟负缓存，随机挑选时自动跳过。
+     *
+     * 1.5.1（内存限制优化）：
+     * - 缓存除张数上限外增加字节预算（见 [BACKGROUND_CACHE_MAX_BYTES]），
+     *   大画布背景超预算时按最久未使用淘汰；
+     * - 模糊与暗化合并为单遍合成（[blurAndDarken]），处理过程中的瞬时全幅中间图
+     *   从 2 张降为 1 张，降低峰值内存；
+     * - 尺寸签名改用 width * 1_000_000 + height，消除长图高度超过 4096 时的碰撞。
      */
     @Synchronized
     fun processedBackground(dataDirectory: File, width: Int, height: Int): BufferedImage? {
@@ -888,7 +915,7 @@ object InfoCardAssets {
 
         val path = file.absolutePath
         val stamp = file.lastModified() + file.length()
-        val sizeKey = width.toLong() * 4096 + height
+        val sizeKey = width.toLong() * 1_000_000L + height
         val cached = backgroundCache[path]
         if (cached != null && cached.stamp == stamp && cached.sizeKey == sizeKey) {
             cached.lastUsedAt = now
@@ -899,8 +926,9 @@ object InfoCardAssets {
         val decoded = decodeBackground(file) ?: return null
         if (decoded.width <= 0 || decoded.height <= 0) return null
 
-        val processed = darken(softBlur(coverImage(decoded, width, height)))
-        backgroundCache[path] = BackgroundEntry(stamp, sizeKey, processed, now)
+        val processed = blurAndDarken(coverImage(decoded, width, height))
+        val bytes = processed.width.toLong() * processed.height * 4
+        backgroundCache[path] = BackgroundEntry(stamp, sizeKey, processed, bytes, now)
         evictBackgroundsIfOversized()
         return processed
     }
@@ -960,14 +988,26 @@ object InfoCardAssets {
         }
     }
 
-    /** 背景缓存超限时淘汰最久未使用的条目，控制图像内存占用。 */
+    /** 背景缓存超限淘汰：先按张数上限，再按字节预算，均淘汰最久未使用的条目（1.5.1）。 */
     private fun evictBackgroundsIfOversized() {
         val overflow = backgroundCache.size - BACKGROUND_CACHE_MAX
-        if (overflow <= 0) return
-        backgroundCache.entries
-            .sortedBy { it.value.lastUsedAt }
-            .take(overflow)
-            .forEach { backgroundCache.remove(it.key, it.value) }
+        if (overflow > 0) {
+            backgroundCache.entries
+                .sortedBy { it.value.lastUsedAt }
+                .take(overflow)
+                .forEach { backgroundCache.remove(it.key, it.value) }
+        }
+        var totalBytes = backgroundCache.values.sumOf { it.bytes }
+        if (totalBytes > BACKGROUND_CACHE_MAX_BYTES) {
+            backgroundCache.entries
+                .sortedBy { it.value.lastUsedAt }
+                .forEach { entry ->
+                    if (totalBytes <= BACKGROUND_CACHE_MAX_BYTES) return@forEach
+                    if (backgroundCache.remove(entry.key, entry.value)) {
+                        totalBytes -= entry.value.bytes
+                    }
+                }
+        }
     }
 
     /**
@@ -1003,43 +1043,40 @@ object InfoCardAssets {
         return scaled.getSubimage(offsetX, offsetY, targetWidth, targetHeight)
     }
 
-    /** 轻度模糊（降采样-升采样，开销极低）。 */
-    private fun softBlur(source: BufferedImage): BufferedImage {
-        val smallWidth = (source.width / 12).coerceAtLeast(1)
-        val smallHeight = (source.height / 12).coerceAtLeast(1)
+    /**
+     * 单遍合成轻模糊 + 暗化（1.5.1）：
+     * 旧实现先生成模糊图再拷贝暗化（峰值 2 张全幅中间图）；
+     * 现合并到同一目标画布 —— 降采样小图升采样叠加 + 原图半透明叠加 + 暗化遮罩，
+     * 视觉效果与旧实现一致，处理峰值内存减半。
+     */
+    private fun blurAndDarken(cover: BufferedImage): BufferedImage {
+        val width = cover.width
+        val height = cover.height
+        val smallWidth = (width / 12).coerceAtLeast(1)
+        val smallHeight = (height / 12).coerceAtLeast(1)
         val small = BufferedImage(smallWidth, smallHeight, BufferedImage.TYPE_INT_RGB)
         val g1 = small.createGraphics()
         try {
             g1.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-            g1.drawImage(source, 0, 0, smallWidth, smallHeight, null)
+            g1.drawImage(cover, 0, 0, smallWidth, smallHeight, null)
         } finally {
             g1.dispose()
         }
-        val result = BufferedImage(source.width, source.height, BufferedImage.TYPE_INT_RGB)
+        val result = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
         val g2 = result.createGraphics()
         try {
             g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-            // 半透明叠加产生轻微模糊观感
+            // 半透明叠加产生轻微模糊观感（与旧 softBlur 一致）
             g2.composite = AlphaComposite.SrcOver.derive(0.85f)
-            g2.drawImage(small, 0, 0, source.width, source.height, null)
+            g2.drawImage(small, 0, 0, width, height, null)
             g2.composite = AlphaComposite.SrcOver.derive(0.5f)
-            g2.drawImage(source, 0, 0, null)
+            g2.drawImage(cover, 0, 0, null)
+            // 暗化遮罩（保证前景可读），直接烘焙进背景（与旧 darken 一致）
+            g2.composite = AlphaComposite.SrcOver.derive(1f)
+            g2.color = Color(0x00, 0x00, 0x00, 92)
+            g2.fillRect(0, 0, width, height)
         } finally {
             g2.dispose()
-        }
-        return result
-    }
-
-    /** 半透明暗化遮罩（保证前景可读），直接烘焙进背景。 */
-    private fun darken(source: BufferedImage): BufferedImage {
-        val result = BufferedImage(source.width, source.height, BufferedImage.TYPE_INT_RGB)
-        val g = result.createGraphics()
-        try {
-            g.drawImage(source, 0, 0, null)
-            g.color = Color(0x00, 0x00, 0x00, 92)
-            g.fillRect(0, 0, source.width, source.height)
-        } finally {
-            g.dispose()
         }
         return result
     }

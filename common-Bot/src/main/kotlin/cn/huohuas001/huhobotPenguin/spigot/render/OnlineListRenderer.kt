@@ -23,6 +23,11 @@ import javax.imageio.ImageIO
  *
  * 字体 / 配色与 [InfoCardRenderer] 同源（复用其字体缓存与毛玻璃色板），
  * 背景同样取自插件目录 img/ 随机挑选（[InfoCardAssets.processedBackground]）。
+ *
+ * 1.5.1：背景不再要求与画布等尺寸 —— 长图背景处理高度封顶
+ * （[InfoCardAssets.ONLINE_BACKGROUND_MAX_HEIGHT]），渲染时直接拉伸铺满整个画布
+ * （裁剪/拉伸自适应，模糊背景下视觉无差异），既保留随机背景效果又避免
+ * 大画布背景栅格膨胀到数十 MB。
  */
 object OnlineListRenderer {
 
@@ -88,7 +93,10 @@ object OnlineListRenderer {
         val updateTime: String,
         /** 在线玩家（顺序即展示顺序）。 */
         val entries: List<OnlineEntry>,
-        /** 已预处理的背景（尺寸须为 WIDTH × measureHeight(人数)，含模糊与暗化）；null 表示无背景。 */
+        /**
+         * 预处理背景（含模糊与暗化；1.5.1 起尺寸可与画布不一致，渲染时拉伸铺满）；
+         * null 表示无背景。
+         */
         val background: BufferedImage? = null,
     )
 
@@ -133,10 +141,13 @@ object OnlineListRenderer {
         return output.toByteArray()
     }
 
-    /** 绘制背景：传入的已是预处理完成的 WIDTH×高度图；无图片时深色渐变。 */
+    /**
+     * 绘制背景（1.5.1）：任意尺寸背景直接拉伸铺满整个画布
+     * （长图背景高度封顶后仍能覆盖全画布）；无图片时深色渐变。
+     */
     private fun drawBackground(g: Graphics2D, background: BufferedImage?, height: Int) {
-        if (background != null && background.width == WIDTH && background.height == height) {
-            g.drawImage(background, 0, 0, null)
+        if (background != null && background.width > 0 && background.height > 0) {
+            g.drawImage(background, 0, 0, WIDTH, height, null)
         } else {
             g.color = Color(0x05, 0x05, 0x08)
             g.fillRect(0, 0, WIDTH, height)

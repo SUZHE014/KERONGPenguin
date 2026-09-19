@@ -2,7 +2,7 @@ package cn.huohuas001.huhobotPenguin.spigot.stats
 
 import cn.huohuas001.bot.HuHoBot
 import cn.huohuas001.bot.QClient
-import cn.huohuas001.bot.provider.plugin
+import cn.huohuas001.bot.tools.PluginFileLog
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
 import cn.huohuas001.huhobotPenguin.spigot.render.CardRenderPool
 import cn.huohuas001.huhobotPenguin.spigot.render.InfoCardAssets
@@ -16,6 +16,7 @@ import java.io.File
 import java.lang.reflect.Method
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 /**
  * /个人信息 命令服务：QQ → 玩家 UUID → 数据组装 → 卡片渲染 → 图片发送。
@@ -23,37 +24,29 @@ import java.util.concurrent.ConcurrentHashMap
  * 流程：
  * 1. 通过 QQ OpenId 查找绑定的玩家（未绑定则直接提示）；
  * 2. 汇总数据：金币（Vault）、称号（0.1.5.5 默认 DeluxeTags，含颜色码）、
- *    在线时长与今日在线（本插件自记录）；
- * 3. 异步渲染毛玻璃风格统计卡片（0.1.5.3 起背景从插件目录 img/ 随机挑选，无图用黑色；
- *    0.1.5.5 起仅展示 4 项：金币 / 称号 / 在线时长 / 今日在线时长，高度收紧为 660）；
+ *    在线时长与今日在线（本插件自记录）、累计签到（本插件签到系统）、点券（PlayerPoints）；
+ * 3. 异步渲染毛玻璃风格统计卡片（背景从插件目录 img/ 随机挑选，无图用黑色；
+ *    仅展示 6 项：金币 / 称号 / 在线时长 / 今日在线时长 / 累计签到 / 点券）；
  * 4. 以图片消息发送到群（不 @ 提及）；发送失败时以文本回退提示，
  *    与“生成失败”区分开，便于定位是渲染问题还是机器人连接问题。
  *
- * 0.1.5.2 性能修复：
- * - 单用户查询冷却，防止连续触发导致 CPU / 内存狂飙；
- * - 皮肤信息（贴图 URL / playerdata 目录）一次性主线程捕获，避免渲染线程触碰非线程安全 API；
- * - 背景与头像均走 [InfoCardAssets] 缓存，重复查询不再重复解码 / 请求。
+ * 1.5.1：
+ * - 全链路异步：机器人消息线程只做冷却判断，绑定查找（磁盘 IO）、统计 / 称号 /
+ *   金币 / 点券 / 皮肤读取（主线程单次跳转，3 秒超时）、头像 / 背景拉取、渲染与
+ *   发送全部在 [CardRenderPool] 内完成，主线程只执行一次轻量采集；
+ * - 修复 1.8.x 服务器称号无法检测：老版 DeluxeTags（2015-2021，MC 1.8 全系）
+ *   的标签查询是 me.clip.deluxetags.DeluxeTag 类的静态方法（新版才是
+ *   getTagsHandler() 实例 API），现按“新版实例 API → 老版静态 API →
+ *   PlaceholderAPI 占位符”三层依次尝试，任一版本均能取到称号；
+ * - 称号 / 金币 / 点券检测结果写入插件日志文件（logs/qq/qq-bind-日期.log），
+ *   含检测来源与失败原因，排障时可直接翻日志定位（仅文件不刷控制台）。
  *
- * 0.1.5.5：
- * - 称号接入 DeluxeTags（反射调用，优先于 Vault 前缀；返回带颜色码的原文，
- *   由卡片按 MC 色板真实渲染彩色，离线玩家回退到持久化保存的标签选择）；
- * - 渲染/发送失败日志带上堆栈前几帧，且 log_error 已双写插件日志文件，事后可从
- *   logs/qq/qq-bind-日期.log 完整追溯（修复“部分报错没有记录在日志里面”）。
  * 1.5.0（覆盖更新）：
- * - 渲染 CPU 上限硬编码：不再限制为单线程（多图排队堆积反而卡服），也不无限并行
- *   （高并发查询会占满 CPU）；全部图片渲染共用 [CardRenderPool]，线程数固定为
+ * - 渲染 CPU 上限硬编码：全部图片渲染共用 [CardRenderPool]，线程数固定为
  *   主机核数一半（1..4，详见 CardRenderPool，不走配置文件）；
  * - 渲染完成后释放内存：单次渲染图像立即 flush 释放栅格，并做节流 GC 提示
- *   （两次至少间隔 60 秒，qq-bind.render.gc-after-render 可关），避免频繁 Full GC；
- * - 统计项新增：累计签到（本插件签到系统累计次数）、点券（PlayerPoints 插件，
- *   未检测到相关插件则显示“未启用”）；
- * - 修复图片有概率加载失败（coverImage 浮点截断越界，见 InfoCardRenderer）；
- * - 修复称号无法检测：DeluxeTags 反射改为方法名宽容匹配（兼容不同版本重载），
- *   在线玩家直接取内存中的实际显示标签（含默认/强制标签），
- *   离线玩家回退持久化保存的标签选择，占位符文本自动剔除；
- * - 同一玩家的渲染结果在 TTL 内复用（默认 60 秒，qq-bind.render.result-cache-seconds 可调），
- *   重复查询秒回零渲染；
- * - /查在线 支持图片输出（query-online.image-output，见 OnlineListService）。
+ *   （两次至少间隔 60 秒，qq-bind.render.gc-after-render 可关）；
+ * - 同一玩家的渲染结果在 TTL 内复用（默认 60 秒，qq-bind.render.result-cache-seconds 可调）。
  */
 object QueryInfoService {
 
@@ -62,8 +55,6 @@ object QueryInfoService {
 
     /** 用户冷却记录：OpenId → 上次触发时间。 */
     private val lastQueryAt = ConcurrentHashMap<String, Long>()
-
-    // ---------- 1.5.0：共享渲染池（CardRenderPool）+ 结果缓存 ----------
 
     /** 渲染结果缓存容量上限（超出先清过期再整体清空，防膨胀）。 */
     private const val CARD_CACHE_MAX = 32
@@ -74,7 +65,32 @@ object QueryInfoService {
     /** 渲染结果缓存：玩家标识 → 最近一次卡片。 */
     private val cardCache = ConcurrentHashMap<String, CachedCard>()
 
-    /** 渲染与发送的全流程在异步多线程池并行执行，避免阻塞机器人消息线程。 */
+    /**
+     * 主线程一次性采集的数据快照（1.5.1：合并为单次主线程跳转）。
+     * 附带各字段的检测说明（写入日志文件，用于称号/金币/点券检测排障）。
+     */
+    private data class MainThreadSnapshot(
+        val stats: PlayerStatsManager.PlayerStats,
+        val title: String,
+        val titleSource: String,
+        val balance: Double?,
+        val balanceNote: String,
+        val pointsText: String,
+        val pointsNote: String,
+        val skinUrl: String?,
+        val playerDataDir: File?,
+    )
+
+    /** 称号检测结果（值 + 来源说明）。 */
+    private data class TitleResult(val value: String, val source: String)
+
+    /** 点券检测结果（展示文本 + 检测说明）。 */
+    private data class PointsResult(val text: String, val note: String)
+
+    /**
+     * 全流程异步执行（1.5.1）：机器人消息线程仅做冷却判断，
+     * 绑定查找、数据采集、渲染与发送全部在共享渲染池完成。
+     */
     fun handle(plugin: HuHoBot, event: GroupMessageEvent, qqOpenId: String) {
         // 查询冷却：同一用户 5 秒内只允许一次，防止刷屏导致渲染风暴
         val now = System.currentTimeMillis()
@@ -86,59 +102,60 @@ object QueryInfoService {
         lastQueryAt[qqOpenId] = now
         if (lastQueryAt.size > 1024) lastQueryAt.clear()
 
-        val bindManager = try {
-            QqBindManager.getInstance()
-        } catch (_: Throwable) {
-            null
-        }
-        if (bindManager == null) {
-            replyText(event, "❌ 绑定管理器未就绪，请稍后再试")
-            return
-        }
-
-        // 1. 查找绑定的玩家
-        val playerName = bindManager.findPlayerByQq(qqOpenId)
-        val quuid = bindManager.findQuuidByQq(qqOpenId)
-        if (playerName == null || playerName.isEmpty() || quuid == null || quuid.isEmpty()) {
-            replyText(event, "该账号未绑定QQ，请先进入服务器完成绑定后再查询")
-            return
-        }
-
-        // 2. 组装数据（在异步线程渲染前先取好主线程数据）
-        val playerUuid: UUID? = parseUuid(bindManager.getPlayerUuidByQuuid(quuid))
-        val stats = if (playerUuid != null) PlayerStatsManager.query(playerUuid) else PlayerStatsManager.PlayerStats()
-        val vaultData = readVaultDataOnMainThread(playerName, playerUuid)
-        val title = vaultData.first
-        val balance = vaultData.second
-        val skinInfo = readSkinInfoOnMainThread(playerUuid)
-
-        // 1.5.0 覆盖更新：累计签到（本插件签到系统）与点券（PlayerPoints）
-        val checkinTotalText = resolveCheckinTotal(bindManager, quuid)
-        val pointsText = readPointsOnMainThread(playerUuid)
-
-        // 3. 拉取头像与背景并渲染（1.5.0：异步多线程并行渲染 + 结果缓存）
-        //    TTL 内同一玩家直接复用上次渲染的 PNG，零渲染开销秒回
-        val cacheKey = playerUuid?.toString() ?: playerName
-        val ttlMillis = resultCacheMillis()
-        val cached = if (ttlMillis > 0) cardCache[cacheKey] else null
-        if (cached != null && System.currentTimeMillis() - cached.at < ttlMillis) {
-            val sent = QClient.replyWithImgBytes(event, cached.bytes)
-            if (!sent) {
-                replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
-            }
-            return
-        }
-
         try {
             // 共享渲染池（CardRenderPool：硬编码核数一半 1..4 线程；完成后自动节流 GC）
             CardRenderPool.submit {
                 try {
+                    // 1. 查找绑定的玩家（磁盘 IO，1.5.1 起在渲染池线程执行，不阻塞消息线程）
+                    val bindManager = try {
+                        QqBindManager.getInstance()
+                    } catch (_: Throwable) {
+                        null
+                    }
+                    if (bindManager == null) {
+                        replyText(event, "❌ 绑定管理器未就绪，请稍后再试")
+                        return@submit
+                    }
+                    val playerName = bindManager.findPlayerByQq(qqOpenId)
+                    val quuid = bindManager.findQuuidByQq(qqOpenId)
+                    if (playerName == null || playerName.isEmpty() || quuid == null || quuid.isEmpty()) {
+                        replyText(event, "该账号未绑定QQ，请先进入服务器完成绑定后再查询")
+                        return@submit
+                    }
+                    val playerUuid: UUID? = parseUuid(bindManager.getPlayerUuidByQuuid(quuid))
+
+                    // 2. TTL 内同一玩家直接复用上次渲染的 PNG，零渲染开销秒回
+                    val cacheKey = playerUuid?.toString() ?: playerName
+                    val ttlMillis = resultCacheMillis()
+                    val cached = if (ttlMillis > 0) cardCache[cacheKey] else null
+                    if (cached != null && System.currentTimeMillis() - cached.at < ttlMillis) {
+                        val sent = QClient.replyWithImgBytes(event, cached.bytes)
+                        if (!sent) {
+                            replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
+                        }
+                        return@submit
+                    }
+
+                    // 3. 单次主线程跳转采集全部数据（统计 / 称号 / 金币 / 点券 / 皮肤；
+                    //    旧版为 4 次独立跳转各等 3 秒，现合并为 1 次）
+                    val snapshot = gatherOnMainThread(playerName, playerUuid)
+
+                    // 4. 检测日志（1.5.1）：称号 / 金币 / 点券的检测来源与结果写入
+                    //    插件日志文件（logs/qq/qq-bind-日期.log），仅文件不刷控制台
+                    PluginFileLog.write("[检测] 称号: $playerName → ${snapshot.titleSource} → '${snapshot.title}'")
+                    PluginFileLog.write("[检测] 金币: $playerName → ${snapshot.balanceNote} → ${snapshot.balance ?: "无"}")
+                    PluginFileLog.write("[检测] 点券: $playerName → ${snapshot.pointsNote} → ${snapshot.pointsText}")
+
+                    // 5. 累计签到（本插件签到系统；磁盘 IO 同样在池线程执行）
+                    val checkinTotalText = resolveCheckinTotal(bindManager, quuid)
+
+                    // 6. 拉取头像与背景并渲染
                     val avatar = InfoCardAssets.fetchAvatar(
                         InfoCardAssets.AvatarRequest(
                             uuid = playerUuid,
                             playerName = playerName,
-                            skinUrl = skinInfo?.first,
-                            playerDataDir = skinInfo?.second,
+                            skinUrl = snapshot.skinUrl,
+                            playerDataDir = snapshot.playerDataDir,
                         )
                     )
                     val dataDirectory = plugin.configFile?.parentFile
@@ -146,7 +163,7 @@ object QueryInfoService {
                         InfoCardAssets.processedBackground(it, InfoCardRenderer.WIDTH, InfoCardRenderer.HEIGHT)
                     }
 
-                    val items = buildItems(stats, balance, title, checkinTotalText, pointsText)
+                    val items = buildItems(snapshot.stats, snapshot.balance, snapshot.title, checkinTotalText, snapshot.pointsText)
                     val bytes = InfoCardRenderer.render(
                         InfoCardRenderer.CardData(
                             playerName = playerName,
@@ -156,7 +173,7 @@ object QueryInfoService {
                         )
                     )
 
-                    // 1.5.0：渲染成功写入结果缓存（TTL 内重复查询直接复用）
+                    // 7. 渲染成功写入结果缓存（TTL 内重复查询直接复用）
                     if (ttlMillis > 0 && bytes.isNotEmpty()) {
                         cardCache[cacheKey] = CachedCard(bytes, System.currentTimeMillis())
                         if (cardCache.size > CARD_CACHE_MAX) {
@@ -165,7 +182,7 @@ object QueryInfoService {
                         }
                     }
 
-                    // 4. 发送图片（不 @）；发送失败与生成失败分开提示，便于定位问题
+                    // 8. 发送图片（不 @）；发送失败与生成失败分开提示，便于定位问题
                     val sent = QClient.replyWithImgBytes(event, bytes)
                     if (!sent) {
                         replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
@@ -229,98 +246,66 @@ object QueryInfoService {
         }
     }
 
-    /**
-     * 点券（1.5.0 覆盖更新）：读取 PlayerPoints 插件的点券余额（反射调用，
-     * 与 Vault/DeluxeTags 同样的宽容反射风格，兼容 2.x / 3.x）。
-     * 未检测到 PlayerPoints 插件时显示“未启用”；插件存在但读取失败显示“暂无”。
-     * 在主线程读取（与 Vault 一致，带 3 秒超时保护）。
-     */
-    private fun readPointsOnMainThread(playerUuid: UUID?): String {
-        if (Bukkit.getPluginManager().getPlugin("PlayerPoints") == null) return "未启用"
-        if (playerUuid == null) return "暂无"
-        val call: () -> String = { resolvePlayerPoints(playerUuid) ?: "暂无" }
-        if (Bukkit.isPrimaryThread()) return call()
-        val bukkitPlugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin") ?: return "暂无"
-        return try {
-            Bukkit.getScheduler().callSyncMethod(bukkitPlugin) { call() }
-                .get(3, java.util.concurrent.TimeUnit.SECONDS)
-        } catch (_: Exception) {
-            "暂无"
-        }
-    }
+    // ---------- 主线程单次采集（1.5.1） ----------
 
     /**
-     * PlayerPoints 点券余额反射读取：插件实例 → getAPI() → look(UUID)。
-     * 方法名宽容匹配（找不到精确签名时按名称+参数个数遍历），返回 null 表示读取失败。
+     * 单次主线程跳转采集全部数据：统计 / 称号 / 金币 / 点券 / 皮肤。
+     * 旧版为 4 次独立的主线程跳转（各带 3 秒超时），主线程繁忙时最坏阻塞
+     * 消息线程 12 秒；现在合并为 1 次跳转（在渲染池线程等待，不再阻塞消息线程）。
      */
-    private fun resolvePlayerPoints(playerUuid: UUID): String? {
-        return try {
-            val pointsPlugin = Bukkit.getPluginManager().getPlugin("PlayerPoints") ?: return null
-            if (!pointsPlugin.isEnabled) return null
-            val api = findMethod(pointsPlugin, "getAPI", 0)?.invoke(pointsPlugin) ?: return null
-            val amount = when (val value = invokePointsLookup(api, playerUuid)) {
-                is Number -> value.toLong()
-                else -> return null
-            }
-            formatNumber(amount)
-        } catch (_: Throwable) {
-            null
-        }
-    }
-
-    /** 调用 PlayerPointsAPI 的余额查询方法（look(UUID)，兼容同名重载）。 */
-    private fun invokePointsLookup(api: Any, playerUuid: UUID): Any? {
-        val methods = try {
-            api.javaClass.methods.filter { it.parameterCount == 1 && java.util.UUID::class.java == it.parameterTypes[0] }
-        } catch (_: Throwable) {
-            return null
-        }
-        // 优先官方方法名 look；同名不存在时退化为“返回数值类型的单 UUID 参数方法”
-        val look = methods.firstOrNull { it.name == "look" } ?: methods.firstOrNull {
-            Number::class.java.isAssignableFrom(it.returnType) || it.returnType == Int::class.javaPrimitiveType
-        } ?: return null
-        return try {
-            look.invoke(api, playerUuid)
-        } catch (_: Throwable) {
-            null
-        }
-    }
-
-    /** 在主线程读取 Vault 称号与金币（异步调用时自动切换；超时返回默认值）。 */
-    private fun readVaultDataOnMainThread(playerName: String, playerUuid: UUID?): Pair<String, Double?> {
-        if (Bukkit.isPrimaryThread()) {
-            return resolveTitle(playerName, playerUuid) to queryBalance(playerName, playerUuid)
-        }
+    private fun gatherOnMainThread(playerName: String, playerUuid: UUID?): MainThreadSnapshot {
         val bukkitPlugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin")
-            ?: return "暂无" to null
-        return try {
-            val future = Bukkit.getScheduler().callSyncMethod(bukkitPlugin) {
-                resolveTitle(playerName, playerUuid) to queryBalance(playerName, playerUuid)
+        val task: () -> MainThreadSnapshot = {
+            val onlinePlayer = playerUuid?.let { uuid ->
+                try {
+                    Bukkit.getPlayer(uuid)
+                } catch (_: Throwable) {
+                    null
+                }
             }
-            // 等待不超过 3 秒，避免经济插件异常时长时间阻塞
-            future.get(3, java.util.concurrent.TimeUnit.SECONDS)
+            val stats = if (playerUuid != null) {
+                PlayerStatsManager.query(playerUuid)
+            } else {
+                PlayerStatsManager.PlayerStats()
+            }
+            val title = resolveTitle(playerName, playerUuid, onlinePlayer)
+            val balance = queryBalance(playerName, playerUuid)
+            val points = if (playerUuid != null) resolvePlayerPoints(playerUuid) else null
+            val skinInfo = if (playerUuid != null) querySkinInfo(playerUuid) else null
+            MainThreadSnapshot(
+                stats = stats,
+                title = title.value,
+                titleSource = title.source,
+                balance = balance.first,
+                balanceNote = balance.second,
+                pointsText = points?.text ?: "暂无",
+                pointsNote = points?.note ?: "无玩家 UUID",
+                skinUrl = skinInfo?.first,
+                playerDataDir = skinInfo?.second,
+            )
+        }
+        if (Bukkit.isPrimaryThread()) return task()
+        if (bukkitPlugin == null) return timeoutSnapshot()
+        return try {
+            Bukkit.getScheduler().callSyncMethod(bukkitPlugin) { task() }
+                .get(3, TimeUnit.SECONDS)
         } catch (_: Exception) {
-            "暂无" to null
+            timeoutSnapshot()
         }
     }
 
-    /**
-     * 主线程读取在线玩家皮肤贴图 URL 与 playerdata 目录（异步调用时自动切换；超时返回 null）。
-     * 返回 (皮肤 URL, playerdata 目录)。
-     */
-    private fun readSkinInfoOnMainThread(playerUuid: UUID?): Pair<String?, File?>? {
-        if (playerUuid == null) return null
-        if (Bukkit.isPrimaryThread()) {
-            return querySkinInfo(playerUuid)
-        }
-        val bukkitPlugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin") ?: return null
-        return try {
-            Bukkit.getScheduler().callSyncMethod(bukkitPlugin) { querySkinInfo(playerUuid) }
-                .get(3, java.util.concurrent.TimeUnit.SECONDS)
-        } catch (_: Exception) {
-            null
-        }
-    }
+    /** 主线程繁忙（超时/不可调度）时的兜底快照：字段保留“暂无”并注明原因。 */
+    private fun timeoutSnapshot(): MainThreadSnapshot = MainThreadSnapshot(
+        stats = PlayerStatsManager.PlayerStats(),
+        title = "暂无",
+        titleSource = "主线程繁忙读取超时",
+        balance = null,
+        balanceNote = "主线程繁忙读取超时",
+        pointsText = "暂无",
+        pointsNote = "主线程繁忙读取超时",
+        skinUrl = null,
+        playerDataDir = null,
+    )
 
     /** 主线程查询：在线玩家取 Profile 皮肤 URL；同时定位 playerdata 目录（离线玩家 NBT 解析用）。 */
     private fun querySkinInfo(playerUuid: UUID): Pair<String?, File?> {
@@ -340,24 +325,23 @@ object QueryInfoService {
     }
 
     /**
-     * 解析玩家称号（0.1.5.5）：
-     * 1. DeluxeTags（用户服务器默认称号插件，反射调用，返回带颜色码的原文，
-     *    卡片端按 MC 色板彩色渲染；在线取激活标签，离线回退到持久化保存的选择）；
+     * 解析玩家称号（返回值 + 检测来源说明）：
+     * 1. DeluxeTags（三层兼容：新版实例 API → 老版静态 API → PlaceholderAPI 占位符）；
      * 2. Vault Chat 前缀（无 DeluxeTags 或无标签时，清理颜色码的纯文本）；
      * 3. 主权限组；
      * 4. 均无 → “暂无”。
      */
-    private fun resolveTitle(playerName: String, playerUuid: UUID?): String {
+    private fun resolveTitle(playerName: String, playerUuid: UUID?, onlinePlayer: Player?): TitleResult {
         return try {
-            resolveDeluxeTagsTitle(playerUuid)
+            resolveDeluxeTagsTitle(playerUuid, onlinePlayer)
                 ?: resolveVaultTitle(playerName, playerUuid)
-                ?: "暂无"
+                ?: TitleResult("暂无", "未检测到（DeluxeTags/Vault 均无结果）")
         } catch (_: Throwable) {
-            "暂无"
+            TitleResult("暂无", "称号检测异常")
         }
     }
 
-    // ---------- 1.5.0：DeluxeTags 宽容反射 ----------
+    // ---------- DeluxeTags 三层兼容（1.5.1 修复 1.8.x 检测失败） ----------
 
     /** DeluxeTags 玩家明确选择"无标签"时持久化的哨兵值（官方源码常量）。 */
     private const val DELUXETAGS_NO_TAG = "__deluxetags_no_tag__"
@@ -370,28 +354,35 @@ object QueryInfoService {
      * 返回值为称号原文（含 & / § 颜色码，如 "&7[&6Vip&7]&f"），
      * 由 [InfoCardRenderer] 解析后按原色渲染。
      *
-     * 1.5.0 修复"称号无法检测"：
-     * - 反射改为按方法名遍历公共方法并自适应参数类型（UUID / Player / OfflinePlayer / String），
-     *   不再依赖精确签名，兼容不同版本 DeluxeTags 的重载差异；
-     * - 在线玩家直接取内存中的实际显示标签（DeluxeTags 对默认 / 强制 / 玩家自选标签
-     *   统一写入内存表，即游戏内聊天显示的称号）；
-     * - displayTag 优先取带 OfflinePlayer 的重载（内部应用 PAPI 占位符，
-     *   还原游戏内实际显示文本），未解析的占位符兜底剔除；
-     * - 玩家明确选择"无标签"（哨兵值）或从未选择时返回 null，交由 Vault 链兜底。
+     * 1.5.1 修复 1.8.x 服务器“称号还是检测不到”：
+     * 老版 DeluxeTags（2015-2021 全系，兼容 MC 1.8）与新版（2021+ / 1.8.3-Release）
+     * 的 API 完全不同 —— 新版主类有 getTagsHandler() 实例方法，老版主类没有，
+     * 标签查询走 me.clip.deluxetags.DeluxeTag 类的静态方法。现按三层依次尝试：
+     * 1. 新版实例 API：getTagsHandler() → getPlayerActiveTag(UUID/Player) → getDisplayTag；
+     * 2. 老版静态 API：DeluxeTag.getPlayerDisplayTag(Player/uuid)（在线），
+     *    离线回退 getSavedTagIdentifier → getLoadedTag(identifier)；
+     * 3. PlaceholderAPI 占位符：%deluxetags_tag%（装了 PAPI 时任何版本均可解析）。
      */
-    private fun resolveDeluxeTagsTitle(playerUuid: UUID?): String? {
+    private fun resolveDeluxeTagsTitle(playerUuid: UUID?, onlinePlayer: Player?): TitleResult? {
         if (playerUuid == null) return null
-        return try {
-            val deluxeTags = Bukkit.getPluginManager().getPlugin("DeluxeTags") ?: return null
-            if (!deluxeTags.isEnabled) return null
-            val handler = findMethod(deluxeTags, "getTagsHandler", 0)?.invoke(deluxeTags) ?: return null
+        val deluxeTags = Bukkit.getPluginManager().getPlugin("DeluxeTags") ?: return null
+        if (!deluxeTags.isEnabled) return null
 
-            // 在线玩家对象（本函数在主线程调用，Bukkit.getPlayer 线程安全）
-            val onlinePlayer = try {
-                Bukkit.getPlayer(playerUuid)
-            } catch (_: Throwable) {
-                null
-            }
+        // 1) 新版实例 API（2021+，含官方 1.8.3-Release）
+        resolveModernDeluxeTagsTitle(deluxeTags, playerUuid, onlinePlayer)?.let { return it }
+
+        // 2) 老版静态 API（2015-2021，MC 1.8 全系，1.8.2 服务器即此形态）
+        resolveLegacyDeluxeTagsTitle(deluxeTags, playerUuid, onlinePlayer)?.let { return it }
+
+        // 3) PlaceholderAPI 占位符兜底（任何 DeluxeTags 版本注册过 %deluxetags_tag% 扩展即可）
+        resolveDeluxeTagsViaPlaceholder(playerUuid)?.let { return TitleResult(it, "DeluxeTags(PlaceholderAPI)") }
+        return null
+    }
+
+    /** 新版 DeluxeTags（getTagsHandler 实例 API）：在线取内存表激活标签，离线回退持久化选择。 */
+    private fun resolveModernDeluxeTagsTitle(deluxeTags: Any, playerUuid: UUID, onlinePlayer: Player?): TitleResult? {
+        return try {
+            val handler = findMethod(deluxeTags, "getTagsHandler", 0)?.invoke(deluxeTags) ?: return null
 
             // 1) 当前激活的标签（在线玩家必有——DeluxeTags 把默认/强制/自选标签统一写入内存表；
             //    离线玩家可能已从内存卸载；getPlayerActiveTag 兼容老版本命名 getActiveTag）
@@ -431,9 +422,91 @@ object QueryInfoService {
                 val display = readDisplayTag(tagObject, offlineForDisplay)
                 // 剔除未解析占位符；保留颜色码原文（卡片按颜色码彩色渲染）；空白视为无称号
                 val cleaned = display?.replace(UNRESOLVED_PLACEHOLDER, "")?.trim()
-                if (!cleaned.isNullOrEmpty()) return cleaned
+                if (!cleaned.isNullOrEmpty()) return TitleResult(cleaned, "DeluxeTags(新版API)")
             }
             null
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /**
+     * 老版 DeluxeTags 静态 API（1.5.1 新增，修复 MC 1.8.x 检测失败）：
+     * - 类名 me.clip.deluxetags.DeluxeTag（新版移到了 me.clip.deluxetags.tags 包，
+     *   Class.forName 用 DeluxeTags 插件类加载器加载，加载失败自动跳过）；
+     * - 在线：getPlayerDisplayTag(Player)（内部应用 PAPI）；
+     *   离线/无标签：getPlayerDisplayTag(String uuid)；再回退
+     *   主类 getSavedTagIdentifier(uuid) → getLoadedTag(identifier) → getDisplayTag()。
+     */
+    private fun resolveLegacyDeluxeTagsTitle(deluxeTags: Any, playerUuid: UUID, onlinePlayer: Player?): TitleResult? {
+        val tagClass = try {
+            Class.forName("me.clip.deluxetags.DeluxeTag", false, deluxeTags.javaClass.classLoader)
+        } catch (_: Throwable) {
+            null
+        } ?: return null
+
+        // 1) 在线玩家：Player 重载（内部会应用 PAPI 占位符）；无则走 String(uuid) 重载
+        val display: String? = onlinePlayer?.let { player ->
+            try {
+                tagClass.getMethod("getPlayerDisplayTag", Player::class.java).invoke(null, player) as? String
+            } catch (_: Throwable) {
+                null
+            }
+        } ?: try {
+            tagClass.getMethod("getPlayerDisplayTag", String::class.java)
+                .invoke(null, playerUuid.toString()) as? String
+        } catch (_: Throwable) {
+            null
+        }
+
+        // 2) 离线回退：持久化保存的标签标识 → getLoadedTag(identifier) → getDisplayTag()
+        var text = display
+        if (text.isNullOrEmpty()) {
+            val identifier = try {
+                val method = findMethod(deluxeTags, "getSavedTagIdentifier", 1)
+                if (method != null && method.parameterTypes[0] == String::class.java) {
+                    method.invoke(deluxeTags, playerUuid.toString()) as? String
+                } else {
+                    null
+                }
+            } catch (_: Throwable) {
+                null
+            }
+            if (!identifier.isNullOrEmpty() && identifier != DELUXETAGS_NO_TAG) {
+                text = try {
+                    val tagObject = tagClass.getMethod("getLoadedTag", String::class.java)
+                        .invoke(null, identifier)
+                    tagObject?.let { findMethod(it, "getDisplayTag", 0)?.invoke(it) as? String }
+                } catch (_: Throwable) {
+                    null
+                }
+            }
+        }
+
+        val cleaned = text?.replace(UNRESOLVED_PLACEHOLDER, "")?.trim()
+        if (cleaned.isNullOrEmpty()) return null
+        return TitleResult(cleaned, "DeluxeTags(老版静态API)")
+    }
+
+    /**
+     * PlaceholderAPI 兜底：直接解析 %deluxetags_tag% 占位符。
+     * 任何版本的 DeluxeTags 都注册了该占位符（即游戏内聊天显示的称号），
+     * 前两层反射失败时这里是最后的通用通路。
+     */
+    private fun resolveDeluxeTagsViaPlaceholder(playerUuid: UUID): String? {
+        val papi = Bukkit.getPluginManager().getPlugin("PlaceholderAPI") ?: return null
+        if (!papi.isEnabled) return null
+        return try {
+            // 用 PAPI 插件自己的类加载器加载（跨插件类不可见）
+            val papiClass = Class.forName("me.clip.placeholderapi.PlaceholderAPI", false, papi.javaClass.classLoader)
+            val method = papiClass.methods.firstOrNull {
+                it.name == "setPlaceholders" && it.parameterCount == 2 &&
+                    OfflinePlayer::class.java == it.parameterTypes[0] && String::class.java == it.parameterTypes[1]
+            } ?: return null
+            val offlinePlayer = Bukkit.getOfflinePlayer(playerUuid)
+            val resolved = method.invoke(null, offlinePlayer, "%deluxetags_tag%") as? String ?: return null
+            // PAPI 未注册对应扩展时原样返回占位符文本 —— 剔除后为空即视为无称号
+            resolved.replace(UNRESOLVED_PLACEHOLDER, "").trim().takeIf { it.isNotEmpty() }
         } catch (_: Throwable) {
             null
         }
@@ -499,8 +572,10 @@ object QueryInfoService {
         }
     }
 
-    /** Vault 前缀 / 权限组称号（无 DeluxeTags 时的回退链，返回纯文本）。 */
-    private fun resolveVaultTitle(playerName: String, playerUuid: UUID?): String? {
+    // ---------- 金币 / 点券检测（1.5.1：附检测说明用于日志） ----------
+
+    /** Vault 前缀 / 权限组称号（无 DeluxeTags 时的回退链，返回纯文本 + 来源）。 */
+    private fun resolveVaultTitle(playerName: String, playerUuid: UUID?): TitleResult? {
         return try {
             val vault = Bukkit.getPluginManager().getPlugin("Vault") ?: return null
             if (!vault.isEnabled) return null
@@ -515,7 +590,7 @@ object QueryInfoService {
                     val prefix = chat.javaClass.getMethod("getPlayerPrefix", String::class.java, OfflinePlayer::class.java)
                         .invoke(chat, "world", offlinePlayer) as? String
                     val cleaned = prefix?.replace("§.".toRegex(), "")?.replace("&[0-9a-fk-or]".toRegex(), "")?.trim()
-                    if (!cleaned.isNullOrEmpty()) return cleaned
+                    if (!cleaned.isNullOrEmpty()) return TitleResult(cleaned, "Vault(Chat 前缀)")
                 }
             } catch (_: Throwable) {
             }
@@ -529,7 +604,7 @@ object QueryInfoService {
                         .getMethod("getPlayerGroups", String::class.java, OfflinePlayer::class.java)
                         .invoke(permission, "world", offlinePlayer) as? Array<*>
                     val group = groups?.firstOrNull()?.toString()
-                    if (!group.isNullOrEmpty()) return group
+                    if (!group.isNullOrEmpty()) return TitleResult(group, "Vault(主权限组)")
                 }
             } catch (_: Throwable) {
             }
@@ -539,19 +614,63 @@ object QueryInfoService {
         }
     }
 
-    /** 查询金币余额（Vault Economy 反射调用）。 */
-    private fun queryBalance(playerName: String, playerUuid: UUID?): Double? {
+    /**
+     * 查询金币余额（Vault Economy 反射调用；返回值 + 检测说明）。
+     */
+    private fun queryBalance(playerName: String, playerUuid: UUID?): Pair<Double?, String> {
         return try {
-        val vaultPlugin = Bukkit.getPluginManager().getPlugin("Vault") ?: return null
-        if (!vaultPlugin.isEnabled) return null
-        val offlinePlayer: OfflinePlayer = playerUuid?.let { Bukkit.getOfflinePlayer(it) }
-            ?: Bukkit.getOfflinePlayer(playerName)
-        val economyClass = Class.forName("net.milkbowl.vault.economy.Economy")
-        val rsp = Bukkit.getServicesManager().getRegistration(economyClass) ?: return null
-        val economy = rsp.provider
-        economy.javaClass
-            .getMethod("getBalance", OfflinePlayer::class.java)
-            .invoke(economy, offlinePlayer) as? Double
+            val vaultPlugin = Bukkit.getPluginManager().getPlugin("Vault")
+                ?: return null to "Vault 未安装"
+            if (!vaultPlugin.isEnabled) return null to "Vault 已安装但未启用"
+            val offlinePlayer: OfflinePlayer = playerUuid?.let { Bukkit.getOfflinePlayer(it) }
+                ?: Bukkit.getOfflinePlayer(playerName)
+            val economyClass = Class.forName("net.milkbowl.vault.economy.Economy")
+            val rsp = Bukkit.getServicesManager().getRegistration(economyClass)
+                ?: return null to "经济服务未注册（Vault 已装但无经济插件）"
+            val economy = rsp.provider
+            val balance = economy.javaClass
+                .getMethod("getBalance", OfflinePlayer::class.java)
+                .invoke(economy, offlinePlayer) as? Double
+            balance to "Vault(${economy.javaClass.simpleName})"
+        } catch (_: Throwable) {
+            null to "Vault 读取异常"
+        }
+    }
+
+    /**
+     * 点券：读取 PlayerPoints 插件的点券余额（反射调用，宽容匹配 look(UUID)）。
+     * 返回展示文本 + 检测说明（未安装 / 读取失败 / 正常）。
+     */
+    private fun resolvePlayerPoints(playerUuid: UUID): PointsResult {
+        return try {
+            val pointsPlugin = Bukkit.getPluginManager().getPlugin("PlayerPoints")
+                ?: return PointsResult("未启用", "PlayerPoints 未安装")
+            if (!pointsPlugin.isEnabled) return PointsResult("未启用", "PlayerPoints 已安装但未启用")
+            val api = findMethod(pointsPlugin, "getAPI", 0)?.invoke(pointsPlugin)
+                ?: return PointsResult("暂无", "PlayerPoints getAPI 未找到")
+            val amount = when (val value = invokePointsLookup(api, playerUuid)) {
+                is Number -> value.toLong()
+                else -> return PointsResult("暂无", "PlayerPoints 余额方法未匹配")
+            }
+            PointsResult(formatNumber(amount), "PlayerPoints")
+        } catch (_: Throwable) {
+            PointsResult("暂无", "PlayerPoints 读取异常")
+        }
+    }
+
+    /** 调用 PlayerPointsAPI 的余额查询方法（look(UUID)，兼容同名重载）。 */
+    private fun invokePointsLookup(api: Any, playerUuid: UUID): Any? {
+        val methods = try {
+            api.javaClass.methods.filter { it.parameterCount == 1 && java.util.UUID::class.java == it.parameterTypes[0] }
+        } catch (_: Throwable) {
+            return null
+        }
+        // 优先官方方法名 look；同名不存在时退化为“返回数值类型的单 UUID 参数方法”
+        val look = methods.firstOrNull { it.name == "look" } ?: methods.firstOrNull {
+            Number::class.java.isAssignableFrom(it.returnType) || it.returnType == Int::class.javaPrimitiveType
+        } ?: return null
+        return try {
+            look.invoke(api, playerUuid)
         } catch (_: Throwable) {
             null
         }

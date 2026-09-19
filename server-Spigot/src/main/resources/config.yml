@@ -1,4 +1,4 @@
-config-version: 11
+config-version: 12
 
 # 服务器显示名称
 serverName: "KERONGPenguin"
@@ -24,8 +24,8 @@ player-events:
     format: "[游戏] {name} 离开了服务器"
 
 # 查在线命令模板配置
-# use-markdown: true 时读取 Markdown/queryOnline 指定的 .md 文件，支持 {online}/{players} 占位符
-# use-markdown: false 时使用 motd.text 模板，支持 {online}/{players} 占位符
+# markdown.queryOnline 指定 .md 模板文件（支持 {online}/{players} 占位符），
+# 仅在 motd.use-markdown 开启时生效；关闭 motd.use-markdown 时 /查在线 自动改用渲染图片输出（1.5.1）
 markdown:
   queryOnline: "online.md"
 
@@ -40,19 +40,13 @@ motd:
   server-port: 0
   # 服务器状态图片 API，支持 {ip} {port} 变量（自动替换为上面的 server-ip / server-port）
   api: "http://motd.txssb.cn/api/app_img?ip={ip}&port={port}&dark=true&lang=zh-CN"
-  text: ""
   post-img: true
+  # /查在线 输出方式（1.5.1）：true = Markdown 模板；false = 渲染图片（毛玻璃卡片，
+  # 含真实皮肤头像，人数多时自动加长为长图；背景与个人信息卡共用 img/ 随机图）
   use-markdown: true
 
 # 个人信息卡片背景图：将图片（jpg/png）放入插件数据目录的 img/ 文件夹即可
-# （自动读取第一张图片作为 /个人信息 卡片背景，无图片时使用黑色背景）
-
-# 查在线命令输出（1.5.0 起）
-query-online:
-  # 是否以渲染图片形式输出在线玩家列表（默认关闭：保持 Markdown / 文本模板输出）
-  # 开启后渲染毛玻璃风格图片卡片（含真实皮肤头像）；
-  # 玩家较多时自动切换为长图发送（高度随人数加长，一图展示全部在线玩家）
-  image-output: false
+# （渲染时随机挑选一张作为卡片背景，查在线图片共用同一目录；无图片时使用深色背景）
 
 # QQ 绑定
 qq-bind:
@@ -62,7 +56,7 @@ qq-bind:
   # 个人信息卡片渲染设置（1.5.0 起）
   render:
     # 渲染方式：异步多线程（多人同时查询时并行出图，互不排队；
-    # 空闲线程 60 秒后自动回收，不占常驻资源，无需配置线程数）
+    # 空闲线程 60 秒后自动回收，不占常驻资源；线程数硬编码为核数一半 1~4，无需配置）
     # 渲染完成后是否向 JVM 发 GC 提示释放内存（节流：两次至少间隔 60 秒，
     # 避免频繁 Full GC 停顿；默认 true，关闭则完全不触发）
     gc-after-render: true
