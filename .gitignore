@@ -1,0 +1,19 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# 测试服务器
+testserver/
+
+# 编译期依赖（体积大，不入库）
+common-Bot/libs/
+server-Spigot/libs/
+
+# 运行时数据
+*.log
