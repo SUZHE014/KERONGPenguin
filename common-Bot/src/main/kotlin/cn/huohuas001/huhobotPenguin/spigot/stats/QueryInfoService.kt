@@ -12,7 +12,7 @@ import org.bukkit.OfflinePlayer
 import java.util.UUID
 
 /**
- * /查信息 命令服务：QQ → 玩家 UUID → 数据组装 → 卡片渲染 → 图片发送。
+ * /个人信息 命令服务：QQ → 玩家 UUID → 数据组装 → 卡片渲染 → 图片发送。
  *
  * 流程：
  * 1. 通过 QQ OpenId 查找绑定的玩家（未绑定则直接提示）；
@@ -74,7 +74,7 @@ object QueryInfoService {
                 // 4. 发送图片（不 @）
                 QClient.replyWithImgBytes(event, bytes)
             } catch (error: Throwable) {
-                plugin.log_error("[查信息] 渲染卡片失败: ${error.message}")
+                plugin.log_error("[个人信息] 渲染卡片失败: ${error.message}")
                 replyText(event, "❌ 信息卡片生成失败，请稍后重试或联系管理员")
             }
         }

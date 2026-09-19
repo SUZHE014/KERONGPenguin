@@ -1,6 +1,5 @@
 package cn.huohuas001.bot
 
-import cn.huohuas001.bot.agent.AgentConfig
 import cn.huohuas001.bot.events.commands.CustomCommandRegistry
 import cn.huohuas001.bot.provider.BotShared
 import cn.huohuas001.bot.events.commands.SensitiveFilter
@@ -156,16 +155,6 @@ interface HuHoBot : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPr
         return dispatchCommand(resolved.command!!)
     }
 
-    /** 汇总 AI Agent 配置（未启用或缺少关键配置时返回 null）。 */
-    val agentConfig: AgentConfig?
-        get() {
-            val baseUrl = agentBaseUrl()
-            val apiKey = agentApiKey()
-            if (baseUrl.isNullOrBlank() || apiKey.isNullOrBlank()) return null
-            val model = agentModel() ?: "gpt-4o-mini"
-            return AgentConfig(agentEnabled, baseUrl, apiKey, model, agentCommandMode())
-        }
-
     /** Web 面板可展示的配置值（平台按需覆写）。 */
     fun webUiConfigValues(): Map<String, Any> = emptyMap()
 
@@ -180,11 +169,14 @@ interface HuHoBot : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPr
             log_warning("未配置 bot.app-id 或 bot.secret，QQ 机器人未启动")
             return
         }
+        log_info("正在后台启动 QQ 机器人客户端（AppID: $appId）…")
         submitAsync {
             try {
                 QClient.launchClient(appId, secret, qqBotLogFilePattern())
             } catch (error: Exception) {
                 log_error("QQ 机器人启动失败: ${error.message}")
+                log_error("启动失败堆栈: ${error.stackTraceToString().lineSequence().take(6).joinToString("\n")}")
+                log_warning("QQ 命令将无法响应，请检查网络连接与机器人凭据（bot.app-id / bot.secret）")
             }
         }
     }

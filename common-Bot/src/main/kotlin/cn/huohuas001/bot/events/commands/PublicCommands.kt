@@ -9,16 +9,36 @@ import io.github.kloping.qqbot.entities.qqpd.User
 import java.util.concurrent.CompletableFuture
 
 /**
- * 公开命令：帮助 / 查信息 / 查在线 / 发信息 / 黑名单 / 重新绑定 / AI 上下文等。
+ * 公开命令：帮助 / 个人信息 / 查信息 / 查在线 / 发信息 / 黑名单 / 重新绑定 / AI 上下文等。
  */
 class PublicCommands : CommandSupport() {
 
     /**
-     * /查信息 —— 查询当前 QQ 绑定玩家的生涯统计卡片（渲染为图片发送，不 @ 提及）。
+     * /个人信息 —— 查询当前 QQ 绑定玩家的生涯统计卡片（渲染为图片发送，不 @ 提及）。
      * 未绑定则提示先完成绑定。
+     *
+     * 开关位于 QQ 绑定配置节：qq-bind.personal-info（默认开启）；
+     * 若 QQ 绑定功能（qq-bind.enabled）关闭，本命令同时关闭。
      */
-    @Commands("查信息")
-    fun queryInfo(plugin: HuHoBot, event: GroupMessageEvent, params: String) {
+    @Commands("个人信息")
+    fun queryPersonalInfo(plugin: HuHoBot, event: GroupMessageEvent, params: String) {
+        val bindManager = try {
+            QqBindManager.getInstance()
+        } catch (_: Throwable) {
+            null
+        }
+        if (bindManager == null) {
+            sendDirect(event, "❌ 绑定管理器未就绪，请稍后再试")
+            return
+        }
+        if (!bindManager.isEnabled) {
+            sendDirect(event, "个人信息功能未开启（QQ 绑定功能未启用）")
+            return
+        }
+        if (!bindManager.isPersonalInfoEnabled) {
+            sendDirect(event, "个人信息功能已被管理员关闭")
+            return
+        }
         val qq = try {
             userId(event)
         } catch (_: Throwable) {
@@ -30,6 +50,19 @@ class PublicCommands : CommandSupport() {
         }
         // 卡片渲染与数据汇总在服务内异步完成
         QueryInfoService.handle(plugin, event, qq)
+    }
+
+    /**
+     * /查信息 —— 查询发送者与群的 OpenId（用于配置 bot.groups）。
+     * 恢复 1.0.4.x 原版行为；玩家统计卡片请使用 /个人信息。
+     */
+    @Commands("查信息")
+    fun queryInfo(plugin: HuHoBot, event: GroupMessageEvent, params: String) {
+        if (params == null || params.trim().isEmpty()) {
+            sendDirect(event, "你的OpenId: " + userId(event) + "\n群的OpenId: " + groupId(event))
+            return
+        }
+        sendDirect(event, "查询玩家绑定状态请在服务器内使用 /qq qxqq <玩家名>")
     }
 
     /** /发信息 <内容> —— 发送消息到游戏内。 */
@@ -243,7 +276,8 @@ class PublicCommands : CommandSupport() {
             append("===== KERONG Penguin 命令列表 =====\n\n")
             append("【QQ 群命令】\n")
             append("  /帮助 —— 查看本帮助\n")
-            append("  /查信息 —— 查询你的玩家统计卡片\n")
+            append("  /个人信息 —— 查询你的玩家统计卡片\n")
+            append("  /查信息 —— 查询你的 OpenId 与群 OpenId\n")
             append("  /查在线 —— 查询在线玩家\n")
             append("  /在线服务器 —— 查看服务器状态\n")
             append("  /发信息 <内容> —— 发送消息到游戏\n")

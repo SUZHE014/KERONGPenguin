@@ -1,6 +1,5 @@
 package cn.huohuas001.bot.provider
 
-import cn.huohuas001.bot.agent.AgentCommandMode
 import java.io.File
 
 /**
@@ -207,29 +206,4 @@ interface ConfigProvider {
 
     /** 自定义命令列表。 */
     fun customCommands(): List<CustomCommandDetail> = emptyList()
-
-    /** AI Agent 总开关。 */
-    val agentEnabled: Boolean
-        get() = false
-
-    /** AI Agent 接口地址（环境变量 HUHOBOT_AGENT_BASE_URL）。 */
-    fun agentBaseUrl(): String? = System.getenv("HUHOBOT_AGENT_BASE_URL")
-
-    /** AI Agent API Key（环境变量 HUHOBOT_AGENT_API_KEY）。 */
-    fun agentApiKey(): String? = System.getenv("HUHOBOT_AGENT_API_KEY")
-
-    /** AI Agent 模型名（环境变量 HUHOBOT_AGENT_MODEL）。 */
-    fun agentModel(): String? = System.getenv("HUHOBOT_AGENT_MODEL")
-
-    /** AI Agent 命令模式。 */
-    fun agentCommandMode(): AgentCommandMode = AgentCommandMode.MANUAL
-
-    /** 服务器插件列表。 */
-    fun serverPluginList(): List<String> = emptyList()
-
-    /** 查询命令帮助信息。 */
-    fun serverCommandHelp(plugin: String?, command: String?): String = "当前平台不支持查询命令信息"
-
-    /** 读取服务器日志。 */
-    fun serverLogs(lines: Int?, keyword: String?): String = "当前平台不支持读取服务端日志"
 }

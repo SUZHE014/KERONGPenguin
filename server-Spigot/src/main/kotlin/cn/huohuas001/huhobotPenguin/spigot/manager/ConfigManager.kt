@@ -1,6 +1,5 @@
 package cn.huohuas001.huhobotPenguin.spigot.manager
 
-import cn.huohuas001.bot.agent.AgentCommandMode
 import cn.huohuas001.bot.provider.AdminMode
 import cn.huohuas001.bot.provider.ChatFormat
 import cn.huohuas001.bot.provider.ConfigUpgrader
@@ -43,8 +42,9 @@ class ConfigManager(private val plugin: HuHoBotSpigot) {
         }
 
         var changed = false
-        // 补齐缺失键
-        changed = ConfigUpgrader.fillMissing(DEFAULT_VALUES, { config.contains(it) }) { path, value ->
+        // 补齐缺失键（isSet 不穿透 JAR 内置默认值，确保新键真正写入用户配置文件，
+        // 否则 contains 会因 defaults 回退恒为 true，导致新键对用户不可见）
+        changed = ConfigUpgrader.fillMissing(DEFAULT_VALUES, { config.isSet(it) }) { path, value ->
             config.set(path, value)
         } || changed
 
@@ -165,19 +165,9 @@ class ConfigManager(private val plugin: HuHoBotSpigot) {
         return commands
     }
 
-    fun agentEnabled(): Boolean = false
-
-    fun agentBaseUrl(): String? = null
-
-    fun agentApiKey(): String? = null
-
-    fun agentModel(): String = "gpt-4o-mini"
-
-    fun agentCommandMode(): AgentCommandMode = AgentCommandMode.MANUAL
-
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
-        private const val CURRENT_CONFIG_VERSION = 10
+        private const val CURRENT_CONFIG_VERSION = 11
 
         /** 支持开关的群命令名单。 */
         private val COMMAND_NAMES = listOf(
@@ -218,6 +208,7 @@ class ConfigManager(private val plugin: HuHoBotSpigot) {
             "features.full-amount" to false,
             "custom-commands" to emptyList<Any>(),
             "qq-bind.enabled" to false,
+            "qq-bind.personal-info" to true,
             "qq-bind.code-expire-minutes" to 10,
             "qq-bind.code-length" to 5,
             "qq-bind.checkin.enabled" to false,

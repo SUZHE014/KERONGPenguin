@@ -1,6 +1,5 @@
 package cn.huohuas001.bot
 
-import cn.huohuas001.bot.agent.AgentInteractionListener
 import cn.huohuas001.bot.events.GroupMessageHandler
 import cn.huohuas001.bot.events.commands.BaseCommand
 import cn.huohuas001.bot.provider.BotShared
@@ -53,21 +52,72 @@ object QClient {
             QqBotConsoleOutputFilter.uninstall()
         }
         try {
+            currentPlugin.log_info("QQ 机器人客户端初始化（AppID: $appid）…")
             groupMessageHandler = GroupMessageHandler(currentPlugin)
             val session = Starter(appid, "", secret).also { starter = it }
             // 仅订阅群消息相关事件
             session.config.code = Intents.PUBLIC_INTENTS.and(Intents.GROUP_INTENTS)
+            currentPlugin.log_info("正在连接 QQ 开放平台并鉴权…")
             session.run()
+
+            // SDK 组件装配检测：扫描失败时 bot 实例不会创建，命令将无法响应
+            val botId = try {
+                session.bot?.id
+            } catch (_: Throwable) {
+                null
+            }
+            if (botId.isNullOrEmpty()) {
+                currentPlugin.log_error(
+                    "QQ 机器人组件装配异常（Bot 实例未创建），命令将无法响应，请携带完整日志反馈给开发者"
+                )
+            } else {
+                currentPlugin.log_info("QQ 机器人组件装配完成（Bot ID: $botId）")
+            }
+
             session.registerListenerHost(groupMessageHandler)
-            session.registerListenerHost(AgentInteractionListener())
+            currentPlugin.log_info("群消息监听已注册（命令系统就绪）")
             session.APPLICATION.logger.setLogLevel(1)
             session.APPLICATION.logger.setOutFile(logFilePattern)
+            if (logFilePattern != null) {
+                currentPlugin.log_info("QQ 机器人 SDK 日志将写入文件")
+            }
+            currentPlugin.log_info("正在同步群快捷菜单…")
             MenuManager.syncGroupPanels(session, currentPlugin.groupOpenIdList())
+
+            // 异步轮询 WebSocket 连接状态，输出明确的连接成功/失败日志
+            watchConnectionState(currentPlugin)
         } catch (error: Exception) {
             if (suppressConsoleOutput) {
                 QqBotConsoleOutputFilter.uninstall()
             }
             throw error
+        }
+    }
+
+    /**
+     * 轮询检测 WebSocket 连接状态（最多 30 秒）。
+     * 连接成功输出明确日志；超时给出可排查的失败提示。
+     */
+    private fun watchConnectionState(currentPlugin: cn.huohuas001.bot.HuHoBot) {
+        currentPlugin.submitAsync {
+            var waited = 0
+            while (waited < 30_000) {
+                Thread.sleep(2_000)
+                waited += 2_000
+                val connected = try {
+                    starter?.wssWorker?.webSocket?.isOpen == true
+                } catch (_: Throwable) {
+                    false
+                }
+                if (connected) {
+                    currentPlugin.log_info("QQ 机器人已成功连接，等待消息中…")
+                    return@submitAsync
+                }
+                if (starter == null) return@submitAsync
+            }
+            currentPlugin.log_warning(
+                "QQ 机器人 WebSocket 连接超时（30 秒），请检查网络与机器人凭据；也可查看日志文件确认鉴权是否失败"
+            )
         }
     }
 

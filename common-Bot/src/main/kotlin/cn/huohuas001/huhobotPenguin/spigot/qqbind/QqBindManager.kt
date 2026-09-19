@@ -260,6 +260,17 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             false
         }
 
+    /**
+     * /个人信息 命令开关（默认开启）。
+     * 前提：QQ 绑定功能（qq-bind.enabled）处于开启状态，否则本开关无效。
+     */
+    val isPersonalInfoEnabled: Boolean
+        get() = try {
+            plugin.config.getBoolean("qq-bind.personal-info", true)
+        } catch (_: Throwable) {
+            true
+        }
+
     /** 绑定码有效期（分钟，至少 1）。 */
     val codeExpireMinutes: Int
         get() {

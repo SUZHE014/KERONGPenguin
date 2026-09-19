@@ -131,7 +131,6 @@ QClient.INSTANCE.sendMarkdownToGroup(groupOpenId, "# 标题", null);
 | `getCommandList()` | 命令开关映射 |
 | `getFilterRegexList()` | 过滤正则列表 |
 | `getSensitiveWords()` | 敏感词列表 |
-| `getAgentConfig()` | Agent 配置 |
 
 ### 调度器
 

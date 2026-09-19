@@ -101,12 +101,14 @@ object WebUiSchema {
         FieldSpec("audit.model", "审核模型", "text", "审核使用的模型名", placeholder = "gpt-4o-mini"),
     ))
 
-    private val AGENT_SECTION = SectionSpec("agent", "AI Agent", listOf(
-        FieldSpec("agent.enabled", "启用 Agent", "boolean", "关闭后 /agent 命令不可用"),
-        FieldSpec("agent.base-url", "接口地址", "text", "OpenAI 兼容接口地址"),
-        FieldSpec("agent.api-key", "接口密钥", "password", "AI 接口密钥"),
-        FieldSpec("agent.model", "模型名", "text", "使用的模型", placeholder = "gpt-4o-mini"),
-        FieldSpec("agent.command-mode", "命令执行模式", "select", "manual=手动审批；auto=自动执行", options = listOf("manual", "auto")),
+    private val QQ_BIND_SECTION = SectionSpec("qq-bind", "QQ 绑定", listOf(
+        FieldSpec("qq-bind.enabled", "启用 QQ 绑定", "boolean", "开启后未绑定 QQ 的玩家无法进入服务器"),
+        FieldSpec("qq-bind.personal-info", "个人信息命令", "boolean", "/个人信息 统计卡片命令（默认开启，需 QQ 绑定开启）"),
+        FieldSpec("qq-bind.code-expire-minutes", "绑定码有效期（分钟）", "number"),
+        FieldSpec("qq-bind.code-length", "绑定码长度", "number"),
+        FieldSpec("qq-bind.checkin.enabled", "启用签到", "boolean", "群内每日签到领金币（需 Vault）"),
+        FieldSpec("qq-bind.checkin.prefix", "签到回复前缀", "text"),
+        FieldSpec("qq-bind.checkin.reward", "签到奖励金币", "number"),
     ))
 
     private val COMMANDS_SECTION = SectionSpec("commands", "命令开关", listOf(
@@ -138,7 +140,7 @@ object WebUiSchema {
         ADMIN_SECTION,
         FEATURES_SECTION,
         AUDIT_SECTION,
-        AGENT_SECTION,
+        QQ_BIND_SECTION,
         COMMANDS_SECTION,
         CUSTOM_COMMANDS_SECTION,
     )

@@ -25,7 +25,8 @@ object MenuManager {
 
     private val PANEL_ITEMS = listOf(
         PanelItem("帮助", "查看所有命令", "帮助"),
-        PanelItem("查信息", "查询玩家信息", "查信息"),
+        PanelItem("查信息", "查询 OpenId", "查信息"),
+        PanelItem("个人信息", "查询玩家统计卡片", "个人信息"),
         PanelItem("绑定", "绑定 QQ", "绑定 "),
         PanelItem("重新绑定", "解除 QQ 绑定", "重新绑定"),
         PanelItem("查在线", "查询在线玩家", "查在线"),
@@ -43,8 +44,8 @@ object MenuManager {
         PanelItem("签到", "每日签到领金币", "签到"),
     )
 
-    /** 依赖 QQ 绑定功能开启的按钮。 */
-    private val QQ_BIND_PANEL_NAMES = setOf("绑定", "重新绑定", "黑名单", "解除黑名单")
+    /** 依赖 QQ 绑定功能开启的按钮（绑定关闭时一并隐藏）。 */
+    private val QQ_BIND_PANEL_NAMES = setOf("绑定", "重新绑定", "黑名单", "解除黑名单", "个人信息")
 
     /** 依赖签到功能开启的按钮。 */
     private val CHECKIN_PANEL_NAMES = setOf("签到")
@@ -67,18 +68,21 @@ object MenuManager {
             // 收集功能开关
             var commandList: Map<String, Boolean> = emptyMap()
             var qqBindEnabled = false
+            var personalInfoEnabled = true
             var checkinEnabled = false
             try {
                 val plugin = cn.huohuas001.bot.provider.BotShared.instance ?: return
                 commandList = plugin.commandList()
                 val manager = QqBindManager.getInstance()
                 qqBindEnabled = manager.isEnabled
+                personalInfoEnabled = manager.isPersonalInfoEnabled
                 checkinEnabled = manager.isCheckinEnabled
             } catch (_: Throwable) {
             }
 
             val visible = PANEL_ITEMS.filter { item ->
                 if (!qqBindEnabled && item.name in QQ_BIND_PANEL_NAMES) return@filter false
+                if (qqBindEnabled && !personalInfoEnabled && item.name == "个人信息") return@filter false
                 if (!checkinEnabled && item.name in CHECKIN_PANEL_NAMES) return@filter false
                 val enabled = commandList[item.name]
                 enabled == null || enabled
@@ -100,6 +104,9 @@ object MenuManager {
                 })
             }
             createPanel(authHeader, body)
+            cn.huohuas001.bot.provider.BotShared.instance?.log_info(
+                "已同步 ${groupOpenIds.size} 个群的快捷菜单（${visible.size} 个按钮可用）"
+            )
         } catch (e: Exception) {
             cn.huohuas001.bot.provider.BotShared.instance?.log_error("面板同步失败: ${e.message}")
         }

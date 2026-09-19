@@ -1,5 +1,5 @@
 name: KERONGPenguin
-version: '0.1.5.0'
+version: '0.1.5.1'
 main: cn.huohuas001.huhobotPenguin.spigot.HuHoBotSpigot
 api-version: '1.18'
 description: KERONG Penguin - HuHoBot QQ bot integration with QQ binding, check-in and player stats

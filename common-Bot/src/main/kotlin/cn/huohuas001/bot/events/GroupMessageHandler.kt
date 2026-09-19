@@ -46,8 +46,8 @@ class GroupMessageHandler(private val plugin: HuHoBot) : ListenerHost() {
         val groupId: String? = event.groupOpenId ?: event.groupId
         val content = event.rawMessage?.content ?: return
 
-        // 查信息命令始终放行（任何群可用）；其余命令仅允许配置的群
-        if (!content.contains("查信息")) {
+        // 查信息（OpenId）与个人信息（统计卡片）命令始终放行（任何群可用）；其余命令仅允许配置的群
+        if (!content.contains("查信息") && !content.contains("个人信息")) {
             if (groupId == null || !isAllowedGroup(groupId)) return
         }
 

@@ -1,4 +1,4 @@
-config-version: 10
+config-version: 11
 
 # 服务器显示名称
 serverName: "KERONGPenguin"
@@ -45,12 +45,14 @@ motd:
   post-img: true
   use-markdown: true
 
-# 查信息卡片背景图：将图片（jpg/png）放入插件数据目录的 img/ 文件夹即可
-# （自动读取第一张图片作为 /查信息 卡片背景，无图片时使用黑色背景）
+# 个人信息卡片背景图：将图片（jpg/png）放入插件数据目录的 img/ 文件夹即可
+# （自动读取第一张图片作为 /个人信息 卡片背景，无图片时使用黑色背景）
 
 # QQ 绑定
 qq-bind:
   enabled: false
+  # /个人信息 统计卡片命令开关（默认开启；qq-bind.enabled 关闭时本命令与快捷菜单按钮一并隐藏）
+  personal-info: true
   kick-message:
     - "&c===== QQ 绑定验证 ====="
     - "&f你还未绑定 QQ，无法进入服务器。"
