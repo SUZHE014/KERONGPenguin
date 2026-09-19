@@ -287,8 +287,10 @@ object PlayerStatsManager {
         try {
             val file = dataFile()
             if (!file.isFile) return
+            val startedAt = System.currentTimeMillis()
             val config = YamlConfiguration.loadConfiguration(file)
             val section = config.getConfigurationSection("players") ?: return
+            var loaded = 0
             for (key in section.getKeys(false)) {
                 val uuid = try {
                     UUID.fromString(key)
@@ -308,7 +310,10 @@ object PlayerStatsManager {
                     flyCm = section.getLong("$key.fly-cm"),
                     damageDealt = section.getLong("$key.damage-dealt"),
                 )
+                loaded++
             }
+            // 0.1.5.3：数据保存日志——启动装载一行汇总，开销可忽略
+            plugin.log_info("[数据保存] 已从 stats.yml 装载 $loaded 名玩家的统计数据，耗时 ${System.currentTimeMillis() - startedAt}ms")
         } catch (_: Exception) {
         }
     }
@@ -325,6 +330,7 @@ object PlayerStatsManager {
     /** 阻塞保存（异步线程或关服时调用）。 */
     @Synchronized
     fun saveToDiskBlocking() {
+        val startedAt = System.currentTimeMillis()
         try {
             val file = dataFile()
             file.parentFile?.mkdirs()
@@ -344,7 +350,12 @@ object PlayerStatsManager {
                 config.set("$key.damage-dealt", stats.damageDealt)
             }
             config.save(file)
-        } catch (_: Exception) {
+            // 0.1.5.3：数据保存日志——每次保存仅输出一行汇总（玩家数 + 耗时 + 文件大小），
+            // 异步线程执行、无额外磁盘写，对服务器性能几乎零影响
+            val sizeKb = (file.length() + 512) / 1024
+            plugin.log_info("[数据保存] 玩家统计数据已保存：${statsByUuid.size} 名玩家，耗时 ${System.currentTimeMillis() - startedAt}ms，文件 ${sizeKb}KB")
+        } catch (error: Exception) {
+            plugin.log_error("[数据保存] 保存统计数据失败: ${error.message}")
         }
     }
 

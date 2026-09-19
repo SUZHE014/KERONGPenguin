@@ -19,6 +19,7 @@ import java.net.URL
 import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ThreadLocalRandom
 import java.util.zip.GZIPInputStream
 import javax.imageio.ImageIO
 
@@ -31,9 +32,12 @@ import javax.imageio.ImageIO
  * - 生涯统计网格（3 列 × 5 行 = 15 项）
  *
  * 0.1.5.2 性能修复：
- * - 背景（含 cover 裁剪 + 模糊 + 暗化）按文件签名缓存，不再每次渲染重新解码处理；
+ * - 背景与头像处理结果按文件 / 玩家缓存，不再每次渲染重新解码处理；
  * - 派生字体缓存，避免重复 deriveFont 分配；
  * - 关闭 ImageIO 磁盘缓存，减少临时文件 churn。
+ *
+ * 0.1.5.3 随机背景：背景图从 img/ 目录候选图中随机挑选，
+ * 处理结果按张缓存，随机切换零额外解码开销。
  */
 object InfoCardRenderer {
 
@@ -306,6 +310,10 @@ object InfoCardRenderer {
  * 5. 全部失败 → null → 渲染占位图标。
  *
  * 0.1.5.2 性能修复：头像与背景均带 TTL 缓存，重复查询不再重复解码 / 请求。
+ *
+ * 0.1.5.3 随机背景：卡片背景从 img/ 目录的候选图中随机挑选一张
+ * （旧版固定取排序后的第一张），每张图的处理结果仍按文件签名缓存，
+ * 重复抽中时不再重新解码，随机切换不增加 CPU 开销。
  */
 object InfoCardAssets {
 
@@ -341,12 +349,19 @@ object InfoCardAssets {
     /** 近期失败记录：键 → 时间。 */
     private val missCache = ConcurrentHashMap<String, NegativeEntry>()
 
-    /** 预处理背景缓存（单条：文件路径 + 修改时间 + 尺寸签名）。 */
-    @Volatile
-    private var backgroundCache: Triple<String, Long, Long>? = null
+    /** 预处理背景缓存条目：文件签名 + 尺寸签名 + 处理完的图 + 最近使用时间。 */
+    private class BackgroundEntry(
+        val stamp: Long,
+        val sizeKey: Long,
+        val image: BufferedImage,
+        @Volatile var lastUsedAt: Long,
+    )
 
-    @Volatile
-    private var backgroundCacheImage: BufferedImage? = null
+    /** 预处理背景缓存：文件绝对路径 → 条目（0.1.5.3 起支持多张图随机切换）。 */
+    private val backgroundCache = ConcurrentHashMap<String, BackgroundEntry>()
+
+    /** 背景缓存容量上限（张）；超出时淘汰最久未使用的，控制内存占用。 */
+    private const val BACKGROUND_CACHE_MAX = 8
 
     /** 记录的玩家名 → 正版 UUID（Mojang API），含未查到的负缓存。 */
     private val premiumUuidCache = ConcurrentHashMap<String, Any>()
@@ -389,10 +404,7 @@ object InfoCardAssets {
         avatarCache.clear()
         missCache.clear()
         premiumUuidCache.clear()
-        synchronized(this) {
-            backgroundCache = null
-            backgroundCacheImage = null
-        }
+        backgroundCache.clear()
     }
 
     /** 缓存超限时淘汰最旧条目。 */
@@ -671,26 +683,32 @@ object InfoCardAssets {
 
     /**
      * 获取预处理完成的背景（cover 裁剪 + 轻模糊 + 暗化，尺寸 width × height）。
-     * 按文件路径 + 修改时间 + 大小缓存；图片更换后自动重新处理。
+     *
+     * 0.1.5.3：从 img/ 目录全部候选图中随机挑选一张（旧版固定取第一张），
+     * 每张图的处理结果按文件路径 + 修改时间 + 大小缓存；图片更换后自动重新处理。
+     * 同一张图重复抽中时直接命中缓存，随机切换不额外增加 CPU 开销。
      */
     @Synchronized
     fun processedBackground(dataDirectory: File, width: Int, height: Int): BufferedImage? {
-        // 命中缓存（文件未变化时不再解码）
         val folder = File(dataDirectory, "img")
         val candidates = folder.listFiles { file ->
             file.isFile && file.extension.lowercase() in setOf("png", "jpg", "jpeg", "bmp", "gif")
-        }?.sortedBy { it.name } ?: emptyList()
-        val file = candidates.firstOrNull() ?: return null
+        }?.toList() ?: emptyList()
+        if (candidates.isEmpty()) return null
 
-        val signature = file.absolutePath
+        // 0.1.5.3：随机挑选背景图（不再固定第一张）
+        val file = candidates[ThreadLocalRandom.current().nextInt(candidates.size)]
+
+        val path = file.absolutePath
         val stamp = file.lastModified() + file.length()
         val sizeKey = width.toLong() * 4096 + height
-        val cache = backgroundCache
-        if (cache != null && cache.first == signature && cache.second == stamp && cache.third == sizeKey) {
-            return backgroundCacheImage
+        val cached = backgroundCache[path]
+        if (cached != null && cached.stamp == stamp && cached.sizeKey == sizeKey) {
+            cached.lastUsedAt = System.currentTimeMillis()
+            return cached.image
         }
 
-        // 解码并处理（仅在文件变化或首次调用时执行）
+        // 解码并处理（仅在文件变化或首次抽中时执行）
         val decoded = try {
             ImageIO.read(file)
         } catch (_: Exception) {
@@ -699,9 +717,19 @@ object InfoCardAssets {
         if (decoded.width <= 0 || decoded.height <= 0) return null
 
         val processed = darken(softBlur(coverImage(decoded, width, height)))
-        backgroundCache = Triple(signature, stamp, sizeKey)
-        backgroundCacheImage = processed
+        backgroundCache[path] = BackgroundEntry(stamp, sizeKey, processed, System.currentTimeMillis())
+        evictBackgroundsIfOversized()
         return processed
+    }
+
+    /** 背景缓存超限时淘汰最久未使用的条目，控制图像内存占用。 */
+    private fun evictBackgroundsIfOversized() {
+        val overflow = backgroundCache.size - BACKGROUND_CACHE_MAX
+        if (overflow <= 0) return
+        backgroundCache.entries
+            .sortedBy { it.value.lastUsedAt }
+            .take(overflow)
+            .forEach { backgroundCache.remove(it.key, it.value) }
     }
 
     /** cover 铺满裁剪。 */
