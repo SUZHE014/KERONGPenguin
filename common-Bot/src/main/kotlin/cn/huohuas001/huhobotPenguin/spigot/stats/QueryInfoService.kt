@@ -4,6 +4,7 @@ import cn.huohuas001.bot.HuHoBot
 import cn.huohuas001.bot.QClient
 import cn.huohuas001.bot.provider.plugin
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
+import cn.huohuas001.huhobotPenguin.spigot.render.CardRenderPool
 import cn.huohuas001.huhobotPenguin.spigot.render.InfoCardAssets
 import cn.huohuas001.huhobotPenguin.spigot.render.InfoCardRenderer
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
@@ -15,9 +16,6 @@ import java.io.File
 import java.lang.reflect.Method
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.RejectedExecutionException
-import java.util.concurrent.ThreadPoolExecutor
-import java.util.concurrent.TimeUnit
 
 /**
  * /个人信息 命令服务：QQ → 玩家 UUID → 数据组装 → 卡片渲染 → 图片发送。
@@ -42,9 +40,9 @@ import java.util.concurrent.TimeUnit
  * - 渲染/发送失败日志带上堆栈前几帧，且 log_error 已双写插件日志文件，事后可从
  *   logs/qq/qq-bind-日期.log 完整追溯（修复“部分报错没有记录在日志里面”）。
  * 1.5.0（覆盖更新）：
- * - 渲染改为 CPU 异步多线程：不再限制渲染线程数（旧 qq-bind.render.threads 已移除，
- *   单线程限流会导致多张图片排队堆积反而卡服）；改用缓存线程池按需并行渲染，
- *   多人同时查询立即各自出图，空闲线程 60 秒后自动回收，不占常驻资源；
+ * - 渲染 CPU 上限硬编码：不再限制为单线程（多图排队堆积反而卡服），也不无限并行
+ *   （高并发查询会占满 CPU）；全部图片渲染共用 [CardRenderPool]，线程数固定为
+ *   主机核数一半（1..4，详见 CardRenderPool，不走配置文件）；
  * - 渲染完成后释放内存：单次渲染图像立即 flush 释放栅格，并做节流 GC 提示
  *   （两次至少间隔 60 秒，qq-bind.render.gc-after-render 可关），避免频繁 Full GC；
  * - 统计项新增：累计签到（本插件签到系统累计次数）、点券（PlayerPoints 插件，
@@ -54,7 +52,8 @@ import java.util.concurrent.TimeUnit
  *   在线玩家直接取内存中的实际显示标签（含默认/强制标签），
  *   离线玩家回退持久化保存的标签选择，占位符文本自动剔除；
  * - 同一玩家的渲染结果在 TTL 内复用（默认 60 秒，qq-bind.render.result-cache-seconds 可调），
- *   重复查询秒回零渲染。
+ *   重复查询秒回零渲染；
+ * - /查在线 支持图片输出（query-online.image-output，见 OnlineListService）。
  */
 object QueryInfoService {
 
@@ -64,7 +63,7 @@ object QueryInfoService {
     /** 用户冷却记录：OpenId → 上次触发时间。 */
     private val lastQueryAt = ConcurrentHashMap<String, Long>()
 
-    // ---------- 1.5.0：异步多线程渲染 + 结果缓存 + 渲染后内存释放 ----------
+    // ---------- 1.5.0：共享渲染池（CardRenderPool）+ 结果缓存 ----------
 
     /** 渲染结果缓存容量上限（超出先清过期再整体清空，防膨胀）。 */
     private const val CARD_CACHE_MAX = 32
@@ -74,17 +73,6 @@ object QueryInfoService {
 
     /** 渲染结果缓存：玩家标识 → 最近一次卡片。 */
     private val cardCache = ConcurrentHashMap<String, CachedCard>()
-
-    /** 异步多线程渲染线程池（惰性创建；缓存线程池：按需建线程、忙时并行、闲置回收）。 */
-    @Volatile
-    private var renderPool: ThreadPoolExecutor? = null
-
-    /** 渲染后 GC 节流：两次 GC 提示的最小间隔（防止频繁 Full GC 停顿卡服）。 */
-    private const val GC_MIN_INTERVAL_MILLIS = 60_000L
-
-    /** 上次渲染后 GC 提示时间戳。 */
-    @Volatile
-    private var lastRenderGcAt = 0L
 
     /** 渲染与发送的全流程在异步多线程池并行执行，避免阻塞机器人消息线程。 */
     fun handle(plugin: HuHoBot, event: GroupMessageEvent, qqOpenId: String) {
@@ -141,15 +129,9 @@ object QueryInfoService {
             return
         }
 
-        val pool = try {
-            renderPool()
-        } catch (_: RejectedExecutionException) {
-            replyText(event, "当前查询人数较多，请稍后再试")
-            return
-        }
-
         try {
-            pool.execute {
+            // 共享渲染池（CardRenderPool：硬编码核数一半 1..4 线程；完成后自动节流 GC）
+            CardRenderPool.submit {
                 try {
                     val avatar = InfoCardAssets.fetchAvatar(
                         InfoCardAssets.AvatarRequest(
@@ -188,10 +170,6 @@ object QueryInfoService {
                     if (!sent) {
                         replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
                     }
-
-                    // 1.5.0：渲染完成后释放内存（单次图像已 flush，这里做节流 GC 提示，
-                    //    两次至少间隔 60 秒，避免频繁 Full GC 反而卡服）
-                    gcAfterRenderIfDue()
                 } catch (error: Throwable) {
                     // 失败日志带堆栈前几帧且双写日志文件，事后可从
                     // logs/qq/qq-bind-日期.log 追溯具体失败原因
@@ -203,64 +181,13 @@ object QueryInfoService {
                     replyText(event, "❌ 信息卡片生成失败，请稍后重试或联系管理员")
                 }
             }
-        } catch (_: RejectedExecutionException) {
+        } catch (_: Throwable) {
+            // 理论上不会触发（队列无上限），兑底防止线程池异常时静默丢消息
             replyText(event, "当前查询人数较多，请稍后再试")
         }
     }
 
-    // ---------- 1.5.0：异步多线程渲染池 / 结果缓存 / 渲染后内存释放 ----------
-
-    /**
-     * 渲染线程池（缓存线程池）：任务到达时若无空闲线程则新建、有空闲则复用，
-     * 多张卡片并行渲染互不排队；线程空闲 60 秒后自动销毁，不占常驻 CPU/内存。
-     * 比固定线程数的优势：多人同时查询时每张图立刻开渲（不堆积），
-     * 没人查询时零线程开销。守护线程不阻止 JVM 退出。
-     */
-    private fun renderPool(): ThreadPoolExecutor {
-        renderPool?.let { return it }
-        synchronized(this) {
-            renderPool?.let { return it }
-            val pool = ThreadPoolExecutor(
-                0, Int.MAX_VALUE,
-                60L, TimeUnit.SECONDS,
-                java.util.concurrent.SynchronousQueue(),
-            ) { runnable ->
-                Thread(runnable, "PenguinCardRender").apply {
-                    isDaemon = true
-                }
-            }
-            renderPool = pool
-            return pool
-        }
-    }
-
-    /**
-     * 渲染完成后释放 JVM 内存（1.5.0 覆盖更新）：
-     * - 单次渲染图像在 [InfoCardRenderer.render] 内已 flush 释放栅格；
-     * - 这里补一次节流的 GC 提示（System.gc，JVM 可能忽略，取决于启动参数），
-     *   两次至少间隔 [GC_MIN_INTERVAL_MILLIS]，避免每次渲染都 Full GC 造成停顿卡服；
-     * - qq-bind.render.gc-after-render 关闭后完全不触发。
-     */
-    private fun gcAfterRenderIfDue() {
-        if (!gcAfterRenderEnabled()) return
-        val now = System.currentTimeMillis()
-        synchronized(this) {
-            if (now - lastRenderGcAt < GC_MIN_INTERVAL_MILLIS) return
-            lastRenderGcAt = now
-        }
-        try {
-            System.gc()
-        } catch (_: Throwable) {
-        }
-    }
-
-    /** qq-bind.render.gc-after-render：渲染后是否做 GC 提示（默认 true）。 */
-    private fun gcAfterRenderEnabled(): Boolean = try {
-        (Bukkit.getPluginManager().getPlugin("KERONGPenguin") as? JavaPlugin)
-            ?.config?.getBoolean("qq-bind.render.gc-after-render", true) ?: true
-    } catch (_: Throwable) {
-        true
-    }
+    // ---------- 结果缓存 / 统计项组装 ----------
 
     /** qq-bind.render.result-cache-seconds：渲染结果复用秒数（默认 60，0 = 关闭，上限 600）。 */
     private fun resultCacheMillis(): Long = try {

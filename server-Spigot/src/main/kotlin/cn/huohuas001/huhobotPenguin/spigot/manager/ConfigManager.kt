@@ -191,6 +191,7 @@ class ConfigManager(private val plugin: HuHoBotSpigot) {
             "player-events.quit.enabled" to true,
             "player-events.quit.format" to "[游戏] {name} 离开了服务器",
             "markdown.queryOnline" to "online.md",
+            "query-online.image-output" to false,
             // 默认 Auto：自动检测混合端，纯 Spigot/Paper 不再误提示“已启用混合控制台”
             "command-sender" to "Auto",
             "motd.server-ip" to "",

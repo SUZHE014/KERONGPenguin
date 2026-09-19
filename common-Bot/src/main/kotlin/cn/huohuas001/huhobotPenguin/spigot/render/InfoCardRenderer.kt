@@ -72,8 +72,8 @@ object InfoCardRenderer {
         ImageIO.setUseCache(false)
     }
 
-    /** 获取缓存过的派生字体。 */
-    private fun font(size: Float, bold: Boolean): Font {
+    /** 获取缓存过的派生字体（1.5.0 起开放给本模块其他渲染器复用，如在线列表卡片）。 */
+    internal fun font(size: Float, bold: Boolean): Font {
         val key = (if (bold) "B" else "R") + size
         return derivedFontCache.computeIfAbsent(key) {
             (if (bold) FONT_BOLD else FONT_REGULAR).deriveFont(size)

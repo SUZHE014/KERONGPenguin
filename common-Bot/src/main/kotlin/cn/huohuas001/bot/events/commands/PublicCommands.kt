@@ -3,6 +3,7 @@ package cn.huohuas001.bot.events.commands
 import cn.huohuas001.bot.HuHoBot
 import cn.huohuas001.bot.QClient
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
+import cn.huohuas001.huhobotPenguin.spigot.stats.OnlineListService
 import cn.huohuas001.huhobotPenguin.spigot.stats.QueryInfoService
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import io.github.kloping.qqbot.entities.qqpd.User
@@ -88,9 +89,20 @@ class PublicCommands : CommandSupport() {
         }
     }
 
-    /** /查在线 —— 查询在线玩家列表（支持 Markdown 模板）。 */
+    /** /查在线 —— 查询在线玩家列表（支持 Markdown 模板；1.5.0 起可选图片输出）。 */
     @Commands("查在线")
     fun queryOnline(plugin: HuHoBot, event: GroupMessageEvent, params: String) {
+        // 1.5.0：图片输出模式（query-online.image-output，默认关闭；关闭时走原模板路径）
+        if (OnlineListService.imageOutputEnabled()) {
+            val qq = try {
+                userId(event)
+            } catch (_: Throwable) {
+                "<unknown>"
+            }
+            val cooldownKey = if (qq.isEmpty() || qq == "<unknown>") "group:${groupId(event)}" else qq
+            OnlineListService.handle(plugin, event, cooldownKey)
+            return
+        }
         val online = plugin.onlineList
         val motd = plugin.motd
         val template = plugin.markdown("queryOnline")
