@@ -10,7 +10,7 @@ import cn.huohuas001.bot.provider.LoggerProvider
 import cn.huohuas001.bot.provider.MessageProvider
 import cn.huohuas001.bot.provider.SchedulerProvider
 import cn.huohuas001.bot.state.CommandRepositories
-import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
+import cn.huohuas001.bot.tools.PluginFileLog
 import cn.huohuas001.bot.web.WebUiServer
 import com.alibaba.fastjson.JSONObject
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
@@ -79,14 +79,17 @@ interface HuHoBot : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPr
         BotShared.setInstance(this)
 
         // SDK 日志接管（0.1.5.2 隐私 / 控制台刷屏修复）：
-        // 仅错误级别上控制台（log_error），其余一律写入插件日志文件（logVerbose），
+        // 仅错误级别上控制台（log_error），其余一律写入插件日志文件，
         // 避免含消息内容的 Info / Debug 日志（如事件分发、WSS 帧）泄露到控制台。
+        // 0.1.5.4：错误级别同步写入日志文件；普通级别改走 PluginFileLog
+        // （同一份 qq-bind-日期.log，不再依赖 QqBindManager 实例初始化时序）。
         LoggerImpl.setLogSink(object : LoggerImpl.LogSink {
             override fun log(message: String, level: Int) {
                 if (level == -1) {
                     log_error(message)
+                    PluginFileLog.write("[Bot][错误] $message")
                 } else {
-                    QqBindManager.logVerbose("[Bot] $message")
+                    PluginFileLog.write("[Bot] $message")
                 }
             }
         })
@@ -164,22 +167,22 @@ interface HuHoBot : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPr
     /** 应用 Web 面板提交的配置修改（平台按需覆写）。 */
     fun applyWebUiConfigChanges(changes: JSONObject): Boolean = false
 
-    /** 异步启动 QQ 机器人客户端。 */
+    /** 异步启动 QQ 机器人客户端（0.1.5.4：启动过程日志同步落盘）。 */
     fun launchQqClient() {
         val appId = botAppId
         val secret = botSecret
         if (appId.isBlank() || secret.isBlank()) {
-            log_warning("未配置 bot.app-id 或 bot.secret，QQ 机器人未启动")
+            PluginFileLog.warnAndKeep("未配置 bot.app-id 或 bot.secret，QQ 机器人未启动")
             return
         }
-        log_info("正在后台启动 QQ 机器人客户端（AppID: $appId）…")
+        PluginFileLog.infoAndKeep("正在后台启动 QQ 机器人客户端（AppID: $appId）…")
         submitAsync {
             try {
                 QClient.launchClient(appId, secret, qqBotLogFilePattern())
             } catch (error: Exception) {
-                log_error("QQ 机器人启动失败: ${error.message}")
-                log_error("启动失败堆栈: ${error.stackTraceToString().lineSequence().take(6).joinToString("\n")}")
-                log_warning("QQ 命令将无法响应，请检查网络连接与机器人凭据（bot.app-id / bot.secret）")
+                PluginFileLog.errorAndKeep("QQ 机器人启动失败: ${error.message}")
+                PluginFileLog.errorAndKeep("启动失败堆栈: ${error.stackTraceToString().lineSequence().take(6).joinToString("\n")}")
+                PluginFileLog.warnAndKeep("QQ 命令将无法响应，请检查网络连接与机器人凭据（bot.app-id / bot.secret）")
             }
         }
     }

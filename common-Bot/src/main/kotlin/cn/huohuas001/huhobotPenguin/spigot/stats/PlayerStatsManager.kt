@@ -1,6 +1,7 @@
 package cn.huohuas001.huhobotPenguin.spigot.stats
 
 import cn.huohuas001.bot.tools.Cancelable
+import cn.huohuas001.bot.tools.PluginFileLog
 import cn.huohuas001.bot.provider.plugin
 import org.bukkit.Bukkit
 import org.bukkit.Material
@@ -312,8 +313,9 @@ object PlayerStatsManager {
                 )
                 loaded++
             }
-            // 0.1.5.3：数据保存日志——启动装载一行汇总，开销可忽略
-            plugin.log_info("[数据保存] 已从 stats.yml 装载 $loaded 名玩家的统计数据，耗时 ${System.currentTimeMillis() - startedAt}ms")
+            // 0.1.5.3：数据保存日志；0.1.5.4 起改为仅写入插件日志文件
+            // （logs/qq/qq-bind-日期.log），不刷控制台
+            PluginFileLog.write("[数据保存] 已从 stats.yml 装载 $loaded 名玩家的统计数据，耗时 ${System.currentTimeMillis() - startedAt}ms")
         } catch (_: Exception) {
         }
     }
@@ -350,12 +352,13 @@ object PlayerStatsManager {
                 config.set("$key.damage-dealt", stats.damageDealt)
             }
             config.save(file)
-            // 0.1.5.3：数据保存日志——每次保存仅输出一行汇总（玩家数 + 耗时 + 文件大小），
+            // 0.1.5.3：数据保存日志——每次保存仅记录一行汇总（玩家数 + 耗时 + 文件大小）；
+            // 0.1.5.4 起仅写入插件日志文件（logs/qq/qq-bind-日期.log），不再显示在控制台，
             // 异步线程执行、无额外磁盘写，对服务器性能几乎零影响
             val sizeKb = (file.length() + 512) / 1024
-            plugin.log_info("[数据保存] 玩家统计数据已保存：${statsByUuid.size} 名玩家，耗时 ${System.currentTimeMillis() - startedAt}ms，文件 ${sizeKb}KB")
+            PluginFileLog.write("[数据保存] 玩家统计数据已保存：${statsByUuid.size} 名玩家，耗时 ${System.currentTimeMillis() - startedAt}ms，文件 ${sizeKb}KB")
         } catch (error: Exception) {
-            plugin.log_error("[数据保存] 保存统计数据失败: ${error.message}")
+            PluginFileLog.errorAndKeep("[数据保存] 保存统计数据失败: ${error.message}")
         }
     }
 

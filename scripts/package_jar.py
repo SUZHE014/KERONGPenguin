@@ -10,6 +10,11 @@
 - 脚本会剔除 base_jar 中插件自身的旧字节码与模块资源，
   再合入新编译的 common-Bot.jar 与 server-Spigot.jar，
   版本号取自新 plugin.yml，输出 KERONGPenguin_Spigot-<version>.jar。
+
+⚠️ 0.1.5.4 修复：必须保留 JAR 目录条目（以 / 结尾的条目）。
+  kloping SDK 的组件扫描依赖目录条目，缺失会导致 Bot 实例装配 NPE、
+  QQ 机器人无法启动（0.1.5.0 曾因同样问题翻车，0.1.5.1 修复；
+  0.1.5.3 打包时再次遗漏，0.1.5.4 修复并在此固化规则）。
 """
 import argparse
 import os
@@ -61,27 +66,37 @@ def main() -> None:
     output = args.output or os.path.join(DEFAULT_OUT_DIR, f"KERONGPenguin_Spigot-{version}.jar")
     os.makedirs(os.path.dirname(output), exist_ok=True)
 
-    # 去重原则：base 依赖先写入，模块产物后写入（两个模块包名互不重叠）
+    # 写入顺序：base 依赖（含目录条目）→ 模块产物（含目录条目），用 seen 去重
+    seen = set()
+    dir_count = 0
     with zipfile.ZipFile(args.base_jar) as base, \
             zipfile.ZipFile(COMMON_JAR) as common, \
             zipfile.ZipFile(SPIGOT_JAR) as spigot, \
             zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as out:
-        count = 0
-        for name in base.namelist():
-            if name.endswith("/") or excluded(name):
+        for item in base.infolist():
+            name = item.filename
+            if excluded(name):
                 continue
-            out.writestr(name, base.read(name))
-            count += 1
+            out.writestr(item, base.read(name))
+            seen.add(name)
+            if name.endswith("/"):
+                dir_count += 1
         for source in (common, spigot):
-            for name in source.namelist():
-                if name.endswith("/") or name == "META-INF/MANIFEST.MF":
+            for item in source.infolist():
+                name = item.filename
+                if name == "META-INF/MANIFEST.MF" or name in seen:
                     continue
-                out.writestr(name, source.read(name))
-                count += 1
+                out.writestr(item, source.read(name))
+                seen.add(name)
+                if name.endswith("/"):
+                    dir_count += 1
         out.writestr("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\n")
 
+    if dir_count == 0:
+        raise SystemExit("严重错误：产物中没有目录条目，SDK 组件装配会失败！")
+
     size_mb = os.path.getsize(output) / 1024 / 1024
-    print(f"打包完成：{output}（{size_mb:.1f} MB，{count} 条目，版本 {version}）")
+    print(f"打包完成：{output}（{size_mb:.1f} MB，{len(seen)} 条目，目录条目 {dir_count} 个，版本 {version}）")
 
 
 if __name__ == "__main__":

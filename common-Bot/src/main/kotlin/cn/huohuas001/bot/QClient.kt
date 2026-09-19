@@ -4,6 +4,7 @@ import cn.huohuas001.bot.events.GroupMessageHandler
 import cn.huohuas001.bot.events.commands.BaseCommand
 import cn.huohuas001.bot.provider.BotShared
 import cn.huohuas001.bot.provider.plugin
+import cn.huohuas001.bot.tools.PluginFileLog
 import com.alibaba.fastjson.JSON
 import io.github.kloping.qqbot.Starter
 import io.github.kloping.qqbot.api.Intents
@@ -43,6 +44,9 @@ object QClient {
      * 都捕获全线程栈，是 CPU / 内存占用的重要来源）；SDK 日志已通过
      * LogSink 全量接管（见 HuHoBot.initializeRuntime），不会再进入控制台。
      *
+     * 0.1.5.4：连接生命周期日志（初始化/鉴权/装配/连接成功/超时）改为
+     * 控制台 + 插件日志文件双写，不再只留存在控制台，事后可追溯。
+     *
      * @param appid         QQ 机器人 AppId
      * @param secret        QQ 机器人 Secret
      * @param logFilePattern SDK 日志文件名模板（null 表示不落盘）
@@ -50,12 +54,12 @@ object QClient {
     fun launchClient(appid: String, secret: String, logFilePattern: String? = null) {
         val currentPlugin = plugin
         try {
-            currentPlugin.log_info("QQ 机器人客户端初始化（AppID: $appid）…")
+            PluginFileLog.infoAndKeep("QQ 机器人客户端初始化（AppID: $appid）…")
             groupMessageHandler = GroupMessageHandler(currentPlugin)
             val session = Starter(appid, "", secret).also { starter = it }
             // 仅订阅群消息相关事件
             session.config.code = Intents.PUBLIC_INTENTS.and(Intents.GROUP_INTENTS)
-            currentPlugin.log_info("正在连接 QQ 开放平台并鉴权…")
+            PluginFileLog.infoAndKeep("正在连接 QQ 开放平台并鉴权…")
             session.run()
 
             // SDK 组件装配检测：扫描失败时 bot 实例不会创建，命令将无法响应
@@ -65,26 +69,27 @@ object QClient {
                 null
             }
             if (botId.isNullOrEmpty()) {
-                currentPlugin.log_error(
+                PluginFileLog.errorAndKeep(
                     "QQ 机器人组件装配异常（Bot 实例未创建），命令将无法响应，请携带完整日志反馈给开发者"
                 )
             } else {
-                currentPlugin.log_info("QQ 机器人组件装配完成（Bot ID: $botId）")
+                PluginFileLog.infoAndKeep("QQ 机器人组件装配完成（Bot ID: $botId）")
             }
 
             session.registerListenerHost(groupMessageHandler)
-            currentPlugin.log_info("群消息监听已注册（命令系统就绪）")
+            PluginFileLog.infoAndKeep("群消息监听已注册（命令系统就绪）")
             session.APPLICATION.logger.setLogLevel(1)
             session.APPLICATION.logger.setOutFile(logFilePattern)
             if (logFilePattern != null) {
-                currentPlugin.log_info("QQ 机器人 SDK 日志将写入文件")
+                PluginFileLog.infoAndKeep("QQ 机器人 SDK 日志将写入文件")
             }
-            currentPlugin.log_info("正在同步群快捷菜单…")
+            PluginFileLog.infoAndKeep("正在同步群快捷菜单…")
             MenuManager.syncGroupPanels(session, currentPlugin.groupOpenIdList())
 
             // 异步轮询 WebSocket 连接状态，输出明确的连接成功/失败日志
             watchConnectionState(currentPlugin)
         } catch (error: Exception) {
+            PluginFileLog.errorAndKeep("QQ 机器人启动异常: ${error.message}")
             throw error
         }
     }
@@ -105,12 +110,12 @@ object QClient {
                     false
                 }
                 if (connected) {
-                    currentPlugin.log_info("QQ 机器人已成功连接，等待消息中…")
+                    PluginFileLog.infoAndKeep("QQ 机器人已成功连接，等待消息中…")
                     return@submitAsync
                 }
                 if (starter == null) return@submitAsync
             }
-            currentPlugin.log_warning(
+            PluginFileLog.warnAndKeep(
                 "QQ 机器人 WebSocket 连接超时（30 秒），请检查网络与机器人凭据；也可查看日志文件确认鉴权是否失败"
             )
         }
