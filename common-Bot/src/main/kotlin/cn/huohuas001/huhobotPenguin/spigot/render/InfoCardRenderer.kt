@@ -29,8 +29,8 @@ import javax.imageio.ImageIO
  * 以 Java2D 绘制毛玻璃风格统计卡片：
  * - 顶部欢迎区（玩家名 + 问候 + MC 头像正面贴图）
  * - 玩家身份条
- * - 统计面板（0.1.5.5 起按用户需求精简为 4 项：金币 / 称号 / 在线时长 / 今日在线时长，
- *   2 列 × 2 行布局，卡片高度随之收紧为 660）
+ * - 统计面板（1.5.0 起为 6 项：金币 / 称号 / 在线时长 / 今日在线时长 / 累计签到 / 点券，
+ *   3 列 × 2 行布局）
  *
  * 0.1.5.2 性能修复：
  * - 背景与头像处理结果按文件 / 玩家缓存，不再每次渲染重新解码处理；
@@ -43,10 +43,13 @@ import javax.imageio.ImageIO
  * 0.1.5.5 彩色称号：数值支持 MC 旧版颜色码（&/§ + 0-9a-fk-or 与 &#RRGGBB），
  * 解析为彩色分段后按原色渲染（DeluxeTags 称号颜色得以真实还原）；
  * 背景图改为子采样解码，超长边限制在约 1600px，防止大尺寸照片整图解码导致内存峰值 / OOM。
+ *
+ * 1.5.0：渲染完成后 flush 单次图像（立即释放栅格占用的堆内存，配合渲染后的
+ * 节流 GC 提示降低内存驻留，见 QueryInfoService）。
  */
 object InfoCardRenderer {
 
-    /** 画布尺寸（0.1.5.5：统计项精简为 4 项后高度收紧）。 */
+    /** 画布尺寸（1.5.0：6 项统计 3 列 × 2 行，高度维持 660）。 */
     internal const val WIDTH = 900
     internal const val HEIGHT = 660
 
@@ -111,6 +114,8 @@ object InfoCardRenderer {
         }
         val output = ByteArrayOutputStream(256 * 1024)
         ImageIO.write(image, "png", output)
+        // 1.5.0：PNG 已写出，立即释放单次画布的栅格内存（缓存中的背景/头像不受影响）
+        image.flush()
         return output.toByteArray()
     }
 
@@ -193,7 +198,7 @@ object InfoCardRenderer {
     }
 
     /**
-     * 生涯统计面板（0.1.5.5：4 项 → 2 列 × 2 行；≥6 项时回退 3 列）。 */
+     * 生涯统计面板（1.5.0：6 项 → 3 列 × 2 行；4-5 项时 2 列避免孤项）。 */
     private fun drawStatsPanel(g: Graphics2D, items: List<CardItem>) {
         val x = 24f
         val y = 336f
@@ -218,7 +223,7 @@ object InfoCardRenderer {
         g.color = COLOR_BADGE
         g.drawString(badgeText, badgeX + 14f, y + 42f)
 
-        // 网格（0.1.5.5：项数少时用 2 列避免最后一行孤项，格子更宽适合称号）
+        // 网格（1.5.0：6 项时 3 列，4-5 项时 2 列避免最后一行孤项）
         val columns = if (items.size >= 6) 3 else 2
         val gridLeft = 52f
         val gridTop = y + 84f

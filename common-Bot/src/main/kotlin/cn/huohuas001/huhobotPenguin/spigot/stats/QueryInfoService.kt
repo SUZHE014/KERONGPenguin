@@ -15,7 +15,6 @@ import java.io.File
 import java.lang.reflect.Method
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -42,15 +41,20 @@ import java.util.concurrent.TimeUnit
  *   由卡片按 MC 色板真实渲染彩色，离线玩家回退到持久化保存的标签选择）；
  * - 渲染/发送失败日志带上堆栈前几帧，且 log_error 已双写插件日志文件，事后可从
  *   logs/qq/qq-bind-日期.log 完整追溯（修复“部分报错没有记录在日志里面”）。
- * 1.5.0：
- * - 渲染性能限制（用户可配）：卡片渲染从 Bukkit 通用异步线程池迁到专用低优先级线程池，
- *   线程数由 qq-bind.render.threads 控制（默认 1，即渲染最多占用 1 核 CPU），
- *   队列积压超过 8 直接回忙不渲染；同一玩家的渲染结果在 TTL 内复用（默认 60 秒，
- *   qq-bind.render.result-cache-seconds 可调），重复查询秒回零渲染；
+ * 1.5.0（覆盖更新）：
+ * - 渲染改为 CPU 异步多线程：不再限制渲染线程数（旧 qq-bind.render.threads 已移除，
+ *   单线程限流会导致多张图片排队堆积反而卡服）；改用缓存线程池按需并行渲染，
+ *   多人同时查询立即各自出图，空闲线程 60 秒后自动回收，不占常驻资源；
+ * - 渲染完成后释放内存：单次渲染图像立即 flush 释放栅格，并做节流 GC 提示
+ *   （两次至少间隔 60 秒，qq-bind.render.gc-after-render 可关），避免频繁 Full GC；
+ * - 统计项新增：累计签到（本插件签到系统累计次数）、点券（PlayerPoints 插件，
+ *   未检测到相关插件则显示“未启用”）；
  * - 修复图片有概率加载失败（coverImage 浮点截断越界，见 InfoCardRenderer）；
  * - 修复称号无法检测：DeluxeTags 反射改为方法名宽容匹配（兼容不同版本重载），
  *   在线玩家直接取内存中的实际显示标签（含默认/强制标签），
- *   离线玩家回退持久化保存的标签选择，占位符文本自动剔除。
+ *   离线玩家回退持久化保存的标签选择，占位符文本自动剔除；
+ * - 同一玩家的渲染结果在 TTL 内复用（默认 60 秒，qq-bind.render.result-cache-seconds 可调），
+ *   重复查询秒回零渲染。
  */
 object QueryInfoService {
 
@@ -60,10 +64,7 @@ object QueryInfoService {
     /** 用户冷却记录：OpenId → 上次触发时间。 */
     private val lastQueryAt = ConcurrentHashMap<String, Long>()
 
-    // ---------- 1.5.0：渲染性能限制（线程池 + 结果缓存） ----------
-
-    /** 渲染队列长度上限：积压超过此值视为过载，直接回忙（防刷屏堆积）。 */
-    private const val RENDER_QUEUE_LIMIT = 8
+    // ---------- 1.5.0：异步多线程渲染 + 结果缓存 + 渲染后内存释放 ----------
 
     /** 渲染结果缓存容量上限（超出先清过期再整体清空，防膨胀）。 */
     private const val CARD_CACHE_MAX = 32
@@ -74,11 +75,18 @@ object QueryInfoService {
     /** 渲染结果缓存：玩家标识 → 最近一次卡片。 */
     private val cardCache = ConcurrentHashMap<String, CachedCard>()
 
-    /** 专用渲染线程池（惰性创建；大小取自 qq-bind.render.threads，默认 1）。 */
+    /** 异步多线程渲染线程池（惰性创建；缓存线程池：按需建线程、忙时并行、闲置回收）。 */
     @Volatile
     private var renderPool: ThreadPoolExecutor? = null
 
-    /** 渲染与发送的全部流程在异步线程执行，避免阻塞消息线程。 */
+    /** 渲染后 GC 节流：两次 GC 提示的最小间隔（防止频繁 Full GC 停顿卡服）。 */
+    private const val GC_MIN_INTERVAL_MILLIS = 60_000L
+
+    /** 上次渲染后 GC 提示时间戳。 */
+    @Volatile
+    private var lastRenderGcAt = 0L
+
+    /** 渲染与发送的全流程在异步多线程池并行执行，避免阻塞机器人消息线程。 */
     fun handle(plugin: HuHoBot, event: GroupMessageEvent, qqOpenId: String) {
         // 查询冷却：同一用户 5 秒内只允许一次，防止刷屏导致渲染风暴
         val now = System.currentTimeMillis()
@@ -116,7 +124,11 @@ object QueryInfoService {
         val balance = vaultData.second
         val skinInfo = readSkinInfoOnMainThread(playerUuid)
 
-        // 3. 拉取头像与背景并渲染（1.5.0：专用渲染池 + 结果缓存）
+        // 1.5.0 覆盖更新：累计签到（本插件签到系统）与点券（PlayerPoints）
+        val checkinTotalText = resolveCheckinTotal(bindManager, quuid)
+        val pointsText = readPointsOnMainThread(playerUuid)
+
+        // 3. 拉取头像与背景并渲染（1.5.0：异步多线程并行渲染 + 结果缓存）
         //    TTL 内同一玩家直接复用上次渲染的 PNG，零渲染开销秒回
         val cacheKey = playerUuid?.toString() ?: playerName
         val ttlMillis = resultCacheMillis()
@@ -130,12 +142,7 @@ object QueryInfoService {
         }
 
         val pool = try {
-            renderPool().also { current ->
-                if (current.queue.size >= RENDER_QUEUE_LIMIT) {
-                    replyText(event, "当前查询人数较多，请稍后再试")
-                    return
-                }
-            }
+            renderPool()
         } catch (_: RejectedExecutionException) {
             replyText(event, "当前查询人数较多，请稍后再试")
             return
@@ -157,7 +164,7 @@ object QueryInfoService {
                         InfoCardAssets.processedBackground(it, InfoCardRenderer.WIDTH, InfoCardRenderer.HEIGHT)
                     }
 
-                    val items = buildItems(stats, balance, title)
+                    val items = buildItems(stats, balance, title, checkinTotalText, pointsText)
                     val bytes = InfoCardRenderer.render(
                         InfoCardRenderer.CardData(
                             playerName = playerName,
@@ -181,6 +188,10 @@ object QueryInfoService {
                     if (!sent) {
                         replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
                     }
+
+                    // 1.5.0：渲染完成后释放内存（单次图像已 flush，这里做节流 GC 提示，
+                    //    两次至少间隔 60 秒，避免频繁 Full GC 反而卡服）
+                    gcAfterRenderIfDue()
                 } catch (error: Throwable) {
                     // 失败日志带堆栈前几帧且双写日志文件，事后可从
                     // logs/qq/qq-bind-日期.log 追溯具体失败原因
@@ -197,41 +208,59 @@ object QueryInfoService {
         }
     }
 
-    // ---------- 1.5.0：渲染池 / 结果缓存实现 ----------
+    // ---------- 1.5.0：异步多线程渲染池 / 结果缓存 / 渲染后内存释放 ----------
 
     /**
-     * 专用渲染线程池：固定 [qqBindRenderThreads]（默认 1，即渲染最多占用 1 核 CPU），
-     * 低优先级守护线程（不与服务器主线程 / 机器人消息线程争抢 CPU），空闲自动回收。
-     * 线程数在首次渲染时读取配置并固定，修改配置后重启服务器生效。
+     * 渲染线程池（缓存线程池）：任务到达时若无空闲线程则新建、有空闲则复用，
+     * 多张卡片并行渲染互不排队；线程空闲 60 秒后自动销毁，不占常驻 CPU/内存。
+     * 比固定线程数的优势：多人同时查询时每张图立刻开渲（不堆积），
+     * 没人查询时零线程开销。守护线程不阻止 JVM 退出。
      */
     private fun renderPool(): ThreadPoolExecutor {
         renderPool?.let { return it }
         synchronized(this) {
             renderPool?.let { return it }
-            val threads = qqBindRenderThreads()
             val pool = ThreadPoolExecutor(
-                threads, threads,
+                0, Int.MAX_VALUE,
                 60L, TimeUnit.SECONDS,
-                LinkedBlockingQueue(RENDER_QUEUE_LIMIT),
+                java.util.concurrent.SynchronousQueue(),
             ) { runnable ->
                 Thread(runnable, "PenguinCardRender").apply {
                     isDaemon = true
-                    priority = Thread.MIN_PRIORITY
                 }
             }
-            pool.allowCoreThreadTimeOut(true)
             renderPool = pool
             return pool
         }
     }
 
-    /** qq-bind.render.threads：渲染线程数（默认 1 = 1 核，范围 1-4）。 */
-    private fun qqBindRenderThreads(): Int = try {
+    /**
+     * 渲染完成后释放 JVM 内存（1.5.0 覆盖更新）：
+     * - 单次渲染图像在 [InfoCardRenderer.render] 内已 flush 释放栅格；
+     * - 这里补一次节流的 GC 提示（System.gc，JVM 可能忽略，取决于启动参数），
+     *   两次至少间隔 [GC_MIN_INTERVAL_MILLIS]，避免每次渲染都 Full GC 造成停顿卡服；
+     * - qq-bind.render.gc-after-render 关闭后完全不触发。
+     */
+    private fun gcAfterRenderIfDue() {
+        if (!gcAfterRenderEnabled()) return
+        val now = System.currentTimeMillis()
+        synchronized(this) {
+            if (now - lastRenderGcAt < GC_MIN_INTERVAL_MILLIS) return
+            lastRenderGcAt = now
+        }
+        try {
+            System.gc()
+        } catch (_: Throwable) {
+        }
+    }
+
+    /** qq-bind.render.gc-after-render：渲染后是否做 GC 提示（默认 true）。 */
+    private fun gcAfterRenderEnabled(): Boolean = try {
         (Bukkit.getPluginManager().getPlugin("KERONGPenguin") as? JavaPlugin)
-            ?.config?.getInt("qq-bind.render.threads", 1) ?: 1
+            ?.config?.getBoolean("qq-bind.render.gc-after-render", true) ?: true
     } catch (_: Throwable) {
-        1
-    }.coerceIn(1, 4)
+        true
+    }
 
     /** qq-bind.render.result-cache-seconds：渲染结果复用秒数（默认 60，0 = 关闭，上限 600）。 */
     private fun resultCacheMillis(): Long = try {
@@ -242,19 +271,93 @@ object QueryInfoService {
     }.coerceIn(0L, 600L) * 1000L
 
     /**
-     * 组装统计项（0.1.5.5：按用户需求精简为 4 项，布局 2 列 × 2 行）。
-     * 顺序：金币 / 称号 / 在线时长 / 今日在线时长。
+     * 组装统计项（1.5.0 覆盖更新：6 项，布局 3 列 × 2 行）。
+     * 顺序：金币 / 称号 / 在线时长 / 今日在线时长 / 累计签到 / 点券。
      */
     private fun buildItems(
         stats: PlayerStatsManager.PlayerStats,
         balance: Double?,
         title: String,
+        checkinTotalText: String,
+        pointsText: String,
     ): List<InfoCardRenderer.CardItem> = listOf(
         InfoCardRenderer.CardItem("金币", if (balance != null) formatAmount(balance) else "暂无"),
         InfoCardRenderer.CardItem("称号", title),
         InfoCardRenderer.CardItem("在线时长", formatPlayTime(stats.playSeconds)),
         InfoCardRenderer.CardItem("今日在线时长", formatTodayTime(stats.todaySeconds)),
+        InfoCardRenderer.CardItem("累计签到", checkinTotalText),
+        InfoCardRenderer.CardItem("点券", pointsText),
     )
+
+    /**
+     * 累计签到（1.5.0 覆盖更新）：读取本插件签到系统的累计签到次数。
+     * 签到功能未开启时显示“未开启”；已开启时显示“N 次”。
+     */
+    private fun resolveCheckinTotal(bindManager: QqBindManager, quuid: String): String {
+        return try {
+            if (!bindManager.isCheckinEnabled) "未开启"
+            else "${bindManager.getCheckinTotal(quuid)} 次"
+        } catch (_: Throwable) {
+            "暂无"
+        }
+    }
+
+    /**
+     * 点券（1.5.0 覆盖更新）：读取 PlayerPoints 插件的点券余额（反射调用，
+     * 与 Vault/DeluxeTags 同样的宽容反射风格，兼容 2.x / 3.x）。
+     * 未检测到 PlayerPoints 插件时显示“未启用”；插件存在但读取失败显示“暂无”。
+     * 在主线程读取（与 Vault 一致，带 3 秒超时保护）。
+     */
+    private fun readPointsOnMainThread(playerUuid: UUID?): String {
+        if (Bukkit.getPluginManager().getPlugin("PlayerPoints") == null) return "未启用"
+        if (playerUuid == null) return "暂无"
+        val call: () -> String = { resolvePlayerPoints(playerUuid) ?: "暂无" }
+        if (Bukkit.isPrimaryThread()) return call()
+        val bukkitPlugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin") ?: return "暂无"
+        return try {
+            Bukkit.getScheduler().callSyncMethod(bukkitPlugin) { call() }
+                .get(3, java.util.concurrent.TimeUnit.SECONDS)
+        } catch (_: Exception) {
+            "暂无"
+        }
+    }
+
+    /**
+     * PlayerPoints 点券余额反射读取：插件实例 → getAPI() → look(UUID)。
+     * 方法名宽容匹配（找不到精确签名时按名称+参数个数遍历），返回 null 表示读取失败。
+     */
+    private fun resolvePlayerPoints(playerUuid: UUID): String? {
+        return try {
+            val pointsPlugin = Bukkit.getPluginManager().getPlugin("PlayerPoints") ?: return null
+            if (!pointsPlugin.isEnabled) return null
+            val api = findMethod(pointsPlugin, "getAPI", 0)?.invoke(pointsPlugin) ?: return null
+            val amount = when (val value = invokePointsLookup(api, playerUuid)) {
+                is Number -> value.toLong()
+                else -> return null
+            }
+            formatNumber(amount)
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /** 调用 PlayerPointsAPI 的余额查询方法（look(UUID)，兼容同名重载）。 */
+    private fun invokePointsLookup(api: Any, playerUuid: UUID): Any? {
+        val methods = try {
+            api.javaClass.methods.filter { it.parameterCount == 1 && java.util.UUID::class.java == it.parameterTypes[0] }
+        } catch (_: Throwable) {
+            return null
+        }
+        // 优先官方方法名 look；同名不存在时退化为“返回数值类型的单 UUID 参数方法”
+        val look = methods.firstOrNull { it.name == "look" } ?: methods.firstOrNull {
+            Number::class.java.isAssignableFrom(it.returnType) || it.returnType == Int::class.javaPrimitiveType
+        } ?: return null
+        return try {
+            look.invoke(api, playerUuid)
+        } catch (_: Throwable) {
+            null
+        }
+    }
 
     /** 在主线程读取 Vault 称号与金币（异步调用时自动切换；超时返回默认值）。 */
     private fun readVaultDataOnMainThread(playerName: String, playerUuid: UUID?): Pair<String, Double?> {

@@ -206,7 +206,7 @@ class ConfigManager(private val plugin: HuHoBotSpigot) {
             "custom-commands" to emptyList<Any>(),
             "qq-bind.enabled" to false,
             "qq-bind.personal-info" to true,
-            "qq-bind.render.threads" to 1,
+            "qq-bind.render.gc-after-render" to true,
             "qq-bind.render.result-cache-seconds" to 60,
             "qq-bind.code-expire-minutes" to 10,
             "qq-bind.code-length" to 5,
