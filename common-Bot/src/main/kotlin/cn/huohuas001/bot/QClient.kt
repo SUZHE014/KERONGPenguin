@@ -358,24 +358,33 @@ object QClient {
                     put("ignore_get_message_error", true)
                 }
             }
-            session.bot?.groupBaseV2?.send(groupId, payload.toJSONString(), Channel.SEND_MESSAGE_HEADERS)
+            val result = session.bot?.groupBaseV2?.send(groupId, payload.toJSONString(), Channel.SEND_MESSAGE_HEADERS)
+            // 送达确认：平台成功受理时返回带 message id 的 V2Result；
+            // 拒绝引用协议 / 引用 ID 无效时返回体无 id（或 HTTP 层抛 RequestException 进 catch），
+            // 若不校验会把“静默拒绝”误当成功，导致 AI 回复整体丢失
+            if (result != null && !result.id.isNullOrEmpty()) {
+                QqBindManager.logVerbose(
+                    "[AI引用] 引用回复发送成功（引用 ID=$referenceId，消息 ID=${result.id}，内容长度=${markdownContent.length}）"
+                )
+                return
+            }
             QqBindManager.logVerbose(
-                "[AI引用] 引用回复发送成功（引用 ID=$referenceId，内容长度=${markdownContent.length}）"
+                "[AI引用] 引用回复未被平台确认（result=${result}），回退普通被动回复"
             )
         } catch (error: Throwable) {
             QqBindManager.logVerbose(
                 "[AI引用] 引用回复发送失败: ${error.message}，回退普通被动回复"
             )
-            // 回退 1：不带引用的普通被动回复（既有行为）
+        }
+        // 回退 1：不带引用的普通被动回复（既有行为）
+        try {
+            replyMarkdown(event, markdownContent, null)
+        } catch (_: Throwable) {
+            // 回退 2：纯文本
             try {
-                replyMarkdown(event, markdownContent, null)
-            } catch (_: Throwable) {
-                // 回退 2：纯文本
-                try {
-                    event.sendMessage(markdownContent)
-                } catch (t2: Throwable) {
-                    QqBindManager.logVerbose("[AI引用] 纯文本回退也失败: ${t2.message}")
-                }
+                event.sendMessage(markdownContent)
+            } catch (t2: Throwable) {
+                QqBindManager.logVerbose("[AI引用] 纯文本回退也失败: ${t2.message}")
             }
         }
     }
