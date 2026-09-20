@@ -63,12 +63,13 @@ object QClient {
      * 2. 新增常驻连接看门狗：连接持续断开超过约 2 分钟（SDK 自身重连卡死时）
      *    由插件兑底触发重连，并写入日志文件。
      *
-     * 1.5.3 连接诊断与自愈：
+     * 1.5.3 连接诊断与自愈（钩子为纯观察者，放行 SDK 全部协议处理）：
      * - Starter.Config.webSocketListener 挂载 [WssDiagnostics]，SDK 每帧收发/连接事件都会回调；
-     *   WSS 错误（含完整堆栈）与全部帧对话写入插件日志文件，事后可从
-     *   logs/qq/qq-bind-日期.log 完整还原鉴权过程（修复“堆栈没有记录在日志里面”）；
+     *   连接错误（含完整堆栈）与协议关键帧（Hello/READY/Invalid Session/鉴权包）写入插件
+     *   日志文件，事后可从 logs/qq/qq-bind-日期.log 完整还原鉴权过程
+     *   （修复“堆栈没有记录在日志里面”）；业务事件帧仅内存计数，不解析不落盘；
      * - 鉴权失败（Hello 后 60 秒无 READY）主动重连，不再干等平台 2 分钟的 4009 踢线；
-     * - SDK 心跳停跳时插件代发心跳，防止 4009 会话超时；
+     * - SDK 心跳停跳时插件代发心跳；心跳已发但平台连续 3 周期无应答（假死）时主动重连；
      * - 启动时对 AppID 凭据做一次健康自检（与 SDK 同源的 token 接口），
      *   凭据失效时日志会给出明确提示。
      *
@@ -89,7 +90,8 @@ object QClient {
             // 0.1.5.5：任意关闭码均自动重连（含 1000 正常关闭；QQ 网关定期踢连接属正常现象，
             // SDK 会在 3 秒后重新鉴权并恢复会话）
             session.config.anyCloseReconnect = true
-            // 1.5.3：挂载连接诊断钩子（全帧落盘 / 错误堆栈落盘 / 心跳兜底 / 鉴权失败快速重连）
+            // 1.5.3：挂载连接诊断钩子（纯观察者，放行 SDK 协议处理；
+            // 注意 kloping SDK 约定：钩子返回 false 会拦截 SDK 自身逻辑，必须返回 true）
             session.config.webSocketListener = WssDiagnostics
             WssDiagnostics.start()
             // 1.5.3：AppID 凭据健康自检（异步，不阻塞连接流程）

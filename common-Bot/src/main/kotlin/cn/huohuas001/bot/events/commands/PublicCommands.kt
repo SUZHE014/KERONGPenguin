@@ -345,39 +345,48 @@ class PublicCommands : CommandSupport() {
         }
     }
 
-    /** /帮助 —— 查看命令列表。 */
+    /**
+     * /帮助 —— 查看命令列表（1.5.3 重排版）。
+     *
+     * 输出改用 Markdown 格式（标题 / 加粗 / 列表 / 分隔线），适配 QQ 官方群机器人
+     * Markdown 渲染（与 /查在线 模板同一渲染链路）；纯文本回退时语法符号
+     * 原样显示，不影响内容可读性。
+     * 末行输出当前插件版本（plugin.pluginVersion，来自构建版本号）。
+     */
     @Commands("帮助")
     fun help(plugin: HuHoBot, event: GroupMessageEvent, params: String) {
         val text = buildString {
-            append("===== KERONG Penguin 命令列表 =====\n\n")
-            append("【QQ 群命令】\n")
-            append("  /帮助 —— 查看本帮助\n")
-            append("  /查信息 —— 查询你的玩家统计卡片\n")
-            append("  /查信息 @成员 —— 查询该成员绑定的玩家信息\n")
-            append("  /查询open ID —— 查询你的 OpenId 与群 OpenId\n")
-            append("  /查询open ID <OpenId> —— 反查该 OpenId 的 QQ 账号与绑定\n")
-            append("  /查在线 —— 查询在线玩家\n")
-            append("  /在线服务器 —— 查看服务器状态\n")
-            append("  /发信息 <内容> —— 发送消息到游戏\n")
-            append("  /motd —— 查询服务器状态\n")
-            append("  /绑定 <绑定码> —— 绑定 QQ（玩家自助）\n")
-            append("  /重新绑定 —— 解除当前 QQ 绑定（踢出玩家）\n")
-            append("  /签到 —— 每日签到领金币\n\n")
-            append("【管理员命令】（需 QQ 群管理员）\n")
-            append("  /执行命令 <命令> —— 执行服务器命令\n")
-            append("  /执行 <key> —— 执行自定义命令\n")
-            append("  /管理员执行 <key> —— 管理员执行自定义命令\n")
-            append("  /全量 —— 切换全量聊天转发\n\n")
-            append("【AI 对话命令】（管理员）\n")
-            append("  /AI对话上下文 开|关 —— 开关全局对话上下文\n")
-            append("  /清除当前上下文 —— 清除全局 AI 对话历史\n")
-            append("  @机器人 + 消息 —— 与 AI 对话\n\n")
-            append("【黑名单命令】（管理员）\n")
-            append("  /黑名单 @QQ —— 将 QQ 加入黑名单\n")
-            append("  /解除黑名单 @QQ —— 从黑名单移除 QQ\n\n")
-            append("【服务器内命令】（MC 内）\n")
-            append("  /qq help —— 查看 QQ 绑定管理命令\n")
-            append("  /hb help —— 查看插件命令")
+            append("### KERONG Penguin 命令手册\n\n")
+            append("**【QQ 群命令】**\n")
+            append("- /帮助 —— 查看本帮助\n")
+            append("- /查信息 —— 我的玩家统计卡片\n")
+            append("- /查信息 @成员 —— 查询该成员绑定的玩家\n")
+            append("- /查询open ID —— 我的 OpenId 与群 OpenId\n")
+            append("- /查询open ID <OpenId> —— 反查 QQ 账号与绑定\n")
+            append("- /查在线 —— 查询在线玩家\n")
+            append("- /在线服务器 —— 查看服务器状态\n")
+            append("- /发信息 <内容> —— 发送消息到游戏\n")
+            append("- /motd —— 查询服务器 MOTD\n")
+            append("- /绑定 <绑定码> —— 绑定 QQ（玩家自助）\n")
+            append("- /重新绑定 —— 解除绑定并踢出玩家\n")
+            append("- /签到 —— 每日签到领金币\n\n")
+            append("**【管理员命令】**（需群管理员）\n")
+            append("- /执行命令 <命令> —— 执行服务器命令\n")
+            append("- /执行 <key> —— 执行自定义命令\n")
+            append("- /管理员执行 <key> —— 管理员执行自定义命令\n")
+            append("- /全量 —— 切换全量聊天转发\n\n")
+            append("**【AI 对话】**\n")
+            append("- /AI对话上下文 开|关 —— 全局上下文开关\n")
+            append("- /清除当前上下文 —— 清空 AI 对话历史\n")
+            append("- @机器人 + 消息 —— 与 AI 对话\n\n")
+            append("**【黑名单】**（管理员）\n")
+            append("- /黑名单 @QQ —— 加入黑名单\n")
+            append("- /解除黑名单 @QQ —— 移出黑名单\n\n")
+            append("**【游戏内命令】**（MC 内）\n")
+            append("- /qq help —— QQ 绑定管理命令\n")
+            append("- /hb help —— 插件命令\n\n")
+            append("---\n")
+            append("**当前插件版本：v${plugin.pluginVersion}**")
         }
         sendDirect(event, text)
     }
