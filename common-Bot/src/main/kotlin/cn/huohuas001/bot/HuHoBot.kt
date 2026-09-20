@@ -106,6 +106,11 @@ interface HuHoBot : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPr
         try {
             QClient.shutdown()
         } finally {
+            // 1.5.3：OpenId 目录脏数据落盘（昵称记录用于 /查询OpenID 反查）
+            try {
+                cn.huohuas001.huhobotPenguin.spigot.qqbind.OpenIdDirectory.flush()
+            } catch (_: Throwable) {
+            }
             WebUiServer.stop()
             LoggerImpl.clearLogSink()
         }

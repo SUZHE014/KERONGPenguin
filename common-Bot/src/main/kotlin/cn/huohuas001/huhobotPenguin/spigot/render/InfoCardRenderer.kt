@@ -49,11 +49,20 @@ import javax.imageio.ImageIO
  *
  * 1.5.2：统计扩为 9 项（新增屠龙次数 / 击杀玩家次数 / 死亡次数），
  * 布局 3 列 × 3 行，画布高度 660 → 760，其余绘制逻辑不变。
+ *
+ * 1.5.3：卡片高度随统计项数自适应：
+ * - 依赖插件（Vault 金币 / DeluxeTags 称号 / PlayerPoints 点券 / 签到系统）
+ *   未安装或未开启时对应统计项直接不展示（见 QueryInfoService.buildItems）；
+ * - 统计面板行数随之减少，画布高度按 472 + 96×行数 自适应
+ *   （9/5 项 = 760，6~8 项 = 760 或 664，4 项 = 664，2~3 项 = 664 或 568），
+ *   底部不再留白，背景图按实际高度处理与缓存。
  */
 object InfoCardRenderer {
 
-    /** 画布尺寸（1.5.2：9 项统计 3 列 × 3 行，高度 660 → 760）。 */
+    /** 画布宽度。 */
     internal const val WIDTH = 900
+
+    /** 满项卡片高度（9 项 / 3 行；1.5.3 起实际高度随项数自适应，见 [cardHeight]）。 */
     internal const val HEIGHT = 760
 
     /** 配色（毛玻璃深色系）。 */
@@ -93,25 +102,39 @@ object InfoCardRenderer {
         val playerName: String,
         val items: List<CardItem>,
         val avatar: BufferedImage? = null,
-        /** 已预处理的背景（尺寸须为 WIDTH × HEIGHT，含模糊与暗化）；null 表示无背景。 */
+        /** 已预处理的背景（尺寸须为 WIDTH × cardHeight(items.size)，含模糊与暗化）；null 表示无背景。 */
         val background: BufferedImage? = null,
     )
+
+    /**
+     * 卡片高度（1.5.3：随统计项数自适应）：
+     * - 顶部欢迎区 + 身份条共 336px，底部留白 24px；
+     * - 统计面板 = 面板头 84 + 网格行数 × 96 + 底垫 26；
+     * - 网格列数与绘制逻辑一致（≥ 6 项 3 列，否则 2 列避免孤项）；
+     * - 满项（3 行）= 760 与历史版本像素一致，少一行减 96px，无底部留白。
+     */
+    internal fun cardHeight(itemCount: Int): Int {
+        val columns = if (itemCount >= 6) 3 else 2
+        val rows = (itemCount + columns - 1) / columns
+        return 472 + 96 * rows
+    }
 
     /**
      * 渲染卡片并返回 PNG 字节。
      */
     fun render(data: CardData): ByteArray {
-        val image = BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_RGB)
+        val height = cardHeight(data.items.size)
+        val image = BufferedImage(WIDTH, height, BufferedImage.TYPE_INT_RGB)
         val g = image.createGraphics()
         try {
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
             g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
             g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
 
-            drawBackground(g, data.background)
+            drawBackground(g, data.background, height)
             drawTopPanel(g, data)
             drawIdentityBar(g, data.playerName)
-            drawStatsPanel(g, data.items)
+            drawStatsPanel(g, data.items, height)
         } finally {
             g.dispose()
         }
@@ -122,20 +145,20 @@ object InfoCardRenderer {
         return output.toByteArray()
     }
 
-    /** 绘制背景：传入的已是预处理完成的 WIDTH×HEIGHT 图；无图片时纯黑。 */
-    private fun drawBackground(g: Graphics2D, background: BufferedImage?) {
-        if (background != null && background.width == WIDTH && background.height == HEIGHT) {
+    /** 绘制背景：传入的已是预处理完成的 WIDTH×height 图；无图片时纯黑。 */
+    private fun drawBackground(g: Graphics2D, background: BufferedImage?, height: Int) {
+        if (background != null && background.width == WIDTH && background.height == height) {
             g.drawImage(background, 0, 0, null)
         } else {
             g.color = Color(0x05, 0x05, 0x08)
-            g.fillRect(0, 0, WIDTH, HEIGHT)
+            g.fillRect(0, 0, WIDTH, height)
             // 纯黑模式加一点极淡的渐变光晕避免完全死黑
             val gradient = java.awt.GradientPaint(
                 0f, 0f, Color(0x10, 0x12, 0x18),
-                0f, HEIGHT.toFloat(), Color(0x05, 0x05, 0x08),
+                0f, height.toFloat(), Color(0x05, 0x05, 0x08),
             )
             g.paint = gradient
-            g.fillRect(0, 0, WIDTH, HEIGHT)
+            g.fillRect(0, 0, WIDTH, height)
         }
     }
 
@@ -201,12 +224,13 @@ object InfoCardRenderer {
     }
 
     /**
-     * 生涯统计面板（1.5.2：9 项 → 3 列 × 3 行；4-5 项时 2 列避免孤项）。 */
-    private fun drawStatsPanel(g: Graphics2D, items: List<CardItem>) {
+     * 生涯统计面板（1.5.2：9 项 → 3 列 × 3 行；4-5 项时 2 列避免孤项；
+     * 1.5.3：高度随项数自适应，缺失依赖的项不渲染）。 */
+    private fun drawStatsPanel(g: Graphics2D, items: List<CardItem>, height: Int) {
         val x = 24f
         val y = 336f
         val w = (WIDTH - 48).toFloat()
-        val h = (HEIGHT - 24 - 336).toFloat()
+        val h = (height - 24 - 336).toFloat()
 
         g.color = Color(0x00, 0x00, 0x00, 142)
         g.fill(RoundRectangle2D.Float(x, y, w, h, 24f, 24f))

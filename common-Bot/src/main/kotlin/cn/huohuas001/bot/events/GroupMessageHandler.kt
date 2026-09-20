@@ -10,6 +10,8 @@ import cn.huohuas001.bot.events.commands.MotdCommands
 import cn.huohuas001.bot.events.commands.PublicCommands
 import cn.huohuas001.bot.state.CommandRepositories
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.AiChat
+import cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender
+import cn.huohuas001.huhobotPenguin.spigot.qqbind.OpenIdDirectory
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
 import com.alibaba.fastjson.JSONArray
 import com.alibaba.fastjson.JSONObject
@@ -45,6 +47,10 @@ class GroupMessageHandler(private val plugin: HuHoBot) : ListenerHost() {
         if (event == null) return
         val groupId: String? = event.groupOpenId ?: event.groupId
         val content = event.rawMessage?.content ?: return
+
+        // 1.5.3：记录群成员昵称（OpenId → 群昵称目录，供 /查询OpenID 反查展示），
+        // 失败不影响消息处理（仅内存写入，持久化异步）
+        OpenIdDirectory.recordEvent(event)
 
         // 查询open ID（OpenId 查询）与查信息（统计卡片）命令始终放行（任何群可用）；
         // 其余命令仅允许配置的群。1.5.2：两命令更名（原 查信息/个人信息）。
@@ -159,10 +165,12 @@ class GroupMessageHandler(private val plugin: HuHoBot) : ListenerHost() {
             val aiContent = "${manager.qqAiOutputPrefix} $reply"
             // 0.1.5.2：AI 对话日志仅写入文件，不再上控制台（隐私泄露修复）
             QqBindManager.logVerbose("[AI对话] 回复内容长度=${aiContent.length} 准备发送")
+            // 1.5.3：改为引用回复（引用发送者的原消息，QQ 官方 MessageReference 协议），
+            // 失败时在 QClient.replyMarkdownWithReference 内部逐级回退，回复不会丢失
             try {
-                event.sendMessage(aiContent)
+                GroupMsgSender.sendReply(event, aiContent)
             } catch (replyError: Throwable) {
-                QqBindManager.logVerbose("[AI对话] sendMessage 失败: ${replyError.message}")
+                QqBindManager.logVerbose("[AI对话] 引用回复发送失败: ${replyError.message}")
             }
         } catch (t: Throwable) {
             event.sendMessage("AI 对话失败：${t.message}")

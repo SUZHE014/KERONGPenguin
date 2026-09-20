@@ -16,12 +16,21 @@ import java.util.concurrent.CompletableFuture
  * - 查询 OpenId 的命令 `/查信息` 更名为 `/查询open ID`（大小写/空格输入变体均可触发）；
  * - 玩家统计卡片命令 `/个人信息` 更名为 `/查信息`；
  * - `/查在线`（查询在线玩家）保持不变。
+ *
+ * 1.5.3：
+ * - `/查信息 @成员`：查询该成员 QQ 绑定的玩家统计卡片（未绑定则提示）；
+ * - `/查询OpenID <OpenId>`：反查该 OpenId 对应的 QQ 账号（群昵称与绑定状态）；
+ *   也可 `/查询OpenID @成员` 直接查看被 @ 成员的 OpenId 与绑定信息。
  */
 class PublicCommands : CommandSupport() {
 
     /**
-     * /查信息 —— 查询当前 QQ 绑定玩家的生涯统计卡片（渲染为图片发送，不 @ 提及）。
+     * /查信息 —— 查询 QQ 绑定玩家的生涯统计卡片（渲染为图片发送，不 @ 提及）。
      * 1.5.2 前名为 /个人信息。未绑定则提示先完成绑定。
+     *
+     * 1.5.3：支持 `/查信息 @成员` 查询该成员绑定的玩家信息（
+     * 提及数据来自消息 mentions 字段而非命令参数——@ 片段在命令分发前已被剥离）；
+     * 未绑定时提示该成员先完成绑定。
      *
      * 开关位于 QQ 绑定配置节：qq-bind.personal-info（默认开启）；
      * 若 QQ 绑定功能（qq-bind.enabled）关闭，本命令同时关闭。
@@ -54,22 +63,79 @@ class PublicCommands : CommandSupport() {
             sendDirect(event, "❌ 无法识别你的 QQ 账号")
             return
         }
+        // 1.5.3：若 @ 了其他成员则查询该成员的绑定玩家（排除机器人自身）
+        val mentioned = extractMentionedQqInfo(event)
+        if (mentioned != null) {
+            val targetId = mentioned.firstOrNull() ?: return
+            val targetName = mentioned.getOrNull(1) ?: targetId
+            QueryInfoService.handle(plugin, event, qq, targetId, targetName)
+            return
+        }
         // 卡片渲染与数据汇总在服务内异步完成
         QueryInfoService.handle(plugin, event, qq)
     }
 
     /**
-     * /查询open ID —— 查询发送者与群的 OpenId（用于配置 bot.groups）。
-     * 1.5.2 前名为 /查信息；玩家统计卡片请使用 /查信息。
-     * 注册多个别名兼容大小写与空格的输入变体（命令匹配为精确匹配）。
+     * /查询open ID —— OpenId 查询与反查。
+     *
+     * 用法（1.5.3）：
+     * - `/查询open ID`：显示自己的 OpenId 与群 OpenId（用于配置 bot.groups）；
+     * - `/查询open ID <OpenId>`：反查该 OpenId 对应的 QQ 账号（群昵称 + 绑定玩家）；
+     * - `/查询open ID @成员`：查看被 @ 成员的 OpenId 与其绑定信息。
+     *
+     * 群昵称来自插件维护的 OpenId 目录（从每条群消息的发送者与被 @ 成员积累，
+     * 见 OpenIdDirectory）；机器人无法通过接口按 OpenId 查询群资料。
      */
     @Commands("查询open ID", "查询Open ID", "查询open id", "查询Open id", "查询openID", "查询OpenID", "查询openid", "查询OPENID")
     fun queryInfo(plugin: HuHoBot, event: GroupMessageEvent, params: String) {
-        if (params == null || params.trim().isEmpty()) {
+        val arg = params?.trim() ?: ""
+        val mentioned = extractMentionedQqInfo(event)
+        if (arg.isEmpty() && mentioned == null) {
             sendDirect(event, "你的OpenId: " + userId(event) + "\n群的OpenId: " + groupId(event))
             return
         }
-        sendDirect(event, "查询玩家绑定状态请在服务器内使用 /qq qxqq <玩家名>")
+        // 1.5.3：反查 / 查看 @ 成员
+        val targetOpenId = if (arg.isNotEmpty()) arg else mentioned!!.firstOrNull() ?: return
+        reverseLookupOpenId(plugin, event, targetOpenId)
+    }
+
+    /**
+     * 反查 OpenId 对应的 QQ 账号：群昵称 + 最后活跃 + 绑定玩家。
+     * 绑定查找（磁盘扫描）在当前消息线程完成，规模小可接受。
+     */
+    private fun reverseLookupOpenId(plugin: HuHoBot, event: GroupMessageEvent, openId: String) {
+        val bindManager = try {
+            QqBindManager.getInstance()
+        } catch (_: Throwable) {
+            null
+        }
+        val nickname = try {
+            cn.huohuas001.huhobotPenguin.spigot.qqbind.OpenIdDirectory.lookupNickname(openId)
+        } catch (_: Throwable) {
+            null
+        }
+        val lastSeen = try {
+            cn.huohuas001.huhobotPenguin.spigot.qqbind.OpenIdDirectory.lookupLastSeenText(openId)
+        } catch (_: Throwable) {
+            null
+        }
+        val boundPlayer = try {
+            bindManager?.findPlayerByQq(openId)
+        } catch (_: Throwable) {
+            null
+        }
+        val text = buildString {
+            append("【OpenID 反查】\n")
+            append("OpenId: $openId\n")
+            append(
+                "群昵称: " + (nickname ?: "未知（该账号未在机器人可见的群消息中出现过）") + "\n"
+            )
+            if (lastSeen != null) append("最后活跃: $lastSeen\n")
+            append(
+                "绑定玩家: " + (boundPlayer?.takeIf { it.isNotEmpty() } ?: "未绑定任何游戏玩家")
+            )
+        }
+        sendDirect(event, text.trim())
     }
 
     /** /发信息 <内容> —— 发送消息到游戏内。 */
@@ -287,7 +353,9 @@ class PublicCommands : CommandSupport() {
             append("【QQ 群命令】\n")
             append("  /帮助 —— 查看本帮助\n")
             append("  /查信息 —— 查询你的玩家统计卡片\n")
+            append("  /查信息 @成员 —— 查询该成员绑定的玩家信息\n")
             append("  /查询open ID —— 查询你的 OpenId 与群 OpenId\n")
+            append("  /查询open ID <OpenId> —— 反查该 OpenId 的 QQ 账号与绑定\n")
             append("  /查在线 —— 查询在线玩家\n")
             append("  /在线服务器 —— 查看服务器状态\n")
             append("  /发信息 <内容> —— 发送消息到游戏\n")

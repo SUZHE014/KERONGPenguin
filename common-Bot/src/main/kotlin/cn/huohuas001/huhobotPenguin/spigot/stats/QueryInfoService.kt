@@ -22,15 +22,22 @@ import java.util.concurrent.TimeUnit
  * /查信息（1.5.2 前名为 /个人信息）命令服务：QQ → 玩家 UUID → 数据组装 → 卡片渲染 → 图片发送。
  *
  * 流程：
- * 1. 通过 QQ OpenId 查找绑定的玩家（未绑定则直接提示）；
+ * 1. 通过 QQ OpenId 查找绑定的玩家（未绑定则直接提示；1.5.3 支持 `/查信息 @成员`
+ *    查询他人，未绑定时指明是谁未绑定）；
  * 2. 汇总数据：金币（Vault）、称号（0.1.5.5 默认 DeluxeTags，含颜色码）、
  *    在线时长与今日在线（本插件自记录）、累计签到（本插件签到系统）、点券（PlayerPoints）、
  *    屠龙次数 / 击杀玩家次数 / 死亡次数（本插件自记录，1.5.2 起展示）；
  * 3. 异步渲染毛玻璃风格统计卡片（背景从插件目录 img/ 随机挑选，无图用黑色；
- *    1.5.2 起展示 9 项：金币 / 称号 / 在线时长 / 今日在线时长 / 累计签到 / 点券 /
+ *    最多 9 项：金币 / 称号 / 在线时长 / 今日在线时长 / 累计签到 / 点券 /
  *    屠龙次数 / 击杀玩家次数 / 死亡次数，3 列 × 3 行）；
  * 4. 以图片消息发送到群（不 @ 提及）；发送失败时以文本回退提示，
  *    与“生成失败”区分开，便于定位是渲染问题还是机器人连接问题。
+ *
+ * 1.5.3：
+ * - 依赖插件缺失隐藏统计项：Vault（金币）/ DeluxeTags+Vault（称号）/ PlayerPoints（点券）
+ *   任一未安装或未启用（含经济服务未注册）时对应项不渲染，签到未开启同理；
+ *   卡片高度随实际项数自适应（满项 760，少一行减 96px），背景按实际高度处理；
+ * - 查询他人：`/查信息 @成员` 渲染该成员绑定玩家的卡片，冷却按查询发起者计。
  *
  * 1.5.1：
  * - 全链路异步：机器人消息线程只做冷却判断，绑定查找（磁盘 IO）、统计 / 称号 /
@@ -70,6 +77,7 @@ object QueryInfoService {
     /**
      * 主线程一次性采集的数据快照（1.5.1：合并为单次主线程跳转）。
      * 附带各字段的检测说明（写入日志文件，用于称号/金币/点券检测排障）。
+     * 1.5.3：新增依赖可用性标记——对应插件未安装/未启用时，该统计项不展示。
      */
     private data class MainThreadSnapshot(
         val stats: PlayerStatsManager.PlayerStats,
@@ -81,6 +89,12 @@ object QueryInfoService {
         val pointsNote: String,
         val skinUrl: String?,
         val playerDataDir: File?,
+        /** Vault（含经济服务）是否可用——不可用时卡片不展示“金币”项。 */
+        val vaultAvailable: Boolean,
+        /** 称号来源链（DeluxeTags 或 Vault）是否有任一插件可用——均无时不展示“称号”项。 */
+        val titleAvailable: Boolean,
+        /** PlayerPoints 是否可用——不可用时卡片不展示“点券”项。 */
+        val pointsAvailable: Boolean,
     )
 
     /** 称号检测结果（值 + 来源说明）。 */
@@ -92,9 +106,19 @@ object QueryInfoService {
     /**
      * 全流程异步执行（1.5.1）：机器人消息线程仅做冷却判断，
      * 绑定查找、数据采集、渲染与发送全部在共享渲染池完成。
+     *
+     * 1.5.3：支持查询他人——`/查信息 @成员` 时 [qqOpenId] 为发起查询者（冷却接其计），
+     * [targetOpenId] 为被查询成员（未绑定则提示该成员先完成绑定）；
+     * 不传 [targetOpenId] 时行为与旧版一致（查询自己）。
      */
-    fun handle(plugin: HuHoBot, event: GroupMessageEvent, qqOpenId: String) {
-        // 查询冷却：同一用户 5 秒内只允许一次，防止刷屏导致渲染风暴
+    fun handle(
+        plugin: HuHoBot,
+        event: GroupMessageEvent,
+        qqOpenId: String,
+        targetOpenId: String? = null,
+        targetName: String? = null,
+    ) {
+        // 查询冷却：同一用户 5 秒内只允许一次，防止刷屏导致渲染风暴（1.5.3：按发起者计）
         val now = System.currentTimeMillis()
         val lastAt = lastQueryAt[qqOpenId] ?: 0L
         if (now - lastAt < USER_COOLDOWN_MILLIS) {
@@ -103,6 +127,9 @@ object QueryInfoService {
         }
         lastQueryAt[qqOpenId] = now
         if (lastQueryAt.size > 1024) lastQueryAt.clear()
+
+        // 查询目标：未指定则查询自己（旧版行为）
+        val lookupOpenId = targetOpenId?.takeIf { it.isNotEmpty() } ?: qqOpenId
 
         try {
             // 共享渲染池（CardRenderPool：硬编码核数一半 1..4 线程；完成后自动节流 GC）
@@ -118,10 +145,20 @@ object QueryInfoService {
                         replyText(event, "❌ 绑定管理器未就绪，请稍后再试")
                         return@submit
                     }
-                    val playerName = bindManager.findPlayerByQq(qqOpenId)
-                    val quuid = bindManager.findQuuidByQq(qqOpenId)
+                    if (targetOpenId != null) {
+                        PluginFileLog.write(
+                            "[查信息] ${qqOpenId} 查询 ${targetName ?: targetOpenId}（${targetOpenId}）的玩家信息"
+                        )
+                    }
+                    val playerName = bindManager.findPlayerByQq(lookupOpenId)
+                    val quuid = bindManager.findQuuidByQq(lookupOpenId)
                     if (playerName == null || playerName.isEmpty() || quuid == null || quuid.isEmpty()) {
-                        replyText(event, "该账号未绑定QQ，请先进入服务器完成绑定后再查询")
+                        // 1.5.3：查询他人未绑定时指明是谁未绑定，避免误以为查询者自己未绑定
+                        replyText(
+                            event,
+                            if (targetName != null) "@$targetName 未绑定游戏账号（该 QQ 还未完成绑定，无法查询其玩家信息）"
+                            else "该账号未绑定QQ，请先进入服务器完成绑定后再查询"
+                        )
                         return@submit
                     }
                     val playerUuid: UUID? = parseUuid(bindManager.getPlayerUuidByQuuid(quuid))
@@ -149,9 +186,25 @@ object QueryInfoService {
                     PluginFileLog.write("[检测] 点券: $playerName → ${snapshot.pointsNote} → ${snapshot.pointsText}")
 
                     // 5. 累计签到（本插件签到系统；磁盘 IO 同样在池线程执行）
+                    // 1.5.3：签到功能未开启时返回 null → 卡片不展示“累计签到”项
                     val checkinTotalText = resolveCheckinTotal(bindManager, quuid)
 
-                    // 6. 拉取头像与背景并渲染
+                    // 6. 组装统计项（1.5.3：依赖插件缺失的项不展示）并计算卡片实际高度，
+                    //    背景图按实际高度处理与缓存（不同高度缓存隔离，互不污染）
+                    val items = buildItems(snapshot, checkinTotalText)
+                    val cardHeight = InfoCardRenderer.cardHeight(items.size)
+                    PluginFileLog.write(
+                        "[查信息] 统计项 ${items.size} 项（金币=${if (snapshot.vaultAvailable) "展示" else "隐藏-Vault未装"}" +
+                            " 称号=${if (snapshot.titleAvailable) "展示" else "隐藏-无来源插件"}" +
+                            " 点券=${if (snapshot.pointsAvailable) "展示" else "隐藏-PlayerPoints未装"}" +
+                            " 签到=${if (checkinTotalText != null) "展示" else "隐藏-未开启"}）卡片 ${InfoCardRenderer.WIDTH}×$cardHeight"
+                    )
+                    val dataDirectory = plugin.configFile?.parentFile
+                    val background = dataDirectory?.let {
+                        InfoCardAssets.processedBackground(it, InfoCardRenderer.WIDTH, cardHeight)
+                    }
+
+                    // 7. 拉取头像并渲染
                     val avatar = InfoCardAssets.fetchAvatar(
                         InfoCardAssets.AvatarRequest(
                             uuid = playerUuid,
@@ -160,12 +213,6 @@ object QueryInfoService {
                             playerDataDir = snapshot.playerDataDir,
                         )
                     )
-                    val dataDirectory = plugin.configFile?.parentFile
-                    val background = dataDirectory?.let {
-                        InfoCardAssets.processedBackground(it, InfoCardRenderer.WIDTH, InfoCardRenderer.HEIGHT)
-                    }
-
-                    val items = buildItems(snapshot.stats, snapshot.balance, snapshot.title, checkinTotalText, snapshot.pointsText)
                     val bytes = InfoCardRenderer.render(
                         InfoCardRenderer.CardData(
                             playerName = playerName,
@@ -175,7 +222,7 @@ object QueryInfoService {
                         )
                     )
 
-                    // 7. 渲染成功写入结果缓存（TTL 内重复查询直接复用）
+                    // 8. 渲染成功写入结果缓存（TTL 内重复查询直接复用）
                     if (ttlMillis > 0 && bytes.isNotEmpty()) {
                         cardCache[cacheKey] = CachedCard(bytes, System.currentTimeMillis())
                         if (cardCache.size > CARD_CACHE_MAX) {
@@ -184,7 +231,7 @@ object QueryInfoService {
                         }
                     }
 
-                    // 8. 发送图片（不 @）；发送失败与生成失败分开提示，便于定位问题
+                    // 9. 发送图片（不 @）；发送失败与生成失败分开提示，便于定位问题
                     val sent = QClient.replyWithImgBytes(event, bytes)
                     if (!sent) {
                         replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
@@ -217,36 +264,50 @@ object QueryInfoService {
     }.coerceIn(0L, 600L) * 1000L
 
     /**
-     * 组装统计项（1.5.2：9 项，布局 3 列 × 3 行，卡片高度 660 → 760）。
-     * 顺序：金币 / 称号 / 在线时长 / 今日在线时长 / 累计签到 / 点券 /
-     * 屠龙次数 / 击杀玩家次数 / 死亡次数（后三项为 1.5.2 新增；屠龙与死亡为
-     * 插件一直在后台累计的数据，击杀玩家自 1.5.2 起记录）。
+     * 组装统计项（1.5.3：依赖插件缺失的项不展示，卡片高度随实际项数自适应）。
+     *
+     * 隐藏规则（用户需求：检测不到相关依赖插件则不显示对应项目）：
+     * - 金币：Vault 未安装 / 未启用 / 经济服务未注册（如只装了权限插件）→ 不展示；
+     * - 称号：DeluxeTags 与 Vault 均不可用（称号来源链全断）→ 不展示；
+     * - 累计签到：本插件签到功能未开启 → 不展示；
+     * - 点券：PlayerPoints 未安装 / 未启用 → 不展示；
+     * - 在线时长 / 今日在线时长 / 屠龙次数 / 击杀玩家次数 / 死亡次数：本插件自记录，恒展示；
+     * - 插件已安装但读值失败（主线程繁忙/读取异常）→ 保留该项并显示“暂无”（与隐藏区分）。
+     *
+     * 展示顺序与 1.5.2 一致：金币 / 称号 / 在线时长 / 今日在线时长 /
+     * 累计签到 / 点券 / 屠龙次数 / 击杀玩家次数 / 死亡次数。
      */
     private fun buildItems(
-        stats: PlayerStatsManager.PlayerStats,
-        balance: Double?,
-        title: String,
-        checkinTotalText: String,
-        pointsText: String,
-    ): List<InfoCardRenderer.CardItem> = listOf(
-        InfoCardRenderer.CardItem("金币", if (balance != null) formatAmount(balance) else "暂无"),
-        InfoCardRenderer.CardItem("称号", title),
-        InfoCardRenderer.CardItem("在线时长", formatPlayTime(stats.playSeconds)),
-        InfoCardRenderer.CardItem("今日在线时长", formatTodayTime(stats.todaySeconds)),
-        InfoCardRenderer.CardItem("累计签到", checkinTotalText),
-        InfoCardRenderer.CardItem("点券", pointsText),
-        InfoCardRenderer.CardItem("屠龙次数", "${stats.dragonKills} 次"),
-        InfoCardRenderer.CardItem("击杀玩家次数", "${stats.playerKills} 次"),
-        InfoCardRenderer.CardItem("死亡次数", "${stats.deaths} 次"),
-    )
+        snapshot: MainThreadSnapshot,
+        checkinTotalText: String?,
+    ): List<InfoCardRenderer.CardItem> = buildList {
+        if (snapshot.vaultAvailable) {
+            add(InfoCardRenderer.CardItem("金币", if (snapshot.balance != null) formatAmount(snapshot.balance) else "暂无"))
+        }
+        if (snapshot.titleAvailable) {
+            add(InfoCardRenderer.CardItem("称号", snapshot.title))
+        }
+        add(InfoCardRenderer.CardItem("在线时长", formatPlayTime(snapshot.stats.playSeconds)))
+        add(InfoCardRenderer.CardItem("今日在线时长", formatTodayTime(snapshot.stats.todaySeconds)))
+        if (checkinTotalText != null) {
+            add(InfoCardRenderer.CardItem("累计签到", checkinTotalText))
+        }
+        if (snapshot.pointsAvailable) {
+            add(InfoCardRenderer.CardItem("点券", snapshot.pointsText))
+        }
+        add(InfoCardRenderer.CardItem("屠龙次数", "${snapshot.stats.dragonKills} 次"))
+        add(InfoCardRenderer.CardItem("击杀玩家次数", "${snapshot.stats.playerKills} 次"))
+        add(InfoCardRenderer.CardItem("死亡次数", "${snapshot.stats.deaths} 次"))
+    }
 
     /**
      * 累计签到（1.5.0 覆盖更新）：读取本插件签到系统的累计签到次数。
-     * 签到功能未开启时显示“未开启”；已开启时显示“N 次”。
+     * 1.5.3：签到功能未开启时返回 null（卡片不展示该项）；
+     * 已开启时显示“N 次”；读取异常时返回“暂无”（保留展示便于发现异常）。
      */
-    private fun resolveCheckinTotal(bindManager: QqBindManager, quuid: String): String {
+    private fun resolveCheckinTotal(bindManager: QqBindManager, quuid: String): String? {
         return try {
-            if (!bindManager.isCheckinEnabled) "未开启"
+            if (!bindManager.isCheckinEnabled) null
             else "${bindManager.getCheckinTotal(quuid)} 次"
         } catch (_: Throwable) {
             "暂无"
@@ -279,6 +340,8 @@ object QueryInfoService {
             val balance = queryBalance(playerName, playerUuid)
             val points = if (playerUuid != null) resolvePlayerPoints(playerUuid) else null
             val skinInfo = if (playerUuid != null) querySkinInfo(playerUuid) else null
+            // 1.5.3：依赖插件可用性检测（与数据同线程采集，避免状态不一致）
+            val dependency = detectDependencies()
             MainThreadSnapshot(
                 stats = stats,
                 title = title.value,
@@ -289,6 +352,9 @@ object QueryInfoService {
                 pointsNote = points?.note ?: "无玩家 UUID",
                 skinUrl = skinInfo?.first,
                 playerDataDir = skinInfo?.second,
+                vaultAvailable = dependency.vault,
+                titleAvailable = dependency.title,
+                pointsAvailable = dependency.points,
             )
         }
         if (Bukkit.isPrimaryThread()) return task()
@@ -301,7 +367,34 @@ object QueryInfoService {
         }
     }
 
-    /** 主线程繁忙（超时/不可调度）时的兜底快照：字段保留“暂无”并注明原因。 */
+    /**
+     * 依赖插件可用性检测（1.5.3）：
+     * - 金币：Vault 已启用且经济服务已注册（只装权限类 Vault 时无经济服务，同样隐藏）；
+     * - 称号：DeluxeTags 或 Vault 任一可用（resolveTitle 的回退链两端）；
+     * - 点券：PlayerPoints 已启用。
+     */
+    private data class DependencyStatus(val vault: Boolean, val title: Boolean, val points: Boolean)
+
+    private fun detectDependencies(): DependencyStatus = try {
+        val vaultPlugin = Bukkit.getPluginManager().getPlugin("Vault")
+        val vaultOn = vaultPlugin != null && vaultPlugin.isEnabled
+        val economyRegistered = vaultOn && try {
+            val economyClass = Class.forName("net.milkbowl.vault.economy.Economy")
+            Bukkit.getServicesManager().getRegistration(economyClass) != null
+        } catch (_: Throwable) {
+            false
+        }
+        val deluxeTagsOn = Bukkit.getPluginManager().getPlugin("DeluxeTags")?.isEnabled == true
+        val pointsOn = Bukkit.getPluginManager().getPlugin("PlayerPoints")?.isEnabled == true
+        DependencyStatus(vault = economyRegistered, title = deluxeTagsOn || vaultOn, points = pointsOn)
+    } catch (_: Throwable) {
+        DependencyStatus(vault = false, title = false, points = false)
+    }
+
+    /**
+     * 主线程繁忙（超时/不可调度）时的兑底快照：字段保留“暂无”并注明原因。
+     * 1.5.3：依赖标记置 true（沿用旧版展示“暂无”的行为，避免超时时误隐藏项）。
+     */
     private fun timeoutSnapshot(): MainThreadSnapshot = MainThreadSnapshot(
         stats = PlayerStatsManager.PlayerStats(),
         title = "暂无",
@@ -312,6 +405,9 @@ object QueryInfoService {
         pointsNote = "主线程繁忙读取超时",
         skinUrl = null,
         playerDataDir = null,
+        vaultAvailable = true,
+        titleAvailable = true,
+        pointsAvailable = true,
     )
 
     /** 主线程查询：在线玩家取 Profile 皮肤 URL；同时定位 playerdata 目录（离线玩家 NBT 解析用）。 */

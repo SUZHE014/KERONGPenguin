@@ -14,6 +14,9 @@ import io.github.kloping.qqbot.api.v2.GroupMessageEvent
  * 引用原理：
  * - QClient.replyMarkdown 内部 setMsg_id(msgId) 实现引用；
  * - Markdown 模式（msg_type=2）渲染引用框。
+ *
+ * 1.5.3：AI 对话回复改为引用发送者的原消息（QQ 官方 MessageReference 协议，
+ * 见 QClient.replyMarkdownWithReference），失败自动回退普通被动回复。
  */
 object GroupMsgSender {
 
@@ -30,19 +33,14 @@ object GroupMsgSender {
         }
     }
 
-    /** 发送 AI 引用回复（Markdown 模式 + msg_id 引用，失败回退纯文本）。 */
+    /**
+     * 发送 AI 引用回复（1.5.3：Markdown 模式 + message_reference 引用发送者原消息）。
+     *
+     * 引用 ID 提取顺序（与官方文档一致）：
+     * 新版事件 MessageScene.ext 数组的 msg_idx（REFIDX 形式）→ 事件 msg_id → rawMessage.id；
+     * 平台不支持引用协议时自动回退普通被动回复（既有行为），AI 回复不会丢失。
+     */
     fun sendReply(event: GroupMessageEvent, content: String) {
-        try {
-            QClient.replyMarkdown(event, content, null)
-            QqBindManager.logVerbose("[AI引用] replyMarkdown 发送成功，内容长度=${content.length}")
-        } catch (t: Throwable) {
-            QqBindManager.logVerbose("[AI引用] replyMarkdown 失败: ${t.message}，回退 sendMessage")
-            try {
-                event.sendMessage(content)
-                QqBindManager.logVerbose("[AI引用] sendMessage 回退发送成功")
-            } catch (t2: Throwable) {
-                QqBindManager.logVerbose("[AI引用] sendMessage 也失败: ${t2.message}")
-            }
-        }
+        QClient.replyMarkdownWithReference(event, content)
     }
 }

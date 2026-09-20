@@ -5,7 +5,9 @@ import cn.huohuas001.bot.events.commands.BaseCommand
 import cn.huohuas001.bot.provider.BotShared
 import cn.huohuas001.bot.provider.plugin
 import cn.huohuas001.bot.tools.PluginFileLog
+import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
 import com.alibaba.fastjson.JSON
+import com.alibaba.fastjson.JSONObject
 import io.github.kloping.qqbot.Starter
 import io.github.kloping.qqbot.api.Intents
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
@@ -61,6 +63,15 @@ object QClient {
      * 2. 新增常驻连接看门狗：连接持续断开超过约 2 分钟（SDK 自身重连卡死时）
      *    由插件兑底触发重连，并写入日志文件。
      *
+     * 1.5.3 连接诊断与自愈：
+     * - Starter.Config.webSocketListener 挂载 [WssDiagnostics]，SDK 每帧收发/连接事件都会回调；
+     *   WSS 错误（含完整堆栈）与全部帧对话写入插件日志文件，事后可从
+     *   logs/qq/qq-bind-日期.log 完整还原鉴权过程（修复“堆栈没有记录在日志里面”）；
+     * - 鉴权失败（Hello 后 60 秒无 READY）主动重连，不再干等平台 2 分钟的 4009 踢线；
+     * - SDK 心跳停跳时插件代发心跳，防止 4009 会话超时；
+     * - 启动时对 AppID 凭据做一次健康自检（与 SDK 同源的 token 接口），
+     *   凭据失效时日志会给出明确提示。
+     *
      * @param appid         QQ 机器人 AppId
      * @param secret        QQ 机器人 Secret
      * @param logFilePattern SDK 日志文件名模板（null 表示不落盘）
@@ -78,6 +89,16 @@ object QClient {
             // 0.1.5.5：任意关闭码均自动重连（含 1000 正常关闭；QQ 网关定期踢连接属正常现象，
             // SDK 会在 3 秒后重新鉴权并恢复会话）
             session.config.anyCloseReconnect = true
+            // 1.5.3：挂载连接诊断钩子（全帧落盘 / 错误堆栈落盘 / 心跳兜底 / 鉴权失败快速重连）
+            session.config.webSocketListener = WssDiagnostics
+            WssDiagnostics.start()
+            // 1.5.3：AppID 凭据健康自检（异步，不阻塞连接流程）
+            currentPlugin.submitAsync {
+                try {
+                    PluginFileLog.infoAndKeep(QqTokenHealth.check(appid, secret))
+                } catch (_: Throwable) {
+                }
+            }
             PluginFileLog.infoAndKeep("正在连接 QQ 开放平台并鉴权…")
             session.run()
 
@@ -275,7 +296,7 @@ object QClient {
         }
     }
 
-    /** 在群消息事件上下文中回复 Markdown。 */
+    /** 在群消息事件上下文中回复 Markdown（msg_id 被动回复）。 */
     fun replyMarkdown(event: GroupMessageEvent, markdownContent: String, keyboard: Keyboard? = null) {
         val currentPlugin = plugin
         val session = starter
@@ -298,6 +319,108 @@ object QClient {
             session.bot?.groupBaseV2?.send(groupId, JSON.toJSONString(payload), Channel.SEND_MESSAGE_HEADERS)
         } catch (error: Exception) {
             currentPlugin.log_error("回复 Markdown 失败: ${error.message}")
+        }
+    }
+
+    /**
+     * 在群消息事件上下文中回复 Markdown 并引用发送者的原消息（1.5.3，AI 对话引用回复）。
+     *
+     * 引用原理（QQ 官方机器人文档 MessageReference）：
+     * - 请求体附带 message_reference：{"message_id": 被引用消息 ID, "ignore_get_message_error": true}；
+     * - 新版平台事件中，被引用消息 ID 从消息事件 MessageScene 的 ext 数组（key=value 形式）
+     *   的 msg_idx 字段获取（形如 REFIDX_xxxx）；旧版事件无该字段时回退使用事件消息 ID；
+     * - SDK 的 V2MsgData 不含 message_reference 字段，故此处手工构造请求体 JSON，
+     *   仍走 SDK 同一发送接口 /v2/groups/{group_openid}/messages；
+     * - 失败回退链：带引用发送失败 → 普通被动回复（replyMarkdown） → 纯文本 sendMessage，
+     *   确保 AI 回复任何情况下都能送达。
+     */
+    fun replyMarkdownWithReference(event: GroupMessageEvent, markdownContent: String) {
+        val currentPlugin = plugin
+        val session = starter
+        if (session == null) {
+            currentPlugin.log_warning("QQ 机器人未启动，无法回复引用消息")
+            return
+        }
+        if (markdownContent.isBlank()) return
+        val referenceId = extractQuoteMessageId(event)
+        try {
+            val groupId = event.groupOpenId ?: event.groupId ?: return
+            val payload = JSONObject()
+            payload["content"] = markdownContent
+            payload["msg_type"] = 2
+            payload["markdown"] = JSONObject().apply { put("content", markdownContent) }
+            val msgId = event.rawMessage?.id
+            if (!msgId.isNullOrEmpty()) payload["msg_id"] = msgId
+            event.msgSeq?.let { payload["msg_seq"] = it }
+            if (!referenceId.isNullOrEmpty()) {
+                payload["message_reference"] = JSONObject().apply {
+                    put("message_id", referenceId)
+                    put("ignore_get_message_error", true)
+                }
+            }
+            session.bot?.groupBaseV2?.send(groupId, payload.toJSONString(), Channel.SEND_MESSAGE_HEADERS)
+            QqBindManager.logVerbose(
+                "[AI引用] 引用回复发送成功（引用 ID=$referenceId，内容长度=${markdownContent.length}）"
+            )
+        } catch (error: Throwable) {
+            QqBindManager.logVerbose(
+                "[AI引用] 引用回复发送失败: ${error.message}，回退普通被动回复"
+            )
+            // 回退 1：不带引用的普通被动回复（既有行为）
+            try {
+                replyMarkdown(event, markdownContent, null)
+            } catch (_: Throwable) {
+                // 回退 2：纯文本
+                try {
+                    event.sendMessage(markdownContent)
+                } catch (t2: Throwable) {
+                    QqBindManager.logVerbose("[AI引用] 纯文本回退也失败: ${t2.message}")
+                }
+            }
+        }
+    }
+
+    /**
+     * 提取用于引用回复的消息 ID（1.5.3）：
+     * 1. 深度遍历事件原始 JSON，查找新版平台字段 msg_idx（MessageScene.ext 数组，
+     *    key=value 形式，形如 "msg_idx=REFIDX_xxxx"）——命中则直接返回其值；
+     * 2. 旧版事件：回退事件顶层 msg_id；
+     * 3. 最终回退 rawMessage.id（既有被动回复使用的 ID，兼容旧协议）。
+     */
+    internal fun extractQuoteMessageId(event: GroupMessageEvent): String? {
+        try {
+            val metadata = (event as? io.github.kloping.qqbot.impl.message.v2.BaseMessageEvent<*>)?.metadata
+            if (metadata != null) {
+                deepFindValue(metadata, "msg_idx")?.let { return it }
+                metadata.getString("msg_id")?.takeIf { it.isNotEmpty() }?.let { return it }
+            }
+        } catch (_: Throwable) {
+        }
+        return event.rawMessage?.id
+    }
+
+    /** 深度优先遍历 JSON 树，返回首个匹配键的字符串值（限深 6 层防递归失控）。 */
+    private fun deepFindValue(node: Any?, key: String, depth: Int = 0): String? {
+        if (depth > 6 || node == null) return null
+        return try {
+            when (node) {
+                is com.alibaba.fastjson.JSONObject -> {
+                    node.getString(key)?.takeIf { it.isNotEmpty() }?.let { return it }
+                    for (entry in node.entries) {
+                        deepFindValue(entry.value, key, depth + 1)?.let { return it }
+                    }
+                    null
+                }
+                is com.alibaba.fastjson.JSONArray -> {
+                    for (item in node) {
+                        deepFindValue(item, key, depth + 1)?.let { return it }
+                    }
+                    null
+                }
+                else -> null
+            }
+        } catch (_: Throwable) {
+            null
         }
     }
 
@@ -355,6 +478,10 @@ object QClient {
     /** 停止客户端。 */
     fun shutdown() {
         shuttingDown = true
+        try {
+            WssDiagnostics.stop()
+        } catch (_: Throwable) {
+        }
         try {
             starter?.shutdown()
         } catch (_: Throwable) {
