@@ -55,7 +55,8 @@ class ConfigManager(private val plugin: HuHoBotSpigot) {
         }
         // 清理已废弃的配置段
         // 1.5.1：移除 query-online 段（图片输出改为 markdown 关闭时自动启用）与 motd.text（文本模板已删除）
-        for (removed in listOf("agent", "audit", "whitelist", "query-online", "motd.text")) {
+        // 1.5.2：移除 commands.个人信息（该命令已更名为 查信息）
+        for (removed in listOf("agent", "audit", "whitelist", "query-online", "motd.text", "commands.个人信息")) {
             if (config.contains(removed)) {
                 config.set(removed, null)
                 changed = true
@@ -165,11 +166,13 @@ class ConfigManager(private val plugin: HuHoBotSpigot) {
 
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
-        private const val CURRENT_CONFIG_VERSION = 12
+        private const val CURRENT_CONFIG_VERSION = 13
 
-        /** 支持开关的群命令名单。 */
+        /**
+         * 支持开关的群命令名单（1.5.2：查信息更名对应个人信息卡片命令，新增 查询open ID）。
+         */
         private val COMMAND_NAMES = listOf(
-            "查信息", "绑定", "重新绑定", "查在线", "在线服务器", "发信息",
+            "查询open ID", "查信息", "绑定", "重新绑定", "查在线", "在线服务器", "发信息",
             "执行命令", "执行", "管理员执行", "全量", "motd", "帮助",
             "AI对话上下文", "清除当前上下文", "黑名单", "解除黑名单", "签到",
         )

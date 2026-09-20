@@ -261,7 +261,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         }
 
     /**
-     * /个人信息 命令开关（默认开启）。
+     * /查信息 统计卡片命令开关（默认开启，1.5.2 前名为 /个人信息）。
      * 前提：QQ 绑定功能（qq-bind.enabled）处于开启状态，否则本开关无效。
      */
     val isPersonalInfoEnabled: Boolean

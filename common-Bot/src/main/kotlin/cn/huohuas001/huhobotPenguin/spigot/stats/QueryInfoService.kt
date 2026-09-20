@@ -19,14 +19,16 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /**
- * /个人信息 命令服务：QQ → 玩家 UUID → 数据组装 → 卡片渲染 → 图片发送。
+ * /查信息（1.5.2 前名为 /个人信息）命令服务：QQ → 玩家 UUID → 数据组装 → 卡片渲染 → 图片发送。
  *
  * 流程：
  * 1. 通过 QQ OpenId 查找绑定的玩家（未绑定则直接提示）；
  * 2. 汇总数据：金币（Vault）、称号（0.1.5.5 默认 DeluxeTags，含颜色码）、
- *    在线时长与今日在线（本插件自记录）、累计签到（本插件签到系统）、点券（PlayerPoints）；
+ *    在线时长与今日在线（本插件自记录）、累计签到（本插件签到系统）、点券（PlayerPoints）、
+ *    屠龙次数 / 击杀玩家次数 / 死亡次数（本插件自记录，1.5.2 起展示）；
  * 3. 异步渲染毛玻璃风格统计卡片（背景从插件目录 img/ 随机挑选，无图用黑色；
- *    仅展示 6 项：金币 / 称号 / 在线时长 / 今日在线时长 / 累计签到 / 点券）；
+ *    1.5.2 起展示 9 项：金币 / 称号 / 在线时长 / 今日在线时长 / 累计签到 / 点券 /
+ *    屠龙次数 / 击杀玩家次数 / 死亡次数，3 列 × 3 行）；
  * 4. 以图片消息发送到群（不 @ 提及）；发送失败时以文本回退提示，
  *    与“生成失败”区分开，便于定位是渲染问题还是机器人连接问题。
  *
@@ -190,9 +192,9 @@ object QueryInfoService {
                 } catch (error: Throwable) {
                     // 失败日志带堆栈前几帧且双写日志文件，事后可从
                     // logs/qq/qq-bind-日期.log 追溯具体失败原因
-                    plugin.log_error("[个人信息] 渲染卡片失败: ${error.message}")
+                    plugin.log_error("[查信息] 渲染卡片失败: ${error.message}")
                     plugin.log_error(
-                        "[个人信息] 失败堆栈: " +
+                        "[查信息] 失败堆栈: " +
                             error.stackTraceToString().lineSequence().take(8).joinToString(" | ")
                     )
                     replyText(event, "❌ 信息卡片生成失败，请稍后重试或联系管理员")
@@ -215,8 +217,10 @@ object QueryInfoService {
     }.coerceIn(0L, 600L) * 1000L
 
     /**
-     * 组装统计项（1.5.0 覆盖更新：6 项，布局 3 列 × 2 行）。
-     * 顺序：金币 / 称号 / 在线时长 / 今日在线时长 / 累计签到 / 点券。
+     * 组装统计项（1.5.2：9 项，布局 3 列 × 3 行，卡片高度 660 → 760）。
+     * 顺序：金币 / 称号 / 在线时长 / 今日在线时长 / 累计签到 / 点券 /
+     * 屠龙次数 / 击杀玩家次数 / 死亡次数（后三项为 1.5.2 新增；屠龙与死亡为
+     * 插件一直在后台累计的数据，击杀玩家自 1.5.2 起记录）。
      */
     private fun buildItems(
         stats: PlayerStatsManager.PlayerStats,
@@ -231,6 +235,9 @@ object QueryInfoService {
         InfoCardRenderer.CardItem("今日在线时长", formatTodayTime(stats.todaySeconds)),
         InfoCardRenderer.CardItem("累计签到", checkinTotalText),
         InfoCardRenderer.CardItem("点券", pointsText),
+        InfoCardRenderer.CardItem("屠龙次数", "${stats.dragonKills} 次"),
+        InfoCardRenderer.CardItem("击杀玩家次数", "${stats.playerKills} 次"),
+        InfoCardRenderer.CardItem("死亡次数", "${stats.deaths} 次"),
     )
 
     /**

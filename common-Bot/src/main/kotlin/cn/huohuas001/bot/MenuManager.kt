@@ -25,8 +25,8 @@ object MenuManager {
 
     private val PANEL_ITEMS = listOf(
         PanelItem("帮助", "查看所有命令", "帮助"),
-        PanelItem("查信息", "查询 OpenId", "查信息"),
-        PanelItem("个人信息", "查询玩家统计卡片", "个人信息"),
+        PanelItem("查询open ID", "查询 OpenId", "查询open ID"),
+        PanelItem("查信息", "查询玩家统计卡片", "查信息"),
         PanelItem("绑定", "绑定 QQ", "绑定 "),
         PanelItem("重新绑定", "解除 QQ 绑定", "重新绑定"),
         PanelItem("查在线", "查询在线玩家", "查在线"),
@@ -44,8 +44,8 @@ object MenuManager {
         PanelItem("签到", "每日签到领金币", "签到"),
     )
 
-    /** 依赖 QQ 绑定功能开启的按钮（绑定关闭时一并隐藏）。 */
-    private val QQ_BIND_PANEL_NAMES = setOf("绑定", "重新绑定", "黑名单", "解除黑名单", "个人信息")
+    /** 依赖 QQ 绑定功能开启的按钮（绑定关闭时一并隐藏；1.5.2：个人信息按钮更名为查信息）。 */
+    private val QQ_BIND_PANEL_NAMES = setOf("绑定", "重新绑定", "黑名单", "解除黑名单", "查信息")
 
     /** 依赖签到功能开启的按钮。 */
     private val CHECKIN_PANEL_NAMES = setOf("签到")
@@ -82,7 +82,7 @@ object MenuManager {
 
             val visible = PANEL_ITEMS.filter { item ->
                 if (!qqBindEnabled && item.name in QQ_BIND_PANEL_NAMES) return@filter false
-                if (qqBindEnabled && !personalInfoEnabled && item.name == "个人信息") return@filter false
+                if (qqBindEnabled && !personalInfoEnabled && item.name == "查信息") return@filter false
                 if (!checkinEnabled && item.name in CHECKIN_PANEL_NAMES) return@filter false
                 val enabled = commandList[item.name]
                 enabled == null || enabled

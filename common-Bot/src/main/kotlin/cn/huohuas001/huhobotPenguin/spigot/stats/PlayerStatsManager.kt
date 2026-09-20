@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap
  * 玩家统计数据记录器（/查信息 卡片的数据源）。
  *
  * 设计目标：低开销、崩溃安全。
- * - 事件实时累计：挖掘残骸 / 击杀怪物 / 屠龙 / 死亡 / 钓鱼 / 繁殖 / 触发袭击；
+ * - 事件实时累计：挖掘残骸 / 击杀怪物 / 屠龙 / 击杀玩家（1.5.2）/ 死亡 / 钓鱼 / 繁殖 / 触发袭击；
  * - 原版统计快照：行走与飞行距离、总伤害（进入时快照 + 每 60 秒增量同步 + 退出结算），
  *   借助 MC 自带的统计系统，读取仅为主线程内几次 int 读取，开销可忽略；
  * - 游戏时间：会话实时累计（显示时加上当前会话未落账部分）；
@@ -35,6 +35,7 @@ object PlayerStatsManager {
         var playSeconds: Long = 0L,
         var mobKills: Long = 0L,
         var dragonKills: Long = 0L,
+        var playerKills: Long = 0L,
         var deaths: Long = 0L,
         var fishCaught: Long = 0L,
         var ancientDebris: Long = 0L,
@@ -143,12 +144,16 @@ object PlayerStatsManager {
         }
     }
 
-    /** 实体死亡（怪物击杀 / 屠龙）。 */
+    /** 实体死亡（怪物击杀 / 屠龙 / 击杀玩家）。 */
     fun onEntityDeath(killer: Player, entityType: EntityType) {
         val stats = statsByUuid.computeIfAbsent(killer.uniqueId) { PlayerStats() }
-        if (entityType == EntityType.ENDER_DRAGON) {
+        if (entityType == EntityType.PLAYER) {
+            // 1.5.2：击杀玩家单独计数（此前玩家击杀既不计屠龙也不计怪物击杀）；
+            // 自伤/自杀已在监听器过滤，不会计入
+            stats.playerKills++
+        } else if (entityType == EntityType.ENDER_DRAGON) {
             stats.dragonKills++
-        } else if (entityType != EntityType.PLAYER && entityType.isAlive) {
+        } else if (entityType.isAlive) {
             stats.mobKills++
         }
     }
@@ -263,6 +268,7 @@ object PlayerStatsManager {
         playSeconds = stats.playSeconds,
         mobKills = stats.mobKills,
         dragonKills = stats.dragonKills,
+        playerKills = stats.playerKills,
         deaths = stats.deaths,
         fishCaught = stats.fishCaught,
         ancientDebris = stats.ancientDebris,
@@ -302,6 +308,7 @@ object PlayerStatsManager {
                     playSeconds = section.getLong("$key.play-seconds"),
                     mobKills = section.getLong("$key.mob-kills"),
                     dragonKills = section.getLong("$key.dragon-kills"),
+                    playerKills = section.getLong("$key.player-kills"),
                     deaths = section.getLong("$key.deaths"),
                     fishCaught = section.getLong("$key.fish-caught"),
                     ancientDebris = section.getLong("$key.ancient-debris"),
@@ -342,6 +349,7 @@ object PlayerStatsManager {
                 config.set("$key.play-seconds", stats.playSeconds)
                 config.set("$key.mob-kills", stats.mobKills)
                 config.set("$key.dragon-kills", stats.dragonKills)
+                config.set("$key.player-kills", stats.playerKills)
                 config.set("$key.deaths", stats.deaths)
                 config.set("$key.fish-caught", stats.fishCaught)
                 config.set("$key.ancient-debris", stats.ancientDebris)

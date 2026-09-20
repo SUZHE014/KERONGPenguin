@@ -29,7 +29,7 @@ import java.awt.image.BufferedImage
  * 2. 并发预热头像（4 线程小池 + 8 秒总预算，超时未取到的玩家渲染占位块，
  *    下次查询命中缓存后展示真实头像，避免大量玩家时首查等待过久）；
  * 3. [OnlineListRenderer] 渲染毛玻璃卡片（人数多自动切长图），
- *    背景与个人信息卡共用 img/ 目录随机图与缓存；长图背景处理高度封顶
+ *    背景与查信息卡片（1.5.2 前为 /个人信息）共用 img/ 目录随机图与缓存；长图背景处理高度封顶
  *    （[InfoCardAssets.ONLINE_BACKGROUND_MAX_HEIGHT]），渲染时拉伸铺满，
  *    控制内存占用；
  * 4. 渲染走 [CardRenderPool]（硬编码 CPU 上限），完成后自动节流 GC；
@@ -148,7 +148,7 @@ object OnlineListService {
                         replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
                     }
                 } catch (error: Throwable) {
-                    // 失败日志带堆栈前几帧且双写日志文件，与 /个人信息 一致可事后追溯
+                    // 失败日志带堆栈前几帧且双写日志文件，与 /查信息 一致可事后追溯
                     plugin.log_error("[查在线] 渲染在线列表失败: ${error.message}")
                     plugin.log_error(
                         "[查在线] 失败堆栈: " +

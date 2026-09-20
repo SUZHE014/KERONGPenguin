@@ -101,7 +101,7 @@ object WebUiSchema {
 
     private val QQ_BIND_SECTION = SectionSpec("qq-bind", "QQ 绑定", listOf(
         FieldSpec("qq-bind.enabled", "启用 QQ 绑定", "boolean", "开启后未绑定 QQ 的玩家无法进入服务器"),
-        FieldSpec("qq-bind.personal-info", "个人信息命令", "boolean", "/个人信息 统计卡片命令（默认开启，需 QQ 绑定开启）"),
+        FieldSpec("qq-bind.personal-info", "查信息命令", "boolean", "/查信息 统计卡片命令（1.5.2 前为 /个人信息；默认开启，需 QQ 绑定开启）"),
         FieldSpec("qq-bind.code-expire-minutes", "绑定码有效期（分钟）", "number"),
         FieldSpec("qq-bind.code-length", "绑定码长度", "number"),
         FieldSpec("qq-bind.checkin.enabled", "启用签到", "boolean", "群内每日签到领金币（需 Vault）"),

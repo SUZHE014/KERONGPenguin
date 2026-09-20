@@ -24,7 +24,7 @@ import java.util.zip.GZIPInputStream
 import javax.imageio.ImageIO
 
 /**
- * 玩家信息卡片渲染器（/个人信息）。
+ * 玩家信息卡片渲染器（/查信息，1.5.2 前为 /个人信息）。
  *
  * 以 Java2D 绘制毛玻璃风格统计卡片：
  * - 顶部欢迎区（玩家名 + 问候 + MC 头像正面贴图）
@@ -46,12 +46,15 @@ import javax.imageio.ImageIO
  *
  * 1.5.0：渲染完成后 flush 单次图像（立即释放栅格占用的堆内存，配合渲染后的
  * 节流 GC 提示降低内存驻留，见 QueryInfoService）。
+ *
+ * 1.5.2：统计扩为 9 项（新增屠龙次数 / 击杀玩家次数 / 死亡次数），
+ * 布局 3 列 × 3 行，画布高度 660 → 760，其余绘制逻辑不变。
  */
 object InfoCardRenderer {
 
-    /** 画布尺寸（1.5.0：6 项统计 3 列 × 2 行，高度维持 660）。 */
+    /** 画布尺寸（1.5.2：9 项统计 3 列 × 3 行，高度 660 → 760）。 */
     internal const val WIDTH = 900
-    internal const val HEIGHT = 660
+    internal const val HEIGHT = 760
 
     /** 配色（毛玻璃深色系）。 */
     private val COLOR_EYEBROW = Color(0x93, 0xA7, 0xBC)
@@ -198,7 +201,7 @@ object InfoCardRenderer {
     }
 
     /**
-     * 生涯统计面板（1.5.0：6 项 → 3 列 × 2 行；4-5 项时 2 列避免孤项）。 */
+     * 生涯统计面板（1.5.2：9 项 → 3 列 × 3 行；4-5 项时 2 列避免孤项）。 */
     private fun drawStatsPanel(g: Graphics2D, items: List<CardItem>) {
         val x = 24f
         val y = 336f

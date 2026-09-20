@@ -56,7 +56,7 @@ abstract class BaseCommand {
         // 去除 @ 片段与开头斜杠后按命令名匹配
         val cleaned = Regex("<@!?[^>]+>").replace(content, "").trim().trimStart('/')
 
-        // 优先匹配更长的命令名，避免前缀冲突（如“查在线”与“查信息”）
+        // 优先匹配更长的命令名，避免前缀冲突（如“查询open ID”与“查信息”/“查在线”）
         for (command in commandMap.keys.sortedByDescending { it.length }) {
             if (cleaned != command && !cleaned.startsWith("$command ")) continue
             if (plugin.commandList()[command] == false) {

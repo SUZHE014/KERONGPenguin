@@ -14,8 +14,7 @@ import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.raid.RaidTriggerEvent
 
 /**
- * 玩家统计事件监听（/查信息 卡片的数据采集端）。
- *
+ * 玩家统计事件监听（/查信息 卡片的数据采集端，1.5.2 前命令名为 /个人信息）。
  * 采集策略（低开销）：
  * - 高频事件（方块破坏）只在远古残骸时才写计数，其余直接返回；
  * - 击杀/死亡/钓鱼/繁殖/袭击为低频事件，直接累计；
@@ -42,10 +41,11 @@ class PlayerEventsListener : Listener {
         PlayerStatsManager.onBlockBreak(event.player, event.block.type)
     }
 
-    /** 实体死亡（怪物击杀 / 屠龙）。 */
+    /** 实体死亡（怪物击杀 / 屠龙 / 击杀玩家；1.5.2 自伤自杀不计入击杀）。 */
     @EventHandler(priority = EventPriority.MONITOR)
     fun onEntityDeath(event: EntityDeathEvent) {
         val killer = event.entity.killer ?: return
+        if (event.entity === killer) return  // 自己造成的死亡（自己的箭/TNT 等）不算击杀玩家
         PlayerStatsManager.onEntityDeath(killer, event.entity.type)
     }
 

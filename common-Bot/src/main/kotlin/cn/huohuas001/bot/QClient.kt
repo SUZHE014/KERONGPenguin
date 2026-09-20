@@ -328,7 +328,7 @@ object QClient {
      * 不附带 @ 提及。
      *
      * 0.1.5.5：返回是否发送成功（机器人断线 / 上传接口异常时 false），
-     * 调用方（如 /个人信息）据此回退文本提示，与“卡片生成失败”区分开；
+     * 调用方（如 /查信息，1.5.2 前为 /个人信息）据此回退文本提示，与“卡片生成失败”区分开；
      * 失败详情已通过 log_error 双写控制台与插件日志文件。
      */
     fun replyWithImgBytes(event: GroupMessageEvent, imageBytes: ByteArray): Boolean {
