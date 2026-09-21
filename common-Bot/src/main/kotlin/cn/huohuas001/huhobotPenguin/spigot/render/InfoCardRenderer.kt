@@ -56,10 +56,11 @@ import javax.imageio.ImageIO
  *   （9/5 项 = 760，6~8 项 = 760 或 664，4 项 = 664，2~3 项 = 664 或 568），
  *   底部不再留白，背景图按实际高度处理与缓存。
  *
- * 1.5.3.2：修复背景图黑渐变噪点：
+ * 1.5.3.2：修复背景图黑渐变噪点 + 模糊尺度收紧：
  * - 模糊改金字塔逐级缩放（真·区域平均），不再单步大比例双线性降采样；
  * - 移除 50% 原图清晰透叠层，模糊为真模糊，照片颗粒 / JPEG 噪点不再带回；
- * - 暗化合并为单遍合成，三段 8 位 alpha 逐级取整产生的色带随之消失
+ * - 暗化合并为单遍合成，三段 8 位 alpha 逐级取整产生的色带随之消失；
+ * - 模糊尺度由约 1/12 收紧至 1/4，背景保留更多细节、观感更接近原图
  *   （详见 [InfoCardAssets.blurAndDarken]）。
  */
 object InfoCardRenderer {
@@ -571,6 +572,14 @@ object InfoCardAssets {
      * 超预算时按最久未使用淘汰，配合张数上限双保险。
      */
     private const val BACKGROUND_CACHE_MAX_BYTES = 36L * 1024 * 1024
+
+    /**
+     * 背景模糊尺度分母（1.5.3.2）：模糊金字塔降采样的目标宽度 / 高度 =
+     * 画布尺寸 / 此值。1.5.3.2 由 12 收紧为 4 —— 模糊强度大幅减弱，
+     * 背景保留更多细节；金字塔逐级平均对颗粒 / JPEG 噪点的消除
+     * 仍由回归测试保障（见 RenderCheckJava 高频能量用例）。
+     */
+    internal const val BLUR_SCALE_DIVISOR = 4
 
     /**
      * 在线列表背景处理高度上限（1.5.1）：长图背景不再按整幅画布高度处理，
@@ -1094,14 +1103,18 @@ object InfoCardAssets {
      * - 不再透叠原图清晰层，真模糊；
      * - 暗化为单遍合成（等效总黑度约 41%，与旧版暗度观感一致），
      *   量化误差最小，亮度风格不变。
+     *
+     * 1.5.3.2 收紧：模糊尺度由约 1/12 调整为 1/4（见 [BLUR_SCALE_DIVISOR]），
+     * 金字塔层数随之减少，背景保留更多细节，噪点平均效果实测仍达标
+     * （回归测试高频能量阈值内）。
      */
     private fun blurAndDarken(cover: BufferedImage): BufferedImage {
         val width = cover.width
         val height = cover.height
 
-        // 模糊尺度：约 1/12（与旧版一致）
-        val targetWidth = (width / 12).coerceAtLeast(1)
-        val targetHeight = (height / 12).coerceAtLeast(1)
+        // 模糊尺度：1/4（1.5.3.2 收紧，原 1/12，背景保留更多细节）
+        val targetWidth = (width / BLUR_SCALE_DIVISOR).coerceAtLeast(1)
+        val targetHeight = (height / BLUR_SCALE_DIVISOR).coerceAtLeast(1)
 
         // 1) 金字塔逐级减半（每级 = 精确 2×2 区域平均，真正平均掉噪点）
         var current = cover
