@@ -3,6 +3,7 @@ package cn.huohuas001.huhobotPenguin.spigot.stats
 import cn.huohuas001.bot.tools.Cancelable
 import cn.huohuas001.bot.tools.PluginFileLog
 import cn.huohuas001.bot.provider.plugin
+import cn.huohuas001.huhobotPenguin.spigot.qqbind.BeijingTimeUtil
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
 import org.bukkit.Bukkit
 import org.bukkit.Material
@@ -35,6 +36,14 @@ import java.util.concurrent.ConcurrentHashMap
  *   QUUID/stats/<UUID>.yml 均在首次启动时并入各自玩家的主文件，
  *   迁移失败下次启动自动重试；
  * - 写入经 QqBindManager 的统一锁与原子写，与签到 / 昵称等写入方互不覆盖。
+ *
+ * 1.5.4：今日在线时长不再随重启清零——
+ * - `todaySeconds` / `today` 随统计一并持久化到 QUUID 主文件 stats 节
+ *   （`stats.today-seconds` / `stats.today` 键，每 60 秒增量落账 + 退出 / 关服结算 +
+ *   5 分钟保存周期），同一天内重启 / 重进服务器从上次落账值继续累计；
+ * - “今日”边界改用异步网络北京时间（[BeijingTimeUtil] 多时间源容错）：
+ *   每 60 秒后台线程刷新内存缓存，主线程（进服 / 退出 / 结算路径）只读缓存
+ *   绝不阻塞；网络不可用自动回退本地 Asia/Shanghai 时钟，与签到同一时间基准。
  */
 object PlayerStatsManager {
 
@@ -53,12 +62,10 @@ object PlayerStatsManager {
         var flyCm: Long = 0L,
         var damageDealt: Long = 0L,
     ) {
-        /** 今日在线（秒）。 */
-        @Transient
+        /** 今日在线（秒，1.5.4 起随统计持久化到 QUUID 主文件 stats 节）。 */
         var todaySeconds: Long = 0L
 
-        /** 今日日期（yyyy-MM-dd，用于跨天重置）。 */
-        @Transient
+        /** 今日日期（yyyy-MM-dd，跨天重置判定；1.5.4 起持久化）。 */
         var today: String = ""
     }
 
@@ -86,6 +93,14 @@ object PlayerStatsManager {
     @Volatile
     private var flushTask: Cancelable? = null
 
+    /** 北京当前日期缓存（1.5.4：异步网络校时，主线程只读，绝不阻塞）。 */
+    @Volatile
+    private var beijingTodayCache: String = ""
+
+    /** 北京日期周期刷新任务（1.5.4）。 */
+    @Volatile
+    private var beijingRefreshTask: Cancelable? = null
+
     /** 迁移未完成（绑定管理器未就绪等）时置 true，首次进服重试。 */
     @Volatile
     private var migrationPending = false
@@ -93,6 +108,10 @@ object PlayerStatsManager {
     /** 由插件启用时调用：迁移旧数据并启动定时任务。 */
     fun initialize() {
         migrateLegacyData()
+        // 1.5.4：立即异步网络校时一次 + 每 60 秒后台刷新北京日期缓存
+        // （BeijingTimeUtil 内部缓存 5 分钟，刷新周期 60 秒时多数为零网络开销）
+        refreshBeijingTodayAsync()
+        beijingRefreshTask = plugin.submitTimer(20L, 20L * 60) { refreshBeijingTodayAsync() }
         // 每 5 分钟异步保存（仅脏玩家）
         saveTask = plugin.submitTimer(20L * 60 * 5, 20L * 60 * 5) { saveToDiskAsync() }
         // 每 60 秒主线程增量同步（读取在线玩家原版统计 + 结算游戏时间）
@@ -101,6 +120,7 @@ object PlayerStatsManager {
 
     /** 由插件停用时调用：结算并保存。 */
     fun shutdown() {
+        beijingRefreshTask?.cancel()
         saveTask?.cancel()
         flushTask?.cancel()
         if (Bukkit.isPrimaryThread()) {
@@ -548,7 +568,11 @@ object PlayerStatsManager {
         walkCm = yaml.getLong("stats.walk-cm"),
         flyCm = yaml.getLong("stats.fly-cm"),
         damageDealt = yaml.getLong("stats.damage-dealt"),
-    )
+    ).also {
+        // 1.5.4：今日在线与日期回读（旧记录无此键 → 空日期，首次跨天判定补齐）
+        it.todaySeconds = yaml.getLong("stats.today-seconds")
+        it.today = yaml.getString("stats.today") ?: ""
+    }
 
     /** 把统计写入 QUUID 主文件的 stats 节（同一玩家：同名不同 UUID = 不同主文件）。 */
     private fun writeStatsSection(yaml: YamlConfiguration, stats: PlayerStats) {
@@ -564,6 +588,9 @@ object PlayerStatsManager {
         yaml.set("stats.walk-cm", stats.walkCm)
         yaml.set("stats.fly-cm", stats.flyCm)
         yaml.set("stats.damage-dealt", stats.damageDealt)
+        // 1.5.4：今日在线随统计落盘（重启 / 重进不再清零，跨天才重置）
+        yaml.set("stats.today-seconds", stats.todaySeconds)
+        yaml.set("stats.today", stats.today)
     }
 
     // ---------- 工具 ----------
@@ -583,11 +610,42 @@ object PlayerStatsManager {
     /** 调试用：当前内存中已加载统计的玩家数（懒加载，仅含本次启动触达的玩家）。 */
     fun trackedCount(): Int = statsByUuid.size
 
-    /** 北京时区当前日期（本地时钟计算，无网络开销）。 */
-    private fun beijingToday(): String =
-        SimpleDateFormat("yyyy-MM-dd")
+    /**
+     * 北京当前日期（1.5.4）：优先异步网络校时缓存（与签到同一时间基准）；
+     * 缓存未就绪（启动初期 / 断网）时本地 Asia/Shanghai 时钟兑底，
+     * 主线程调用零网络开销、零阻塞。
+     */
+    private fun beijingToday(): String {
+        val cached = beijingTodayCache
+        if (cached.isNotEmpty()) return cached
+        return SimpleDateFormat("yyyy-MM-dd")
             .apply { timeZone = java.util.TimeZone.getTimeZone("Asia/Shanghai") }
             .format(Date())
+    }
+
+    /**
+     * 后台异步刷新北京日期缓存（1.5.4）。网络失败保留旧值（读取方本地兑底），
+     * 跨天时写一行日志便于事后核对。
+     */
+    private fun refreshBeijingTodayAsync() {
+        try {
+            plugin.submitAsync {
+                val date = try {
+                    BeijingTimeUtil.getBeijingDate()
+                } catch (_: Throwable) {
+                    null
+                }
+                if (!date.isNullOrEmpty()) {
+                    if (beijingTodayCache.isNotEmpty() && beijingTodayCache != date) {
+                        PluginFileLog.write("[统计] 北京日期已跨天：$beijingTodayCache → $date")
+                    }
+                    beijingTodayCache = date
+                }
+            }
+        } catch (_: Throwable) {
+            // 插件停用阶段忽略
+        }
+    }
 
     /** 跨天时重置今日在线。 */
     private fun rollTodayIfNeeded(stats: PlayerStats) {
