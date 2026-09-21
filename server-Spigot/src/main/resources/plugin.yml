@@ -1,5 +1,5 @@
 name: KERONGPenguin
-version: '1.5.3'
+version: '1.5.3.1'
 main: cn.huohuas001.huhobotPenguin.spigot.HuHoBotSpigot
 api-version: '1.18'
 # 0.1.5.5：软依赖 Vault（金币/前缀）与 DeluxeTags（称号），确保本插件在其后加载

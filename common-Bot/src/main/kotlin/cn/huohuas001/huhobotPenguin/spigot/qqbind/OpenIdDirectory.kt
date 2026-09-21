@@ -21,8 +21,12 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * 实现：
  * - 内存表：OpenId → 条目（昵称 + 最后见到时间）；
- * - 持久化：插件数据目录 openids.yml（每次会话装载，脏数据由低优先级
- *   守护线程每 2 分钟落盘一次，退出前由 flush 兜底）；
+ * - 持久化（1.5.3.1）：**一人一文件**，位于 QUUID/openid/<OpenId>.yml，
+ *   彻底消除旧版"全部成员合一个 openids.yml"的单文件膨胀风险；
+ *   查询时懒加载该 OpenId 的文件（不整目录扫描），
+ *   落盘只写**有变动**的 OpenId（脏标记，低优先级守护线程每 2 分钟一次，
+ *   退出前由 flush 兜底）；旧版 openids.yml 首次访问自动拆分迁移并归档
+ *   （openids.yml.migrated，一次性备份不再增长）；
  * - 记录失败静默忽略，绝不影响消息处理主流程。
  */
 object OpenIdDirectory {
@@ -33,13 +37,12 @@ object OpenIdDirectory {
     /** 内存表：OpenId → 条目。 */
     private val directory = ConcurrentHashMap<String, Entry>()
 
-    /** 脏标记：有更新待落盘。 */
-    @Volatile
-    private var dirty = false
+    /** 待落盘的 OpenId（脏标记，1.5.3.1）：只写有变动的文件。 */
+    private val dirtyIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
-    /** 是否已装载磁盘数据。 */
+    /** 是否已完成旧版 openids.yml 迁移（幂等，仅一次）。 */
     @Volatile
-    private var loaded = false
+    private var migrated = false
 
     /** 落盘线程。 */
     @Volatile
@@ -77,22 +80,22 @@ object OpenIdDirectory {
         // 昵称未变化且 10 分钟内记录过则跳过（减少无谓脏标记）
         if (previous != null && previous.nickname == nickname && now - previous.lastSeenAt < 600_000) return
         directory[openId] = Entry(nickname, now)
-        dirty = true
+        dirtyIds.add(openId)
         ensureSaverStarted()
     }
 
     /** 查询 OpenId 对应的群昵称（未知返回 null）。 */
     fun lookupNickname(openId: String?): String? {
         if (openId.isNullOrEmpty()) return null
-        ensureLoaded()
-        return directory[openId]?.nickname
+        ensureMigrated()
+        return lookupEntry(openId)?.nickname
     }
 
     /** 查询 OpenId 最后在线（被机器人见到）的时间描述。 */
     fun lookupLastSeenText(openId: String?): String? {
         if (openId.isNullOrEmpty()) return null
-        ensureLoaded()
-        val at = directory[openId]?.lastSeenAt ?: return null
+        ensureMigrated()
+        val at = lookupEntry(openId)?.lastSeenAt ?: return null
         return try {
             SimpleDateFormat("yyyy-MM-dd HH:mm").format(Date(at))
         } catch (_: Throwable) {
@@ -100,45 +103,98 @@ object OpenIdDirectory {
         }
     }
 
-    /** 目录条目数（诊断用）。 */
-    fun size(): Int {
-        ensureLoaded()
-        return directory.size
+    /** 目录条目数（诊断用；懒加载下为本次启动已触达的条目数）。 */
+    fun size(): Int = directory.size
+
+    /** 查条目：内存优先，没有则懒加载该 OpenId 的数据文件。 */
+    private fun lookupEntry(openId: String): Entry? {
+        directory[openId]?.let { return it }
+        val file = fileFor(openId) ?: return null
+        if (!file.isFile) return null
+        return try {
+            val yaml = YamlConfiguration.loadConfiguration(file)
+            val name = yaml.getString("nickname") ?: return null
+            val at = yaml.getLong("last-seen", 0L)
+            val entry = Entry(name, at)
+            directory.putIfAbsent(openId, entry) ?: entry
+        } catch (_: Throwable) {
+            null
+        }
     }
 
-    // ---------- 持久化 ----------
+    // ---------- 持久化（1.5.3.1：QUUID/openid/ 一人一文件） ----------
 
-    /** 数据文件：<插件目录>/openids.yml。 */
-    private fun dataFile(): File? = try {
-        val folder = plugin.configFile?.parentFile ?: return null
-        val file = File(folder, "openids.yml")
-        if (!file.exists()) file.createNewFile()
-        file
+    /** 数据目录：<插件目录>/QUUID/openid。 */
+    private fun dataFolder(): File? = try {
+        plugin.configFile?.parentFile
     } catch (_: Throwable) {
         null
     }
 
-    /** 首次访问时装载磁盘数据（幂等）。 */
-    private fun ensureLoaded() {
-        if (loaded) return
+    /**
+     * 数据文件名：OpenId 通常是平台分配的安全字符（字母数字）；
+     * 遇到异常字符时替换并追加哈希后缀，保证文件名安全且不与他人冲突。
+     */
+    private fun fileNameFor(openId: String): String {
+        val safe = openId.replace(Regex("[^A-Za-z0-9._-]"), "_")
+        return if (safe == openId) "$safe.yml" else "${safe}_${Integer.toHexString(openId.hashCode())}.yml"
+    }
+
+    /** 单个 OpenId 的数据文件路径。 */
+    private fun fileFor(openId: String): File? = try {
+        val folder = dataFolder() ?: return null
+        File(File(folder, "QUUID/openid"), fileNameFor(openId))
+    } catch (_: Throwable) {
+        null
+    }
+
+    /**
+     * 一次性迁移（1.5.3.1）：旧版全部成员合一的 openids.yml →
+     * QUUID/openid/<OpenId>.yml 一人一文件；完成后旧文件改名
+     * openids.yml.migrated 归档（一次性备份，不再增长）。
+     * 已有同 OpenId 文件时跳过（新数据优先，重试幂等）；
+     * 失败时旧文件保留，下次访问自动重试。
+     */
+    private fun ensureMigrated() {
+        if (migrated) return
         synchronized(this) {
-            if (loaded) return
-            loaded = true
+            if (migrated) return
+            migrated = true
             try {
-                val file = dataFile() ?: return
-                val yaml = YamlConfiguration.loadConfiguration(file)
+                val folder = dataFolder() ?: return
+                val legacy = File(folder, "openids.yml")
+                if (!legacy.isFile) return
+                val yaml = YamlConfiguration.loadConfiguration(legacy)
                 val section = yaml.getConfigurationSection("openids") ?: return
-                val now = System.currentTimeMillis()
+                val target = File(folder, "QUUID/openid")
+                if (!target.isDirectory) target.mkdirs()
+                var moved = 0
                 for (id in section.getKeys(false)) {
                     val raw = section.getString(id) ?: continue
-                    // 存储格式：昵称||最后见到时间戳
+                    // 旧存储格式：昵称||最后见到时间戳
                     val separator = raw.lastIndexOf("||")
                     if (separator <= 0) continue
                     val name = raw.substring(0, separator)
-                    val at = raw.substring(separator + 2).toLongOrNull() ?: now
-                    directory[id] = Entry(name, at)
+                    val at = raw.substring(separator + 2).toLongOrNull() ?: continue
+                    val file = File(target, fileNameFor(id))
+                    if (file.isFile) {
+                        moved++ // 已有新文件（本次会话落盘过），新数据优先
+                        continue
+                    }
+                    val out = YamlConfiguration()
+                    out.set("nickname", name)
+                    out.set("last-seen", at)
+                    try {
+                        out.save(file)
+                        moved++
+                    } catch (_: Throwable) {
+                    }
                 }
-                plugin.log_info("[OpenId目录] 已装载 ${directory.size} 个群成员昵称记录")
+                if (!legacy.renameTo(File(folder, "openids.yml.migrated"))) {
+                    plugin.log_error("[OpenId目录] openids.yml 归档失败（已迁移 $moved 条），下次启动将重试")
+                    return
+                }
+                plugin.log_info("[OpenId目录] 已迁移 $moved 条记录到 QUUID/openid/（旧文件归档为 openids.yml.migrated）")
             } catch (_: Throwable) {
             }
         }
@@ -156,7 +212,7 @@ object OpenIdDirectory {
                     } catch (_: InterruptedException) {
                         break
                     }
-                    if (dirty) flush()
+                    if (dirtyIds.isNotEmpty()) flush()
                 }
             }, "qq-openid-directory-saver")
             thread.isDaemon = true
@@ -166,17 +222,28 @@ object OpenIdDirectory {
         }
     }
 
-    /** 立即落盘（脏数据时；插件停机或定时触发）。 */
+    /** 立即落盘（脏数据时；插件停机或定时触发；只写有变动的 OpenId 文件）。 */
     fun flush() {
         try {
-            val file = dataFile() ?: return
-            val yaml = YamlConfiguration()
-            val section = yaml.createSection("openids")
-            for ((id, entry) in directory) {
-                section.set(id, "${entry.nickname}||${entry.lastSeenAt}")
+            if (dirtyIds.isEmpty()) return
+            val folder = dataFolder() ?: return
+            val target = File(folder, "QUUID/openid")
+            if (!target.isDirectory) target.mkdirs()
+            val iterator = dirtyIds.iterator()
+            while (iterator.hasNext()) {
+                val id = iterator.next()
+                // 先摘除再写：写入期间的新变动会重新标脏，下轮补写
+                iterator.remove()
+                val entry = directory[id] ?: continue
+                val out = YamlConfiguration()
+                out.set("nickname", entry.nickname)
+                out.set("last-seen", entry.lastSeenAt)
+                try {
+                    out.save(File(target, fileNameFor(id)))
+                } catch (_: Throwable) {
+                    dirtyIds.add(id) // 写失败保住脏标记，下轮重试
+                }
             }
-            yaml.save(file)
-            dirty = false
         } catch (_: Throwable) {
         }
     }

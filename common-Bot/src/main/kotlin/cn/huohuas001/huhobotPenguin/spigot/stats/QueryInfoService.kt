@@ -431,8 +431,10 @@ object QueryInfoService {
      * 解析玩家称号（返回值 + 检测来源说明）：
      * 1. DeluxeTags（三层兼容：新版实例 API → 老版静态 API → PlaceholderAPI 占位符）；
      * 2. Vault Chat 前缀（无 DeluxeTags 或无标签时，清理颜色码的纯文本）；
-     * 3. 主权限组；
-     * 4. 均无 → “暂无”。
+     * 3. 均无 → “暂无”。
+     *
+     * 1.5.3.1：移除“主权限组”回退——玩家没有称号时会退回显示权限组名
+     * （如 default/member 等英文串），现在无称号一律显示“暂无”。
      */
     private fun resolveTitle(playerName: String, playerUuid: UUID?, onlinePlayer: Player?): TitleResult {
         return try {
@@ -677,14 +679,18 @@ object QueryInfoService {
 
     // ---------- 金币 / 点券检测（1.5.1：附检测说明用于日志） ----------
 
-    /** Vault 前缀 / 权限组称号（无 DeluxeTags 时的回退链，返回纯文本 + 来源）。 */
+    /**
+     * Vault 前缀称号（无 DeluxeTags 时的回退链，返回纯文本 + 来源）。
+     * 1.5.3.1：不再回退到主权限组——玩家没有称号时权限组名（default/member
+     * 等英文串）会出现在卡片称号栏，现在无前缀直接返回 null → 显示“暂无”。
+     */
     private fun resolveVaultTitle(playerName: String, playerUuid: UUID?): TitleResult? {
         return try {
             val vault = Bukkit.getPluginManager().getPlugin("Vault") ?: return null
             if (!vault.isEnabled) return null
             val offlinePlayer: OfflinePlayer = playerUuid?.let { Bukkit.getOfflinePlayer(it) }
                 ?: Bukkit.getOfflinePlayer(playerName)
-            // 1) Vault Chat 前缀（去除颜色码）
+            // Vault Chat 前缀（去除颜色码）
             try {
                 val chatClass = Class.forName("net.milkbowl.vault.chat.Chat")
                 val rsp = Bukkit.getServicesManager().getRegistration(chatClass)
@@ -694,20 +700,6 @@ object QueryInfoService {
                         .invoke(chat, "world", offlinePlayer) as? String
                     val cleaned = prefix?.replace("§.".toRegex(), "")?.replace("&[0-9a-fk-or]".toRegex(), "")?.trim()
                     if (!cleaned.isNullOrEmpty()) return TitleResult(cleaned, "Vault(Chat 前缀)")
-                }
-            } catch (_: Throwable) {
-            }
-            // 2) 主权限组
-            try {
-                val permClass = Class.forName("net.milkbowl.vault.permission.Permission")
-                val rsp = Bukkit.getServicesManager().getRegistration(permClass)
-                if (rsp != null) {
-                    val permission = rsp.provider
-                    val groups = permission.javaClass
-                        .getMethod("getPlayerGroups", String::class.java, OfflinePlayer::class.java)
-                        .invoke(permission, "world", offlinePlayer) as? Array<*>
-                    val group = groups?.firstOrNull()?.toString()
-                    if (!group.isNullOrEmpty()) return TitleResult(group, "Vault(主权限组)")
                 }
             } catch (_: Throwable) {
             }
