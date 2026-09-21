@@ -25,13 +25,19 @@ import java.util.concurrent.ConcurrentHashMap
  * ```
  * KERONGPenguin/
  * ├── QUUID/
- * │   ├── index.yml           # 玩家名[UUID] → QUUID 映射
- * │   ├── <QUUID>.yml         # 单个绑定记录（qq / playerName / playerUuid / pendingCoins / checkin…）
+ * │   ├── index.yml           # 索引：“玩家名[UUID]” → QUUID
+ * │   ├── <QUUID>.yml         # 单个玩家的主文件（一人一文件，全部数据都在这里：
+ * │   │                        # qq(OpenId) / playerName / playerUuid / 群昵称 / 签到 /
+ * │   │                        # 待补金币 / stats 统计节 —— 1.5.3.1 覆盖版合并存储）
  * │   ├── skip.yml            # 免验证名单
  * │   └── blacklist.yml       # QQ 黑名单
  * ├── ai-context.yml          # AI 对话上下文开关
  * └── logs/qq/qq-bind-*.log   # 绑定日志（超 1GB 轮转）
  * ```
+ *
+ * 1.5.3.1 覆盖版：不再有任何子目录 / 第二套 ID 键 —— 统计（stats 节）与
+ * OpenId 昵称（nickname / lastSeenAt）全部写入玩家自己的 QUUID 主文件；
+ * 同名玩家 UUID 不同 = 不同 key = 不同 QUUID = 两个人，互不串数据。
  */
 class QqBindManager private constructor(private val plugin: JavaPlugin) {
 
@@ -50,6 +56,20 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
 
     /** 玩家名[UUID] → QUUID 索引（内存镜像）。 */
     private val nameToQuuid = ConcurrentHashMap<String, String>()
+
+    /**
+     * 玩家 UUID → QUUID 反查索引（内存镜像，1.5.3.1 覆盖版）：
+     * 由 index.yml 的 “玩家名[UUID]” 键与主文件的 playerUuid 字段共同构建，
+     * 统计存储按玩家 UUID 定位主文件时 O(1) 命中，无需扫目录。
+     */
+    private val uuidToQuuid = ConcurrentHashMap<String, String>()
+
+    /**
+     * QQ OpenId → QUUID 反查索引（内存镜像，1.5.3.1 覆盖版）：
+     * 启动时扫描全部主文件的 qq 字段一次性构建；绑定 / 解绑时同步维护。
+     * findQuuidByQq / findPlayerByQq 从逐文件磁盘扫描降为 O(1)。
+     */
+    private val openidToQuuid = ConcurrentHashMap<String, String>()
 
     /** 绑定码 → 待确认绑定。 */
     private val pendingCodes = ConcurrentHashMap<String, PendingBind>()
@@ -78,7 +98,8 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         loadSkip()
         loadBlacklist()
         loadAiContext()
-        logQuiet("===== QqBindManager 已就绪 (enabled=$isEnabled, 绑定玩家数=${countBound()}) =====")
+        val boundCount = buildReverseIndexes()
+        logQuiet("===== QqBindManager 已就绪 (enabled=$isEnabled, 绑定玩家数=$boundCount) =====")
     }
 
     // ---------- 单例 ----------
@@ -185,7 +206,10 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
     @Synchronized
     fun getOrCreateQuuidByUuid(playerName: String?, playerUuid: String?): String {
         val newKey = keyWithUuid(playerName, playerUuid)
-        nameToQuuid[newKey]?.let { return it }
+        nameToQuuid[newKey]?.let {
+            if (!playerUuid.isNullOrEmpty()) uuidToQuuid[playerUuid] = it
+            return it
+        }
 
         // 兼容旧版：纯玩家名 key
         val oldKey = key(playerName)
@@ -193,6 +217,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         if (oldQuuid != null) {
             nameToQuuid.remove(oldKey)
             nameToQuuid[newKey] = oldQuuid
+            if (!playerUuid.isNullOrEmpty()) uuidToQuuid[playerUuid] = oldQuuid
             saveIndex()
             setQuuidPlayerUuid(oldQuuid, playerUuid)
             logQuiet("[QUUID 迁移] 玩家=$playerName 旧key=$oldKey 新key=$newKey QUUID=$oldQuuid")
@@ -202,6 +227,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         // 全新创建
         val newQuuid = UUID.randomUUID().toString()
         nameToQuuid[newKey] = newQuuid
+        if (!playerUuid.isNullOrEmpty()) uuidToQuuid[playerUuid] = newQuuid
         saveIndex()
         val file = File(quuidFolder, "$newQuuid.yml")
         if (!file.exists()) try {
@@ -233,13 +259,10 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
     /** 写入 QUUID 记录的 playerUuid 字段。 */
     fun setQuuidPlayerUuid(quuid: String?, playerUuid: String?) {
         if (quuid.isNullOrEmpty() || playerUuid == null) return
-        val file = File(quuidFolder, "$quuid.yml")
-        val yaml = if (file.exists()) YamlConfiguration.loadConfiguration(file) else YamlConfiguration()
-        yaml.set("playerUuid", playerUuid)
-        try {
-            yaml.save(file)
-        } catch (_: IOException) {
+        updateQuuidRecord(quuid) { yaml ->
+            yaml.set("playerUuid", playerUuid)
         }
+        if (playerUuid.isNotEmpty()) uuidToQuuid.putIfAbsent(playerUuid, quuid)
     }
 
     /** 读取 QUUID 记录的 playerUuid 字段（/查信息 使用）。 */
@@ -248,6 +271,100 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         val file = File(quuidFolder, "$quuid.yml")
         if (!file.exists()) return null
         return YamlConfiguration.loadConfiguration(file).getString("playerUuid", null)
+    }
+
+    // ---------- 主文件统一读写（1.5.3.1 覆盖版） ----------
+
+    /**
+     * 通过玩家 UUID 获取 QUUID（不创建）：同名玩家 UUID 不同即不同人。
+     * O(1) 内存索引命中；未命中时兑底扫描索引键 “玩家名[UUID]” 并回填。
+     */
+    fun getQuuidByPlayerUuid(playerUuid: String?): String? {
+        if (playerUuid.isNullOrEmpty()) return null
+        uuidToQuuid[playerUuid]?.let { return it }
+        for ((key, quuid) in nameToQuuid) {
+            if (key.endsWith("[$playerUuid]")) {
+                uuidToQuuid[playerUuid] = quuid
+                return quuid
+            }
+        }
+        return null
+    }
+
+    /**
+     * 通过 QQ OpenId 获取 QUUID（不创建）：O(1) 内存索引命中；
+     * 未命中时兑底逐文件扫描一次并回填（启动扫描前的极端时序保险）。
+     */
+    fun getQuuidByOpenid(openId: String?): String? {
+        if (openId.isNullOrEmpty()) return null
+        openidToQuuid[openId]?.let { return it }
+        val files = quuidFolder.listFiles { f -> f.isFile && f.name.endsWith(".yml") } ?: return null
+        for (file in files) {
+            val name = file.name
+            if (name == "index.yml" || name == "skip.yml" || name == "blacklist.yml") continue
+            try {
+                val yaml = YamlConfiguration.loadConfiguration(file)
+                val qq = yaml.getString("qq", "") ?: continue
+                if (qq.isEmpty()) continue
+                val quuid = name.removeSuffix(".yml")
+                openidToQuuid[qq] = quuid
+                if (qq == openId) return quuid
+            } catch (_: Throwable) {
+            }
+        }
+        return null
+    }
+
+    /**
+     * 加锁更新单条 QUUID 主文件（读 → 改 → 原子写）。
+     *
+     * 1.5.3.1 覆盖版起，统计 / OpenId 昵称 / 签到 / 金币等多个写入方共用同一份
+     * 主文件，全部经本方法串行化，防止并发“各自读旧值再整文件回写”互相覆盖
+     * 丢字段；保存先写临时文件再原子改名，读方不会读到写一半的文件。
+     *
+     * @return 是否写入成功（quuid 为空 / 磁盘异常返回 false）
+     */
+    @Synchronized
+    fun updateQuuidRecord(quuid: String?, mutator: (YamlConfiguration) -> Unit): Boolean {
+        if (quuid.isNullOrEmpty()) return false
+        return try {
+            val file = File(quuidFolder, "$quuid.yml")
+            val yaml = if (file.exists()) {
+                try {
+                    YamlConfiguration.loadConfiguration(file)
+                } catch (_: Throwable) {
+                    YamlConfiguration()
+                }
+            } else {
+                YamlConfiguration()
+            }
+            mutator(yaml)
+            saveAtomic(yaml, file)
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /** 只读快照：读取整条 QUUID 主文件（不存在返回 null，不创建）。 */
+    fun readQuuidRecord(quuid: String?): YamlConfiguration? {
+        if (quuid.isNullOrEmpty()) return null
+        return try {
+            val file = File(quuidFolder, "$quuid.yml")
+            if (!file.exists()) null else YamlConfiguration.loadConfiguration(file)
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /** 原子保存：先写临时文件再改名替换；文件系统不支持时退回直接写。 */
+    private fun saveAtomic(yaml: YamlConfiguration, file: File) {
+        val tmp = File(file.parentFile, file.name + ".tmp")
+        yaml.save(tmp)
+        if (!tmp.renameTo(file)) {
+            yaml.save(file)
+            tmp.delete()
+        }
     }
 
     // ---------- 配置读取 ----------
@@ -411,37 +528,24 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
     /** 待补发的签到金币。 */
     fun getPendingCoins(quuid: String?): Double {
         if (quuid.isNullOrEmpty()) return 0.0
-        val file = File(quuidFolder, "$quuid.yml")
-        if (!file.exists()) return 0.0
-        return YamlConfiguration.loadConfiguration(file).getDouble("pendingCoins", 0.0)
+        return readQuuidRecord(quuid)?.getDouble("pendingCoins", 0.0) ?: 0.0
     }
 
     /** 累加待补发金币。 */
     fun addPendingCoins(quuid: String?, amount: Double) {
         if (quuid.isNullOrEmpty() || amount <= 0) return
-        val file = File(quuidFolder, "$quuid.yml")
-        val yaml = if (file.exists()) YamlConfiguration.loadConfiguration(file) else YamlConfiguration()
-        val current = yaml.getDouble("pendingCoins", 0.0)
-        yaml.set("pendingCoins", current + amount)
-        try {
-            yaml.save(file)
-        } catch (_: IOException) {
+        updateQuuidRecord(quuid) { yaml ->
+            yaml.set("pendingCoins", yaml.getDouble("pendingCoins", 0.0) + amount)
         }
     }
 
     /** 取走全部待补发金币。 */
     fun takePendingCoins(quuid: String?): Double {
         if (quuid.isNullOrEmpty()) return 0.0
-        val file = File(quuidFolder, "$quuid.yml")
-        if (!file.exists()) return 0.0
-        val yaml = YamlConfiguration.loadConfiguration(file)
+        val yaml = readQuuidRecord(quuid) ?: return 0.0
         val current = yaml.getDouble("pendingCoins", 0.0)
         if (current > 0) {
-            yaml.set("pendingCoins", 0.0)
-            try {
-                yaml.save(file)
-            } catch (_: IOException) {
-            }
+            updateQuuidRecord(quuid) { it.set("pendingCoins", 0.0) }
         }
         return current
     }
@@ -449,59 +553,36 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
     /** 最近签到日期（yyyy-MM-dd）。 */
     fun getCheckinDate(quuid: String?): String {
         if (quuid.isNullOrEmpty()) return ""
-        val file = File(quuidFolder, "$quuid.yml")
-        if (!file.exists()) return ""
-        return YamlConfiguration.loadConfiguration(file).getString("lastCheckinDate", "") ?: ""
+        return readQuuidRecord(quuid)?.getString("lastCheckinDate", "") ?: ""
     }
 
     fun setCheckinDate(quuid: String?, date: String?) {
         if (quuid.isNullOrEmpty() || date == null) return
-        val file = File(quuidFolder, "$quuid.yml")
-        val yaml = if (file.exists()) YamlConfiguration.loadConfiguration(file) else YamlConfiguration()
-        yaml.set("lastCheckinDate", date)
-        try {
-            yaml.save(file)
-        } catch (_: IOException) {
-        }
+        updateQuuidRecord(quuid) { yaml -> yaml.set("lastCheckinDate", date) }
     }
 
     /** 连续签到天数。 */
     fun getCheckinStreak(quuid: String?): Int {
         if (quuid.isNullOrEmpty()) return 0
-        val file = File(quuidFolder, "$quuid.yml")
-        if (!file.exists()) return 0
-        return YamlConfiguration.loadConfiguration(file).getInt("checkinStreak", 0)
+        return readQuuidRecord(quuid)?.getInt("checkinStreak", 0) ?: 0
     }
 
     fun setCheckinStreak(quuid: String?, streak: Int) {
         if (quuid.isNullOrEmpty()) return
-        val file = File(quuidFolder, "$quuid.yml")
-        val yaml = if (file.exists()) YamlConfiguration.loadConfiguration(file) else YamlConfiguration()
-        yaml.set("checkinStreak", streak)
-        try {
-            yaml.save(file)
-        } catch (_: IOException) {
-        }
+        updateQuuidRecord(quuid) { yaml -> yaml.set("checkinStreak", streak) }
     }
 
     /** 累计签到次数（/查信息 卡片数据）。 */
     fun getCheckinTotal(quuid: String?): Long {
         if (quuid.isNullOrEmpty()) return 0L
-        val file = File(quuidFolder, "$quuid.yml")
-        if (!file.exists()) return 0L
-        return YamlConfiguration.loadConfiguration(file).getLong("checkinTotal", 0L)
+        return readQuuidRecord(quuid)?.getLong("checkinTotal", 0L) ?: 0L
     }
 
     /** 累加签到次数。 */
     fun addCheckinTotal(quuid: String?, amount: Long) {
         if (quuid.isNullOrEmpty() || amount <= 0) return
-        val file = File(quuidFolder, "$quuid.yml")
-        val yaml = if (file.exists()) YamlConfiguration.loadConfiguration(file) else YamlConfiguration()
-        val current = yaml.getLong("checkinTotal", 0L)
-        yaml.set("checkinTotal", current + amount)
-        try {
-            yaml.save(file)
-        } catch (_: IOException) {
+        updateQuuidRecord(quuid) { yaml ->
+            yaml.set("checkinTotal", yaml.getLong("checkinTotal", 0L) + amount)
         }
     }
 
@@ -615,34 +696,16 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
 
     fun getBlacklistName(qq: String?): String? = if (qq == null) null else blacklist[qq]
 
-    // ---------- 反查 ----------
+    // ---------- 反查（1.5.3.1 覆盖版：内存索引 O(1)，不再逐文件扫盘） ----------
 
     /** 通过 QQ OpenId 查找绑定的玩家名。 */
     fun findPlayerByQq(qq: String?): String? {
-        if (qq.isNullOrEmpty()) return null
-        for ((key, quuid) in nameToQuuid) {
-            val file = File(quuidFolder, "$quuid.yml")
-            if (!file.exists()) continue
-            val yaml = YamlConfiguration.loadConfiguration(file)
-            if (qq == yaml.getString("qq", "")) {
-                return yaml.getString("playerName", key)
-            }
-        }
-        return null
+        val quuid = findQuuidByQq(qq) ?: return null
+        return readQuuidRecord(quuid)?.getString("playerName", null)
     }
 
-    /** 通过 QQ OpenId 查找 QUUID（支持 UUID 绑定机制）。 */
-    fun findQuuidByQq(qq: String?): String? {
-        if (qq.isNullOrEmpty()) return null
-        for ((_, quuid) in nameToQuuid) {
-            val file = File(quuidFolder, "$quuid.yml")
-            if (!file.exists()) continue
-            if (qq == YamlConfiguration.loadConfiguration(file).getString("qq", "")) {
-                return quuid
-            }
-        }
-        return null
-    }
+    /** 通过 QQ OpenId 查找 QUUID。 */
+    fun findQuuidByQq(qq: String?): String? = getQuuidByOpenid(qq)
 
     /** 通过玩家名查找 QUUID（按 playerName 字段忽略大小写匹配）。 */
     fun findQuuidByPlayerName(playerName: String?): String? {
@@ -730,6 +793,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             return false
         }
         saveQuuidRecord(pending.quuid, pending.playerName, qq, System.currentTimeMillis(), false)
+        openidToQuuid[qq] = pending.quuid
         pendingCodes.remove(trimmed)
         logQuiet("[绑定成功] 玩家=${pending.playerName} QUUID=${pending.quuid} QQ=$qq")
         return true
@@ -747,13 +811,18 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         if (quuid.isNullOrEmpty()) return false
         val file = File(quuidFolder, "$quuid.yml")
         if (!file.exists()) return false
-        val yaml = YamlConfiguration.loadConfiguration(file)
+        val yaml = try {
+            YamlConfiguration.loadConfiguration(file)
+        } catch (_: Throwable) {
+            return false
+        }
         val currentQq = yaml.getString("qq", "")
         if (currentQq.isNullOrEmpty()) return false
         yaml.set("qq", "")
         yaml.set("boundAt", 0L)
+        openidToQuuid.remove(currentQq)
         try {
-            yaml.save(file)
+            saveAtomic(yaml, file)
         } catch (_: IOException) {
         }
         logQuiet("[解除绑定] 玩家=$playerName QUUID=$quuid")
@@ -831,15 +900,39 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
 
     // ---------- 内部持久化 ----------
 
-    private fun countBound(): Int {
-        var count = 0
-        for (quuid in nameToQuuid.values) {
-            val file = File(quuidFolder, "$quuid.yml")
-            if (!file.exists()) continue
-            val qq = YamlConfiguration.loadConfiguration(file).getString("qq", "")
-            if (!qq.isNullOrEmpty()) count++
+    /**
+     * 启动时扫描全部 QUUID 主文件，构建 OpenId → QUUID 与
+     * playerUuid 字段 → QUUID 两条反查索引（每个小文件只读一次，
+     * 扫描量 = 玩家数，小服务器秒级完成；取代旧版 countBound 的
+     * 同规模扫描，不新增任何启动开销），返回已绑定玩家数。
+     */
+    private fun buildReverseIndexes(): Int {
+        var bound = 0
+        val files = try {
+            quuidFolder.listFiles { f -> f.isFile && f.name.endsWith(".yml") }
+        } catch (_: Throwable) {
+            null
+        } ?: return 0
+        for (file in files) {
+            val name = file.name
+            if (name == "index.yml" || name == "skip.yml" || name == "blacklist.yml") continue
+            try {
+                val yaml = YamlConfiguration.loadConfiguration(file)
+                val quuid = name.removeSuffix(".yml")
+                val qq = yaml.getString("qq", "")
+                if (!qq.isNullOrEmpty()) {
+                    openidToQuuid[qq] = quuid
+                    bound++
+                }
+                val playerUuidField = yaml.getString("playerUuid", "")
+                if (!playerUuidField.isNullOrEmpty()) {
+                    // 索引键派生的映射优先（putIfAbsent），主文件字段仅补缺
+                    uuidToQuuid.putIfAbsent(playerUuidField, quuid)
+                }
+            } catch (_: Throwable) {
+            }
         }
-        return count
+        return bound
     }
 
     private fun cleanExpiredCodes() {
@@ -859,6 +952,15 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             val quuid = section.getString(key, "")
             if (quuid.isNullOrEmpty()) continue
             nameToQuuid[key] = quuid
+            // 1.5.3.1 覆盖版：解析 “玩家名[UUID]” 键中的 UUID 部分，建 UUID → QUUID 反查
+            val start = key.lastIndexOf('[')
+            val end = key.lastIndexOf(']')
+            if (start >= 0 && end > start + 1) {
+                val uuidPart = key.substring(start + 1, end)
+                if (uuidPart.length == 36 && uuidPart.count { it == '-' } == 4) {
+                    uuidToQuuid.putIfAbsent(uuidPart, quuid)
+                }
+            }
         }
     }
 
@@ -915,25 +1017,21 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         }
     }
 
-    /** 保存单条 QUUID 绑定记录。 */
+    /** 保存单条 QUUID 主文件（绑定字段部分，走统一加锁原子写）。 */
     private fun saveQuuidRecord(quuid: String, playerName: String?, qq: String?, boundAt: Long, skip: Boolean) {
-        val file = File(quuidFolder, "$quuid.yml")
-        val yaml = if (file.exists()) YamlConfiguration.loadConfiguration(file) else YamlConfiguration()
-        if (playerName != null) {
-            yaml.set("playerName", playerName)
-        }
-        if (qq != null) {
-            yaml.set("qq", qq)
-        }
-        if (boundAt > 0L) {
-            yaml.set("boundAt", boundAt)
-        }
-        if (skip) {
-            yaml.set("skip", true)
-        }
-        try {
-            yaml.save(file)
-        } catch (_: IOException) {
+        updateQuuidRecord(quuid) { yaml ->
+            if (playerName != null) {
+                yaml.set("playerName", playerName)
+            }
+            if (qq != null) {
+                yaml.set("qq", qq)
+            }
+            if (boundAt > 0L) {
+                yaml.set("boundAt", boundAt)
+            }
+            if (skip) {
+                yaml.set("skip", true)
+            }
         }
     }
 

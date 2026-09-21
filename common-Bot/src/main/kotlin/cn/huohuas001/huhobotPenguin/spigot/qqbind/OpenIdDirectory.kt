@@ -1,6 +1,5 @@
 package cn.huohuas001.huhobotPenguin.spigot.qqbind
 
-import cn.huohuas001.bot.provider.plugin
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import io.github.kloping.qqbot.entities.qqpd.User
 import io.github.kloping.qqbot.entities.qqpd.v2.Contact
@@ -11,7 +10,7 @@ import java.util.Date
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 群成员 OpenId 目录（1.5.3）：OpenId → 群昵称。
+ * 群成员 OpenId 目录（/查询OpenID 反查数据源）。
  *
  * 背景：QQ 群机器人只能看到成员的 OpenId 与群昵称（看不到真实 QQ 号）。
  * /查询OpenID 反查时需要展示"该 OpenId 对应的 QQ 账号（群昵称）"，
@@ -19,14 +18,16 @@ import java.util.concurrent.ConcurrentHashMap
  * 消息里积累：每条群消息的发送者（sender.openid + username）与被 @ 的
  * 成员（mentions[].id + username）都会带昵称。
  *
- * 实现：
- * - 内存表：OpenId → 条目（昵称 + 最后见到时间）；
- * - 持久化（1.5.3.1）：**一人一文件**，位于 QUUID/openid/<OpenId>.yml，
- *   彻底消除旧版"全部成员合一个 openids.yml"的单文件膨胀风险；
- *   查询时懒加载该 OpenId 的文件（不整目录扫描），
- *   落盘只写**有变动**的 OpenId（脏标记，低优先级守护线程每 2 分钟一次，
- *   退出前由 flush 兜底）；旧版 openids.yml 首次访问自动拆分迁移并归档
- *   （openids.yml.migrated，一次性备份不再增长）；
+ * 存储（1.5.3.1 覆盖版）：**不再有任何独立文件或第二套 ID 键**——
+ * - 已绑定玩家的昵称 / 最后活跃直接写入其 **QUUID 主文件**
+ *   （`QUUID/<QUUID>.yml` 的 nickname / lastSeenAt 字段，与绑定、签到、
+ *   统计同一人一文件），经绑定管理器统一锁 + 原子写，与统计等写入方
+ *   互不覆盖；脏标记低优先级守护线程每 2 分钟批量落盘，停机 flush 兜底；
+ * - 未绑定成员仅在内存中积累（重启后随群消息自动重建，无需落盘），
+ *   查询时反查其 QUUID 主文件即可覆盖已绑定场景；
+ * - 旧数据自动迁移：首轮 1.5.3.1 的 QUUID/openid/<OpenId>.yml 与更早的
+ *   openids.yml 中**已绑定**的记录并入对应玩家主文件后删除，未绑定的
+ *   丢弃（随消息重建）；QUUID/ 下不再有任何子目录。
  * - 记录失败静默忽略，绝不影响消息处理主流程。
  */
 object OpenIdDirectory {
@@ -37,10 +38,10 @@ object OpenIdDirectory {
     /** 内存表：OpenId → 条目。 */
     private val directory = ConcurrentHashMap<String, Entry>()
 
-    /** 待落盘的 OpenId（脏标记，1.5.3.1）：只写有变动的文件。 */
+    /** 待落盘的 OpenId（脏标记）：只写有变动的绑定玩家主文件。 */
     private val dirtyIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
-    /** 是否已完成旧版 openids.yml 迁移（幂等，仅一次）。 */
+    /** 是否已完成旧数据迁移（幂等，仅一次）。 */
     @Volatile
     private var migrated = false
 
@@ -73,7 +74,7 @@ object OpenIdDirectory {
         }
     }
 
-    /** 记录 / 更新一个 OpenId 的昵称。 */
+    /** 记录 / 更新一个 OpenId 的昵称（内存 + 脏标记）。 */
     private fun record(openId: String, nickname: String) {
         val now = System.currentTimeMillis()
         val previous = directory[openId]
@@ -106,97 +107,157 @@ object OpenIdDirectory {
     /** 目录条目数（诊断用；懒加载下为本次启动已触达的条目数）。 */
     fun size(): Int = directory.size
 
-    /** 查条目：内存优先，没有则懒加载该 OpenId 的数据文件。 */
+    /** 查条目：内存优先，没有则反查该 OpenId 绑定玩家的 QUUID 主文件。 */
     private fun lookupEntry(openId: String): Entry? {
         directory[openId]?.let { return it }
-        val file = fileFor(openId) ?: return null
-        if (!file.isFile) return null
-        return try {
-            val yaml = YamlConfiguration.loadConfiguration(file)
-            val name = yaml.getString("nickname") ?: return null
-            val at = yaml.getLong("last-seen", 0L)
-            val entry = Entry(name, at)
-            directory.putIfAbsent(openId, entry) ?: entry
+        val manager = bindManagerOrNull() ?: return null
+        val quuid = manager.getQuuidByOpenid(openId) ?: return null
+        val yaml = manager.readQuuidRecord(quuid) ?: return null
+        val name = yaml.getString("nickname") ?: return null
+        val entry = Entry(name, yaml.getLong("lastSeenAt", 0L))
+        return directory.putIfAbsent(openId, entry) ?: entry
+    }
+
+    /** 绑定管理器（不可用时返回 null，读写方自行降级）。 */
+    private fun bindManagerOrNull(): QqBindManager? = try {
+        QqBindManager.getInstance()
+    } catch (_: Throwable) {
+        null
+    }
+
+    // ---------- 持久化（1.5.3.1 覆盖版：写入各自 QUUID 主文件） ----------
+
+    /** 数据目录（插件根目录）。 */
+    private fun dataFolder(): File? = try {
+        cn.huohuas001.bot.provider.plugin.configFile?.parentFile
+    } catch (_: Throwable) {
+        null
+    }
+
+    /**
+     * 立即落盘（脏数据时；插件停机或定时触发）。
+     * 只持久化**已绑定**的 OpenId——昵称 / 最后活跃写入其绑定玩家的
+     * QUUID 主文件（nickname / lastSeenAt 字段，统一锁 + 原子写）；
+     * 未绑定成员仅内存积累（重启后随群消息自动重建），不产生任何文件。
+     */
+    fun flush() {
+        try {
+            if (dirtyIds.isEmpty()) return
+            val manager = bindManagerOrNull() ?: return
+            val iterator = dirtyIds.iterator()
+            while (iterator.hasNext()) {
+                val id = iterator.next()
+                // 先摘除再写：写入期间的新变动会重新标脏，下轮补写
+                iterator.remove()
+                val entry = directory[id] ?: continue
+                val quuid = manager.getQuuidByOpenid(id) ?: continue // 未绑定：仅内存
+                val written = manager.updateQuuidRecord(quuid) { yaml ->
+                    yaml.set("nickname", entry.nickname)
+                    yaml.set("lastSeenAt", entry.lastSeenAt)
+                }
+                if (!written) {
+                    dirtyIds.add(id) // 写失败保住脏标记，下轮重试
+                }
+            }
         } catch (_: Throwable) {
-            null
         }
     }
 
-    // ---------- 持久化（1.5.3.1：QUUID/openid/ 一人一文件） ----------
-
-    /** 数据目录：<插件目录>/QUUID/openid。 */
-    private fun dataFolder(): File? = try {
-        plugin.configFile?.parentFile
-    } catch (_: Throwable) {
-        null
-    }
-
     /**
-     * 数据文件名：OpenId 通常是平台分配的安全字符（字母数字）；
-     * 遇到异常字符时替换并追加哈希后缀，保证文件名安全且不与他人冲突。
-     */
-    private fun fileNameFor(openId: String): String {
-        val safe = openId.replace(Regex("[^A-Za-z0-9._-]"), "_")
-        return if (safe == openId) "$safe.yml" else "${safe}_${Integer.toHexString(openId.hashCode())}.yml"
-    }
-
-    /** 单个 OpenId 的数据文件路径。 */
-    private fun fileFor(openId: String): File? = try {
-        val folder = dataFolder() ?: return null
-        File(File(folder, "QUUID/openid"), fileNameFor(openId))
-    } catch (_: Throwable) {
-        null
-    }
-
-    /**
-     * 一次性迁移（1.5.3.1）：旧版全部成员合一的 openids.yml →
-     * QUUID/openid/<OpenId>.yml 一人一文件；完成后旧文件改名
-     * openids.yml.migrated 归档（一次性备份，不再增长）。
-     * 已有同 OpenId 文件时跳过（新数据优先，重试幂等）；
-     * 失败时旧文件保留，下次访问自动重试。
+     * 一次性迁移（1.5.3.1 覆盖版）：把两个历史布局的昵称数据并入各自
+     * 玩家的 QUUID 主文件——
+     * ① 更早的 openids.yml（全部成员合一）；
+     * ② 首轮 1.5.3.1 的 QUUID/openid/<OpenId>.yml 子目录（不再使用）。
+     * 已绑定的记录写入其玩家主文件；未绑定的丢弃（随群消息自动重建）。
+     * 幂等：主文件已有 nickname 时跳过（运行数据优先）；旧文件处理后
+     * 删除（openids.yml 归档为 openids.yml.migrated），失败下次重试。
      */
     private fun ensureMigrated() {
         if (migrated) return
+        val manager = bindManagerOrNull() ?: return // 管理器未就绪：下次查询再试
         synchronized(this) {
             if (migrated) return
-            migrated = true
             try {
-                val folder = dataFolder() ?: return
-                val legacy = File(folder, "openids.yml")
-                if (!legacy.isFile) return
-                val yaml = YamlConfiguration.loadConfiguration(legacy)
-                val section = yaml.getConfigurationSection("openids") ?: return
-                val target = File(folder, "QUUID/openid")
-                if (!target.isDirectory) target.mkdirs()
-                var moved = 0
-                for (id in section.getKeys(false)) {
-                    val raw = section.getString(id) ?: continue
-                    // 旧存储格式：昵称||最后见到时间戳
-                    val separator = raw.lastIndexOf("||")
-                    if (separator <= 0) continue
-                    val name = raw.substring(0, separator)
-                    val at = raw.substring(separator + 2).toLongOrNull() ?: continue
-                    val file = File(target, fileNameFor(id))
-                    if (file.isFile) {
-                        moved++ // 已有新文件（本次会话落盘过），新数据优先
-                        continue
-                    }
-                    val out = YamlConfiguration()
-                    out.set("nickname", name)
-                    out.set("last-seen", at)
-                    try {
-                        out.save(file)
-                        moved++
-                    } catch (_: Throwable) {
-                    }
-                }
-                if (!legacy.renameTo(File(folder, "openids.yml.migrated"))) {
-                    plugin.log_error("[OpenId目录] openids.yml 归档失败（已迁移 $moved 条），下次启动将重试")
+                val folder = dataFolder() ?: run {
+                    migrated = true
                     return
                 }
-                plugin.log_info("[OpenId目录] 已迁移 $moved 条记录到 QUUID/openid/（旧文件归档为 openids.yml.migrated）")
+                var fromYml = 0
+                var fromFolder = 0
+                // ① openids.yml（含旧格式 昵称||时间戳）
+                val legacy = File(folder, "openids.yml")
+                if (legacy.isFile) {
+                    val yaml = YamlConfiguration.loadConfiguration(legacy)
+                    val section = yaml.getConfigurationSection("openids")
+                    if (section != null) {
+                        for (id in section.getKeys(false)) {
+                            val raw = section.getString(id) ?: continue
+                            val separator = raw.lastIndexOf("||")
+                            if (separator <= 0) continue
+                            val name = raw.substring(0, separator)
+                            val at = raw.substring(separator + 2).toLongOrNull() ?: continue
+                            if (mergeIntoQuuidRecord(manager, id, name, at)) fromYml++
+                        }
+                    }
+                    if (!legacy.renameTo(File(folder, "openids.yml.migrated"))) {
+                        cn.huohuas001.bot.tools.PluginFileLog.errorAndKeep(
+                            "[OpenId目录] openids.yml 归档失败（已迁移 $fromYml 条），下次启动将重试"
+                        )
+                    }
+                }
+                // ② 首轮 1.5.3.1 的 QUUID/openid/ 子目录
+                val interimFolder = File(folder, "QUUID/openid")
+                if (interimFolder.isDirectory) {
+                    val files = interimFolder.listFiles { f -> f.isFile && f.name.endsWith(".yml") }
+                    if (files != null) {
+                        for (file in files) {
+                            try {
+                                val yaml = YamlConfiguration.loadConfiguration(file)
+                                val name = yaml.getString("nickname")
+                                if (name != null) {
+                                    // 文件名即 OpenId（平台分配的安全字符）
+                                    val openId = file.name.removeSuffix(".yml")
+                                    if (mergeIntoQuuidRecord(manager, openId, name, yaml.getLong("last-seen", 0L))) {
+                                        fromFolder++
+                                    }
+                                }
+                            } catch (_: Throwable) {
+                            }
+                            file.delete() // 已并入或未绑定：均不再保留（未绑定随消息重建）
+                        }
+                    }
+                    // 目录清空后移除，QUUID/ 下不再有任何子目录
+                    val remaining = interimFolder.listFiles()
+                    if (remaining != null && remaining.isEmpty()) interimFolder.delete()
+                }
+                if (fromYml + fromFolder > 0) {
+                    cn.huohuas001.bot.tools.PluginFileLog.write(
+                        "[OpenId目录] 已将 $fromYml 条（openids.yml）与 $fromFolder 条（QUUID/openid/）" +
+                            "昵称记录并入对应玩家的 QUUID 主文件"
+                    )
+                }
             } catch (_: Throwable) {
+            } finally {
+                migrated = true
             }
+        }
+    }
+
+    /**
+     * 把一条昵称记录并入该 OpenId 绑定玩家的 QUUID 主文件（幂等：
+     * 已有 nickname 时跳过，运行数据优先）。返回是否写入。
+     */
+    private fun mergeIntoQuuidRecord(manager: QqBindManager, openId: String, nickname: String, lastSeenAt: Long): Boolean {
+        return try {
+            val quuid = manager.getQuuidByOpenid(openId) ?: return false // 未绑定：不落盘
+            manager.updateQuuidRecord(quuid) { yaml ->
+                if (!yaml.contains("nickname")) {
+                    yaml.set("nickname", nickname)
+                    yaml.set("lastSeenAt", lastSeenAt)
+                }
+            }
+        } catch (_: Throwable) {
+            false
         }
     }
 
@@ -219,32 +280,6 @@ object OpenIdDirectory {
             thread.priority = Thread.MIN_PRIORITY
             saverThread = thread
             thread.start()
-        }
-    }
-
-    /** 立即落盘（脏数据时；插件停机或定时触发；只写有变动的 OpenId 文件）。 */
-    fun flush() {
-        try {
-            if (dirtyIds.isEmpty()) return
-            val folder = dataFolder() ?: return
-            val target = File(folder, "QUUID/openid")
-            if (!target.isDirectory) target.mkdirs()
-            val iterator = dirtyIds.iterator()
-            while (iterator.hasNext()) {
-                val id = iterator.next()
-                // 先摘除再写：写入期间的新变动会重新标脏，下轮补写
-                iterator.remove()
-                val entry = directory[id] ?: continue
-                val out = YamlConfiguration()
-                out.set("nickname", entry.nickname)
-                out.set("last-seen", entry.lastSeenAt)
-                try {
-                    out.save(File(target, fileNameFor(id)))
-                } catch (_: Throwable) {
-                    dirtyIds.add(id) // 写失败保住脏标记，下轮重试
-                }
-            }
-        } catch (_: Throwable) {
         }
     }
 }

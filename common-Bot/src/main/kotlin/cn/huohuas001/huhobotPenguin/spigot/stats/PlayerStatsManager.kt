@@ -3,6 +3,7 @@ package cn.huohuas001.huhobotPenguin.spigot.stats
 import cn.huohuas001.bot.tools.Cancelable
 import cn.huohuas001.bot.tools.PluginFileLog
 import cn.huohuas001.bot.provider.plugin
+import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.Statistic
@@ -18,18 +19,22 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * 玩家统计数据记录器（/查信息 卡片的数据源）。
  *
- * 设计目标：低开销、崩溃安全、单文件永不膨胀。
+ * 设计目标：低开销、崩溃安全、按玩家 UUID 一人一条。
  * - 事件实时累计：挖掘残骸 / 击杀怪物 / 屠龙 / 击杀玩家（1.5.2）/ 死亡 / 钓鱼 / 繁殖 / 触发袭击；
  * - 原版统计快照：行走与飞行距离、总伤害（进入时快照 + 每 60 秒增量同步 + 退出结算），
  *   借助 MC 自带的统计系统，读取仅为主线程内几次 int 读取，开销可忽略；
  * - 游戏时间：会话实时累计（显示时加上当前会话未落账部分）；
- * - 持久化（1.5.3.1）：**一人一文件**，位于 QUUID/stats/<玩家UUID>.yml，
- *   彻底消除旧版“全部玩家合一个 stats.yml”的单文件膨胀风险；
- *   启动零装载（进服 / 查询到该玩家时才读他那一个小文件），
- *   保存只写**有变动**的玩家文件（脏标记：5 分钟周期 + 玩家退出 + 关服），
- *   未变动的玩家零磁盘 IO；崩溃最多丢失 5 分钟数据；
- *   旧版 stats.yml 首次启动自动拆分迁移，完成后归档为 stats.yml.migrated
- *   （一次性备份，不再增长），迁移失败下次启动自动重试。
+ * - 记录维度（1.5.3.1 覆盖版）：**按玩家 UUID**——同名玩家 UUID 不同就是两个人，
+ *   各自独立计数互不串数据；
+ * - 持久化（1.5.3.1 覆盖版）：统计数据写入玩家自己的 **QUUID 主文件**
+ *   （`QUUID/<QUUID>.yml` 的 `stats` 节，与绑定 / 签到 / 昵称同在一人一文件里），
+ *   不再有独立的 stats 子目录或第二套 ID 键；内存懒加载（进服 / 查询到该玩家时
+ *   才读他那一份主文件），保存只写**有变动**的玩家（脏标记：5 分钟周期 +
+ *   玩家退出 + 关服，先摘除再写防丢数，写失败重新标脏）；
+ *   旧版数据自动迁移：stats.yml（全部玩家合一）与首轮 1.5.3.1 的
+ *   QUUID/stats/<UUID>.yml 均在首次启动时并入各自玩家的主文件，
+ *   迁移失败下次启动自动重试；
+ * - 写入经 QqBindManager 的统一锁与原子写，与签到 / 昵称等写入方互不覆盖。
  */
 object PlayerStatsManager {
 
@@ -81,10 +86,14 @@ object PlayerStatsManager {
     @Volatile
     private var flushTask: Cancelable? = null
 
+    /** 迁移未完成（绑定管理器未就绪等）时置 true，首次进服重试。 */
+    @Volatile
+    private var migrationPending = false
+
     /** 由插件启用时调用：迁移旧数据并启动定时任务。 */
     fun initialize() {
-        migrateLegacyFile()
-        // 每 5 分钟异步保存（仅脏文件）
+        migrateLegacyData()
+        // 每 5 分钟异步保存（仅脏玩家）
         saveTask = plugin.submitTimer(20L * 60 * 5, 20L * 60 * 5) { saveToDiskAsync() }
         // 每 60 秒主线程增量同步（读取在线玩家原版统计 + 结算游戏时间）
         flushTask = plugin.submitTimer(20L * 60, 20L * 60) { flushOnlineSessions() }
@@ -108,8 +117,17 @@ object PlayerStatsManager {
         }
     }
 
-    /** 玩家进入：懒加载该玩家数据文件并初始化会话。 */
+    /** 玩家进入：确保 QUUID 主文件存在（按 UUID，同名不同 UUID 各自独立）并懒加载统计。 */
     fun onJoin(player: Player) {
+        // 1.5.3.1 覆盖版：统计写入玩家自己的 QUUID 主文件，进服时确保存在
+        val manager = bindManagerOrNull()
+        if (manager != null) {
+            if (migrationPending) migrateLegacyData()
+            try {
+                manager.getOrCreateQuuidByUuid(player.name, player.uniqueId.toString())
+            } catch (_: Throwable) {
+            }
+        }
         val stats = loadOrCreate(player.uniqueId)
         rollTodayIfNeeded(stats)
         sessions[player.uniqueId] = Session(
@@ -256,32 +274,26 @@ object PlayerStatsManager {
         session.lastDamage = damage
     }
 
-    // ---------- 装载（1.5.3.1：懒加载一人一文件） ----------
+    // ---------- 装载（1.5.3.1 覆盖版：读 QUUID 主文件 stats 节） ----------
+
+    /** 绑定管理器（不可用时返回 null，读写方自行降级）。 */
+    private fun bindManagerOrNull(): QqBindManager? = try {
+        QqBindManager.getInstance()
+    } catch (_: Throwable) {
+        null
+    }
 
     /**
-     * 懒加载：内存没有该玩家时读他的数据文件（QUUID/stats/<UUID>.yml）。
-     * 无文件或读取失败返回 null；并发下先到者写入内存，后到者用先到者的结果。
+     * 懒加载：内存没有该玩家时读他的 QUUID 主文件 stats 节。
+     * 无主文件或读取失败返回 null；并发下先到者写入内存，后到者用先到者的结果。
      */
     private fun ensureLoaded(uuid: UUID): PlayerStats? {
         statsByUuid[uuid]?.let { return it }
-        val file = playerFile(uuid) ?: return null
-        if (!file.isFile) return null
+        val manager = bindManagerOrNull() ?: return null
+        val quuid = manager.getQuuidByPlayerUuid(uuid.toString()) ?: return null
+        val yaml = manager.readQuuidRecord(quuid) ?: return null
         return try {
-            val yaml = YamlConfiguration.loadConfiguration(file)
-            val stats = PlayerStats(
-                playSeconds = yaml.getLong("play-seconds"),
-                mobKills = yaml.getLong("mob-kills"),
-                dragonKills = yaml.getLong("dragon-kills"),
-                playerKills = yaml.getLong("player-kills"),
-                deaths = yaml.getLong("deaths"),
-                fishCaught = yaml.getLong("fish-caught"),
-                ancientDebris = yaml.getLong("ancient-debris"),
-                raidTriggers = yaml.getLong("raid-triggers"),
-                animalsBred = yaml.getLong("animals-bred"),
-                walkCm = yaml.getLong("walk-cm"),
-                flyCm = yaml.getLong("fly-cm"),
-                damageDealt = yaml.getLong("damage-dealt"),
-            )
+            val stats = statsFromSection(yaml)
             statsByUuid.putIfAbsent(uuid, stats) ?: stats
         } catch (_: Throwable) {
             null
@@ -295,7 +307,7 @@ object PlayerStatsManager {
         return statsByUuid.putIfAbsent(uuid, fresh) ?: fresh
     }
 
-    // ---------- 持久化（1.5.3.1：仅写脏文件） ----------
+    // ---------- 持久化（1.5.3.1 覆盖版：写入各自 QUUID 主文件 stats 节） ----------
 
     /** 异步保存。 */
     fun saveToDiskAsync() {
@@ -306,13 +318,16 @@ object PlayerStatsManager {
         }
     }
 
-    /** 阻塞保存（异步线程或关服时调用；只写脏标记的玩家文件）。 */
+    /**
+     * 阻塞保存（异步线程或关服时调用；只写脏玩家的主文件 stats 节，
+     * 经绑定管理器统一锁 + 原子写，与签到 / 昵称等写入方互不覆盖）。
+     */
     @Synchronized
     fun saveToDiskBlocking() {
         try {
             if (dirtyUuids.isEmpty()) return
+            val manager = bindManagerOrNull() ?: return // 管理器不可用：保留脏标记下轮重试
             val startedAt = System.currentTimeMillis()
-            val folder = statsFolder() ?: return
             var saved = 0
             val iterator = dirtyUuids.iterator()
             while (iterator.hasNext()) {
@@ -320,29 +335,24 @@ object PlayerStatsManager {
                 // 先摘除再写：写入期间产生的新变动会重新标脏，下轮补写，不丢数据
                 iterator.remove()
                 val stats = statsByUuid[uuid] ?: continue
-                val yaml = YamlConfiguration()
-                yaml.set("play-seconds", stats.playSeconds)
-                yaml.set("mob-kills", stats.mobKills)
-                yaml.set("dragon-kills", stats.dragonKills)
-                yaml.set("player-kills", stats.playerKills)
-                yaml.set("deaths", stats.deaths)
-                yaml.set("fish-caught", stats.fishCaught)
-                yaml.set("ancient-debris", stats.ancientDebris)
-                yaml.set("raid-triggers", stats.raidTriggers)
-                yaml.set("animals-bred", stats.animalsBred)
-                yaml.set("walk-cm", stats.walkCm)
-                yaml.set("fly-cm", stats.flyCm)
-                yaml.set("damage-dealt", stats.damageDealt)
-                try {
-                    yaml.save(File(folder, "$uuid.yml"))
+                val quuid = manager.getQuuidByPlayerUuid(uuid.toString())
+                if (quuid == null) {
+                    // 无主文件（仅出现在管理器异常窗口）：保住脏标记下轮重试
+                    markDirty(uuid)
+                    continue
+                }
+                val written = manager.updateQuuidRecord(quuid) { yaml ->
+                    writeStatsSection(yaml, stats)
+                }
+                if (written) {
                     saved++
-                } catch (_: Throwable) {
-                    markDirty(uuid) // 该文件写失败：保住脏标记，下轮重试
+                } else {
+                    markDirty(uuid) // 写失败：保住脏标记，下轮重试
                 }
             }
             // 0.1.5.3：数据保存日志——仅一行汇总；0.1.5.4 起仅写插件日志文件不刷控制台
             PluginFileLog.write(
-                "[数据保存] 玩家统计数据已保存：$saved 个玩家文件（仅变动文件），耗时 ${System.currentTimeMillis() - startedAt}ms"
+                "[数据保存] 玩家统计数据已保存：$saved 个玩家（写入各自 QUUID 主文件），耗时 ${System.currentTimeMillis() - startedAt}ms"
             )
         } catch (error: Exception) {
             PluginFileLog.errorAndKeep("[数据保存] 保存统计数据失败: ${error.message}")
@@ -350,68 +360,210 @@ object PlayerStatsManager {
     }
 
     /**
-     * 一次性迁移（1.5.3.1）：旧版全部玩家合一的 stats.yml →
-     * QUUID/stats/<UUID>.yml 一人一文件；完成后旧文件改名 stats.yml.migrated
-     * 归档（保留一次性备份，不再增长）。启用期同步执行（早于任何玩家进服），
-     * 失败时旧文件保留、已拆出的文件幂等跳过，下次启动自动重试。
+     * 一次性迁移（1.5.3.1 覆盖版）：把两个历史布局的统计数据并入各自玩家的
+     * QUUID 主文件 stats 节——
+     * ① stats.yml（老版全部玩家合一，含已归档的 stats.yml.migrated 前身）；
+     * ② 首轮 1.5.3.1 的 QUUID/stats/<UUID>.yml 子目录（本次覆盖发布后不再使用）。
+     * 幂等：主文件已有 stats 节时跳过（新数据优先）；QUUID 主文件不存在时
+     * 按玩家 UUID 定位（索引 → 用户缓存名字 → 新建）后再写入；
+     * 旧文件迁移成功后删除（stats.yml 归档为 stats.yml.migrated），
+     * 失败的保留下来下次启动自动重试。
      */
-    private fun migrateLegacyFile() {
+    private fun migrateLegacyData() {
+        val manager = bindManagerOrNull() ?: run {
+            migrationPending = true
+            return
+        }
         try {
-            val dataFolder = plugin.configFile?.parentFile ?: return
+            // 迁移顺序：过渡目录（首轮 1.5.3.1 拆出，数据更新）先行，老 stats.yml
+            // 后行（其条目在主文件已有 stats 节时自动跳过）——两源共存时新数据优先
+            val fromFolder = migrateInterimStatsFolder(manager)
+            val fromYml = migrateLegacyStatsYml(manager)
+            migrationPending = false
+            if (fromYml + fromFolder > 0) {
+                PluginFileLog.write(
+                    "[数据迁移] 已将 $fromYml 条（stats.yml）与 $fromFolder 条（QUUID/stats/）" +
+                        "统计数据并入对应玩家的 QUUID 主文件"
+                )
+            }
+        } catch (error: Throwable) {
+            migrationPending = true
+            PluginFileLog.errorAndKeep("[数据迁移] 统计数据迁移失败: ${error.message}（下次启动自动重试）")
+        }
+    }
+
+    /** 迁移老版 stats.yml（全部玩家合一）→ 各自 QUUID 主文件；返回迁移条数。 */
+    private fun migrateLegacyStatsYml(manager: QqBindManager): Int {
+        try {
+            val dataFolder = plugin.configFile?.parentFile ?: return 0
             val legacy = File(dataFolder, "stats.yml")
-            if (!legacy.isFile) return
-            val startedAt = System.currentTimeMillis()
-            val config = YamlConfiguration.loadConfiguration(legacy)
-            val section = config.getConfigurationSection("players")
-            val folder = File(dataFolder, "QUUID/stats")
-            if (!folder.isDirectory) folder.mkdirs()
-            var migrated = 0
-            if (section != null) {
-                for (key in section.getKeys(false)) {
-                    val uuid = try {
-                        UUID.fromString(key)
-                    } catch (_: IllegalArgumentException) {
-                        continue
-                    }
-                    val target = File(folder, "$uuid.yml")
-                    // 已有同 UUID 文件时跳过（上次迁移中断重试 / 新数据优先）
-                    if (target.isFile) {
-                        migrated++
-                        continue
-                    }
-                    val yaml = YamlConfiguration()
-                    yaml.set("play-seconds", section.getLong("$key.play-seconds"))
-                    yaml.set("mob-kills", section.getLong("$key.mob-kills"))
-                    yaml.set("dragon-kills", section.getLong("$key.dragon-kills"))
-                    yaml.set("player-kills", section.getLong("$key.player-kills"))
-                    yaml.set("deaths", section.getLong("$key.deaths"))
-                    yaml.set("fish-caught", section.getLong("$key.fish-caught"))
-                    yaml.set("ancient-debris", section.getLong("$key.ancient-debris"))
-                    yaml.set("raid-triggers", section.getLong("$key.raid-triggers"))
-                    yaml.set("animals-bred", section.getLong("$key.animals-bred"))
-                    yaml.set("walk-cm", section.getLong("$key.walk-cm"))
-                    yaml.set("fly-cm", section.getLong("$key.fly-cm"))
-                    yaml.set("damage-dealt", section.getLong("$key.damage-dealt"))
-                    try {
-                        yaml.save(target)
-                        migrated++
-                    } catch (_: Throwable) {
-                    }
+            if (!legacy.isFile) return 0
+            val section = YamlConfiguration.loadConfiguration(legacy).getConfigurationSection("players")
+                ?: run {
+                    // 空文件直接归档，避免每次启动重复解析
+                    legacy.renameTo(File(dataFolder, "stats.yml.migrated"))
+                    return 0
                 }
+            var migrated = 0
+            var failed = 0
+            for (key in section.getKeys(false)) {
+                val uuid = try {
+                    UUID.fromString(key)
+                } catch (_: IllegalArgumentException) {
+                    continue
+                }
+                val stats = PlayerStats(
+                    playSeconds = section.getLong("$key.play-seconds"),
+                    mobKills = section.getLong("$key.mob-kills"),
+                    dragonKills = section.getLong("$key.dragon-kills"),
+                    playerKills = section.getLong("$key.player-kills"),
+                    deaths = section.getLong("$key.deaths"),
+                    fishCaught = section.getLong("$key.fish-caught"),
+                    ancientDebris = section.getLong("$key.ancient-debris"),
+                    raidTriggers = section.getLong("$key.raid-triggers"),
+                    animalsBred = section.getLong("$key.animals-bred"),
+                    walkCm = section.getLong("$key.walk-cm"),
+                    flyCm = section.getLong("$key.fly-cm"),
+                    damageDealt = section.getLong("$key.damage-dealt"),
+                )
+                if (mergeIntoQuuidRecord(manager, uuid, stats)) {
+                    migrated++
+                } else {
+                    failed++
+                }
+            }
+            if (failed > 0) {
+                // 有条目定位不到玩家（查不到名字建不了索引 key）：保留 stats.yml
+                // 下次启动重试（已并入的自动跳过），不归档防丢数
+                PluginFileLog.errorAndKeep(
+                    "[数据迁移] stats.yml 有 $failed 名玩家暂未能并入主文件（已在索引/名字可解析时自动完成），" +
+                        "保留旧文件下次启动重试（已并入 $migrated 名自动跳过）"
+                )
+                return migrated
             }
             if (!legacy.renameTo(File(dataFolder, "stats.yml.migrated"))) {
                 PluginFileLog.errorAndKeep(
-                    "[数据迁移] stats.yml 归档失败（已拆分 $migrated 名玩家），下次启动将重试（已拆出的文件自动跳过）"
+                    "[数据迁移] stats.yml 归档失败（已迁移 $migrated 名玩家），下次启动将重试（已并入的自动跳过）"
                 )
-                return
             }
-            PluginFileLog.write(
-                "[数据迁移] stats.yml（$migrated 名玩家）已拆分为 QUUID/stats/ 一人一文件，" +
-                    "旧文件归档为 stats.yml.migrated，耗时 ${System.currentTimeMillis() - startedAt}ms"
-            )
-        } catch (error: Throwable) {
-            PluginFileLog.errorAndKeep("[数据迁移] stats.yml 迁移失败: ${error.message}")
+            return migrated
+        } catch (_: Throwable) {
+            return 0
         }
+    }
+
+    /**
+     * 迁移首轮 1.5.3.1 的 QUUID/stats/<UUID>.yml 子目录 → 各自 QUUID 主文件；
+     * 成功一条删一条，全部处理后删除空目录；返回迁移条数。
+     */
+    private fun migrateInterimStatsFolder(manager: QqBindManager): Int {
+        try {
+            val dataFolder = plugin.configFile?.parentFile ?: return 0
+            val folder = File(dataFolder, "QUUID/stats")
+            if (!folder.isDirectory) return 0
+            val files = folder.listFiles { f -> f.isFile && f.name.endsWith(".yml") } ?: return 0
+            var migrated = 0
+            for (file in files) {
+                val uuid = try {
+                    UUID.fromString(file.name.removeSuffix(".yml"))
+                } catch (_: IllegalArgumentException) {
+                    file.delete() // 非法命名（非 UUID）：不是玩家数据，清理
+                    continue
+                }
+                val yaml = try {
+                    YamlConfiguration.loadConfiguration(file)
+                } catch (_: Throwable) {
+                    continue
+                }
+                val stats = PlayerStats(
+                    playSeconds = yaml.getLong("play-seconds"),
+                    mobKills = yaml.getLong("mob-kills"),
+                    dragonKills = yaml.getLong("dragon-kills"),
+                    playerKills = yaml.getLong("player-kills"),
+                    deaths = yaml.getLong("deaths"),
+                    fishCaught = yaml.getLong("fish-caught"),
+                    ancientDebris = yaml.getLong("ancient-debris"),
+                    raidTriggers = yaml.getLong("raid-triggers"),
+                    animalsBred = yaml.getLong("animals-bred"),
+                    walkCm = yaml.getLong("walk-cm"),
+                    flyCm = yaml.getLong("fly-cm"),
+                    damageDealt = yaml.getLong("damage-dealt"),
+                )
+                if (mergeIntoQuuidRecord(manager, uuid, stats)) {
+                    file.delete() // 已并入主文件：删除过渡文件（保留则违反一人一文件）
+                    migrated++
+                }
+            }
+            // 目录清空后移除，QUUID/ 下不再有任何子目录
+            val remaining = folder.listFiles()
+            if (remaining != null && remaining.isEmpty()) folder.delete()
+            return migrated
+        } catch (_: Throwable) {
+            return 0
+        }
+    }
+
+    /**
+     * 把一份统计并入玩家 UUID 对应的 QUUID 主文件（幂等：已有 stats 节则跳过，
+     * 新数据优先）；QUUID 不存在时定位（内存索引 → 服务器用户缓存名字 → 新建）。
+     */
+    private fun mergeIntoQuuidRecord(manager: QqBindManager, uuid: UUID, stats: PlayerStats): Boolean {
+        return try {
+            var quuid = manager.getQuuidByPlayerUuid(uuid.toString())
+            if (quuid == null) {
+                val name = resolveLegacyName(uuid)
+                if (name == null) return false // 查不到名字建不了索引 key：留给下次重试
+                quuid = manager.getOrCreateQuuidByUuid(name, uuid.toString())
+            }
+            manager.updateQuuidRecord(quuid) { yaml ->
+                if (!yaml.contains("stats")) {
+                    writeStatsSection(yaml, stats)
+                }
+            }
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /** 从服务器用户缓存解析历史玩家名（迁移建索引用；解析不到返回 null）。 */
+    private fun resolveLegacyName(uuid: UUID): String? = try {
+        Bukkit.getOfflinePlayer(uuid).name
+    } catch (_: Throwable) {
+        null
+    }
+
+    // ---------- stats 节读写 ----------
+
+    /** 从 QUUID 主文件的 stats 节读出统计。 */
+    private fun statsFromSection(yaml: YamlConfiguration): PlayerStats = PlayerStats(
+        playSeconds = yaml.getLong("stats.play-seconds"),
+        mobKills = yaml.getLong("stats.mob-kills"),
+        dragonKills = yaml.getLong("stats.dragon-kills"),
+        playerKills = yaml.getLong("stats.player-kills"),
+        deaths = yaml.getLong("stats.deaths"),
+        fishCaught = yaml.getLong("stats.fish-caught"),
+        ancientDebris = yaml.getLong("stats.ancient-debris"),
+        raidTriggers = yaml.getLong("stats.raid-triggers"),
+        animalsBred = yaml.getLong("stats.animals-bred"),
+        walkCm = yaml.getLong("stats.walk-cm"),
+        flyCm = yaml.getLong("stats.fly-cm"),
+        damageDealt = yaml.getLong("stats.damage-dealt"),
+    )
+
+    /** 把统计写入 QUUID 主文件的 stats 节（同一玩家：同名不同 UUID = 不同主文件）。 */
+    private fun writeStatsSection(yaml: YamlConfiguration, stats: PlayerStats) {
+        yaml.set("stats.play-seconds", stats.playSeconds)
+        yaml.set("stats.mob-kills", stats.mobKills)
+        yaml.set("stats.dragon-kills", stats.dragonKills)
+        yaml.set("stats.player-kills", stats.playerKills)
+        yaml.set("stats.deaths", stats.deaths)
+        yaml.set("stats.fish-caught", stats.fishCaught)
+        yaml.set("stats.ancient-debris", stats.ancientDebris)
+        yaml.set("stats.raid-triggers", stats.raidTriggers)
+        yaml.set("stats.animals-bred", stats.animalsBred)
+        yaml.set("stats.walk-cm", stats.walkCm)
+        yaml.set("stats.fly-cm", stats.flyCm)
+        yaml.set("stats.damage-dealt", stats.damageDealt)
     }
 
     // ---------- 工具 ----------
@@ -420,33 +572,16 @@ object PlayerStatsManager {
         dirtyUuids.add(uuid)
     }
 
-    /** 玩家是否已有统计记录（内存或数据文件）。 */
-    fun hasData(uuid: UUID): Boolean = statsByUuid.containsKey(uuid) || playerFile(uuid)?.isFile == true
-
-    /** 数据目录：<插件目录>/QUUID/stats（1.5.3.1 起一人一文件）。 */
-    private fun statsFolder(): File? = try {
-        val dataFolder = plugin.configFile?.parentFile ?: return null
-        val folder = File(dataFolder, "QUUID/stats")
-        if (!folder.isDirectory) folder.mkdirs()
-        folder
-    } catch (_: Throwable) {
-        null
+    /** 玩家是否已有统计记录（内存或其 QUUID 主文件 stats 节）。 */
+    fun hasData(uuid: UUID): Boolean {
+        if (statsByUuid.containsKey(uuid)) return true
+        val manager = bindManagerOrNull() ?: return false
+        val quuid = manager.getQuuidByPlayerUuid(uuid.toString()) ?: return false
+        return manager.readQuuidRecord(quuid)?.contains("stats") == true
     }
 
-    /** 单个玩家的数据文件路径（读用，不创建目录）。 */
-    private fun playerFile(uuid: UUID): File? = try {
-        val dataFolder = plugin.configFile?.parentFile ?: return null
-        File(File(dataFolder, "QUUID/stats"), "$uuid.yml")
-    } catch (_: Throwable) {
-        null
-    }
-
-    /** 调试用：当前数据文件数量（懒加载下内存仅含本次启动触达的玩家）。 */
-    fun trackedCount(): Int = try {
-        statsFolder()?.listFiles { file -> file.isFile && file.name.endsWith(".yml") }?.size ?: 0
-    } catch (_: Throwable) {
-        statsByUuid.size
-    }
+    /** 调试用：当前内存中已加载统计的玩家数（懒加载，仅含本次启动触达的玩家）。 */
+    fun trackedCount(): Int = statsByUuid.size
 
     /** 北京时区当前日期（本地时钟计算，无网络开销）。 */
     private fun beijingToday(): String =
