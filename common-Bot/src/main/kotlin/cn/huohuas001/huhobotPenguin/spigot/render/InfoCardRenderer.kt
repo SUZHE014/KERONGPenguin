@@ -1,7 +1,6 @@
 package cn.huohuas001.huhobotPenguin.spigot.render
 
 import com.alibaba.fastjson.JSON
-import java.awt.AlphaComposite
 import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.Font
@@ -56,6 +55,12 @@ import javax.imageio.ImageIO
  * - 统计面板行数随之减少，画布高度按 472 + 96×行数 自适应
  *   （9/5 项 = 760，6~8 项 = 760 或 664，4 项 = 664，2~3 项 = 664 或 568），
  *   底部不再留白，背景图按实际高度处理与缓存。
+ *
+ * 1.5.3.2：修复背景图黑渐变噪点：
+ * - 模糊改金字塔逐级缩放（真·区域平均），不再单步大比例双线性降采样；
+ * - 移除 50% 原图清晰透叠层，模糊为真模糊，照片颗粒 / JPEG 噪点不再带回；
+ * - 暗化合并为单遍合成，三段 8 位 alpha 逐级取整产生的色带随之消失
+ *   （详见 [InfoCardAssets.blurAndDarken]）。
  */
 object InfoCardRenderer {
 
@@ -1071,39 +1076,75 @@ object InfoCardAssets {
     }
 
     /**
-     * 单遍合成轻模糊 + 暗化（1.5.1）：
-     * 旧实现先生成模糊图再拷贝暗化（峰值 2 张全幅中间图）；
-     * 现合并到同一目标画布 —— 降采样小图升采样叠加 + 原图半透明叠加 + 暗化遮罩，
-     * 视觉效果与旧实现一致，处理峰值内存减半。
+     * 金字塔模糊 + 单遍暗化（1.5.3.2 背景噪点修复）。
+     *
+     * 旧实现（1.5.1）存在三处噪点来源，暗色渐变区（黄昏天空、深色墙面等）
+     * 肉眼可见黑色噪点 / 色带：
+     * 1. 单步大比例双线性降采样（900 → 75）每个输出像素只采样 2×2 邻域，
+     *    约 92% 输入像素被直接丢弃，照片颗粒 / JPEG 块噪被混叠成随机明暗斑点；
+     * 2. 模糊是“假的”：50% 不透明度的原图清晰层直接透叠回来，
+     *    颗粒与噪点以一半强度原样返回画面；
+     * 3. 三段 8 位 alpha 依次合成（黑画布打底 0.85 + 原图 0.5 + 遮罩 0.36），
+     *    每段各自取整，平滑渐变被量化出可见色带。
+     *
+     * 新实现：
+     * - 逐级减半降采样：每级双线性恰为精确 2×2 区域平均（金字塔），
+     *   颗粒 / 噪点被真正平均掉，不产生混叠；
+     * - 逐级翻倍升采样：多级双线性级联逼近高斯模糊，平滑无块状结构；
+     * - 不再透叠原图清晰层，真模糊；
+     * - 暗化为单遍合成（等效总黑度约 41%，与旧版暗度观感一致），
+     *   量化误差最小，亮度风格不变。
      */
     private fun blurAndDarken(cover: BufferedImage): BufferedImage {
         val width = cover.width
         val height = cover.height
-        val smallWidth = (width / 12).coerceAtLeast(1)
-        val smallHeight = (height / 12).coerceAtLeast(1)
-        val small = BufferedImage(smallWidth, smallHeight, BufferedImage.TYPE_INT_RGB)
-        val g1 = small.createGraphics()
-        try {
-            g1.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-            g1.drawImage(cover, 0, 0, smallWidth, smallHeight, null)
-        } finally {
-            g1.dispose()
+
+        // 模糊尺度：约 1/12（与旧版一致）
+        val targetWidth = (width / 12).coerceAtLeast(1)
+        val targetHeight = (height / 12).coerceAtLeast(1)
+
+        // 1) 金字塔逐级减半（每级 = 精确 2×2 区域平均，真正平均掉噪点）
+        var current = cover
+        while (current.width / 2 >= targetWidth && current.height / 2 >= targetHeight) {
+            current = resample(current, current.width / 2, current.height / 2)
         }
+        if (current.width != targetWidth || current.height != targetHeight) {
+            // 对齐到精确小尺寸（≤ 2 倍缩放，双线性采样充足）
+            current = resample(current, targetWidth, targetHeight)
+        }
+
+        // 2) 金字塔逐级升采样回原尺寸（每级 ≤ 2 倍双线性，平滑插值无块状结构）
+        while (current.width < width || current.height < height) {
+            val nextWidth = (current.width * 2).coerceAtMost(width)
+            val nextHeight = (current.height * 2).coerceAtMost(height)
+            current = resample(current, nextWidth, nextHeight)
+        }
+
+        // 3) 单遍暗化遮罩（等效总黑度 ≈ 41%，保证前景可读）
         val result = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
-        val g2 = result.createGraphics()
+        val g = result.createGraphics()
         try {
-            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-            // 半透明叠加产生轻微模糊观感（与旧 softBlur 一致）
-            g2.composite = AlphaComposite.SrcOver.derive(0.85f)
-            g2.drawImage(small, 0, 0, width, height, null)
-            g2.composite = AlphaComposite.SrcOver.derive(0.5f)
-            g2.drawImage(cover, 0, 0, null)
-            // 暗化遮罩（保证前景可读），直接烘焙进背景（与旧 darken 一致）
-            g2.composite = AlphaComposite.SrcOver.derive(1f)
-            g2.color = Color(0x00, 0x00, 0x00, 92)
-            g2.fillRect(0, 0, width, height)
+            g.drawImage(current, 0, 0, null)
+            g.color = Color(0x00, 0x00, 0x00, 105)
+            g.fillRect(0, 0, width, height)
         } finally {
-            g2.dispose()
+            g.dispose()
+        }
+        return result
+    }
+
+    /**
+     * 双线性重采样到指定尺寸（[blurAndDarken] 内部用）。
+     * 输入输出均为不透明 TYPE_INT_RGB；同尺寸调用为 1:1 拷贝。
+     */
+    private fun resample(source: BufferedImage, width: Int, height: Int): BufferedImage {
+        val result = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+        val g = result.createGraphics()
+        try {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+            g.drawImage(source, 0, 0, width, height, null)
+        } finally {
+            g.dispose()
         }
         return result
     }

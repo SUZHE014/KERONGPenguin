@@ -144,9 +144,14 @@ object OnlineListRenderer {
     /**
      * 绘制背景（1.5.1）：任意尺寸背景直接拉伸铺满整个画布
      * （长图背景高度封顶后仍能覆盖全画布）；无图片时深色渐变。
+     *
+     * 1.5.3.2：拉伸改用双线性插值（旧版未设插值提示，默认近邻采样
+     * 在长图放大时会出现可见的像素块），噪点修复后的平滑背景不再被
+     * 最近邻放大重新引入块状纹理。
      */
     private fun drawBackground(g: Graphics2D, background: BufferedImage?, height: Int) {
         if (background != null && background.width > 0 && background.height > 0) {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
             g.drawImage(background, 0, 0, WIDTH, height, null)
         } else {
             g.color = Color(0x05, 0x05, 0x08)
