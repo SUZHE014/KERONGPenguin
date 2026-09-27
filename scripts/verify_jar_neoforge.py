@@ -4,13 +4,19 @@ KERONGPenguin NeoForge 分发模组 JAR 门禁验证。
 
 用法：python3 scripts/verify_jar_neoforge.py [jar]
 缺省验证 build/dist/KERONGPenguin_NeoForge-1.21.1-1.5.4.jar。
+若本地存在已安装的 NeoForge server（tooling/nf-install/server），
+额外执行平台包冲突扫描（split package 门禁，防止 ResolutionException）。
 """
 import re
 import sys
 import zipfile
+from pathlib import Path
 
 JAR = sys.argv[1] if len(sys.argv) > 1 else \
     "/home/z/my-project/penguin-git/build/dist/KERONGPenguin_NeoForge-1.21.1-1.5.4.jar"
+
+# 本地安装的 NeoForge 21.1.252 server（可选，存在则做平台冲突扫描）
+NF_LIBS = Path("/home/z/my-project/tooling/nf-install/server/libraries")
 
 results = []
 
@@ -90,6 +96,11 @@ def main():
         gm = zf.read("cn/huohuas001/bot/events/GroupMessageHandler.class")
         check("GroupMessageHandler 含 QqText 引用", b"QqText" in gm)
 
+        # 4b. help 子命令修复（/huhobot help 与 /hb help 字面量注册）
+        nc = zf.read("cn/huohuas001/huhobotPenguin/neoforge/NeoForgeCommands.class")
+        check("NeoForgeCommands 含 help 子命令引用（≥2 处）", nc.count(b"help") >= 2,
+              f"实际 {nc.count(b'help')} 处")
+
         # 5. 运行时依赖并入
         deps = [
             "io/github/kloping/qqbot/Starter.class",
@@ -132,6 +143,42 @@ def main():
 
         # 8. 目录条目（SDK 组件扫描）
         check("目录条目 > 800", dir_count > 800, f"实际 {dir_count}")
+
+        # 8b. ⚠️ 平台重复包硬门禁（split package → 模块解析 ResolutionException）
+        check("无 org/slf4j 字节码（平台 slf4j-api 提供）", not any(
+            n.startswith("org/slf4j/") and n.endswith(".class") for n in names))
+        check("无 com/google/gson 字节码（平台 gson 提供）", not any(
+            n.startswith("com/google/gson/") and n.endswith(".class") for n in names))
+        check("无 slf4j services 声明残留", not any(
+            n.startswith("META-INF/services/org.slf4j") for n in names))
+        check("无 slf4j/gson maven 元数据残留", not any(
+            n.startswith("META-INF/maven/org.slf4j/") or
+            n.startswith("META-INF/maven/com.google.code.gson/") for n in names))
+
+        # 8c. 与本地已安装 NeoForge 21.1.252 server libraries 全量包交集（深度门禁）
+        if NF_LIBS.is_dir():
+            platform_pkgs = set()
+            for lib in NF_LIBS.rglob("*.jar"):
+                with zipfile.ZipFile(lib) as lz:
+                    for n in lz.namelist():
+                        if n.startswith("META-INF/versions/") and n.endswith(".class"):
+                            parts = n.split("/")[3:-1]
+                        elif n.endswith(".class") and not n.startswith("META-INF/"):
+                            parts = n.split("/")[:-1]
+                        else:
+                            continue
+                        if parts:
+                            platform_pkgs.add("/".join(parts))
+            mod_pkgs = set(
+                "/".join(n.split("/")[:-1]) for n in names
+                if n.endswith(".class") and not n.startswith("META-INF/"))
+            mod_pkgs |= set(
+                "/".join(n.split("/")[3:-1]) for n in names
+                if n.startswith("META-INF/versions/") and n.endswith(".class"))
+            clash = sorted(mod_pkgs & platform_pkgs)
+            check("与 NeoForge 21.1.252 平台包零交集", not clash, str(clash[:8]))
+        else:
+            print("SKIP  未找到本地 NeoForge server libraries，跳过平台交集扫描")
 
         # 9. MANIFEST
         manifest = zf.read("META-INF/MANIFEST.MF").decode("utf-8")

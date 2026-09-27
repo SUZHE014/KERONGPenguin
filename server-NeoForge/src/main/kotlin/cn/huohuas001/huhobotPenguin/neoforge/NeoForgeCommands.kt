@@ -28,6 +28,12 @@ class NeoForgeCommands(private val plugin: HuHoBotNeoForge) {
         val builder = Commands.literal("huhobot").requires { it.hasPermission(2) }
 
         builder.then(
+            Commands.literal("help").executes { context ->
+                sendHelp(context.source, "huhobot")
+                1
+            },
+        )
+        builder.then(
             Commands.literal("reload").executes { context ->
                 plugin.reloadPluginConfig()
                 context.source.sendSuccess({ Component.literal("§6已重载配置文件。") }, true)
@@ -54,6 +60,9 @@ class NeoForgeCommands(private val plugin: HuHoBotNeoForge) {
 
         // 别名 /hb
         val alias = Commands.literal("hb").requires { it.hasPermission(2) }
+            .then(Commands.literal("help").executes { context ->
+                sendHelp(context.source, "hb"); 1
+            })
             .then(Commands.literal("reload").executes { context ->
                 plugin.reloadPluginConfig()
                 context.source.sendSuccess({ Component.literal("§6已重载配置文件。") }, true)

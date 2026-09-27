@@ -17,7 +17,12 @@
   2. 剔除全部签名文件（META-INF/*.SF / *.RSA / *.DSA，重打包后签名失效会
      触发 JarVerifier 拒载）；
   3. 保留 JAR 目录条目（kloping SDK 组件扫描依赖目录条目——0.1.5.4 固化规则）；
-  4. 保留依赖库自身的 kotlin_module / services（多文件门面与 SPI 运行时必需）。
+  4. 保留依赖库自身的 kotlin_module / services（多文件门面与 SPI 运行时必需）；
+  5. ⚠️ 剔除与 NeoForge 运行时 libraries 重复的包（split package 会在
+     ModuleLayerHandler 模块解析时直接崩溃 ResolutionException，实测复现于
+     21.1.252：org.slf4j(平台 slf4j-api 2.0.9) / com.google.gson(平台 gson 2.8.9)），
+     运行时改用平台提供 版本；关联的 services 声明与 maven 元数据一并剔除。
+     （scripts/nf_clash_scan.py 可对照本地安装的 server libraries 重新扫描验证）
 """
 import argparse
 import os
@@ -45,6 +50,22 @@ EXCLUDE_EXACT = {
     "META-INF/server-Spigot.kotlin_module",
 }
 
+# ⚠️ NeoForge 21.1.252 server libraries 已提供的包（实测 split package 崩溃源）。
+# ModLauncher 把每个 mod jar 当 named module，平台 libraries 也以模块进入 GAME 层，
+# 两边同包即 ResolutionException："Module kerongpenguin contains package ..."。
+# 剔除后运行时从平台加载（slf4j-api 2.0.9 / gson 2.8.9，均为向上兼容的 API）。
+PLATFORM_CLASH_PREFIXES = (
+    "org/slf4j/",
+    "com/google/gson/",
+)
+# 随冲突库一并剔除的 META-INF 残留（服务声明会让 ServiceLoader 找错提供方；
+# maven 元数据保持产物干净）
+PLATFORM_CLASH_META_PREFIXES = (
+    "META-INF/services/org.slf4j.",
+    "META-INF/maven/org.slf4j/",
+    "META-INF/maven/com.google.code.gson/",
+)
+
 
 def read_mod_version() -> str:
     with zipfile.ZipFile(MODULE_JAR) as zf:
@@ -57,6 +78,11 @@ def read_mod_version() -> str:
 
 def excluded(name: str) -> bool:
     if name in EXCLUDE_EXACT or any(name.startswith(p) for p in EXCLUDE_PREFIXES):
+        return True
+    # 平台重复库剔除（split package 崩溃修复）
+    if any(name.startswith(p) for p in PLATFORM_CLASH_PREFIXES):
+        return True
+    if any(name.startswith(p) for p in PLATFORM_CLASH_META_PREFIXES):
         return True
     # 模组生态安全剔除：模块描述与签名
     if name == "module-info.class" or name.endswith("/module-info.class"):

@@ -64,10 +64,20 @@ server-NeoForge/ # NeoForge 1.21.1 平台适配（org.bukkit 兼容层 + @Mod �
 
 ## 版本
 
-当前版本：**1.5.4.1**（Spigot）/ **1.5.4**（NeoForge 1.21.1 模组版）
+当前版本：**1.5.4.1**（Spigot）/ **1.5.4**（NeoForge 1.21.1 模组版，2026-09-27 崩溃修复重建版）
 
-### v1.5.4.1 更新日志（Spigot）
+### v1.5.4.1 更新日志（Spigot / NeoForge 同源修复）
 
+- **修复：NeoForge 版启动即崩溃（模块解析 ResolutionException）** —— 首发版
+  把 Spigot fat JAR 的第三方依赖原样带进了模组 JAR，其中 `org/slf4j` 与
+  `com/google/gson` 与 NeoForge 21.1.252 运行时自带库同包（split package），
+  ModLauncher 模块层解析直接报
+  `Module kerongpenguin contains package org.slf4j.event` 崩溃退出；现打包时
+  剔除这两组平台已提供的库及 services/maven 残留，运行时改用平台版本
+  （slf4j-api 2.0.9 / gson 2.8.9），本地已安装同版本 server 实测：旧包
+  复现崩溃 → 新包完整启动 Done、配置释放、命令注册全正常；另修复
+  `/huhobot help` / `/hb help` 子命令字面量未注册（帮助文案已宣传）；
+  门禁新增「与平台包零交集」硬检查，防止后续版本回归
 - **修复：引用消息转发到游戏服务器乱码** —— 根因：QQ 群消息的
   content 里内嵌原生表情标签 `<faceType=…,ext="base64…">`，旧实现原样转发，
   玩家在游戏聊天看到一段 base64 乱码串。现在新增 `QqText` 净化：表情标签
