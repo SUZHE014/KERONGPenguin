@@ -7,16 +7,19 @@ import cn.huohuas001.bot.provider.CustomCommandDetail
 import cn.huohuas001.bot.provider.Motd
 import cn.huohuas001.bot.provider.PlayerEventFormat
 import cn.huohuas001.bot.provider.WhiteList
-import cn.huohuas001.huhobotPenguin.spigot.HuHoBotSpigot
 import org.bukkit.configuration.ConfigurationSection
 import org.bukkit.configuration.file.FileConfiguration
+import org.bukkit.plugin.java.JavaPlugin
 import java.io.File
 import java.util.LinkedHashMap
 
 /**
  * 配置管理器：加载 config.yml、补齐缺失键、提供类型安全的配置访问。
+ *
+ * 1.5.4：插件实例参数放宽为 JavaPlugin（平台适配器均继承自它，
+ * NeoForge 适配器经由 bukkit 兼容层复用本类）。
  */
-class ConfigManager(private val plugin: HuHoBotSpigot) {
+class ConfigManager(private val plugin: JavaPlugin) {
 
     /** 配置文件路径。 */
     fun getConfigFile(): File = File(plugin.dataFolder, "config.yml")

@@ -12,6 +12,8 @@ pluginManagement {
         gradlePluginPortal()
         mavenCentral()
         maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin/") }
+        // 1.5.4：ModDevGradle 插件（server-NeoForge 模块，NeoForge 1.21.1）
+        maven { url = uri("https://maven.neoforged.net/releases") }
     }
 }
 
@@ -26,3 +28,5 @@ include(":common-Bot")
 project(":common-Bot").projectDir = file("common-Bot")
 include(":server-Spigot")
 project(":server-Spigot").projectDir = file("server-Spigot")
+include(":server-NeoForge")
+project(":server-NeoForge").projectDir = file("server-NeoForge")

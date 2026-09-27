@@ -17,3 +17,9 @@ server-Spigot/libs/
 
 # 运行时数据
 *.log
+
+# NeoForge 模块编译期依赖（体积大，不入库；获取方式见 server-NeoForge/libs/README.txt）
+server-NeoForge/libs/
+
+# 本地依赖缓存（打包脚本按需下载）
+scripts/deps-work/

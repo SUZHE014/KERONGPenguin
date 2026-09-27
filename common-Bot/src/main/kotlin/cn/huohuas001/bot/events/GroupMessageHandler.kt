@@ -9,6 +9,7 @@ import cn.huohuas001.bot.events.commands.CheckInCommands
 import cn.huohuas001.bot.events.commands.MotdCommands
 import cn.huohuas001.bot.events.commands.PublicCommands
 import cn.huohuas001.bot.state.CommandRepositories
+import cn.huohuas001.bot.tools.QqText
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.AiChat
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.OpenIdDirectory
@@ -143,8 +144,9 @@ class GroupMessageHandler(private val plugin: HuHoBot) : ListenerHost() {
             }
             if (!manager.isAiEnabled) return
 
-            // 去除 @ 片段后取正文
-            var text = content
+            // 去除 @ 片段后取正文；1.5.4：净化 QQ 表情标签（旧实现把
+            // <faceType=...,ext="base64"> 原样送给 AI，AI 收到一段乱码）
+            var text = QqText.sanitize(content)
             val mentions: Array<User>? = event.rawMessage?.mentions
             if (mentions != null) {
                 for (member in mentions) {
@@ -186,7 +188,7 @@ class GroupMessageHandler(private val plugin: HuHoBot) : ListenerHost() {
         "<unknown>"
     }
 
-    /** 全量转发群消息到游戏（含图片/语音/文件占位）。 */
+    /** 全量转发群消息到游戏（含图片/语音/文件占位；1.5.4：引用上下文 + 表情净化）。 */
     @Suppress("UNCHECKED_CAST")
     private fun forwardFullGroupMessage(groupId: String, event: GroupMessageEvent) {
         try {
@@ -201,9 +203,14 @@ class GroupMessageHandler(private val plugin: HuHoBot) : ListenerHost() {
             val metadata: JSONObject? = baseMessage?.metadata
             val attachments: JSONArray? = metadata?.getJSONArray("attachments")
 
+            // 1.5.4：解析引用消息（message_type=103，被引原文在 msg_elements[0]）
+            val quote = QqText.extractQuote(metadata)
+
             val parts = ArrayList<String>()
             val rawContent = event.rawMessage?.content
-            val trimmed = rawContent?.trim() ?: ""
+            // 1.5.4：净化 QQ 表情标签——旧实现把 <faceType=...,ext="base64…"> 原样
+            // 转发到游戏聊天，玩家看到一段 base64 乱码串（即“引用消息转发乱码”）
+            val trimmed = QqText.sanitize(rawContent ?: "").trim()
 
             var hasImage = false
             if (attachments != null) {
@@ -233,6 +240,9 @@ class GroupMessageHandler(private val plugin: HuHoBot) : ListenerHost() {
                     }
                 }
             }
+            // 纯引用消息（回复者未输入正文，content 为空格）：仍转发引用摘要，
+            // 否则游戏端会看到转发凭空消失
+            if (parts.isEmpty() && quote != null) parts.add(QqText.quotePrefix(quote).trim())
             if (parts.isEmpty()) return
 
             var message = parts.joinToString(" ")
@@ -248,6 +258,8 @@ class GroupMessageHandler(private val plugin: HuHoBot) : ListenerHost() {
                         .replace(memberId, "@$memberName")
                 }
             }
+            // 1.5.4：引用消息带被引上下文（[回复 昵称「被引摘要」] 前缀）
+            if (quote != null) message = QqText.quotePrefix(quote) + message
             plugin.broadcastMessage(plugin.formatGroupMessage(senderName, plugin.auditText(message)))
         } catch (_: Throwable) {
         }

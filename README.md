@@ -19,9 +19,12 @@ Minecraft QQ 机器人插件，通过 QQ 官方机器人 API 实现 QQ 群与服
 
 ## 环境
 
-- Java 17+
-- Spigot / Paper / 混合端（Mohist、CatServer、Arclight 等，自动检测命令执行器）
+- Java 21+（NeoForge 版）/ Java 17+（Spigot 版）
+- **NeoForge 1.21.1**（server-NeoForge 模组版）或 Spigot / Paper / 混合端
+  （Mohist、CatServer、Arclight 等，自动检测命令执行器）
 - QQ 最新版（支持机器人功能）
+
+> ⚠️ NeoForge 版与 Spigot 版二选一：**不要在自带 Bukkit 的混合端上安装模组版**（会与真 org.bukkit 冲突），混合端请用 Spigot 版。
 
 ## 下载
 
@@ -34,18 +37,25 @@ Minecraft QQ 机器人插件，通过 QQ 官方机器人 API 实现 QQ 群与服
 ## 从源码构建
 
 ```bash
-./gradlew :server-Spigot:jar   # 编译两个模块
-python3 scripts/package_jar.py # 合成可分发的 fat JAR（可选）
+# Spigot 版
+./gradlew :server-Spigot:jar        # 编译两个模块
+python3 scripts/package_jar.py       # 合成可分发的 fat JAR（可选）
+
+# NeoForge 1.21.1 版
+./gradlew :server-NeoForge:jar       # 编译模组模块（共用 common-Bot 源码）
+python3 scripts/package_jar_neoforge.py  # 合成可分发的模组 JAR
 ```
 
 > 依赖的第三方库（kloping QQ SDK、fastjson 等）以 `libs/deps.jar` 形式提供编译期引用，
-> 打包时复用原版 JAR 中的依赖字节码。
+> 打包时复用原版 JAR 中的依赖字节码；NeoForge 模块的编译期依赖获取方式见
+> `server-NeoForge/libs/README.txt`（Minecraft mojmap 中间产物 + NeoForge 官方构件）。
 
 ## 项目结构
 
 ```
 common-Bot/      # 机器人核心（QQ 客户端、群命令、状态持久化、QQ 绑定管理）
 server-Spigot/   # Spigot 平台适配（主类、命令执行器、事件监听、配置管理、卡片渲染）
+server-NeoForge/ # NeoForge 1.21.1 平台适配（org.bukkit 兼容层 + @Mod 主类 + 事件/命令/控制台执行）
 ```
 
 ## API 文档
@@ -54,10 +64,26 @@ server-Spigot/   # Spigot 平台适配（主类、命令执行器、事件监听
 
 ## 版本
 
-当前版本：**1.5.4**
+当前版本：**1.5.4.1**（Spigot）/ **1.5.4**（NeoForge 1.21.1 模组版）
 
-### v1.5.4 更新日志
+### v1.5.4.1 更新日志（Spigot）
 
+- **修复：引用消息转发到游戏服务器乱码** —— 根因：QQ 群消息的
+  content 里内嵌原生表情标签 `<faceType=…,ext="base64…">`，旧实现原样转发，
+  玩家在游戏聊天看到一段 base64 乱码串。现在新增 `QqText` 净化：表情标签
+  解码为 `[表情:微笑]` 文本，旧格式标签与引用残留标记剔除；同时解析
+  引用消息（message_type=103）的 `msg_elements[0]`，转发时带上
+  `[回复 昵称「被引摘要」]` 上下文——群里看是“回复某人”，游戏里也能看到，
+  纯引用不输入正文的消息不再凭空消失；AI 对话输入同样净化（不再把乱码送给 AI）
+
+### v1.5.4 更新日志（同时首发 NeoForge 1.21.1 模组版）
+
+- **新增：NeoForge 1.21.1 模组版（server-NeoForge 模块）** —— 与 Spigot 版
+  同源：共用 common-Bot 全部业务（QQ 机器人 / 命令系统 / 绑定 / 签到 / 统计 /
+  信息卡渲染 / Web 面板），经 org.bukkit 兼容层桥接到 NeoForge / 原版 API
+  （主线程 = 服务器线程，玩家 / 统计 / 皮肤 / playerdata 原生对接）；
+  Vault / DeluxeTags / PlayerPoints / PlaceholderAPI 等 Bukkit 插件生态在
+  NeoForge 上不存在，卡片自动隐藏对应项，签到金币自动改记账模式（1.5.4）
 - **修复：今日在线时长进服 / 重启后被清零** —— 根因：今日秒数与今日日期
   此前只存在内存（从未持久化），服务器重启或插件重载后从 QUUID 主文件恢复
   统计时日期为空，跨天判定直接把今日在线归零——玩家每次重启后进服，

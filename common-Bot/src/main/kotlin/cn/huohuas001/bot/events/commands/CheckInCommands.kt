@@ -79,12 +79,14 @@ class CheckInCommands : CommandSupport() {
         streak = if (lastDate.isEmpty() || yesterday != today) 1 else streak + 1
 
         // 发放金币：在线直接入账，离线记账待上线补发
+        // 1.5.4：非 Spigot 平台（NeoForge）无 Vault 经济生态，在线也走记账，
+        // 签到正常累计（连续/总次数），金币记入 QUUID 待领字段
         val online = try {
             Bukkit.getPlayerExact(playerName) != null
         } catch (_: Throwable) {
             false
         }
-        val paid = if (online) {
+        val paid = if (online && plugin.platform == "spigot") {
             depositPlayer(playerName, reward)
         } else {
             manager.addPendingCoins(quuid, reward)

@@ -1,0 +1,29 @@
+modLoader = "javafml"
+loaderVersion = "[1,)"
+license = "GPL-3.0"
+issueTrackerURL = "https://github.com/SUZHE014/KERONGPenguin"
+
+[[mods]]
+modId = "kerongpenguin"
+version = "1.5.4"
+displayName = "KERONGPenguin"
+authors = "KERONG"
+description = '''
+HuHoBot QQ bot integration for NeoForge: QQ binding, group chat bridging,
+check-in, player stats cards, AI chat and web panel.
+'''
+displayTest = "IGNORE_SERVER_VERSION"
+
+[[dependencies.kerongpenguin]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.1.0,)"
+ordering = "NONE"
+side = "SERVER"
+
+[[dependencies.kerongpenguin]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.1,1.22)"
+ordering = "NONE"
+side = "SERVER"
