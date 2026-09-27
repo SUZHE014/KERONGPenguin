@@ -23,3 +23,6 @@ server-NeoForge/libs/
 
 # 本地依赖缓存（打包脚本按需下载）
 scripts/deps-work/
+
+# 重定位工具编译产物（按需重编）
+scripts/relocate/out/

@@ -64,7 +64,27 @@ server-NeoForge/ # NeoForge 1.21.1 平台适配（org.bukkit 兼容层 + @Mod �
 
 ## 版本
 
-当前版本：**1.5.4.2**（Spigot / NeoForge 1.21.1 模组版同源）
+当前版本：**1.5.4.3**（Spigot / NeoForge 1.21.1 模组版同源）
+
+### v1.5.4.3 更新日志（NeoForge 整合包兼容：kotlin 撞包根治）
+
+- **修复：携带 Kotlin 运行时模组的整合包上模组版启动即崩溃（
+  `Modules kerongpenguin and kotlin.stdlib export package kotlin.io.path`
+  类 ResolutionException）** —— 根因：ModLauncher 把 mods 目录中每个
+  JAR 都当命名模块放进 GAME 层，我们的 fat JAR 是自动模块会导出全部
+  自带包；当整合包同时存在提供 Kotlin 运行时的模块（如 Sinytra
+  Connector 载入的 Kotlin for Forge `kotlin.stdlib`）时，双方都导出
+  `kotlin.*` 包，模块解析阶段直接 ResolutionException，服务器无法
+  启动（与 1.5.4.1 的 slf4j/gson 撞包同机制，但 kotlin 是本插件自身
+  运行时必需、无法剔除）。现新增打包期第三方库整体重定位
+  （`scripts/relocate/RelocateTool`，ASM 字节码重写）：kotlin / kotlinx /
+  okhttp3 / okio / fastjson / snakeyaml / BouncyCastle / jsoup /
+  Java-WebSocket / jetbrains 注解全部迁入 `cn.huohuas001.shaded.*`
+  命名空间（类路径 + 全部常量池引用 + LDC 字符串 + services 声明同步
+  重写；同包资源保持原位不影响加载），从根源上不再与任何其他模组或
+  平台库同包。本地 21.1.248 实测：与模拟 KFF 的 kotlin.stdlib 命名模块
+  共存——旧包 100% 复现崩溃、新包正常启动、机器人路径完整、stop 干净
+  退出；Spigot 版不受影响（无模块层，零变化）
 
 ### v1.5.4.2 更新日志（NeoForge 启动与关服双修复）
 
