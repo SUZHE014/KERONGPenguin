@@ -26,3 +26,4 @@ scripts/deps-work/
 
 # 重定位工具编译产物（按需重编）
 scripts/relocate/out/
+scripts/relocate/*.class
