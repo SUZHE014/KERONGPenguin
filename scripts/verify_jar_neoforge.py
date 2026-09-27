@@ -3,7 +3,7 @@
 KERONGPenguin NeoForge 分发模组 JAR 门禁验证。
 
 用法：python3 scripts/verify_jar_neoforge.py [jar]
-缺省验证 build/dist/KERONGPenguin_NeoForge-1.21.1-1.5.4.jar。
+缺省验证 build/dist/KERONGPenguin_NeoForge-1.21.1-1.5.4.2.jar。
 若本地存在已安装的 NeoForge server（tooling/nf-install/server），
 额外执行平台包冲突扫描（split package 门禁，防止 ResolutionException）。
 """
@@ -13,7 +13,7 @@ import zipfile
 from pathlib import Path
 
 JAR = sys.argv[1] if len(sys.argv) > 1 else \
-    "/home/z/my-project/penguin-git/build/dist/KERONGPenguin_NeoForge-1.21.1-1.5.4.jar"
+    "/home/z/my-project/penguin-git/build/dist/KERONGPenguin_NeoForge-1.21.1-1.5.4.2.jar"
 
 # 本地安装的 NeoForge 21.1.252 server（可选，存在则做平台冲突扫描）
 NF_LIBS = Path("/home/z/my-project/tooling/nf-install/server/libraries")
@@ -39,7 +39,7 @@ def main():
         toml = zf.read("META-INF/neoforge.mods.toml").decode("utf-8") if "META-INF/neoforge.mods.toml" in names else ""
         check("neoforge.mods.toml 存在", bool(toml))
         check("mods.toml modId=kerongpenguin", 'modId = "kerongpenguin"' in toml)
-        check("mods.toml version=1.5.4", re.search(r'^version = "1\.5\.4"', toml, re.M) is not None)
+        check("mods.toml version=1.5.4.2", re.search(r'^version = "1\.5\.4\.2"', toml, re.M) is not None)
         check("mods.toml modLoader=javafml", 'modLoader = "javafml"' in toml)
         check("mods.toml 依赖 neoforge 21.1+", "versionRange = \"[21.1.0,)\"" in toml)
         check("mods.toml 依赖 minecraft 1.21.1", "versionRange = \"[1.21.1,1.22)\"" in toml)

@@ -64,7 +64,29 @@ server-NeoForge/ # NeoForge 1.21.1 平台适配（org.bukkit 兼容层 + @Mod �
 
 ## 版本
 
-当前版本：**1.5.4.1**（Spigot）/ **1.5.4**（NeoForge 1.21.1 模组版，2026-09-27 崩溃修复重建版）
+当前版本：**1.5.4.2**（Spigot / NeoForge 1.21.1 模组版同源）
+
+### v1.5.4.2 更新日志（NeoForge 启动与关服双修复）
+
+- **修复：NeoForge 版 QQ 机器人启动即 NPE（`PackageScannerImpl.scan` 报
+  `classNames is null`）** —— 崩溃修复版解决了模块解析崩溃后，真机暴露出
+  第二层问题：QQ SDK（kloping qqbot）的组件扫描只认 classpath 的
+  `file:` / `jar:` 协议，而 NeoForge 把 mod JAR 当命名模块加载，包目录
+  资源查不到（或返回 `union:` 协议），扫描返回 null → NPE → 组件装配失败
+  （wssWorker 未创建，随后 `submit` 二次 NPE），命令系统全瘫。现新增
+  `SptCompat` 兼容层：在扫描前挂载兼容扫描器——优先走原生 classpath 扫描
+  （Spigot 行为零变化），失败时定位物理 JAR 按 zip 条目直接枚举兜底；
+  本地 21.1.252 真机实测：兜底枚举 197 个类、组件装配完成、群消息监听
+  注册成功、鉴权链路真实打通开放平台
+- **修复：服务器无法正常关闭（stop 后进程挂死）** —— 根因：SDK 的 spt
+  框架与 common 库持有 50+ 个非 daemon 线程（任务队列 20+20、定时器 5+
+  Timer、Public 静态池 8+1、Java-WebSocket 收发线程），`Starter.shutdown()`
+  只关 WSS 不回收线程池，JVM 永不退出（Pterodactyl 面板只能强制结束）。
+  现在：停机时反射清扫全部 kloping 线程池 / Timer / 日志 Writer
+  （只触碰 `io.github.kloping.*` 对象，不波及平台类，Spigot /reload 与
+  关服同样受益）；另加专用服关服兜底——ServerStopped 后 5 秒进程仍未
+  自然退出则强制退出，单人游戏不受影响。真机实测：stop → 7 个非 daemon
+  资源全部回收 → 6 秒干净退出（退出码 0）
 
 ### v1.5.4.1 更新日志（Spigot / NeoForge 同源修复）
 

@@ -99,12 +99,43 @@ class HuHoBotNeoForge : JavaPlugin(), HuHoBot {
         markDisabled()
     }
 
-    /** 服务器完全停止（ServerStoppedEvent）：解除引用。 */
+    /** 服务器完全停止（ServerStoppedEvent）：解除引用并兑底退出进程。 */
     internal fun onServerStopped() {
+        val dedicated = try {
+            NeoServerRef.server?.isDedicatedServer
+        } catch (_: Throwable) {
+            null
+        }
         NeoServerRef.unbind()
         PluginManager.unregister()
         timerPool.shutdownNow()
         asyncPool.shutdownNow()
+        ensureProcessExit(dedicated == true)
+    }
+
+    /**
+     * 关服兑底退出（1.5.4.2，仅专用服）：
+     *
+     * NeoForge 主线程结束后，JVM 须等所有非 daemon 线程结束才退出；
+     * 尽管 SptCompat 已回收已知非 daemon 池，仍不排除残留线程
+     * （Pterodactyl 等面板表现为“服务器已停止但进程挂着”，只能强制结束）。
+     * 此处起一个守护线程：若 5 秒后进程仍未自然退出则 halt(0)，
+     * 兑底保证 stop 始终能关掉；若 JVM 已自然退出则该线程随之消失，无副作用。
+     * 单人游戏（集成服务器的 ServerStoppedEvent）不受影响。
+     */
+    private fun ensureProcessExit(dedicated: Boolean) {
+        if (!dedicated) return
+        val guard = Thread({
+            try {
+                Thread.sleep(5_000)
+            } catch (_: InterruptedException) {
+                return@Thread
+            }
+            modLogger.info("[关服兑底] 服务器已完全停止 5 秒，进程仍未退出，强制退出")
+            Runtime.getRuntime().halt(0)
+        }, "KERONGPenguin-Exit")
+        guard.isDaemon = true
+        guard.start()
     }
 
     override fun reloadPluginConfig() {
@@ -262,7 +293,7 @@ class HuHoBotNeoForge : JavaPlugin(), HuHoBot {
             .resolve("kerongpenguin").toFile()
 
         /** 模组版本（与 neoforge.mods.toml 一致）。 */
-        private const val MOD_VERSION = "1.5.4"
+        private const val MOD_VERSION = "1.5.4.2"
 
         /** 当前模组实例（命令与事件层访问）。 */
         @Volatile

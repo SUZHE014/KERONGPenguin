@@ -1,5 +1,6 @@
 package cn.huohuas001.bot
 
+import cn.huohuas001.bot.compat.SptCompat
 import cn.huohuas001.bot.events.GroupMessageHandler
 import cn.huohuas001.bot.events.commands.BaseCommand
 import cn.huohuas001.bot.provider.BotShared
@@ -102,6 +103,10 @@ object QClient {
                 }
             }
             PluginFileLog.infoAndKeep("正在连接 QQ 开放平台并鉴权…")
+            // 1.5.4.2：模块化类加载兼容层（NeoForge 模组环境 union: 协议下 SDK 包扫描
+            // NPE，导致组件装配失败、命令系统全瘫；兼容层优先走原生扫描，
+            // 失败时按 jar 条目枚举兜底，Spigot 行为不变）
+            SptCompat.injectModuleCompatScanner(session.APPLICATION)
             session.run()
 
             // SDK 组件装配检测：扫描失败时 bot 实例不会创建，命令将无法响应
@@ -493,10 +498,19 @@ object QClient {
             WssDiagnostics.stop()
         } catch (_: Throwable) {
         }
+        val session = starter
         try {
-            starter?.shutdown()
+            session?.shutdown()
         } catch (_: Throwable) {
         } finally {
+            // 1.5.4.2：SDK 的 spt 框架与 common 库持有 50+ 个非 daemon 线程
+            // （任务队列 40 + 定时器 + Public 静态池 9 + WSS 线程），
+            // Starter.shutdown 只关 WSS，不清这些池 → 服务器 stop 后进程永不退出。
+            // 此处反射清扫全部 kloping 线程池/Timer/Writer（仅触碰 io.github.kloping.*）
+            try {
+                SptCompat.shutdownSptRuntime(session)
+            } catch (_: Throwable) {
+            }
             starter = null
         }
     }
