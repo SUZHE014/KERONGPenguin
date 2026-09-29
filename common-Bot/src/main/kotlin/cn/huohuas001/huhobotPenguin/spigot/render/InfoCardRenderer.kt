@@ -56,12 +56,10 @@ import javax.imageio.ImageIO
  *   （9/5 项 = 760，6~8 项 = 760 或 664，4 项 = 664，2~3 项 = 664 或 568），
  *   底部不再留白，背景图按实际高度处理与缓存。
  *
- * 1.5.3.2：修复背景图黑渐变噪点 + 模糊尺度收紧：
- * - 模糊改金字塔逐级缩放（真·区域平均），不再单步大比例双线性降采样；
- * - 移除 50% 原图清晰透叠层，模糊为真模糊，照片颗粒 / JPEG 噪点不再带回；
- * - 暗化合并为单遍合成，三段 8 位 alpha 逐级取整产生的色带随之消失；
- * - 模糊尺度由约 1/12 收紧至 1/4，背景保留更多细节、观感更接近原图
- *   （详见 [InfoCardAssets.blurAndDarken]）。
+ * 1.5.4.4：背景不再模糊，直接叠一层暗色遮罩：
+ * - 金字塔模糊整段移除，背景保留原图全部细节与锐度；
+ * - 暗色遮罩保持单遍合成（等效总黑度约 41%），前景可读性与历史版本一致
+ *   （详见 [InfoCardAssets.darkOverlay]）。
  */
 object InfoCardRenderer {
 
@@ -108,7 +106,7 @@ object InfoCardRenderer {
         val playerName: String,
         val items: List<CardItem>,
         val avatar: BufferedImage? = null,
-        /** 已预处理的背景（尺寸须为 WIDTH × cardHeight(items.size)，含模糊与暗化）；null 表示无背景。 */
+        /** 已预处理的背景（尺寸须为 WIDTH × cardHeight(items.size)，含暗色遮罩）；null 表示无背景。 */
         val background: BufferedImage? = null,
     )
 
@@ -574,16 +572,8 @@ object InfoCardAssets {
     private const val BACKGROUND_CACHE_MAX_BYTES = 36L * 1024 * 1024
 
     /**
-     * 背景模糊尺度分母（1.5.3.2）：模糊金字塔降采样的目标宽度 / 高度 =
-     * 画布尺寸 / 此值。1.5.3.2 由 12 收紧为 4 —— 模糊强度大幅减弱，
-     * 背景保留更多细节；金字塔逐级平均对颗粒 / JPEG 噪点的消除
-     * 仍由回归测试保障（见 RenderCheckJava 高频能量用例）。
-     */
-    internal const val BLUR_SCALE_DIVISOR = 4
-
-    /**
      * 在线列表背景处理高度上限（1.5.1）：长图背景不再按整幅画布高度处理，
-     * 而是封顶后由渲染器拉伸铺满（毛玻璃模糊背景下视觉无差异），
+     * 而是封顶后由渲染器拉伸铺满（暗色遮罩背景下视觉无差异），
      * 避免百人在线时背景栅格膨胀到数十 MB。
      */
     internal const val ONLINE_BACKGROUND_MAX_HEIGHT = 1600
@@ -918,7 +908,7 @@ object InfoCardAssets {
     // ---------- 背景图 ----------
 
     /**
-     * 获取预处理完成的背景（cover 裁剪 + 轻模糊 + 暗化，尺寸 width × height）。
+     * 获取预处理完成的背景（cover 裁剪 + 暗色遮罩，尺寸 width × height）。
      *
      * 0.1.5.3：从 img/ 目录全部候选图中随机挑选一张（旧版固定取第一张），
      * 每张图的处理结果按文件路径 + 修改时间 + 大小缓存；图片更换后自动重新处理。
@@ -932,9 +922,10 @@ object InfoCardAssets {
      * 1.5.1（内存限制优化）：
      * - 缓存除张数上限外增加字节预算（见 [BACKGROUND_CACHE_MAX_BYTES]），
      *   大画布背景超预算时按最久未使用淘汰；
-     * - 模糊与暗化合并为单遍合成（[blurAndDarken]），处理过程中的瞬时全幅中间图
-     *   从 2 张降为 1 张，降低峰值内存；
      * - 尺寸签名改用 width * 1_000_000 + height，消除长图高度超过 4096 时的碰撞。
+     *
+     * 1.5.4.4：移除背景模糊（金字塔整段删除），背景直接叠暗色遮罩
+     * （[darkOverlay]），处理开销与峰值内存进一步降低。
      */
     @Synchronized
     fun processedBackground(dataDirectory: File, width: Int, height: Int): BufferedImage? {
@@ -967,7 +958,7 @@ object InfoCardAssets {
         val decoded = decodeBackground(file) ?: return null
         if (decoded.width <= 0 || decoded.height <= 0) return null
 
-        val processed = blurAndDarken(coverImage(decoded, width, height))
+        val processed = darkOverlay(coverImage(decoded, width, height))
         val bytes = processed.width.toLong() * processed.height * 4
         backgroundCache[path] = BackgroundEntry(stamp, sizeKey, processed, bytes, now)
         evictBackgroundsIfOversized()
@@ -1085,77 +1076,25 @@ object InfoCardAssets {
     }
 
     /**
-     * 金字塔模糊 + 单遍暗化（1.5.3.2 背景噪点修复）。
+     * 暗色遮罩（1.5.4.4：背景不再模糊）。
      *
-     * 旧实现（1.5.1）存在三处噪点来源，暗色渐变区（黄昏天空、深色墙面等）
-     * 肉眼可见黑色噪点 / 色带：
-     * 1. 单步大比例双线性降采样（900 → 75）每个输出像素只采样 2×2 邻域，
-     *    约 92% 输入像素被直接丢弃，照片颗粒 / JPEG 块噪被混叠成随机明暗斑点；
-     * 2. 模糊是“假的”：50% 不透明度的原图清晰层直接透叠回来，
-     *    颗粒与噪点以一半强度原样返回画面；
-     * 3. 三段 8 位 alpha 依次合成（黑画布打底 0.85 + 原图 0.5 + 遮罩 0.36），
-     *    每段各自取整，平滑渐变被量化出可见色带。
+     * 背景 = 原图（cover 裁剪 / 拉伸到目标尺寸后）直接叠一层半透明黑：
+     * - 不再做金字塔降采样 / 升采样，背景保留原图全部细节与锐度；
+     * - 单遍合成等效总黑度约 41%（与旧版暗度观感一致），前景文字可读；
+     * - 无任何中间图像，处理开销与峰值内存均为历史最低。
      *
-     * 新实现：
-     * - 逐级减半降采样：每级双线性恰为精确 2×2 区域平均（金字塔），
-     *   颗粒 / 噪点被真正平均掉，不产生混叠；
-     * - 逐级翻倍升采样：多级双线性级联逼近高斯模糊，平滑无块状结构；
-     * - 不再透叠原图清晰层，真模糊；
-     * - 暗化为单遍合成（等效总黑度约 41%，与旧版暗度观感一致），
-     *   量化误差最小，亮度风格不变。
-     *
-     * 1.5.3.2 收紧：模糊尺度由约 1/12 调整为 1/4（见 [BLUR_SCALE_DIVISOR]），
-     * 金字塔层数随之减少，背景保留更多细节，噪点平均效果实测仍达标
-     * （回归测试高频能量阈值内）。
+     * 历史包袱说明：0.1.5.x~1.5.3.2 曾对背景做模糊处理，1.5.4.4 起按用户
+     * 要求移除——“去掉模糊，直接加暗色遮罩”。
      */
-    private fun blurAndDarken(cover: BufferedImage): BufferedImage {
+    private fun darkOverlay(cover: BufferedImage): BufferedImage {
         val width = cover.width
         val height = cover.height
-
-        // 模糊尺度：1/4（1.5.3.2 收紧，原 1/12，背景保留更多细节）
-        val targetWidth = (width / BLUR_SCALE_DIVISOR).coerceAtLeast(1)
-        val targetHeight = (height / BLUR_SCALE_DIVISOR).coerceAtLeast(1)
-
-        // 1) 金字塔逐级减半（每级 = 精确 2×2 区域平均，真正平均掉噪点）
-        var current = cover
-        while (current.width / 2 >= targetWidth && current.height / 2 >= targetHeight) {
-            current = resample(current, current.width / 2, current.height / 2)
-        }
-        if (current.width != targetWidth || current.height != targetHeight) {
-            // 对齐到精确小尺寸（≤ 2 倍缩放，双线性采样充足）
-            current = resample(current, targetWidth, targetHeight)
-        }
-
-        // 2) 金字塔逐级升采样回原尺寸（每级 ≤ 2 倍双线性，平滑插值无块状结构）
-        while (current.width < width || current.height < height) {
-            val nextWidth = (current.width * 2).coerceAtMost(width)
-            val nextHeight = (current.height * 2).coerceAtMost(height)
-            current = resample(current, nextWidth, nextHeight)
-        }
-
-        // 3) 单遍暗化遮罩（等效总黑度 ≈ 41%，保证前景可读）
         val result = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
         val g = result.createGraphics()
         try {
-            g.drawImage(current, 0, 0, null)
+            g.drawImage(cover, 0, 0, null)
             g.color = Color(0x00, 0x00, 0x00, 105)
             g.fillRect(0, 0, width, height)
-        } finally {
-            g.dispose()
-        }
-        return result
-    }
-
-    /**
-     * 双线性重采样到指定尺寸（[blurAndDarken] 内部用）。
-     * 输入输出均为不透明 TYPE_INT_RGB；同尺寸调用为 1:1 拷贝。
-     */
-    private fun resample(source: BufferedImage, width: Int, height: Int): BufferedImage {
-        val result = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
-        val g = result.createGraphics()
-        try {
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-            g.drawImage(source, 0, 0, width, height, null)
         } finally {
             g.dispose()
         }

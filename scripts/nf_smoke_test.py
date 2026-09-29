@@ -25,7 +25,7 @@ import subprocess
 import sys
 import time
 
-DEFAULT_JAR = "/home/z/my-project/penguin-git/build/dist/KERONGPenguin_NeoForge-1.21.1-1.5.4.3.jar"
+DEFAULT_JAR = "/home/z/my-project/penguin-git/build/dist/KERONGPenguin_NeoForge-1.21.1-1.5.4.4.jar"
 DEFAULT_SERVER = "/home/z/my-project/tooling/nf-install/server"
 KOTLIN_SIM_DEFAULT = "/home/z/my-project/tooling/fake-kff-mod.jar"
 JAVA = "/usr/bin/java"

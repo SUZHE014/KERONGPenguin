@@ -3,7 +3,7 @@
 KERONGPenguin NeoForge 分发模组 JAR 门禁验证。
 
 用法：python3 scripts/verify_jar_neoforge.py [jar]
-缺省验证 build/dist/KERONGPenguin_NeoForge-1.21.1-1.5.4.3.jar。
+缺省验证 build/dist/KERONGPenguin_NeoForge-1.21.1-1.5.4.4.jar。
 若本地存在已安装的 NeoForge server（tooling/nf-install/server），额外执行：
   - 平台包冲突扫描（split package 门禁，防 ResolutionException）；
   - 与 kotlin-stdlib jar 的包交集扫描（1.5.4.3 重定位门禁：重定位后必须零交集，
@@ -19,7 +19,7 @@ sys.path.insert(0, "/home/z/my-project/scripts")
 from class_strings import read_constant_pool
 
 JAR = sys.argv[1] if len(sys.argv) > 1 else \
-    "/home/z/my-project/penguin-git/build/dist/KERONGPenguin_NeoForge-1.21.1-1.5.4.3.jar"
+    "/home/z/my-project/penguin-git/build/dist/KERONGPenguin_NeoForge-1.21.1-1.5.4.4.jar"
 
 # 本地安装的 NeoForge 21.1.248 server（可选，存在则做平台冲突扫描）
 NF_LIBS = Path("/home/z/my-project/tooling/nf-install/server/libraries")
@@ -66,7 +66,7 @@ def main():
         toml = zf.read("META-INF/neoforge.mods.toml").decode("utf-8") if "META-INF/neoforge.mods.toml" in names else ""
         check("neoforge.mods.toml 存在", bool(toml))
         check("mods.toml modId=kerongpenguin", 'modId = "kerongpenguin"' in toml)
-        check("mods.toml version=1.5.4.3", re.search(r'^version = "1\.5\.4\.3"', toml, re.M) is not None)
+        check("mods.toml version=1.5.4.4", re.search(r'^version = "1\.5\.4\.4"', toml, re.M) is not None)
         check("mods.toml modLoader=javafml", 'modLoader = "javafml"' in toml)
         check("mods.toml 依赖 neoforge 21.1+", "versionRange = \"[21.1.0,)\"" in toml)
         check("mods.toml 依赖 minecraft 1.21.1", "versionRange = \"[1.21.1,1.22)\"" in toml)
@@ -123,6 +123,15 @@ def main():
         # 4. 乱码修复关键串（GroupMessageHandler 引用 QqText）
         gm = zf.read("cn/huohuas001/bot/events/GroupMessageHandler.class")
         check("GroupMessageHandler 含 QqText 引用", b"QqText" in gm)
+
+        # 4a. 1.5.4.4 暗色遮罩（背景不再模糊）：方法名 darkOverlay 存在于
+        #     InfoCardAssets（同文件顶级 object，类名无 $ 嵌套），
+        #     旧模糊路径（blurAndDarken / resample / BLUR_SCALE_DIVISOR）全部移除
+        icr = zf.read("cn/huohuas001/huhobotPenguin/spigot/render/InfoCardAssets.class")
+        check("InfoCardAssets 含 darkOverlay 方法", b"darkOverlay" in icr)
+        check("InfoCardAssets 无 blurAndDarken 残留", b"blurAndDarken" not in icr)
+        check("InfoCardAssets 无 resample 残留", b"resample" not in icr)
+        check("InfoCardAssets 无 BLUR_SCALE_DIVISOR 残留", b"BLUR_SCALE_DIVISOR" not in icr)
 
         # 4b. help 子命令修复（/huhobot help 与 /hb help 字面量注册）
         nc = zf.read("cn/huohuas001/huhobotPenguin/neoforge/NeoForgeCommands.class")

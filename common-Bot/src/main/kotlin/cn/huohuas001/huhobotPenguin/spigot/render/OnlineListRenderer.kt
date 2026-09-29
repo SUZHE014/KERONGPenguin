@@ -94,7 +94,7 @@ object OnlineListRenderer {
         /** 在线玩家（顺序即展示顺序）。 */
         val entries: List<OnlineEntry>,
         /**
-         * 预处理背景（含模糊与暗化；1.5.1 起尺寸可与画布不一致，渲染时拉伸铺满）；
+         * 预处理背景（含暗色遮罩，1.5.4.4 起不再模糊；尺寸可与画布不一致，渲染时拉伸铺满）；
          * null 表示无背景。
          */
         val background: BufferedImage? = null,
@@ -146,8 +146,8 @@ object OnlineListRenderer {
      * （长图背景高度封顶后仍能覆盖全画布）；无图片时深色渐变。
      *
      * 1.5.3.2：拉伸改用双线性插值（旧版未设插值提示，默认近邻采样
-     * 在长图放大时会出现可见的像素块），噪点修复后的平滑背景不再被
-     * 最近邻放大重新引入块状纹理。
+     * 在长图放大时会出现可见的像素块）；背景 1.5.4.4 起不再模糊，
+     * 但双线性拉伸仍保留，避免背景放大时出现块状纹理。
      */
     private fun drawBackground(g: Graphics2D, background: BufferedImage?, height: Int) {
         if (background != null && background.width > 0 && background.height > 0) {
