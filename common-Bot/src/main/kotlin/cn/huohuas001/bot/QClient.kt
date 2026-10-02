@@ -227,33 +227,58 @@ object QClient {
         if (!format.postChat) return
         if (!message.startsWith(format.startWith)) return
         val messageWithoutPrefix = message.removePrefix(format.startWith)
-        val filtered = currentPlugin.auditText(messageWithoutPrefix)
-        val content = currentPlugin.formatGameMessage(playerName, filtered)
-        sendPayloadToGroups(V2MsgData().setContent(content), "转发游戏聊天")
+        // 1.5.4.5：修复“QQ 消息同步导致服务器内发送消息有延迟”。
+        // Spigot 的 AsyncPlayerChatEvent 中，所有监听器执行完毕消息才会广播给
+        // 服务器内玩家；旧版在此同步执行敏感词审核（OpenAI 兼容接口，
+        // connect 5s + read 10s 超时）与每群一次 QQ API 发送，全部阻塞聊天管线，
+        // 导致玩家在游戏内看到自己的消息有延迟。现整体移入异步发送队列：
+        // 入队即返回，聊天线程零阻塞；队列单线程 FIFO 保序，消息不会乱序。
+        OutboxQueue.submit {
+            val filtered = currentPlugin.auditText(messageWithoutPrefix)
+            val content = currentPlugin.formatGameMessage(playerName, filtered)
+            sendPayloadToGroupsSync(V2MsgData().setContent(content), "转发游戏聊天")
+        }
     }
 
     /** 播报玩家加入。 */
     fun broadcastPlayerJoin(playerName: String) {
         if (starter == null) return
         if (!plugin.playerEventFormat().joinEnabled) return
-        sendTextToGroups(plugin.formatPlayerJoinMessage(playerName), "发送玩家进服通知")
+        // 1.5.4.5：PlayerJoinEvent 在主线程触发，入队发送避免同步 HTTP 阻塞主线程 tick。
+        OutboxQueue.submit {
+            sendTextToGroupsSync(plugin.formatPlayerJoinMessage(playerName), "发送玩家进服通知")
+        }
     }
 
     /** 播报玩家退出。 */
     fun broadcastPlayerQuit(playerName: String) {
         if (starter == null) return
         if (!plugin.playerEventFormat().quitEnabled) return
-        sendTextToGroups(plugin.formatPlayerQuitMessage(playerName), "发送玩家退服通知")
+        // 1.5.4.5：同上，主线程事件入队发送。
+        OutboxQueue.submit {
+            sendTextToGroupsSync(plugin.formatPlayerQuitMessage(playerName), "发送玩家退服通知")
+        }
     }
 
-    /** 向所有配置的群发送文本。 */
+    /** 向所有配置的群发送文本（1.5.4.5：经异步发送队列，入队即返回）。 */
     private fun sendTextToGroups(content: String, action: String) {
         if (content.isBlank()) return
         sendPayloadToGroups(V2MsgData().setContent(content), action)
     }
 
-    /** 将消息载荷发送到所有配置的群。 */
+    /** 向所有配置的群发送文本（同步内核，仅由发送队列线程调用）。 */
+    private fun sendTextToGroupsSync(content: String, action: String) {
+        if (content.isBlank()) return
+        sendPayloadToGroupsSync(V2MsgData().setContent(content), action)
+    }
+
+    /** 将消息载荷发送到所有配置的群（1.5.4.5：经异步发送队列，入队即返回）。 */
     private fun sendPayloadToGroups(payload: V2MsgData, action: String) {
+        OutboxQueue.submit { sendPayloadToGroupsSync(payload, action) }
+    }
+
+    /** 同步发送内核：直接向所有群发送（仅由发送队列线程调用，不阻塞调用线程）。 */
+    private fun sendPayloadToGroupsSync(payload: V2MsgData, action: String) {
         val currentPlugin = plugin
         val payloadJson = JSON.toJSONString(payload)
         for (groupId in currentPlugin.groupOpenIdList()) {
@@ -278,7 +303,8 @@ object QClient {
             markdown.keyboard = keyboard
             payload.keyboard = keyboard
         }
-        sendPayloadToGroups(payload, "发送 Markdown")
+        // 1.5.4.5：主动 Markdown 推送同样经异步发送队列，不阻塞调用线程。
+        OutboxQueue.submit { sendPayloadToGroupsSync(payload, "发送 Markdown") }
     }
 
     /** 向指定群发送 Markdown。 */
@@ -296,10 +322,13 @@ object QClient {
             markdown.keyboard = keyboard
             payload.keyboard = keyboard
         }
-        try {
-            session.bot?.groupBaseV2?.send(groupOpenId, JSON.toJSONString(payload), Channel.SEND_MESSAGE_HEADERS)
-        } catch (error: Exception) {
-            currentPlugin.log_error("向QQ群 $groupOpenId 发送 Markdown 失败: ${error.message}")
+        // 1.5.4.5：入队发送，调用线程（命令/事件处理）零阻塞。
+        OutboxQueue.submit {
+            try {
+                session.bot?.groupBaseV2?.send(groupOpenId, JSON.toJSONString(payload), Channel.SEND_MESSAGE_HEADERS)
+            } catch (error: Exception) {
+                currentPlugin.log_error("向QQ群 $groupOpenId 发送 Markdown 失败: ${error.message}")
+            }
         }
     }
 
@@ -512,6 +541,12 @@ object QClient {
             } catch (_: Throwable) {
             }
             starter = null
+        }
+        // 1.5.4.5：关闭异步发送队列（尽力清空已排队消息，最多 2 秒，不阻塞关服；
+        // 队列线程是 daemon，即使没等到也不阻止 JVM 退出）。
+        try {
+            OutboxQueue.shutdown()
+        } catch (_: Throwable) {
         }
     }
 }

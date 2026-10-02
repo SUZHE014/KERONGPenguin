@@ -260,7 +260,17 @@ class GroupMessageHandler(private val plugin: HuHoBot) : ListenerHost() {
             }
             // 1.5.4：引用消息带被引上下文（[回复 昵称「被引摘要」] 前缀）
             if (quote != null) message = QqText.quotePrefix(quote) + message
-            plugin.broadcastMessage(plugin.formatGroupMessage(senderName, plugin.auditText(message)))
+            // 1.5.4.5：敏感词审核（配置审核接口时为同步 HTTP，最坏 15s）移出
+            // WSS 事件分发线程，避免阻塞后续 QQ 消息与命令响应；
+            // broadcastMessage 内部自行调度主线程广播进服。
+            val capturedMessage = message
+            val capturedSenderName = senderName
+            plugin.submitAsync {
+                try {
+                    plugin.broadcastMessage(plugin.formatGroupMessage(capturedSenderName, plugin.auditText(capturedMessage)))
+                } catch (_: Throwable) {
+                }
+            }
         } catch (_: Throwable) {
         }
     }
