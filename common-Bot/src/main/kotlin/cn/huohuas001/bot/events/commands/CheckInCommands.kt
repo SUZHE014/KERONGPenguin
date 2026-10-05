@@ -13,6 +13,10 @@ import java.lang.reflect.Method
 /**
  * /签到 —— 每日签到领取金币（依赖 Vault 经济插件）。
  * 连续签到按北京时间计算；离线玩家的奖励先记账，上线自动补发。
+ *
+ * 1.5.5：签到开启但金币插件（Vault 经济）不可用时自动关闭金币奖励——
+ * 不入账也不记账，签到照常累计（连续天数 / 总次数），
+ * 成功提示不再显示金币数量（检测每次实时进行，中途装 / 卸经济插件即时生效）。
  */
 class CheckInCommands : CommandSupport() {
 
@@ -67,16 +71,28 @@ class CheckInCommands : CommandSupport() {
             return
         }
 
+        // 计算连续签到天数
+        var streak = manager.getCheckinStreak(quuid)
+        val yesterday = BeijingTimeUtil.nextDay(lastDate)
+        streak = if (lastDate.isEmpty() || yesterday != today) 1 else streak + 1
+
+        // 1.5.5：金币插件（Vault 经济）不可用时自动关闭金币奖励：
+        // 签到照常累计（连续天数 / 总次数），不发放也不记账，提示不显示金币。
+        // NeoForge 平台无 Vault 生态同样走本分支（旧版记入待领字段但永远无法补发，
+        // 新版不再积累无效数据）。
+        if (!isEconomyAvailable()) {
+            manager.setCheckinDate(quuid, today)
+            manager.setCheckinStreak(quuid, streak)
+            manager.addCheckinTotal(quuid, 1)
+            sendDirect(event, "$prefix  ✔️签到成功！\n玩家 $playerName 已连续签到${streak}天")
+            return
+        }
+
         val reward = manager.checkinReward
         if (reward <= 0) {
             sendDirect(event, prefix + "  ❌签到失败！\n奖励金币数量配置错误")
             return
         }
-
-        // 计算连续签到天数
-        var streak = manager.getCheckinStreak(quuid)
-        val yesterday = BeijingTimeUtil.nextDay(lastDate)
-        streak = if (lastDate.isEmpty() || yesterday != today) 1 else streak + 1
 
         // 发放金币：在线直接入账，离线记账待上线补发
         // 1.5.4：非 Spigot 平台（NeoForge）无 Vault 经济生态，在线也走记账，
@@ -100,6 +116,26 @@ class CheckInCommands : CommandSupport() {
             sendDirect(event, "$prefix  ✔️签到成功！\n玩家 $playerName 获得了${formatMoney(reward)}金币，已连续签到${streak}天")
         } else {
             sendDirect(event, prefix + "  ❌签到失败！\n金币系统未就绪或数据异常，请联系管理员")
+        }
+    }
+
+    /**
+     * 金币插件（Vault + 经济服务）是否就绪（1.5.5）。
+     *
+     * 与 [depositPlayer] 同一检测链：Vault 插件已启用且经济服务已注册。
+     * 每次签到实时检测（纯内存查找零 IO 开销），中途安装 / 卸载经济插件即时生效。
+     */
+    fun isEconomyAvailable(): Boolean {
+        return try {
+            val vault: Plugin? = Bukkit.getPluginManager().getPlugin("Vault")
+            if (vault == null || !vault.isEnabled) return false
+            val economyClass = Class.forName("net.milkbowl.vault.economy.Economy")
+            val servicesManager = Bukkit.getServer().javaClass.getMethod("getServicesManager").invoke(Bukkit.getServer())
+            val rsp = servicesManager.javaClass.getMethod("getRegistration", Class::class.java).invoke(servicesManager, economyClass) ?: return false
+            val provider = Class.forName("org.bukkit.plugin.RegisteredServiceProvider").getMethod("getProvider").invoke(rsp) ?: return false
+            provider != null
+        } catch (_: Throwable) {
+            false
         }
     }
 

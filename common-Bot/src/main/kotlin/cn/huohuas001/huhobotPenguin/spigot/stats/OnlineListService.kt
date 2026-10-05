@@ -28,12 +28,15 @@ import java.awt.image.BufferedImage
  *    3 秒超时保护），不再阻塞消息线程；
  * 2. 并发预热头像（4 线程小池 + 8 秒总预算，超时未取到的玩家渲染占位块，
  *    下次查询命中缓存后展示真实头像，避免大量玩家时首查等待过久）；
- * 3. [OnlineListRenderer] 渲染毛玻璃卡片（人数多自动切长图），
- *    背景与查信息卡片（1.5.2 前为 /个人信息）共用 img/ 目录随机图与缓存；长图背景处理高度封顶
+ * 3. [OnlineListRenderer] 渲染毛玻璃卡片，背景与查信息卡片（1.5.2 前为 /个人信息）
+ *    共用 img/ 目录随机图与缓存；长图背景处理高度封顶
  *    （[InfoCardAssets.ONLINE_BACKGROUND_MAX_HEIGHT]），渲染时拉伸铺满，
  *    控制内存占用；
- * 4. 渲染走 [CardRenderPool]（硬编码 CPU 上限），完成后自动节流 GC；
- * 5. 结果缓存 20 秒（在线名单不变时重复查询秒回），单用户 5 秒冷却防刷屏。
+ * 4. 分段发送（1.5.5）：超过 [OnlineListRenderer.MAX_PLAYERS_PER_PAGE] 人自动
+ *    切页多张发送 —— 第一张带标题，后续只画内容，相邻间隔 400ms 对频控友好；
+ * 5. 渲染走 [CardRenderPool]（硬编码 CPU 上限），完成后自动节流 GC；
+ * 6. 结果缓存 20 秒（在线名单不变时重复查询秒回，整组图片复用），
+ *    单用户 5 秒冷却防刷屏。
  */
 object OnlineListService {
 
@@ -52,6 +55,9 @@ object OnlineListService {
     /** 结果缓存容量上限（防膨胀；超出先清过期再清空）。 */
     private const val RESULT_CACHE_MAX = 4
 
+    /** 多张图片相邻发送间隔（毫秒），对频控友好（1.5.5 分段发送）。 */
+    private const val SEND_INTERVAL_MILLIS = 400L
+
     /** 用户冷却记录：OpenId → 上次触发时间。 */
     private val lastQueryAt = ConcurrentHashMap<String, Long>()
 
@@ -61,8 +67,8 @@ object OnlineListService {
         val playerDataDir: File?,
     )
 
-    /** 渲染结果缓存条目（key = 在线名单哈希，名单变化自然失效）。 */
-    private data class CachedList(val bytes: ByteArray, val at: Long)
+    /** 渲染结果缓存条目（key = 在线名单哈希，名单变化自然失效；1.5.5 起存整组分页）。 */
+    private data class CachedList(val pages: List<ByteArray>, val at: Long)
 
     private val resultCache = ConcurrentHashMap<Int, CachedList>()
 
@@ -100,11 +106,11 @@ object OnlineListService {
                         return@submit
                     }
 
-                    // 2. 名单未变化且缓存新鲜：直接复用上次渲染结果秒回
+                    // 2. 名单未变化且缓存新鲜：直接复用上次整组渲染结果秒回
                     val cacheKey = snapshot.players.joinToString(",") { it.first }.hashCode()
                     val cached = resultCache[cacheKey]
                     if (cached != null && System.currentTimeMillis() - cached.at < RESULT_TTL_MILLIS) {
-                        if (!QClient.replyWithImgBytes(event, cached.bytes)) {
+                        if (!sendPages(event, cached.pages)) {
                             replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
                         }
                         return@submit
@@ -116,16 +122,17 @@ object OnlineListService {
                         OnlineListRenderer.OnlineEntry(it.first, avatars[it.first])
                     }
 
-                    // 4. 背景与渲染（人数多时高度自动加长为长图）；
-                    //    长图背景处理高度封顶（1.5.1 内存限制），渲染器拉伸铺满
-                    val height = OnlineListRenderer.measureHeight(entries.size)
+                    // 4. 背景与渲染（1.5.5 分段发送：人数过多自动切页多张，
+                    //    首页带标题、续页只画内容）；背景处理高度封顶（1.5.1 内存限制），
+                    //    渲染时拉伸铺满，整组页面共用同一张背景保持视觉统一
+                    val height = OnlineListRenderer.measurePageHeight(entries.size, true)
                     val dataDirectory = plugin.configFile?.parentFile
                     val backgroundHeight = height.coerceAtMost(InfoCardAssets.ONLINE_BACKGROUND_MAX_HEIGHT)
                     val background = dataDirectory?.let {
                         InfoCardAssets.processedBackground(it, OnlineListRenderer.WIDTH, backgroundHeight)
                     }
                     val updateTime = SimpleDateFormat("HH:mm").format(Date())
-                    val bytes = OnlineListRenderer.render(
+                    val pages = OnlineListRenderer.renderPages(
                         OnlineListRenderer.OnlineListData(
                             serverName = plugin.serverName,
                             updateTime = updateTime,
@@ -134,17 +141,17 @@ object OnlineListService {
                         )
                     )
 
-                    // 5. 写入结果缓存（名单不变时 20 秒内重复查询复用）
-                    if (bytes.isNotEmpty()) {
-                        resultCache[cacheKey] = CachedList(bytes, System.currentTimeMillis())
+                    // 5. 写入结果缓存（名单不变时 20 秒内重复查询复用整组）
+                    if (pages.isNotEmpty()) {
+                        resultCache[cacheKey] = CachedList(pages, System.currentTimeMillis())
                         if (resultCache.size > RESULT_CACHE_MAX) {
                             resultCache.entries.removeIf { System.currentTimeMillis() - it.value.at >= RESULT_TTL_MILLIS }
                             if (resultCache.size > RESULT_CACHE_MAX) resultCache.clear()
                         }
                     }
 
-                    // 6. 发送图片
-                    if (!QClient.replyWithImgBytes(event, bytes)) {
+                    // 6. 逐张发送（相邻间隔 400ms）
+                    if (pages.isEmpty() || !sendPages(event, pages)) {
                         replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
                     }
                 } catch (error: Throwable) {
@@ -232,6 +239,21 @@ object OnlineListService {
             // invokeAll 整体异常（如池已关闭）：全部占位块兜底
         }
         return result
+    }
+
+    /** 逐张发送分页图片（相邻间隔 [SEND_INTERVAL_MILLIS]）；返回是否全部发送成功。 */
+    private fun sendPages(event: GroupMessageEvent, pages: List<ByteArray>): Boolean {
+        for ((index, page) in pages.withIndex()) {
+            if (index > 0) {
+                try {
+                    Thread.sleep(SEND_INTERVAL_MILLIS)
+                } catch (_: InterruptedException) {
+                    return false
+                }
+            }
+            if (!QClient.replyWithImgBytes(event, page)) return false
+        }
+        return true
     }
 
     /** 纯文本回复（不 @）。 */

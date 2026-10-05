@@ -6,6 +6,7 @@ import cn.huohuas001.bot.events.commands.AdministrationCommands
 import cn.huohuas001.bot.events.commands.BaseCommand
 import cn.huohuas001.bot.events.commands.BindCommands
 import cn.huohuas001.bot.events.commands.CheckInCommands
+import cn.huohuas001.bot.events.commands.LeaderboardCommands
 import cn.huohuas001.bot.events.commands.MotdCommands
 import cn.huohuas001.bot.events.commands.PublicCommands
 import cn.huohuas001.bot.state.CommandRepositories
@@ -36,6 +37,7 @@ class GroupMessageHandler(private val plugin: HuHoBot) : ListenerHost() {
         commands.add(MotdCommands())
         commands.add(BindCommands())
         commands.add(CheckInCommands())
+        commands.add(LeaderboardCommands())
     }
 
     /** 注册额外的群命令处理器。 */

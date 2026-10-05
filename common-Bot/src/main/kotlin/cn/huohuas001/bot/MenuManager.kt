@@ -30,6 +30,7 @@ object MenuManager {
         PanelItem("绑定", "绑定 QQ", "绑定 "),
         PanelItem("重新绑定", "解除 QQ 绑定", "重新绑定"),
         PanelItem("查在线", "查询在线玩家", "查在线"),
+        PanelItem("在线排行榜", "在线时长排行", "在线排行榜"),
         PanelItem("在线服务器", "查看服务器", "在线服务器"),
         PanelItem("发信息", "发送消息", "发信息 "),
         PanelItem("执行命令", "执行服务器命令", "执行命令 "),

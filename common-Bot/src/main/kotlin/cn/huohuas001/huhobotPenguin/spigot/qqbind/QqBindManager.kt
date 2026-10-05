@@ -523,6 +523,14 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             100.0
         }
 
+    /** 1.5.5：在线排行榜显示玩家数（默认 20；配置夹逼 1..100）。 */
+    val leaderboardTop: Int
+        get() = try {
+            plugin.config.getInt("qq-bind.leaderboard.top", 20).coerceIn(1, 100)
+        } catch (_: Throwable) {
+            20
+        }
+
     // ---------- QUUID 记录字段 ----------
 
     /** 待补发的签到金币。 */
@@ -653,6 +661,20 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             names.add(name)
         }
         return names
+    }
+
+    /**
+     * 1.5.5：列出全部 QUUID 主文件 ID（跳过 index / skip / blacklist 系统文件）。
+     *
+     * 供在线排行榜等只读全量遍历使用；配合 [readQuuidRecord] 逐条读取，
+     * 调用方应处于异步线程（避免批量磁盘 IO 阻塞主线程 / 消息线程）。
+     */
+    fun listQuuids(): List<String> {
+        val files = quuidFolder.listFiles { f -> f.isFile && f.name.endsWith(".yml") } ?: return emptyList()
+        return files.asSequence()
+            .map { it.name.removeSuffix(".yml") }
+            .filter { it.isNotEmpty() && it != "index" && it != "skip" && it != "blacklist" }
+            .toList()
     }
 
     // ---------- 免验证 ----------

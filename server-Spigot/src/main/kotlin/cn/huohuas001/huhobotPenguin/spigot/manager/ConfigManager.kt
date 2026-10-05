@@ -169,13 +169,13 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
-        private const val CURRENT_CONFIG_VERSION = 13
+        private const val CURRENT_CONFIG_VERSION = 14
 
         /**
          * 支持开关的群命令名单（1.5.2：查信息更名对应个人信息卡片命令，新增 查询open ID）。
          */
         private val COMMAND_NAMES = listOf(
-            "查询open ID", "查信息", "绑定", "重新绑定", "查在线", "在线服务器", "发信息",
+            "查询open ID", "查信息", "绑定", "重新绑定", "查在线", "在线排行榜", "在线服务器", "发信息",
             "执行命令", "执行", "管理员执行", "全量", "motd", "帮助",
             "AI对话上下文", "清除当前上下文", "黑名单", "解除黑名单", "签到",
         )
@@ -220,6 +220,8 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "qq-bind.checkin.enabled" to false,
             "qq-bind.checkin.prefix" to "[签到]",
             "qq-bind.checkin.reward" to 100.0,
+            // 1.5.5：在线排行榜（commands.在线排行榜 开关由 COMMAND_NAMES 统一注册默认 true）
+            "qq-bind.leaderboard.top" to 20,
             "ai.enabled" to false,
             "ai.server-enabled" to false,
             "ai.server-prefix" to "ai",

@@ -355,6 +355,12 @@ class PublicCommands : CommandSupport() {
      */
     @Commands("帮助")
     fun help(plugin: HuHoBot, event: GroupMessageEvent, params: String) {
+        // 1.5.5：在线排行榜条目按命令开关动态显示（commands.在线排行榜 关闭时同步消失）
+        val leaderboardEnabled = try {
+            plugin.commandList()["在线排行榜"] != false
+        } catch (_: Throwable) {
+            true
+        }
         val text = buildString {
             append("### KERONG Penguin 命令手册\n\n")
             append("**【QQ 群命令】**\n")
@@ -364,6 +370,7 @@ class PublicCommands : CommandSupport() {
             append("- /查询open ID —— 我的 OpenId 与群 OpenId\n")
             append("- /查询open ID <OpenId> —— 反查 QQ 账号与绑定\n")
             append("- /查在线 —— 查询在线玩家\n")
+            if (leaderboardEnabled) append("- /在线排行榜 —— 总在线时长排行\n")
             append("- /在线服务器 —— 查看服务器状态\n")
             append("- /发信息 <内容> —— 发送消息到游戏\n")
             append("- /motd —— 查询服务器 MOTD\n")

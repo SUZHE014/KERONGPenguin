@@ -18,7 +18,9 @@ import javax.imageio.ImageIO
  * - 状态栏：服务器 / 更新时间 / 状态 三张并排小卡；
  * - 列表头：在线玩家 + "N 人在线"胶囊徽标；
  * - 玩家网格：3 列，每格 = 头像（真实 MC 皮肤正面）+ 玩家名，超长截断；
- * - 人数多时高度自动加长（长图，一图展示全部玩家，无需翻页）；
+ * - 分段发送（1.5.5）：超过 [MAX_PLAYERS_PER_PAGE] 人自动切页 —— 第一张带完整
+ *   标题区（眉题 / 主标题 / 人数卡 / 状态栏 / 列表头），后续各张只绘制玩家
+ *   网格内容，不再绘制标题；由编排层逐张发送；
  * - 画布 PNG 写出后立即 flush 释放栅格内存（与个人信息卡片一致）。
  *
  * 字体 / 配色与 [InfoCardRenderer] 同源（复用其字体缓存与毛玻璃色板），
@@ -28,6 +30,9 @@ import javax.imageio.ImageIO
  * （[InfoCardAssets.ONLINE_BACKGROUND_MAX_HEIGHT]），渲染时直接拉伸铺满整个画布
  * （裁剪/拉伸自适应，模糊背景下视觉无差异），既保留随机背景效果又避免
  * 大画布背景栅格膨胀到数十 MB。
+ *
+ * 1.5.5：分段发送改造 —— 长图改为分页多张（每页 [MAX_PLAYERS_PER_PAGE] 人），
+ * 首页带标题、续页只画内容，避免超长图在 QQ 客户端被压缩得看不清。
  */
 object OnlineListRenderer {
 
@@ -66,6 +71,12 @@ object OnlineListRenderer {
     /** 玩家网格列数。 */
     private const val COLUMNS = 3
 
+    /** 每页最大玩家数（3 列 × 20 行；超出由 [renderPages] 切页分段发送，1.5.5）。 */
+    const val MAX_PLAYERS_PER_PAGE = 60
+
+    /** 续页顶部留白（无标题区，顶部收窄）。 */
+    private const val PAGE_TOP_PAD = 24
+
     /** 头像尺寸。 */
     private const val AVATAR_SIZE = 56
 
@@ -101,24 +112,53 @@ object OnlineListRenderer {
     )
 
     /**
-     * 按玩家数计算画布高度：人数多时自动加长为长图（一图展示全部玩家）。
+     * 按本页玩家数计算画布高度：第一页含完整标题区，续页只含玩家网格。
      * 必须在取背景（尺寸相关）与渲染前调用，两者共用本结果。
      */
-    fun measureHeight(playerCount: Int): Int {
+    fun measurePageHeight(playerCount: Int, firstPage: Boolean): Int {
         val rows = if (playerCount <= 0) 0 else (playerCount + COLUMNS - 1) / COLUMNS
         val gridHeight = if (rows <= 0) {
             EMPTY_HEIGHT
         } else {
             rows * CELL_HEIGHT + (rows - 1) * CELL_GAP
         }
-        val total = MARGIN + HEADER_HEIGHT + HEADER_GAP + STATUS_HEIGHT + STATUS_GAP +
-            LIST_HEADER_HEIGHT + LIST_HEADER_GAP + gridHeight + BOTTOM_PAD
-        return total.coerceAtLeast(640)
+        val total = if (firstPage) {
+            MARGIN + HEADER_HEIGHT + HEADER_GAP + STATUS_HEIGHT + STATUS_GAP +
+                LIST_HEADER_HEIGHT + LIST_HEADER_GAP + gridHeight + BOTTOM_PAD
+        } else {
+            PAGE_TOP_PAD + gridHeight + BOTTOM_PAD
+        }
+        return total.coerceAtLeast(if (firstPage) 640 else 200)
     }
 
-    /** 渲染在线列表卡片并返回 PNG 字节。 */
-    fun render(data: OnlineListData): ByteArray {
-        val height = measureHeight(data.entries.size)
+    /** 兼容入口（1.5.5 前的单一长图高度计算）：单页场景等价于首页高度。 */
+    fun measureHeight(playerCount: Int): Int = measurePageHeight(playerCount, true)
+
+    /**
+     * 渲染在线列表卡片并返回 PNG 字节列表（1.5.5 分段发送）：
+     * 不超过 [MAX_PLAYERS_PER_PAGE] 人时返回单张；超出自动切页 ——
+     * 第一张带完整标题区，后续各张只绘制玩家网格（不显示标题）。
+     */
+    fun renderPages(data: OnlineListData): List<ByteArray> {
+        val all = data.entries
+        if (all.size <= MAX_PLAYERS_PER_PAGE) {
+            val bytes = renderSingle(data, all, true)
+            return if (bytes.isEmpty()) emptyList() else listOf(bytes)
+        }
+        val pages = ArrayList<ByteArray>(4)
+        var start = 0
+        while (start < all.size) {
+            val end = minOf(start + MAX_PLAYERS_PER_PAGE, all.size)
+            val bytes = renderSingle(data, all.subList(start, end), start == 0)
+            if (bytes.isNotEmpty()) pages.add(bytes)
+            start = end
+        }
+        return pages
+    }
+
+    /** 渲染单页（首页带标题区，续页只画玩家网格）。 */
+    private fun renderSingle(data: OnlineListData, pageEntries: List<OnlineEntry>, firstPage: Boolean): ByteArray {
+        val height = measurePageHeight(pageEntries.size, firstPage)
         val image = BufferedImage(WIDTH, height, BufferedImage.TYPE_INT_RGB)
         val g = image.createGraphics()
         try {
@@ -127,10 +167,12 @@ object OnlineListRenderer {
             g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
 
             drawBackground(g, data.background, height)
-            drawHeader(g, data.entries.size)
-            drawStatusBar(g, data.serverName, data.updateTime)
-            drawListHeader(g, data.entries.size)
-            drawPlayerGrid(g, data.entries)
+            if (firstPage) {
+                drawHeader(g, data.entries.size)
+                drawStatusBar(g, data.serverName, data.updateTime)
+                drawListHeader(g, data.entries.size)
+            }
+            drawPlayerGrid(g, pageEntries, firstPage)
         } finally {
             g.dispose()
         }
@@ -240,9 +282,13 @@ object OnlineListRenderer {
     }
 
     /** 玩家网格：3 列，每格头像 + 玩家名；空列表画提示卡；网格整体套深色容器（与模板一致）。 */
-    private fun drawPlayerGrid(g: Graphics2D, entries: List<OnlineEntry>) {
-        val gridTop = MARGIN + HEADER_HEIGHT + HEADER_GAP + STATUS_HEIGHT + STATUS_GAP +
-            LIST_HEADER_HEIGHT + LIST_HEADER_GAP
+    private fun drawPlayerGrid(g: Graphics2D, entries: List<OnlineEntry>, firstPage: Boolean) {
+        val gridTop = if (firstPage) {
+            MARGIN + HEADER_HEIGHT + HEADER_GAP + STATUS_HEIGHT + STATUS_GAP +
+                LIST_HEADER_HEIGHT + LIST_HEADER_GAP
+        } else {
+            PAGE_TOP_PAD
+        }
         if (entries.isEmpty()) {
             val cardWidth = WIDTH - 2 * MARGIN
             g.color = Color(0x00, 0x00, 0x00, 120)

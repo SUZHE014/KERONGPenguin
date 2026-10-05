@@ -107,6 +107,7 @@ object WebUiSchema {
         FieldSpec("qq-bind.checkin.enabled", "启用签到", "boolean", "群内每日签到领金币（需 Vault）"),
         FieldSpec("qq-bind.checkin.prefix", "签到回复前缀", "text"),
         FieldSpec("qq-bind.checkin.reward", "签到奖励金币", "number"),
+        FieldSpec("qq-bind.leaderboard.top", "排行榜显示人数", "number", "在线排行榜显示前 N 名（1-100，默认 20；1.5.5 新增）"),
     ))
 
     private val COMMANDS_SECTION = SectionSpec("commands", "命令开关", listOf(
