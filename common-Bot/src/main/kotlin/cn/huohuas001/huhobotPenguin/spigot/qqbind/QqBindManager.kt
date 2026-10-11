@@ -779,6 +779,48 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         return null
     }
 
+    /**
+     * 1.5.7.2：通过玩家名查绑定记录里的真实玩家 UUID（纯内存索引，无磁盘 IO）。
+     *
+     * 供金币入账等“按名字找玩家”的场景使用：Geyser-Spigot / Floodgate 基岩
+     * 玩家的 UUID 是 Floodgate UUID（由 XUID 派生，与名字无关），按名字派生
+     * 的离线 UUID 是另一个账号；用这里返回的真实 UUID 入账才能到玩家本人。
+     * 基岩玩家的名字可能带前缀（如 `.Steve`），按存入索引的原名精确匹配。
+     *
+     * 命中：内存索引键“玩家名[UUID]”直接截出 UUID（新键）；
+     * 旧版纯名字键无 UUID —— 退回读主文件的 playerUuid 字段；
+     * 未绑定 / 记录缺失 / 遍历竞态异常：返回 null（调用方退回按名字解析）。
+     */
+    fun findPlayerUuidByName(playerName: String?): String? {
+        if (playerName.isNullOrEmpty()) return null
+        val lower = playerName.lowercase()
+        val bracketPrefix = "$lower["
+        try {
+            for ((nameKey, quuid) in nameToQuuid) {
+                if (nameKey == lower) {
+                    // 旧版纯名字键：UUID 在主文件字段里
+                    return getPlayerUuidByQuuid(quuid)
+                }
+                if (nameKey.length > bracketPrefix.length &&
+                    nameKey.startsWith(bracketPrefix) && nameKey.endsWith("]")
+                ) {
+                    val uuidText = nameKey.substring(bracketPrefix.length, nameKey.length - 1)
+                    // 严格 UUID 格式（8-4-4-4-12 十六进制），防玩家名本身含
+                    // 括号导致的误截取；不匹配则继续扫下一个键
+                    if (UUID_TEXT.matches(uuidText)) return uuidText
+                }
+            }
+        } catch (_: Throwable) {
+            // nameToQuuid 并发写导致的遍历竞态：返回 null 走兜底
+        }
+        return null
+    }
+
+    /** 严格 UUID 文本格式（8-4-4-4-12 十六进制）。 */
+    private val UUID_TEXT = Regex(
+        "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    )
+
     /** 解绑该 QQ 绑定的玩家并踢出在线玩家，返回玩家名。 */
     fun unbindAndKickByQq(qq: String?): String? {
         val playerName = findPlayerByQq(qq) ?: return null

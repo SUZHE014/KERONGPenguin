@@ -6,6 +6,7 @@ import cn.huohuas001.huhobotPenguin.spigot.commands.QqCommand
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.AiChat
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
 import org.bukkit.Bukkit
+import org.bukkit.OfflinePlayer
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
@@ -14,6 +15,7 @@ import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerLoginEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.plugin.Plugin
+import java.util.UUID
 
 /**
  * 游戏事件监听：
@@ -32,11 +34,15 @@ class GameChat : Listener {
         private var retryCount = 0
         private const val MAX_RETRIES = 8
 
-        /** Vault 入账（反射，避免编译期依赖）。 */
+        /**
+         * Vault 入账（反射，避免编译期依赖）。
+         * 1.5.7.2：入账目标改用 [resolveOfflinePlayer] 按真实玩家 UUID 解析
+         * （Geyser/Floodgate 基岩玩家兼容，见该方法注释）。
+         */
         @JvmStatic
         fun depositToPlayer(playerName: String, amount: Double): Boolean = try {
             val vault = Bukkit.getPluginManager().getPlugin("Vault") ?: return false
-            val offlinePlayer = Bukkit.getOfflinePlayer(playerName)
+            val offlinePlayer = resolveOfflinePlayer(playerName)
             val economyClass = Class.forName("net.milkbowl.vault.economy.Economy")
             val registeredServiceProviderClass = Class.forName("org.bukkit.plugin.RegisteredServiceProvider")
             val servicesManager = Bukkit.getServer().javaClass.getMethod("getServicesManager").invoke(Bukkit.getServer())
@@ -54,6 +60,45 @@ class GameChat : Listener {
             }
         } catch (_: Throwable) {
             false
+        }
+
+        /**
+         * 解析金币入账目标 OfflinePlayer（1.5.7.2：Geyser-Spigot / Floodgate
+         * 基岩版兼容）。
+         *
+         * 背景：装了 Geyser-Spigot + Floodgate 的服务器，基岩玩家 UUID 是
+         * Floodgate UUID（00000000-0000-0009-…，由 XUID 派生，与名字无关），
+         * 而 `Bukkit.getOfflinePlayer(名字)` 在玩家离线时返回的是“按名字派生的
+         * 离线 UUID”（在线模式还会先查 Mojang 档案缓存，基岩名字必然查不到）
+         * —— 两者不同，按名字入账会把金币发进一个“幽灵账户”（Vault 经济插件
+         * 按 UUID 记账，玩家真实余额不变，钱凭空消失）。
+         *
+         * 解析顺序：
+         * 1. 在线玩家（含基岩）精确匹配即本人（与旧版 getOfflinePlayer 内部
+         *    第一步一致，行为不变）；
+         * 2. 离线且已绑定 QQ：用绑定记录里存的 playerUuid（基岩玩家即
+         *    Floodgate UUID）入账 —— Java 玩家两种 UUID 一致，结果不变；
+         * 3. 离线且未绑定 / 旧记录无 UUID：沿用按名字解析（离线模式
+         *    Java 玩家派生 UUID 即本人，与旧版行为一致）。
+         */
+        @JvmStatic
+        fun resolveOfflinePlayer(playerName: String): OfflinePlayer {
+            // 1) 在线（含基岩）：精确匹配即本人
+            try {
+                Bukkit.getPlayerExact(playerName)?.let { return it }
+            } catch (_: Throwable) {
+            }
+            // 2) 已绑定：绑定记录中的真实玩家 UUID
+            try {
+                val uuidText = QqBindManager.getInstance().findPlayerUuidByName(playerName)
+                if (!uuidText.isNullOrEmpty()) {
+                    return Bukkit.getOfflinePlayer(UUID.fromString(uuidText))
+                }
+            } catch (_: Throwable) {
+                // 绑定管理器未就绪 / UUID 文本损坏等：退回按名字解析
+            }
+            // 3) 未绑定或无 UUID 记录：按名字解析（旧版行为）
+            return Bukkit.getOfflinePlayer(playerName)
         }
 
         /** 金额显示（整数去掉小数点）。 */

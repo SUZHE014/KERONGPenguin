@@ -72,7 +72,13 @@ object KERONGPenguinAPI {
         }
     }
 
-    /** 给玩家发放金币（Vault）。 */
+    /**
+     * 给玩家发放金币（Vault）。
+     * 1.5.7.2：入账目标按真实玩家 UUID 解析 —— 在线玩家（含
+     * Geyser/Floodgate 基岩玩家）直接匹配到本人；离线且已绑定 QQ 的玩家
+     * 用绑定记录里的 playerUuid（基岩玩家即 Floodgate UUID），不会把金币
+     * 发进按名字派生的幽灵账户；未绑定玩家沿用按名字解析。
+     */
     @JvmStatic
     fun depositCoins(playerName: String?, amount: Double): Boolean {
         if (!ready() || playerName == null || amount <= 0) return false
