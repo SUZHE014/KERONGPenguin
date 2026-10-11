@@ -67,7 +67,7 @@ MC_VERSION = "1.21.1"
 MOD_ID = "kerongpenguin"
 
 # base JAR 中需要剔除的内容（全部由新编译产物或模组资源提供）
-EXCLUDE_PREFIXES = ("cn/huohuas001/", "fonts/", "Markdown/")
+EXCLUDE_PREFIXES = ("cn/huohuas001/", "fonts/", "Markdown/", "backgrounds/")
 EXCLUDE_EXACT = {
     "plugin.yml",
     "config.yml",

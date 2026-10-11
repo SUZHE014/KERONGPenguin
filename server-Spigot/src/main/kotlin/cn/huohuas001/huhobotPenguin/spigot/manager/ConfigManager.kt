@@ -56,6 +56,13 @@ class ConfigManager(private val plugin: JavaPlugin) {
             config.set(CONFIG_VERSION_PATH, CURRENT_CONFIG_VERSION)
             changed = true
         }
+        // 1.5.6：排行榜每张图片展示玩家数 20 → 15（旧默认值 20 属 1.5.5 自动补齐，
+        // 非用户手动意图，升级时同步改为新默认；用户自定义的其他值（如 30）不动）
+        if (oldVersion in 1 until 15 && config.getInt("qq-bind.leaderboard.top", 15) == 20) {
+            config.set("qq-bind.leaderboard.top", 15)
+            plugin.logger.info("在线排行榜每张图片展示玩家数：20 → 15（新默认，可在 qq-bind.leaderboard.top 改回）")
+            changed = true
+        }
         // 清理已废弃的配置段
         // 1.5.1：移除 query-online 段（图片输出改为 markdown 关闭时自动启用）与 motd.text（文本模板已删除）
         // 1.5.2：移除 commands.个人信息（该命令已更名为 查信息）
@@ -169,7 +176,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
-        private const val CURRENT_CONFIG_VERSION = 14
+        private const val CURRENT_CONFIG_VERSION = 15
 
         /**
          * 支持开关的群命令名单（1.5.2：查信息更名对应个人信息卡片命令，新增 查询open ID）。
@@ -221,7 +228,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "qq-bind.checkin.prefix" to "[签到]",
             "qq-bind.checkin.reward" to 100.0,
             // 1.5.5：在线排行榜（commands.在线排行榜 开关由 COMMAND_NAMES 统一注册默认 true）
-            "qq-bind.leaderboard.top" to 20,
+            // 1.5.6：top 默认 20 → 15；新增 random-background（默认 false：内置专属背景）
+            "qq-bind.leaderboard.top" to 15,
+            "qq-bind.leaderboard.random-background" to false,
             "ai.enabled" to false,
             "ai.server-enabled" to false,
             "ai.server-prefix" to "ai",

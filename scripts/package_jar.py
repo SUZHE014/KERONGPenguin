@@ -27,7 +27,7 @@ SPIGOT_JAR = os.path.join(REPO, "server-Spigot", "build", "libs", "server-Spigot
 DEFAULT_OUT_DIR = os.path.join(REPO, "build", "dist")
 
 # base JAR 中需要剔除的插件自身内容（全部由新编译产物提供）
-EXCLUDE_PREFIXES = ("cn/huohuas001/", "fonts/", "Markdown/")
+EXCLUDE_PREFIXES = ("cn/huohuas001/", "fonts/", "Markdown/", "backgrounds/")
 EXCLUDE_EXACT = {
     "plugin.yml",
     "config.yml",

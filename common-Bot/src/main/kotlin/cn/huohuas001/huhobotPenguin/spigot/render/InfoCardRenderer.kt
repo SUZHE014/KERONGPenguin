@@ -584,6 +584,22 @@ object InfoCardAssets {
     /** 近期解码失败的背景文件（路径 → 失败时间），10 分钟内不再抽中，避免坏图反复触发解码（0.1.5.5）。 */
     private val backgroundFailures = ConcurrentHashMap<String, Long>()
 
+    /**
+     * 内置专属背景（1.5.6）：随 JAR 分发的排行榜默认底图，
+     * 黑色主体 + 深绿色装饰（backgrounds/leaderboard-default.png）。
+     * 设计已自带可读性（中央内容区近黑），不再叠暗色遮罩。
+     * 解码源图按类路径缓存一次，各页尺寸的 cover 结果按「资源路径 + 尺寸」
+     * 复用 backgroundCache（零 stamp 永不失效，随 LRU / 字节预算淘汰）。
+     */
+    private const val BUILTIN_BACKGROUND_RESOURCE = "backgrounds/leaderboard-default.png"
+
+    /** 内置背景解码源图（1200×1800；类路径资源缺失时为 null，渲染层退回纯色渐变）。 */
+    @Volatile
+    private var builtinBackgroundSource: BufferedImage? = null
+
+    @Volatile
+    private var builtinBackgroundResolved = false
+
     /** 记录的玩家名 → 正版 UUID（Mojang API），含未查到的负缓存。 */
     private val premiumUuidCache = ConcurrentHashMap<String, Any>()
 
@@ -626,6 +642,8 @@ object InfoCardAssets {
         missCache.clear()
         premiumUuidCache.clear()
         backgroundCache.clear()
+        builtinBackgroundSource = null
+        builtinBackgroundResolved = false
     }
 
     /** 全部素材缓存当前占用估算（字节，诊断/日志用）。 */
@@ -961,6 +979,56 @@ object InfoCardAssets {
         val processed = darkOverlay(coverImage(decoded, width, height))
         val bytes = processed.width.toLong() * processed.height * 4
         backgroundCache[path] = BackgroundEntry(stamp, sizeKey, processed, bytes, now)
+        evictBackgroundsIfOversized()
+        return processed
+    }
+
+    /**
+     * 获取内置专属背景（1.5.6：在线排行榜默认背景）。
+     *
+     * - 源图 [BUILTIN_BACKGROUND_RESOURCE] 随 JAR 分发（黑色主体 + 深绿色装饰），
+     *   仅解码一次并按类路径缓存，插件停用时随 [clearCaches] 释放；
+     * - 处理结果按「资源路径 + 尺寸」键入 [backgroundCache]（stamp 恒 0 永不失效，
+     *   与随机背景共用 LRU / 字节预算淘汰），同一尺寸的后续页直接命中，
+     *   首页 / 续页不同尺寸各存一份互不挤占；
+     * - 图像设计已自带可读性（中央近黑），不叠 [darkOverlay]；
+     * - 资源缺失 / 解码失败返回 null（渲染层退回纯色渐变，不影响出图）。
+     */
+    @Synchronized
+    fun processedBuiltinBackground(width: Int, height: Int): BufferedImage? {
+        if (width <= 0 || height <= 0) return null
+        val now = System.currentTimeMillis()
+        val sizeKey = width.toLong() * 1_000_000L + height
+        // 键须含宽与高：首页 / 续页同宽不同高，尺寸不同各自缓存互不覆盖
+        val cacheKey = "builtin:$BUILTIN_BACKGROUND_RESOURCE#${width}x$height"
+        val cached = backgroundCache[cacheKey]
+        if (cached != null && cached.stamp == 0L && cached.sizeKey == sizeKey) {
+            cached.lastUsedAt = now
+            return cached.image
+        }
+
+        // 源图解码一次（resolved 标记避免资源缺失时每次查询都开流探测）
+        val source = builtinBackgroundSource ?: run {
+            if (builtinBackgroundResolved) return null
+            builtinBackgroundResolved = true
+            val decoded = try {
+                InfoCardAssets::class.java.classLoader.getResourceAsStream(BUILTIN_BACKGROUND_RESOURCE)?.use { stream ->
+                    stream.buffered().let { ImageIO.read(it) }
+                }
+            } catch (_: Throwable) {
+                null
+            }
+            if (decoded != null && decoded.width > 0 && decoded.height > 0) {
+                builtinBackgroundSource = decoded
+                decoded
+            } else {
+                null
+            }
+        } ?: return null
+
+        val processed = coverImage(source, width, height)
+        val bytes = processed.width.toLong() * processed.height * 4
+        backgroundCache[cacheKey] = BackgroundEntry(0L, sizeKey, processed, bytes, now)
         evictBackgroundsIfOversized()
         return processed
     }

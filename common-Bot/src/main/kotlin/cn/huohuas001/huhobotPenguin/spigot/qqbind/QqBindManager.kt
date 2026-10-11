@@ -523,12 +523,24 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             100.0
         }
 
-    /** 1.5.5：在线排行榜显示玩家数（默认 20；配置夹逼 1..100）。 */
+    /** 1.5.5：在线排行榜显示玩家数（1.5.6 起默认 15；配置夹逼 1..100）。 */
     val leaderboardTop: Int
         get() = try {
-            plugin.config.getInt("qq-bind.leaderboard.top", 20).coerceIn(1, 100)
+            plugin.config.getInt("qq-bind.leaderboard.top", 15).coerceIn(1, 100)
         } catch (_: Throwable) {
-            20
+            15
+        }
+
+    /**
+     * 1.5.6：在线排行榜自定义随机背景开关（默认 false）。
+     * false：内置专属背景图（黑色主体 + 深绿色装饰，随 JAR 分发，零配置）；
+     * true：随机取插件目录 img/ 文件夹图片（与查信息 / 查在线卡片共用素材与缓存）。
+     */
+    val leaderboardRandomBackground: Boolean
+        get() = try {
+            plugin.config.getBoolean("qq-bind.leaderboard.random-background", false)
+        } catch (_: Throwable) {
+            false
         }
 
     // ---------- QUUID 记录字段 ----------
