@@ -200,9 +200,14 @@ object QueryInfoService {
                             " 签到=${if (checkinTotalText != null) "展示" else "隐藏-未开启"}）卡片 ${InfoCardRenderer.WIDTH}×$cardHeight"
                     )
                     val dataDirectory = plugin.configFile?.parentFile
-                    val background = dataDirectory?.let {
-                        InfoCardAssets.processedBackground(it, InfoCardRenderer.WIDTH, cardHeight)
-                    }
+                    // 1.5.7：统一背景入口 —— 默认内置深灰底图（随 JAR 分发）；
+                    // 开关关闭后随机用 img/ 目录图片，img 无可用图片时回退内置图
+                    val background = InfoCardAssets.resolveBackground(
+                        dataDirectory,
+                        InfoCardRenderer.WIDTH,
+                        cardHeight,
+                        bindManager.infoCardBuiltinBackground,
+                    )
 
                     // 7. 拉取头像并渲染
                     val avatar = InfoCardAssets.fetchAvatar(

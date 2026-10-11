@@ -63,10 +63,24 @@ class ConfigManager(private val plugin: JavaPlugin) {
             plugin.logger.info("在线排行榜每张图片展示玩家数：20 → 15（新默认，可在 qq-bind.leaderboard.top 改回）")
             changed = true
         }
+        // 1.5.7：random-background（默认 false = 内置图）反向更名 builtin-background
+        //（默认 true = 内置图）—— 旧配置手动开启过随机的用户升级后保持随机效果
+        if (oldVersion in 1 until 16 && config.isSet("qq-bind.leaderboard.random-background") &&
+            config.getBoolean("qq-bind.leaderboard.random-background", false)
+        ) {
+            config.set("qq-bind.leaderboard.builtin-background", false)
+            plugin.logger.info("在线排行榜背景：已按旧配置随机使用 img/ 目录图片（qq-bind.leaderboard.builtin-background=false）")
+            changed = true
+        }
         // 清理已废弃的配置段
         // 1.5.1：移除 query-online 段（图片输出改为 markdown 关闭时自动启用）与 motd.text（文本模板已删除）
         // 1.5.2：移除 commands.个人信息（该命令已更名为 查信息）
-        for (removed in listOf("agent", "audit", "whitelist", "query-online", "motd.text", "commands.个人信息")) {
+        // 1.5.7：移除 qq-bind.leaderboard.random-background（反向更名为 builtin-background，
+        // 手动开启过随机的用户已在上方迁移逻辑中保留意图）
+        for (removed in listOf(
+            "agent", "audit", "whitelist", "query-online", "motd.text", "commands.个人信息",
+            "qq-bind.leaderboard.random-background",
+        )) {
             if (config.contains(removed)) {
                 config.set(removed, null)
                 changed = true
@@ -176,7 +190,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
-        private const val CURRENT_CONFIG_VERSION = 15
+        private const val CURRENT_CONFIG_VERSION = 16
 
         /**
          * 支持开关的群命令名单（1.5.2：查信息更名对应个人信息卡片命令，新增 查询open ID）。
@@ -222,15 +236,19 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "qq-bind.personal-info" to true,
             "qq-bind.render.gc-after-render" to true,
             "qq-bind.render.result-cache-seconds" to 60,
+            // 1.5.7：全部图片渲染的内置背景开关（默认 true = 随 JAR 分发的深灰底图，
+            // 关闭后随机用 img/ 目录图片，img 无可用图片时自动回退内置图）
+            "qq-bind.render.info-card-builtin-background" to true,
+            "qq-bind.render.online-list-builtin-background" to true,
             "qq-bind.code-expire-minutes" to 10,
             "qq-bind.code-length" to 5,
             "qq-bind.checkin.enabled" to false,
             "qq-bind.checkin.prefix" to "[签到]",
             "qq-bind.checkin.reward" to 100.0,
             // 1.5.5：在线排行榜（commands.在线排行榜 开关由 COMMAND_NAMES 统一注册默认 true）
-            // 1.5.6：top 默认 20 → 15；新增 random-background（默认 false：内置专属背景）
+            // 1.5.6：top 默认 20 → 15；1.5.7：random-background 反向更名 builtin-background（默认 true）
             "qq-bind.leaderboard.top" to 15,
-            "qq-bind.leaderboard.random-background" to false,
+            "qq-bind.leaderboard.builtin-background" to true,
             "ai.enabled" to false,
             "ai.server-enabled" to false,
             "ai.server-prefix" to "ai",

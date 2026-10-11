@@ -28,7 +28,7 @@ import time
 DEFAULT_JAR = "/home/z/my-project/penguin-git/build/dist/KERONGPenguin_NeoForge-1.21.1-1.5.4.4.jar"
 DEFAULT_SERVER = "/home/z/my-project/tooling/nf-install/server"
 KOTLIN_SIM_DEFAULT = "/home/z/my-project/tooling/fake-kff-mod.jar"
-JAVA = "/usr/bin/java"
+JAVA = os.environ.get("NF_JAVA", "/usr/bin/java")
 ARGS_FILE = "libraries/net/neoforged/neoforge/21.1.248/unix_args.txt"
 
 FAKE_CONFIG = """config-version: 13

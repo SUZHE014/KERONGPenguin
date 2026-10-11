@@ -2,6 +2,7 @@ package cn.huohuas001.huhobotPenguin.spigot.stats
 
 import cn.huohuas001.bot.HuHoBot
 import cn.huohuas001.bot.QClient
+import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
 import cn.huohuas001.huhobotPenguin.spigot.render.CardRenderPool
 import cn.huohuas001.huhobotPenguin.spigot.render.InfoCardAssets
 import cn.huohuas001.huhobotPenguin.spigot.render.OnlineListRenderer
@@ -28,8 +29,10 @@ import java.awt.image.BufferedImage
  *    3 秒超时保护），不再阻塞消息线程；
  * 2. 并发预热头像（4 线程小池 + 8 秒总预算，超时未取到的玩家渲染占位块，
  *    下次查询命中缓存后展示真实头像，避免大量玩家时首查等待过久）；
- * 3. [OnlineListRenderer] 渲染毛玻璃卡片，背景与查信息卡片（1.5.2 前为 /个人信息）
- *    共用 img/ 目录随机图与缓存；长图背景处理高度封顶
+ * 3. [OnlineListRenderer] 渲染毛玻璃卡片，背景 1.5.7 起默认内置深灰底图
+ *    （qq-bind.render.online-list-builtin-background，随 JAR 分发，与查信息
+ *    卡片共用横版底图与缓存）；开关关闭后随机用 img/ 目录图片，
+ *    img 无可用图片时自动回退内置图；长图背景处理高度封顶
  *    （[InfoCardAssets.ONLINE_BACKGROUND_MAX_HEIGHT]），渲染时拉伸铺满，
  *    控制内存占用；
  * 4. 分段发送（1.5.5）：超过 [OnlineListRenderer.MAX_PLAYERS_PER_PAGE] 人自动
@@ -123,14 +126,24 @@ object OnlineListService {
                     }
 
                     // 4. 背景与渲染（1.5.5 分段发送：人数过多自动切页多张，
-                    //    首页带标题、续页只画内容）；背景处理高度封顶（1.5.1 内存限制），
-                    //    渲染时拉伸铺满，整组页面共用同一张背景保持视觉统一
+                    //    首页带标题、续页只画内容）；1.5.7 统一背景入口：
+                    //    默认内置深灰底图（随 JAR 分发），开关关闭后随机用
+                    //    img/ 目录图片，img 无可用图片时回退内置图；
+                    //    背景处理高度封顶（1.5.1 内存限制），渲染时拉伸铺满，
+                    //    整组页面共用同一张背景保持视觉统一
                     val height = OnlineListRenderer.measurePageHeight(entries.size, true)
                     val dataDirectory = plugin.configFile?.parentFile
-                    val backgroundHeight = height.coerceAtMost(InfoCardAssets.ONLINE_BACKGROUND_MAX_HEIGHT)
-                    val background = dataDirectory?.let {
-                        InfoCardAssets.processedBackground(it, OnlineListRenderer.WIDTH, backgroundHeight)
+                    val bindManager = try {
+                        QqBindManager.getInstance()
+                    } catch (_: Throwable) {
+                        null
                     }
+                    val background = InfoCardAssets.resolveBackground(
+                        dataDirectory,
+                        OnlineListRenderer.WIDTH,
+                        height,
+                        bindManager?.onlineListBuiltinBackground ?: true,
+                    )
                     val updateTime = SimpleDateFormat("HH:mm").format(Date())
                     val pages = OnlineListRenderer.renderPages(
                         OnlineListRenderer.OnlineListData(

@@ -107,8 +107,10 @@ object WebUiSchema {
         FieldSpec("qq-bind.checkin.enabled", "启用签到", "boolean", "群内每日签到领金币（需 Vault）"),
         FieldSpec("qq-bind.checkin.prefix", "签到回复前缀", "text"),
         FieldSpec("qq-bind.checkin.reward", "签到奖励金币", "number"),
-        FieldSpec("qq-bind.leaderboard.top", "排行榜显示人数", "number", "在线排行榜显示前 N 名（1-100，默认 15；1.5.6 起单张图片最多 15 行，超出自动分段发送）"),
-        FieldSpec("qq-bind.leaderboard.random-background", "排行榜随机背景", "boolean", "默认关闭：使用内置专属背景（黑色主体 + 深绿色装饰，随 JAR 分发）；开启后随机取插件 img/ 文件夹图片（与查信息/查在线共用素材；1.5.6 新增）"),
+        FieldSpec("qq-bind.render.info-card-builtin-background", "查信息内置背景", "boolean", "查信息卡片是否使用内置深灰底图（默认开启；关闭后随机用 img/ 图片，img 无图自动回退内置图；1.5.7 新增）"),
+        FieldSpec("qq-bind.render.online-list-builtin-background", "查在线内置背景", "boolean", "查在线图片是否使用内置深灰底图（默认开启；语义同查信息；1.5.7 新增）"),
+        FieldSpec("qq-bind.leaderboard.top", "排行榜显示人数", "number", "在线排行榜显示前 N 名（1-100，默认 15；单张图片最多 15 行，超出自动分段发送）"),
+        FieldSpec("qq-bind.leaderboard.builtin-background", "排行榜内置背景", "boolean", "在线排行榜是否使用内置深灰底图（默认开启，1.5.7 改名自 random-background；关闭后随机用 img/ 图片，img 无图自动回退内置图）"),
     ))
 
     private val COMMANDS_SECTION = SectionSpec("commands", "命令开关", listOf(

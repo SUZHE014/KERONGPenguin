@@ -532,15 +532,39 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         }
 
     /**
-     * 1.5.6：在线排行榜自定义随机背景开关（默认 false）。
-     * false：内置专属背景图（黑色主体 + 深绿色装饰，随 JAR 分发，零配置）；
-     * true：随机取插件目录 img/ 文件夹图片（与查信息 / 查在线卡片共用素材与缓存）。
+     * 1.5.7：查信息统计卡片是否使用内置背景图（默认 true）。
+     * true：内置深灰底图（backgrounds/card-default.png，随 JAR 分发，零配置）；
+     * false：随机取插件目录 img/ 文件夹图片；img 里没有图片时自动回退内置背景。
      */
-    val leaderboardRandomBackground: Boolean
+    val infoCardBuiltinBackground: Boolean
         get() = try {
-            plugin.config.getBoolean("qq-bind.leaderboard.random-background", false)
+            plugin.config.getBoolean("qq-bind.render.info-card-builtin-background", true)
         } catch (_: Throwable) {
-            false
+            true
+        }
+
+    /**
+     * 1.5.7：查在线列表图片是否使用内置背景图（默认 true）。
+     * 语义同 [infoCardBuiltinBackground]，与查信息共用横版内置底图。
+     */
+    val onlineListBuiltinBackground: Boolean
+        get() = try {
+            plugin.config.getBoolean("qq-bind.render.online-list-builtin-background", true)
+        } catch (_: Throwable) {
+            true
+        }
+
+    /**
+     * 1.5.7：在线排行榜是否使用内置背景图（默认 true，1.5.6 的
+     * random-background 开关反向更名而来：旧值 true（随机图）升级后自动迁移为 false）。
+     * true：内置深灰底图（backgrounds/leaderboard-default.png，随 JAR 分发）；
+     * false：随机取插件目录 img/ 文件夹图片；img 里没有图片时自动回退内置背景。
+     */
+    val leaderboardBuiltinBackground: Boolean
+        get() = try {
+            plugin.config.getBoolean("qq-bind.leaderboard.builtin-background", true)
+        } catch (_: Throwable) {
+            true
         }
 
     // ---------- QUUID 记录字段 ----------

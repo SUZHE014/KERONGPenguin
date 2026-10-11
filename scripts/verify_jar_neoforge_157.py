@@ -1,26 +1,24 @@
 #!/usr/bin/env python3
 """
-KERONGPenguin NeoForge 分发模组 JAR 门禁验证（1.5.6：排行榜内置专属背景 + 单图 15 人）。
+KERONGPenguin NeoForge 分发模组 JAR 门禁验证（1.5.7：全部图片渲染默认内置背景 + img 空回退 + 深灰主体）。
 
-用法：python3 scripts/verify_jar_neoforge_156.py [jar]
-缺省验证 build/dist/KERONGPenguin_NeoForge-1.21.1-1.5.6.1.jar。
+用法：python3 scripts/verify_jar_neoforge_157.py [jar]
+缺省验证 build/dist/KERONGPenguin_NeoForge-1.21.1-1.5.7.jar。
 
-1.5.6 起模组线改为本地构建环境从源码全量编译
+模组线为本地构建环境从源码全量编译
 （gradle :server-NeoForge:jar 编译 common-Bot + manager 目录 + org.bukkit 兼容层
-+ 模组源，再由 package_jar_neoforge.py 合成分发 JAR 含第三方库整体重定位），
-不再使用以旧版分发 JAR 为基底的增量字节码补丁路径。
++ 模组源，再由 package_jar_neoforge.py 合成分发 JAR 含第三方库整体重定位）。
 
-在 1.5.5 门禁基线之上调整 / 新增：
-  - mods.toml version=1.5.6；移除差异白名单（基底补丁模型已废弃）；
-  - 1.5.6 内置背景：backgrounds/leaderboard-default.png 资源存在且为合法
-    1200×1800 PNG；InfoCardAssets.processedBuiltinBackground；
-    LeaderboardCommands 背景开关分支（getLeaderboardRandomBackground）；
-    QqBindManager.getLeaderboardRandomBackground + 配置键；
-  - 1.5.6 单图 15 人：config.yml top: 15 / random-background: false /
-    config-version: 15；ConfigManager 新默认键；WebUiSchema 新字段；
-  - 1.5.5 全部功能基线保留（排行榜类族 / 金币自适应 / 分段发送）；
-  - FixupTool 残留检查改为「Spigot 线字节码零残留」回归门禁
-（全量构建本不应出现 destroystokyo / org.bukkit.profile / font$common_Bot）；
+在 1.5.6.1 门禁基线之上调整 / 新增：
+  - mods.toml version=1.5.7；
+  - 1.5.7 内置背景：双资源齐备（leaderboard-default.png 1200×1800 +
+    card-default.png 1800×1200，深灰主体视觉自检）；
+    InfoCardAssets.resolveBackground 统一入口；三个内置背景开关
+    （info-card / online-list / leaderboard，默认 true）；
+  - 1.5.7 配置：config-version 16；旧键 random-background 零残留
+    （ConfigManager / QqBindManager / WebUiSchema / config.yml 均不出现）；
+  - 1.5.6 / 1.5.5 / 1.5.4.5 全部功能基线保留；
+  - FixupTool 残留检查为「Spigot 线字节码零残留」回归门禁；
   - 重定位硬门禁全保留（常量池结构性零残留 / 平台包零交集 / KFF 共存零交集）。
 """
 import argparse
@@ -29,11 +27,11 @@ import sys
 import zipfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent / "relocate"))
-sys.path.insert(0, "/home/z/my-project/scripts")
 from class_strings import read_constant_pool
 
-_DEFAULT_JAR = "/home/z/my-project/penguin-git/build/dist/KERONGPenguin_NeoForge-1.21.1-1.5.6.1.jar"
+_DEFAULT_JAR = "/home/z/my-project/penguin-git/build/dist/KERONGPenguin_NeoForge-1.21.1-1.5.7.jar"
 
 # 本地安装的 NeoForge 21.1.248 server（可选，存在则做平台冲突扫描）
 NF_LIBS = Path("/home/z/my-project/tooling/nf-install/server/libraries")
@@ -84,7 +82,7 @@ def main():
         toml = zf.read("META-INF/neoforge.mods.toml").decode("utf-8") if "META-INF/neoforge.mods.toml" in names else ""
         check("neoforge.mods.toml 存在", bool(toml))
         check("mods.toml modId=kerongpenguin", 'modId = "kerongpenguin"' in toml)
-        check("mods.toml version=1.5.6.1", re.search(r'^version = "1\.5\.6\.1"$', toml, re.M) is not None)
+        check("mods.toml version=1.5.7", re.search(r'^version = "1\.5\.7"$', toml, re.M) is not None)
         check("mods.toml modLoader=javafml", 'modLoader = "javafml"' in toml)
         check("mods.toml 依赖 neoforge 21.1+", "versionRange = \"[21.1.0,)\"" in toml)
         check("mods.toml 依赖 minecraft 1.21.1", "versionRange = \"[1.21.1,1.22)\"" in toml)
@@ -183,31 +181,78 @@ def main():
         wus = zf.read("cn/huohuas001/bot/web/WebUiSchema.class")
         check("WebUiSchema 含 leaderboard.top 字段", b"leaderboard.top" in wus)
 
-        # 3''.5 1.5.6 内置专属背景 + 单图 15 人（全量构建新增）
+        # 3''.5 1.5.6 / 1.5.7 内置背景（全量构建新增）
         import struct as _struct
         check("内置背景资源 backgrounds/leaderboard-default.png 存在",
               "backgrounds/leaderboard-default.png" in names)
         bg_png = zf.read("backgrounds/leaderboard-default.png") if "backgrounds/leaderboard-default.png" in names else b""
         check("内置背景 PNG 魔数合法", bg_png[:8] == b"\x89PNG\r\n\x1a\n")
         _bw, _bh = _struct.unpack(">II", bg_png[16:24]) if len(bg_png) >= 24 else (0, 0)
-        check("内置背景尺寸 1200×1800", (_bw, _bh) == (1200, 1800), f"实际 {_bw}×{_bh}")
+        check("排行榜内置背景尺寸 1200×1800", (_bw, _bh) == (1200, 1800), f"实际 {_bw}×{_bh}")
         icr = zf.read("cn/huohuas001/huhobotPenguin/spigot/render/InfoCardAssets.class")
         check("InfoCardAssets 含 processedBuiltinBackground", b"processedBuiltinBackground" in icr)
         check("InfoCardAssets 含资源路径常量（backgrounds/leaderboard-default.png）",
               b"backgrounds/leaderboard-default.png" in icr)
-        check("LeaderboardCommands 背景开关分支（getLeaderboardRandomBackground）",
-              b"getLeaderboardRandomBackground" in lbc)
-        check("LeaderboardCommands 调用 processedBuiltinBackground",
-              b"processedBuiltinBackground" in lbc)
-        check("QqBindManager.getLeaderboardRandomBackground（随机背景开关）",
-              b"getLeaderboardRandomBackground" in qbm)
-        check("QqBindManager 含配置键 qq-bind.leaderboard.random-background",
-              b"qq-bind.leaderboard.random-background" in qbm)
-        check("ConfigManager 含 qq-bind.leaderboard.random-background 默认键",
-              b"qq-bind.leaderboard.random-background" in cm)
-        check("WebUiSchema 含 leaderboard.random-background 字段",
-              b"leaderboard.random-background" in wus)
+        check("LeaderboardCommands 调用 resolveBackground（统一背景入口）",
+              b"resolveBackground" in lbc)
+        check("QqBindManager.getLeaderboardBuiltinBackground（内置背景开关）",
+              b"getLeaderboardBuiltinBackground" in qbm)
         check("目录条目 backgrounds/ 存在", "backgrounds/" in names)
+
+        # 3''.6 1.5.7 双内置背景资源 + 统一入口 + 三开关 + 配置 16
+        check("内置背景资源 backgrounds/card-default.png 存在",
+              "backgrounds/card-default.png" in names)
+        card_png = zf.read("backgrounds/card-default.png") if "backgrounds/card-default.png" in names else b""
+        check("卡片内置背景 PNG 魔数合法", card_png[:8] == b"\x89PNG\r\n\x1a\n")
+        _cw, _ch = _struct.unpack(">II", card_png[16:24]) if len(card_png) >= 24 else (0, 0)
+        check("卡片内置背景尺寸 1800×1200", (_cw, _ch) == (1800, 1200), f"实际 {_cw}×{_ch}")
+        check("InfoCardAssets 含 resolveBackground 统一入口", b"resolveBackground" in icr)
+        check("InfoCardAssets 含 BUILTIN_BACKGROUND_CARD 路径（backgrounds/card-default.png）",
+              b"backgrounds/card-default.png" in icr)
+        check("QqBindManager 含三个内置背景开关",
+              b"getInfoCardBuiltinBackground" in qbm and
+              b"getOnlineListBuiltinBackground" in qbm and
+              b"getLeaderboardBuiltinBackground" in qbm)
+        check("QqBindManager 无 getLeaderboardRandomBackground 残留",
+              b"getLeaderboardRandomBackground" not in qbm)
+        qis = zf.read("cn/huohuas001/huhobotPenguin/spigot/stats/QueryInfoService.class")
+        check("QueryInfoService 走 resolveBackground", b"resolveBackground" in qis)
+        check("OnlineListService 走 resolveBackground", b"resolveBackground" in ols)
+        check("ConfigManager 配置版本 16", b"\x00\x10" in cm and b"CURRENT_CONFIG_VERSION" in cm)
+        check("ConfigManager 含三个内置背景默认键",
+              b"qq-bind.render.info-card-builtin-background" in cm and
+              b"qq-bind.render.online-list-builtin-background" in cm and
+              b"qq-bind.leaderboard.builtin-background" in cm)
+        # 迁移逻辑（isSet/getBoolean 检查旧键）允许引用旧键名各 1 次；
+        # DEFAULT_VALUES 默认表不得包含（出现 ≥ 2 次即视为误写回默认值）
+        check("ConfigManager 无 random-background 默认键残留（仅迁移逻辑 1 次引用）",
+              cm.count(b"qq-bind.leaderboard.random-background") <= 1,
+              f"实际 {cm.count(b'qq-bind.leaderboard.random-background')} 次")
+        check("WebUiSchema 含三个内置背景新字段",
+              b"qq-bind.render.info-card-builtin-background" in wus and
+              b"qq-bind.leaderboard.builtin-background" in wus)
+        check("WebUiSchema 无 random-background 字段残留",
+              b"qq-bind.leaderboard.random-background" not in wus)
+
+        # 3''.7 内置背景视觉自检（深灰主体，与卡片叠加色可辨）
+        try:
+            from PIL import Image
+            import io as _io
+            import numpy as _np
+
+            def _visual(data, label):
+                img = _np.asarray(Image.open(_io.BytesIO(data)).convert("RGB")).astype(float)
+                hh, ww = img.shape[:2]
+                lum = img[..., 0] * .299 + img[..., 1] * .587 + img[..., 2] * .114
+                content = lum[int(hh * .3):int(hh * .7), int(ww * .3):int(ww * .7)]
+                cl = content.mean()
+                check(f"{label} 中心区深灰亮度 ∈ [40,72]", 40 <= cl <= 72, f"{cl:.1f}")
+                check(f"{label} 中心区非黑 (>36)", cl > 36, f"{cl:.1f}")
+
+            _visual(bg_png, "排行榜背景")
+            _visual(card_png, "卡片背景")
+        except ImportError:
+            check("背景视觉自检依赖 PIL 可用", False, "缺 PIL")
 
         # 3'.2 Spigot 线字节码零残留（全量构建回归门禁：源码直接对兼容层编译，
         # 产物本不应出现 paper-api 专属类型与跨模块合成名）
@@ -331,13 +376,19 @@ def main():
         cfg = zf.read("config.yml").decode("utf-8")
         check("config.yml 含 leaderboard 配置段", "leaderboard:" in cfg)
         check("config.yml 含 在线排行榜 命令开关", "在线排行榜: true" in cfg)
-        check("config.yml 内置版本 15（1.5.6）", re.search(
-            r"^config-version:\s*15\b", cfg, re.M) is not None)
+        check("config.yml 内置版本 16（1.5.7）", re.search(
+            r"^config-version:\s*16\b", cfg, re.M) is not None)
         check("config.yml qq-bind.leaderboard.top 默认 15", re.search(
             r"leaderboard:\s*\n(?:\s*#[^\n]*\n)*\s*top:\s*15", cfg) is not None)
-        check("config.yml 含 random-background: false", re.search(
-            r"random-background:\s*false", cfg) is not None)
-        check("config.yml 注释含内置背景与 img 随机图说明", "内置专属背景" in cfg and "img" in cfg)
+        check("config.yml info-card-builtin-background 默认 true", re.search(
+            r"info-card-builtin-background:\s*true", cfg) is not None)
+        check("config.yml online-list-builtin-background 默认 true", re.search(
+            r"online-list-builtin-background:\s*true", cfg) is not None)
+        check("config.yml leaderboard.builtin-background 默认 true", re.search(
+            r"builtin-background:\s*true", cfg) is not None)
+        check("config.yml 无 random-background 键残留", re.search(
+            r"^\s*random-background:", cfg, re.M) is None)
+        check("config.yml 注释含 img 回退说明", "回退" in cfg and "img" in cfg)
 
         # 7. 生态安全：无泄漏 / 无模块描述 / 无签名
         check("无 net/minecraft 类泄漏", not any(n.startswith("net/minecraft/") for n in names))

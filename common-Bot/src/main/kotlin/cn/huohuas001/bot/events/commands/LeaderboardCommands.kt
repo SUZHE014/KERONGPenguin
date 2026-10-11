@@ -24,9 +24,9 @@ import java.awt.image.BufferedImage
  * 每名玩家一行：排名徽章（前三名金 / 银 / 铜）+ 真实皮肤头像 + 玩家名 +
  * 总在线时长。
  *
- * 背景（1.5.6）：默认使用内置专属背景图（黑色主体 + 深绿色装饰，随 JAR
- * 分发，零配置零素材）；qq-bind.leaderboard.random-background 开启后改用
- * 插件目录 img/ 随机图（与查信息 / 查在线卡片共用素材与缓存）。
+ * 背景（1.5.7）：默认使用内置专属背景图（深灰色主体 + 深绿色装饰，随 JAR
+ * 分发，零配置零素材）；qq-bind.leaderboard.builtin-background 关闭后改用
+ * 插件目录 img/ 随机图（img 无可用图片时自动回退内置图）。
  *
  * 数据来源：QUUID 主文件 stats.play-seconds（全部玩家，含离线；
  * 统计每 60 秒增量落盘，排行榜数值最多滞后一分钟，展示精度足够）。
@@ -138,7 +138,7 @@ class LeaderboardCommands : CommandSupport() {
                     // 4. 分页渲染（第一页带标题，续页只画行内容）
                     val updateTime = SimpleDateFormat("HH:mm").format(Date())
                     val dataDirectory = plugin.configFile?.parentFile
-                    val useRandomBackground = manager.leaderboardRandomBackground
+                    val useBuiltinBackground = manager.leaderboardBuiltinBackground
                     val pages = ArrayList<ByteArray>(4)
                     var pageStart = 0
                     while (pageStart < topEntries.size) {
@@ -152,16 +152,16 @@ class LeaderboardCommands : CommandSupport() {
                             )
                         }
                         val height = LeaderboardRenderer.measurePageHeight(pageEntries.size, pages.isEmpty())
-                        // 背景（1.5.6）：默认内置专属图（黑色主体 + 深绿色装饰，随 JAR 分发）；
-                        // random-background 开启后改用 img/ 目录随机图（长图仍封顶 1600px 防栅格膨胀）
-                        val background = if (useRandomBackground) {
-                            val backgroundHeight = height.coerceAtMost(InfoCardAssets.ONLINE_BACKGROUND_MAX_HEIGHT)
-                            dataDirectory?.let {
-                                InfoCardAssets.processedBackground(it, LeaderboardRenderer.WIDTH, backgroundHeight)
-                            }
-                        } else {
-                            InfoCardAssets.processedBuiltinBackground(LeaderboardRenderer.WIDTH, height)
-                        }
+                        // 背景（1.5.7）：统一走 resolveBackground —— 默认内置专属图
+                        // （深灰主体 + 深绿色装饰，随 JAR 分发）；开关关闭后随机用 img/
+                        // 目录图片，img 无可用图片时同样回退内置图（长图封顶 1600px 防栅格膨胀）
+                        val background = InfoCardAssets.resolveBackground(
+                            dataDirectory,
+                            LeaderboardRenderer.WIDTH,
+                            height,
+                            useBuiltinBackground,
+                            InfoCardAssets.BUILTIN_BACKGROUND_LEADERBOARD,
+                        )
                         val bytes = LeaderboardRenderer.renderPage(
                             LeaderboardRenderer.LeaderboardData(
                                 serverName = plugin.serverName,
