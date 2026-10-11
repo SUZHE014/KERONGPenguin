@@ -77,9 +77,11 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 1.5.2：移除 commands.个人信息（该命令已更名为 查信息）
         // 1.5.7：移除 qq-bind.leaderboard.random-background（反向更名为 builtin-background，
         // 手动开启过随机的用户已在上方迁移逻辑中保留意图）
+        // 1.5.7.1：移除 ai.context-global（旧默认值误写进用户配置，实际无任何功能——
+        // AI 上下文自 1.5.3 起即为全局一份记忆，不存在按群/按人切换）
         for (removed in listOf(
             "agent", "audit", "whitelist", "query-online", "motd.text", "commands.个人信息",
-            "qq-bind.leaderboard.random-background",
+            "qq-bind.leaderboard.random-background", "ai.context-global",
         )) {
             if (config.contains(removed)) {
                 config.set(removed, null)
@@ -260,7 +262,6 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "ai.system-prompt" to "你是一个友好的游戏群助手，请简洁回答。",
             "ai.url-auto-append" to true,
             "ai.context-limit" to 6,
-            "ai.context-global" to false,
         ).apply {
             for (name in COMMAND_NAMES) {
                 put("commands.$name", true)

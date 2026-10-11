@@ -66,7 +66,31 @@ server-NeoForge/ # NeoForge 1.21.1 平台适配（org.bukkit 兼容层 + @Mod �
 
 ## 版本
 
-当前版本：**1.5.7**（Spigot 线与 NeoForge 1.21.1 模组版同步发版）
+当前版本：**1.5.7.1**（Spigot 线与 NeoForge 1.21.1 模组版同步发版）
+
+### v1.5.7.1 更新日志（配置注释全面核对修正 + 官网教程同步）
+
+- **修正：config.yml 注释与实际行为不符的三处** ——
+  `chat-format.start-with` 实为"触发前缀"（只有以该字符开头的游戏聊天
+  才转发到 QQ 群，转发时自动去掉前缀；留空全部转发），旧注释写反了；
+  `filter-regex` 实为"命中片段直接删除、剩余内容照常转发"（双向生效，
+  机器人回复同样过滤），旧注释误写为"整条拦截"；`custom-commands`
+  的 `permission` 实为 0/不填 = 所有人可用（/执行）、其他值 = 仅管理员
+  （/管理员执行），旧注释的"2 = 所有人"不成立。
+- **补全：占位符与功能说明** —— kick-message 补 `{name}` 变量；
+  from-game 补 `{name}`、from-group 补 `{nick}/{msg}` 别名；进出服播报
+  补 `{player}/{server}/{platform}`；Markdown 模板占位符修正为
+  `{online}/{players}/{server}/{img_url}`（{ip}/{port} 仅在 motd.api
+  地址内替换）；签到补"未装经济插件时照常签到不发金币"自适应说明；
+  AI 补"总开关 + 全局一份记忆"语义与模板缺失自动改图片说明。
+- **强调：groups 等列表项填写必须加双引号** —— bot.groups、
+  filter-regex、admin.openids 注释与官网教程统一标注双引号写法。
+- **清理：移除无功能的 `ai.context-global` 键** —— 旧默认值会写进用户
+  配置但无任何代码读取（AI 上下文自 1.5.3 起即为全局一份记忆），
+  升级后自动从旧配置清除。
+- **同步：Web 面板字段表** —— 移除已不存在的 whitelist/audit 段，
+  补 AI 段与渲染缓存字段，修正错误描述。
+- 插件版与模组版同步发布，官网教程页同步更新。
 
 ### v1.5.7 更新日志（全部图片渲染默认内置背景 + img 空回退 + 深灰主体）
 

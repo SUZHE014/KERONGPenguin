@@ -40,8 +40,8 @@ object WebUiSchema {
     private val BOT_SECTION = SectionSpec("bot", "QQ 机器人", listOf(
         FieldSpec("bot.app-id", "AppID", "text", "QQ 开放平台机器人 AppID", placeholder = "102123456"),
         FieldSpec("bot.secret", "Secret", "password", "QQ 开放平台机器人密钥"),
-        FieldSpec("bot.name", "机器人名称", "text", "机器人显示的昵称"),
-        FieldSpec("bot.groups", "群列表", "list", "允许机器人工作的群 OpenID（每行一个）"),
+        FieldSpec("bot.name", "机器人名称", "text", "机器人显示的昵称（serverName 留空时作为后备显示名）"),
+        FieldSpec("bot.groups", "群列表", "list", "允许机器人工作的群 OpenID（每行一个，需双引号包裹；留空则命令不限群，但转发/播报无目标群不发）"),
     ))
 
     private val SERVER_SECTION = SectionSpec("server", "服务器", listOf(
@@ -50,38 +50,33 @@ object WebUiSchema {
     ))
 
     private val CHAT_FORMAT_SECTION = SectionSpec("chat-format", "聊天格式", listOf(
-        FieldSpec("chat-format.from-game", "游戏→群 格式", "text", "占位符：{name} {message}", placeholder = "[游戏] {message}"),
-        FieldSpec("chat-format.from-group", "群→游戏 格式", "text", "占位符：{name} {message}", placeholder = "[QQ] {name}: {message}"),
-        FieldSpec("chat-format.post-chat", "转发游戏聊天", "boolean", "是否把游戏聊天转发到群"),
-        FieldSpec("chat-format.start-with", "触发前缀", "text", "游戏消息必须以此前缀开头才转发；留空转发全部"),
+        FieldSpec("chat-format.from-game", "游戏→群 格式", "text", "占位符：{name} 玩家名，{message}/{msg} 消息", placeholder = "[游戏] {message}"),
+        FieldSpec("chat-format.from-group", "群→游戏 格式", "text", "占位符：{name}/{nick} 昵称，{message}/{msg} 消息", placeholder = "[QQ] {name}: {message}"),
+        FieldSpec("chat-format.post-chat", "转发游戏聊天", "boolean", "是否开启游戏↔群双向聊天转发"),
+        FieldSpec("chat-format.start-with", "触发前缀", "text", "游戏消息必须以此前缀开头才转发（转发时去掉前缀）；留空转发全部", placeholder = "#"),
     ))
 
     private val PLAYER_EVENTS_SECTION = SectionSpec("player-events", "玩家事件", listOf(
-        FieldSpec("player-events.join.enabled", "进服通知", "boolean", "玩家进服时在群内发送通知"),
-        FieldSpec("player-events.join.format", "进服格式", "text", "占位符：{name}", placeholder = "[游戏] {name} 加入了服务器"),
+        FieldSpec("player-events.join.enabled", "进服通知", "boolean", "玩家进服时在群内发送通知（仅发送给 groups 列表内的群）"),
+        FieldSpec("player-events.join.format", "进服格式", "text", "占位符：{name}/{player} 玩家名、{server} 服务器名、{platform} 平台", placeholder = "[游戏] {name} 加入了服务器"),
         FieldSpec("player-events.quit.enabled", "退服通知", "boolean", "玩家退服时在群内发送通知"),
-        FieldSpec("player-events.quit.format", "退服格式", "text", "占位符：{name}", placeholder = "[游戏] {name} 离开了服务器"),
+        FieldSpec("player-events.quit.format", "退服格式", "text", "占位符同进服格式", placeholder = "[游戏] {name} 离开了服务器"),
     ))
 
     private val MARKDOWN_SECTION = SectionSpec("markdown", "Markdown", listOf(
-        FieldSpec("markdown.queryOnline", "在线查询模板", "text", "Markdown 目录下的模板文件名", placeholder = "online.md"),
+        FieldSpec("markdown.queryOnline", "在线查询模板", "text", "Markdown 目录下的模板文件名（占位符 {online}/{players}/{server}/{img_url}）", placeholder = "online.md"),
     ))
 
     private val MOTD_SECTION = SectionSpec("motd", "MOTD", listOf(
-        FieldSpec("motd.server-ip", "服务器 IP", "text", "用于 MOTD 查询显示的服务器地址", placeholder = "127.0.0.1"),
-        FieldSpec("motd.server-port", "服务器端口", "number", "用于 MOTD 查询的端口"),
-        FieldSpec("motd.api", "MOTD API 地址", "text", "可选：自定义 MOTD 查询接口"),
-        FieldSpec("motd.post-img", "发送图片", "boolean", "MOTD 结果附带图片"),
-        FieldSpec("motd.use-markdown", "使用 Markdown", "boolean", "关闭后 /查在线 改用渲染图片输出（1.5.1）"),
-    ))
-
-    private val WHITELIST_SECTION = SectionSpec("whitelist", "白名单命令", listOf(
-        FieldSpec("whitelist.add-command", "添加命令", "text", "占位符：{name}", placeholder = "whitelist add {name}"),
-        FieldSpec("whitelist.del-command", "删除命令", "text", "占位符：{name}", placeholder = "whitelist remove {name}"),
+        FieldSpec("motd.server-ip", "服务器 IP", "text", "仅用于 api 地址里的 {ip} 变量替换", placeholder = "127.0.0.1"),
+        FieldSpec("motd.server-port", "服务器端口", "number", "仅用于 api 地址里的 {port} 变量替换"),
+        FieldSpec("motd.api", "MOTD API 地址", "text", "服务器状态图接口，{ip}/{port} 自动替换；不需要可留空"),
+        FieldSpec("motd.post-img", "发送图片", "boolean", "是否随消息发送 api 生成的状态图片"),
+        FieldSpec("motd.use-markdown", "使用 Markdown", "boolean", "true=/查在线走模板；false=自动渲染图片（模板缺失时也自动改图片）"),
     ))
 
     private val FILTER_SECTION = SectionSpec("filter-regex", "正则过滤", listOf(
-        FieldSpec("filter-regex", "过滤正则列表", "list", "命中这些正则的消息会被替换为 *（每行一条）"),
+        FieldSpec("filter-regex", "过滤正则列表", "list", "命中这些正则的消息片段会被直接删除，剩余内容照常转发（双向生效；每行一条，需双引号包裹）"),
     ))
 
     private val ADMIN_SECTION = SectionSpec("admin", "管理员", listOf(
@@ -90,27 +85,37 @@ object WebUiSchema {
     ))
 
     private val FEATURES_SECTION = SectionSpec("features", "功能", listOf(
-        FieldSpec("features.full-amount", "全量转发", "boolean", "默认全量处理所有消息"),
-    ))
-
-    private val AUDIT_SECTION = SectionSpec("audit", "内容审核", listOf(
-        FieldSpec("audit.base-url", "审核接口地址", "text", "OpenAI 兼容审核服务地址；留空仅本地敏感词首检"),
-        FieldSpec("audit.api-key", "审核 API Key", "password", "审核服务密钥"),
-        FieldSpec("audit.model", "审核模型", "text", "审核使用的模型名", placeholder = "gpt-4o-mini"),
+        FieldSpec("features.full-amount", "全量转发", "boolean", "开启后群内所有消息（不止命令）都转发进游戏；可由管理员 /全量 按群切换"),
     ))
 
     private val QQ_BIND_SECTION = SectionSpec("qq-bind", "QQ 绑定", listOf(
         FieldSpec("qq-bind.enabled", "启用 QQ 绑定", "boolean", "开启后未绑定 QQ 的玩家无法进入服务器"),
         FieldSpec("qq-bind.personal-info", "查信息命令", "boolean", "/查信息 统计卡片命令（1.5.2 前为 /个人信息；默认开启，需 QQ 绑定开启）"),
         FieldSpec("qq-bind.code-expire-minutes", "绑定码有效期（分钟）", "number"),
-        FieldSpec("qq-bind.code-length", "绑定码长度", "number"),
-        FieldSpec("qq-bind.checkin.enabled", "启用签到", "boolean", "群内每日签到领金币（需 Vault）"),
+        FieldSpec("qq-bind.code-length", "绑定码长度", "number", "4-8 位，超出自动按边界处理"),
+        FieldSpec("qq-bind.checkin.enabled", "启用签到", "boolean", "群内每日签到领金币（需 Vault；未装时照常签到不发金币）"),
         FieldSpec("qq-bind.checkin.prefix", "签到回复前缀", "text"),
         FieldSpec("qq-bind.checkin.reward", "签到奖励金币", "number"),
+        FieldSpec("qq-bind.render.gc-after-render", "渲染后 GC", "boolean", "渲染后 GC 提示（已节流 60 秒一次）"),
+        FieldSpec("qq-bind.render.result-cache-seconds", "结果复用秒数", "number", "同一玩家查询结果复用秒数（0=每次重渲染，上限 600）"),
         FieldSpec("qq-bind.render.info-card-builtin-background", "查信息内置背景", "boolean", "查信息卡片是否使用内置深灰底图（默认开启；关闭后随机用 img/ 图片，img 无图自动回退内置图；1.5.7 新增）"),
         FieldSpec("qq-bind.render.online-list-builtin-background", "查在线内置背景", "boolean", "查在线图片是否使用内置深灰底图（默认开启；语义同查信息；1.5.7 新增）"),
         FieldSpec("qq-bind.leaderboard.top", "排行榜显示人数", "number", "在线排行榜显示前 N 名（1-100，默认 15；单张图片最多 15 行，超出自动分段发送）"),
         FieldSpec("qq-bind.leaderboard.builtin-background", "排行榜内置背景", "boolean", "在线排行榜是否使用内置深灰底图（默认开启，1.5.7 改名自 random-background；关闭后随机用 img/ 图片，img 无图自动回退内置图）"),
+    ))
+
+    private val AI_SECTION = SectionSpec("ai", "AI 对话", listOf(
+        FieldSpec("ai.enabled", "AI 总开关", "boolean", "关闭后群内（@机器人）和游戏内 AI 都不可用"),
+        FieldSpec("ai.server-enabled", "游戏内 AI", "boolean", "玩家输入前缀触发（需 ai.enabled 同时开启）"),
+        FieldSpec("ai.server-prefix", "游戏内前缀", "text", "玩家输入“前缀 你好”即触发"),
+        FieldSpec("ai.server-output-prefix", "游戏内回复前缀", "text"),
+        FieldSpec("ai.qq-output-prefix", "群内回复前缀", "text"),
+        FieldSpec("ai.base-url", "接口地址", "text", "OpenAI 兼容接口（DeepSeek 不加 /v1）"),
+        FieldSpec("ai.api-key", "API Key", "password"),
+        FieldSpec("ai.model", "模型名", "text", "如 deepseek-chat / gpt-4o-mini"),
+        FieldSpec("ai.system-prompt", "角色设定", "textarea"),
+        FieldSpec("ai.url-auto-append", "自动补后缀", "boolean"),
+        FieldSpec("ai.context-limit", "上下文轮数", "number", "全局一份记忆（0 = 不保留）"),
     ))
 
     private val COMMANDS_SECTION = SectionSpec("commands", "命令开关", listOf(
@@ -120,16 +125,16 @@ object WebUiSchema {
     private val CUSTOM_COMMANDS_SECTION = SectionSpec("custom-commands", "自定义命令", listOf(
         FieldSpec(
             "custom-commands", "自定义命令列表", "object-list",
-            "配置机器人自定义的命令（key=触发词，command=执行的服务器命令，permission=所需权限等级）",
+            "配置机器人自定义的命令（key=触发词，command=执行的服务器命令，permission：0/不填=所有人可用，其他值=仅管理员可用）",
             fields = listOf(
                 FieldSpec("key", "触发词", "text"),
                 FieldSpec("command", "执行命令", "text"),
-                FieldSpec("permission", "权限等级", "number"),
+                FieldSpec("permission", "权限", "number"),
             ),
         ),
     ))
 
-    /** 全部配置分区。 */
+    /** 全部配置分区（与 config.yml 保持同步，whitelist/audit 段已随实现移除）。 */
     val SECTIONS: List<SectionSpec> = listOf(
         BOT_SECTION,
         SERVER_SECTION,
@@ -137,12 +142,11 @@ object WebUiSchema {
         PLAYER_EVENTS_SECTION,
         MARKDOWN_SECTION,
         MOTD_SECTION,
-        WHITELIST_SECTION,
         FILTER_SECTION,
         ADMIN_SECTION,
         FEATURES_SECTION,
-        AUDIT_SECTION,
         QQ_BIND_SECTION,
+        AI_SECTION,
         COMMANDS_SECTION,
         CUSTOM_COMMANDS_SECTION,
     )

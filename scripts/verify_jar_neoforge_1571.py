@@ -1,0 +1,491 @@
+#!/usr/bin/env python3
+"""
+KERONGPenguin NeoForge 分发模组 JAR 门禁验证（1.5.7.1：配置注释全面核对修正 + 死键 ai.context-global 移除）。
+
+用法：python3 scripts/verify_jar_neoforge_1571.py [jar]
+缺省验证 build/dist/KERONGPenguin_NeoForge-1.21.1-1.5.7.1.jar。
+
+模组线为本地构建环境从源码全量编译
+（gradle :server-NeoForge:jar 编译 common-Bot + manager 目录 + org.bukkit 兼容层
++ 模组源，再由 package_jar_neoforge.py 合成分发 JAR 含第三方库整体重定位）。
+
+在 1.5.6.1 门禁基线之上调整 / 新增：
+  - mods.toml version=1.5.7；
+  - 1.5.7 内置背景：双资源齐备（leaderboard-default.png 1200×1800 +
+    card-default.png 1800×1200，深灰主体视觉自检）；
+    InfoCardAssets.resolveBackground 统一入口；三个内置背景开关
+    （info-card / online-list / leaderboard，默认 true）；
+  - 1.5.7 配置：config-version 16；旧键 random-background 零残留
+    （ConfigManager / QqBindManager / WebUiSchema / config.yml 均不出现）；
+  - 1.5.6 / 1.5.5 / 1.5.4.5 全部功能基线保留；
+  - FixupTool 残留检查为「Spigot 线字节码零残留」回归门禁；
+  - 重定位硬门禁全保留（常量池结构性零残留 / 平台包零交集 / KFF 共存零交集）。
+"""
+import argparse
+import re
+import sys
+import zipfile
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "relocate"))
+from class_strings import read_constant_pool
+
+_DEFAULT_JAR = "/home/z/my-project/penguin-git/build/dist/KERONGPenguin_NeoForge-1.21.1-1.5.7.1.jar"
+
+# 本地安装的 NeoForge 21.1.248 server（可选，存在则做平台冲突扫描）
+NF_LIBS = Path("/home/z/my-project/tooling/nf-install/server/libraries")
+# kotlin-stdlib 复现 jar（可选，存在则做包交集扫描）
+KOTLIN_REPRO = Path("/home/z/my-project/tooling/kotlin-stdlib-repro.jar")
+
+# 1.5.4.3 起重定位的第三方库前缀（与 package_jar_neoforge.py 保持一致）
+RELOC_PREFIXES = (
+    "kotlin/", "kotlinx/", "okhttp3/", "okio/", "com/alibaba/",
+    "org/yaml/", "org/bouncycastle/", "org/jsoup/", "org/java_websocket/",
+    "org/jetbrains/", "org/intellij/",
+)
+SHADE = "cn/huohuas001/shaded/"
+
+results = []
+
+
+def check(name: str, ok: bool, detail: str = ""):
+    results.append((name, ok, detail))
+    print(("PASS " if ok else "FAIL ") + name + (f"  {detail}" if detail and not ok else ""))
+
+
+def packages_of(zf, names=None):
+    names = names or zf.namelist()
+    pkgs = set()
+    for n in names:
+        if n.endswith(".class") and not n.startswith("META-INF/"):
+            parts = n.split("/")[:-1]
+            if parts:
+                pkgs.add("/".join(parts))
+    return pkgs
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("jar", nargs="?", default=_DEFAULT_JAR)
+    args = ap.parse_args()
+    JAR = args.jar
+    with zipfile.ZipFile(JAR) as zf:
+        names = set(zf.namelist())
+        dir_count = sum(1 for n in names if n.endswith("/"))
+
+        # zip 完整性
+        bad = zf.testzip()
+        check("zip 完整性（testzip）", bad is None, str(bad))
+
+        # 1. 模组元数据
+        toml = zf.read("META-INF/neoforge.mods.toml").decode("utf-8") if "META-INF/neoforge.mods.toml" in names else ""
+        check("neoforge.mods.toml 存在", bool(toml))
+        check("mods.toml modId=kerongpenguin", 'modId = "kerongpenguin"' in toml)
+        check("mods.toml version=1.5.7.1", re.search(r'^version = "1\.5\.7\.1"$', toml, re.M) is not None)
+        check("mods.toml modLoader=javafml", 'modLoader = "javafml"' in toml)
+        check("mods.toml 依赖 neoforge 21.1+", "versionRange = \"[21.1.0,)\"" in toml)
+        check("mods.toml 依赖 minecraft 1.21.1", "versionRange = \"[1.21.1,1.22)\"" in toml)
+
+        # 2. 模组入口与兼容层
+        must = [
+            "cn/huohuas001/huhobotPenguin/neoforge/HuHoBotNeoForge.class",
+            "cn/huohuas001/huhobotPenguin/neoforge/NeoForgeEvents.class",
+            "cn/huohuas001/huhobotPenguin/neoforge/NeoForgeCommands.class",
+            "cn/huohuas001/huhobotPenguin/neoforge/NeoForgeConsoleExecutor.class",
+            "cn/huohuas001/huhobotPenguin/neoforge/LegacyText.class",
+            "cn/huohuas001/huhobotPenguin/neoforge/NeoServerRef.class",
+            "cn/huohuas001/bot/compat/SptCompat.class",
+            "org/bukkit/Bukkit.class",
+            "org/bukkit/OfflinePlayer.class",
+            "org/bukkit/ChatColor.class",
+            "org/bukkit/plugin/PluginManager.class",
+            "org/bukkit/plugin/java/JavaPlugin.class",
+            "org/bukkit/scheduler/BukkitScheduler.class",
+            "org/bukkit/entity/Player.class",
+            "org/bukkit/entity/NeoPlayer.class",
+            "org/bukkit/entity/PlayerProfile.class",
+            "org/bukkit/entity/EntityType.class",
+            "org/bukkit/Material.class",
+            "org/bukkit/Statistic.class",
+            "org/bukkit/World.class",
+            "org/bukkit/configuration/file/YamlConfiguration.class",
+            "org/bukkit/configuration/file/MemorySection.class",
+        ]
+        for entry in must:
+            check(f"存在 {entry.split('/')[-1]}", entry in names)
+
+        # 3. common-Bot 同源业务类（含 1.5.4 乱码修复）
+        must_business = [
+            "cn/huohuas001/bot/QClient.class",
+            "cn/huohuas001/bot/HuHoBot.class",
+            "cn/huohuas001/bot/events/GroupMessageHandler.class",
+            "cn/huohuas001/bot/tools/QqText.class",
+            "cn/huohuas001/huhobotPenguin/spigot/qqbind/QqBindManager.class",
+            "cn/huohuas001/huhobotPenguin/spigot/qqbind/BeijingTimeUtil.class",
+            "cn/huohuas001/huhobotPenguin/spigot/stats/PlayerStatsManager.class",
+            "cn/huohuas001/huhobotPenguin/spigot/stats/QueryInfoService.class",
+            "cn/huohuas001/huhobotPenguin/spigot/stats/OnlineListService.class",
+            "cn/huohuas001/huhobotPenguin/spigot/render/InfoCardRenderer.class",
+            "cn/huohuas001/huhobotPenguin/spigot/render/OnlineListRenderer.class",
+            "cn/huohuas001/huhobotPenguin/spigot/render/CardRenderPool.class",
+            "cn/huohuas001/huhobotPenguin/spigot/manager/ConfigManager.class",
+            "cn/huohuas001/huhobotPenguin/spigot/commands/CommandOutputAppender.class",
+            "cn/huohuas001/bot/web/WebUiServer.class",
+        ]
+        for entry in must_business:
+            check(f"存在 {entry.split('/')[-1]}（共用源码）", entry in names)
+
+        # 3'. 1.5.5 排行榜 / 签到金币自适应 / 图片分段（模组线同步）
+        lb_classes = [
+            "cn/huohuas001/bot/events/commands/LeaderboardCommands.class",
+            "cn/huohuas001/bot/events/commands/LeaderboardCommands$Companion.class",
+            "cn/huohuas001/bot/events/commands/LeaderboardCommands$RawEntry.class",
+            "cn/huohuas001/huhobotPenguin/spigot/render/LeaderboardRenderer.class",
+            "cn/huohuas001/huhobotPenguin/spigot/render/LeaderboardRenderer$LeaderEntry.class",
+            "cn/huohuas001/huhobotPenguin/spigot/render/LeaderboardRenderer$LeaderboardData.class",
+        ]
+        for entry in lb_classes:
+            check(f"存在 {entry.split('/')[-1]}", entry in names)
+        lbc = zf.read("cn/huohuas001/bot/events/commands/LeaderboardCommands.class")
+        check("LeaderboardCommands 命令名 在线排行榜", "在线排行榜".encode() in lbc)
+        check("LeaderboardCommands 引用 listQuuids（全量扫描）", b"listQuuids" in lbc)
+        check("LeaderboardCommands 引用 getLeaderboardTop（人数配置）", b"getLeaderboardTop" in lbc)
+        check("LeaderboardCommands 头像预热线程（PenguinAvatarFetch）", b"PenguinAvatarFetch" in lbc)
+        check("LeaderboardCommands 皮肤快照（callSyncMethod）", b"callSyncMethod" in lbc)
+        lbr = zf.read("cn/huohuas001/huhobotPenguin/spigot/render/LeaderboardRenderer.class")
+        check("LeaderboardRenderer 分页渲染（renderPage/measurePageHeight）",
+              b"renderPage" in lbr and b"measurePageHeight" in lbr)
+        check("LeaderboardRenderer 无 bukkit 引用（纯 Java2D）", b"org/bukkit/" not in lbr)
+        gmh = zf.read("cn/huohuas001/bot/events/GroupMessageHandler.class")
+        check("GroupMessageHandler 注册 LeaderboardCommands", b"LeaderboardCommands" in gmh)
+        mm = zf.read("cn/huohuas001/bot/MenuManager.class")
+        check("MenuManager 面板含 在线排行榜 按钮", "在线排行榜".encode() in mm)
+        pc = zf.read("cn/huohuas001/bot/events/commands/PublicCommands.class")
+        check("PublicCommands 帮助含 在线排行榜 条目", "在线排行榜".encode() in pc)
+        cic = zf.read("cn/huohuas001/bot/events/commands/CheckInCommands.class")
+        check("CheckInCommands 金币插件检测 isEconomyAvailable", b"isEconomyAvailable" in cic)
+        check("CheckInCommands 经济检测反射链（getServicesManager）", b"getServicesManager" in cic)
+        qbm = zf.read("cn/huohuas001/huhobotPenguin/spigot/qqbind/QqBindManager.class")
+        check("QqBindManager.listQuuids（全量扫描）", b"listQuuids" in qbm)
+        check("QqBindManager.leaderboardTop（配置夹逼 1..100）", b"getLeaderboardTop" in qbm)
+        ols = zf.read("cn/huohuas001/huhobotPenguin/spigot/stats/OnlineListService.class")
+        check("OnlineListService 分段发送 renderPages/sendPages",
+              b"renderPages" in ols and b"sendPages" in ols)
+        olr = zf.read("cn/huohuas001/huhobotPenguin/spigot/render/OnlineListRenderer.class")
+        check("OnlineListRenderer 分页 measurePageHeight/MAX_PLAYERS_PER_PAGE",
+              b"measurePageHeight" in olr and b"MAX_PLAYERS_PER_PAGE" in olr)
+        cm = zf.read("cn/huohuas001/huhobotPenguin/spigot/manager/ConfigManager.class")
+        check("ConfigManager 新配置键 qq-bind.leaderboard.top", b"qq-bind.leaderboard.top" in cm)
+        check("ConfigManager 命令名单含 在线排行榜", "在线排行榜".encode() in cm)
+        wus = zf.read("cn/huohuas001/bot/web/WebUiSchema.class")
+        check("WebUiSchema 含 leaderboard.top 字段", b"leaderboard.top" in wus)
+
+        # 3''.5 1.5.6 / 1.5.7 内置背景（全量构建新增）
+        import struct as _struct
+        check("内置背景资源 backgrounds/leaderboard-default.png 存在",
+              "backgrounds/leaderboard-default.png" in names)
+        bg_png = zf.read("backgrounds/leaderboard-default.png") if "backgrounds/leaderboard-default.png" in names else b""
+        check("内置背景 PNG 魔数合法", bg_png[:8] == b"\x89PNG\r\n\x1a\n")
+        _bw, _bh = _struct.unpack(">II", bg_png[16:24]) if len(bg_png) >= 24 else (0, 0)
+        check("排行榜内置背景尺寸 1200×1800", (_bw, _bh) == (1200, 1800), f"实际 {_bw}×{_bh}")
+        icr = zf.read("cn/huohuas001/huhobotPenguin/spigot/render/InfoCardAssets.class")
+        check("InfoCardAssets 含 processedBuiltinBackground", b"processedBuiltinBackground" in icr)
+        check("InfoCardAssets 含资源路径常量（backgrounds/leaderboard-default.png）",
+              b"backgrounds/leaderboard-default.png" in icr)
+        check("LeaderboardCommands 调用 resolveBackground（统一背景入口）",
+              b"resolveBackground" in lbc)
+        check("QqBindManager.getLeaderboardBuiltinBackground（内置背景开关）",
+              b"getLeaderboardBuiltinBackground" in qbm)
+        check("目录条目 backgrounds/ 存在", "backgrounds/" in names)
+
+        # 3''.6 1.5.7 双内置背景资源 + 统一入口 + 三开关 + 配置 16
+        check("内置背景资源 backgrounds/card-default.png 存在",
+              "backgrounds/card-default.png" in names)
+        card_png = zf.read("backgrounds/card-default.png") if "backgrounds/card-default.png" in names else b""
+        check("卡片内置背景 PNG 魔数合法", card_png[:8] == b"\x89PNG\r\n\x1a\n")
+        _cw, _ch = _struct.unpack(">II", card_png[16:24]) if len(card_png) >= 24 else (0, 0)
+        check("卡片内置背景尺寸 1800×1200", (_cw, _ch) == (1800, 1200), f"实际 {_cw}×{_ch}")
+        check("InfoCardAssets 含 resolveBackground 统一入口", b"resolveBackground" in icr)
+        check("InfoCardAssets 含 BUILTIN_BACKGROUND_CARD 路径（backgrounds/card-default.png）",
+              b"backgrounds/card-default.png" in icr)
+        check("QqBindManager 含三个内置背景开关",
+              b"getInfoCardBuiltinBackground" in qbm and
+              b"getOnlineListBuiltinBackground" in qbm and
+              b"getLeaderboardBuiltinBackground" in qbm)
+        check("QqBindManager 无 getLeaderboardRandomBackground 残留",
+              b"getLeaderboardRandomBackground" not in qbm)
+        qis = zf.read("cn/huohuas001/huhobotPenguin/spigot/stats/QueryInfoService.class")
+        check("QueryInfoService 走 resolveBackground", b"resolveBackground" in qis)
+        check("OnlineListService 走 resolveBackground", b"resolveBackground" in ols)
+        check("ConfigManager 配置版本 16", b"\x00\x10" in cm and b"CURRENT_CONFIG_VERSION" in cm)
+        check("ConfigManager 含三个内置背景默认键",
+              b"qq-bind.render.info-card-builtin-background" in cm and
+              b"qq-bind.render.online-list-builtin-background" in cm and
+              b"qq-bind.leaderboard.builtin-background" in cm)
+        # 迁移逻辑（isSet/getBoolean 检查旧键）允许引用旧键名各 1 次；
+        # DEFAULT_VALUES 默认表不得包含（出现 ≥ 2 次即视为误写回默认值）
+        check("ConfigManager 无 random-background 默认键残留（仅迁移逻辑 1 次引用）",
+              cm.count(b"qq-bind.leaderboard.random-background") <= 1,
+              f"实际 {cm.count(b'qq-bind.leaderboard.random-background')} 次")
+        check("WebUiSchema 含三个内置背景新字段",
+              b"qq-bind.render.info-card-builtin-background" in wus and
+              b"qq-bind.leaderboard.builtin-background" in wus)
+        check("WebUiSchema 无 random-background 字段残留",
+              b"qq-bind.leaderboard.random-background" not in wus)
+
+        # 3''.7 内置背景视觉自检（深灰主体，与卡片叠加色可辨）
+        try:
+            from PIL import Image
+            import io as _io
+            import numpy as _np
+
+            def _visual(data, label):
+                img = _np.asarray(Image.open(_io.BytesIO(data)).convert("RGB")).astype(float)
+                hh, ww = img.shape[:2]
+                lum = img[..., 0] * .299 + img[..., 1] * .587 + img[..., 2] * .114
+                content = lum[int(hh * .3):int(hh * .7), int(ww * .3):int(ww * .7)]
+                cl = content.mean()
+                check(f"{label} 中心区深灰亮度 ∈ [40,72]", 40 <= cl <= 72, f"{cl:.1f}")
+                check(f"{label} 中心区非黑 (>36)", cl > 36, f"{cl:.1f}")
+
+            _visual(bg_png, "排行榜背景")
+            _visual(card_png, "卡片背景")
+        except ImportError:
+            check("背景视觉自检依赖 PIL 可用", False, "缺 PIL")
+
+        # 3'.2 Spigot 线字节码零残留（全量构建回归门禁：源码直接对兼容层编译，
+        # 产物本不应出现 paper-api 专属类型与跨模块合成名）
+        for n in ("cn/huohuas001/bot/events/commands/LeaderboardCommands.class",
+                  "cn/huohuas001/huhobotPenguin/spigot/stats/OnlineListService.class"):
+            data = zf.read(n)
+            check(f"{n.split('/')[-1]} 无 destroystokyo 残留",
+                  b"com/destroystokyo/" not in data)
+            check(f"{n.split('/')[-1]} 无 org/bukkit/profile 残留",
+                  b"org/bukkit/profile/" not in data)
+        check("产物无 org/bukkit/profile 泄漏类", not any(
+            n.startswith("org/bukkit/profile/") for n in names))
+        for n in ("cn/huohuas001/huhobotPenguin/spigot/render/LeaderboardRenderer.class",
+                  "cn/huohuas001/huhobotPenguin/spigot/render/OnlineListRenderer.class"):
+            check(f"{n.split('/')[-1]} 无 font$common_Bot 残留",
+                  b"font$common_Bot" not in zf.read(n))
+
+        # 3'.3 1.5.4.5 延迟修复基线（继承）
+        check("OutboxQueue 类存在", "cn/huohuas001/bot/OutboxQueue.class" in names)
+        oq = zf.read("cn/huohuas001/bot/OutboxQueue.class") if "cn/huohuas001/bot/OutboxQueue.class" in names else b""
+        check("OutboxQueue 单线程队列（newSingleThreadExecutor）", b"newSingleThreadExecutor" in oq)
+        check("OutboxQueue daemon 线程（不阻止 JVM 退出）", b"setDaemon" in oq)
+        check("OutboxQueue 线程命名（KERONGPenguin-QQ-Outbox）", b"KERONGPenguin-QQ-Outbox" in oq)
+        check("OutboxQueue 停机清空（awaitTermination）", b"awaitTermination" in oq)
+        check("OutboxQueue 引用 shaded kotlin（自身已重定位）", (SHADE + "kotlin/").encode() in oq)
+        qc = zf.read("cn/huohuas001/bot/QClient.class")
+        check("QClient 引用 OutboxQueue（发送入队）", b"OutboxQueue" in qc)
+        check("QClient 同步内核 sendPayloadToGroupsSync", b"sendPayloadToGroupsSync" in qc)
+        check("QClient 同步内核 sendTextToGroupsSync", b"sendTextToGroupsSync" in qc)
+        gmh = zf.read("cn/huohuas001/bot/events/GroupMessageHandler.class")
+        check("GroupMessageHandler 审核走 submitAsync（不阻塞 WSS 线程）", b"submitAsync" in gmh)
+
+
+        # 4. 乱码修复关键串（GroupMessageHandler 引用 QqText）
+        gm = zf.read("cn/huohuas001/bot/events/GroupMessageHandler.class")
+        check("GroupMessageHandler 含 QqText 引用", b"QqText" in gm)
+
+        # 4a. 1.5.4.4 暗色遮罩（背景不再模糊）：方法名 darkOverlay 存在于
+        #     InfoCardAssets（同文件顶级 object，类名无 $ 嵌套），
+        #     旧模糊路径（blurAndDarken / resample / BLUR_SCALE_DIVISOR）全部移除
+        icr = zf.read("cn/huohuas001/huhobotPenguin/spigot/render/InfoCardAssets.class")
+        check("InfoCardAssets 含 darkOverlay 方法", b"darkOverlay" in icr)
+        check("InfoCardAssets 无 blurAndDarken 残留", b"blurAndDarken" not in icr)
+        check("InfoCardAssets 无 resample 残留", b"resample" not in icr)
+        check("InfoCardAssets 无 BLUR_SCALE_DIVISOR 残留", b"BLUR_SCALE_DIVISOR" not in icr)
+
+        # 4b. help 子命令修复（/huhobot help 与 /hb help 字面量注册）
+        nc = zf.read("cn/huohuas001/huhobotPenguin/neoforge/NeoForgeCommands.class")
+        check("NeoForgeCommands 含 help 子命令引用（≥2 处）", nc.count(b"help") >= 2,
+              f"实际 {nc.count(b'help')} 处")
+
+        # 5. 运行时依赖并入（1.5.4.3 起：kotlin/okhttp/okio/fastjson/snakeyaml/BC 已重定位）
+        deps = [
+            ("kloping SDK（原位不重定位）", "io/github/kloping/qqbot/Starter.class"),
+            ("shaded kotlin-stdlib", SHADE + "kotlin/jvm/internal/Intrinsics.class"),
+            ("shaded kotlin.collections", SHADE + "kotlin/collections/CollectionsKt.class"),
+            ("shaded okhttp", SHADE + "okhttp3/OkHttpClient.class"),
+            ("shaded okio", SHADE + "okio/Buffer.class"),
+            ("shaded fastjson", SHADE + "com/alibaba/fastjson/JSON.class"),
+            ("shaded snakeyaml", SHADE + "org/yaml/snakeyaml/Yaml.class"),
+            ("shaded BouncyCastle", SHADE + "org/bouncycastle/jce/provider/BouncyCastleProvider.class"),
+            ("shaded Java-WebSocket", SHADE + "org/java_websocket/client/WebSocketClient.class"),
+        ]
+        for label, entry in deps:
+            check(f"依赖并入 {label}", entry in names)
+
+        # 5b. ⚠️ 重定位硬门禁：重定位前缀下不得残留任何 .class
+        for p in RELOC_PREFIXES:
+            left = [n for n in names if n.startswith(p) and n.endswith(".class")]
+            check(f"无 {p}*.class（已重定位）", not left, f"残留 {left[:3]}")
+        check("无 META-INF/versions 条目", not any(n.startswith("META-INF/versions/") for n in names))
+        check("services java.security.Provider 行已重写",
+              all(
+                  line.strip().startswith(SHADE.replace("/", "."))
+                  for line in zf.read("META-INF/services/java.security.Provider").decode().splitlines()
+                  if line.strip() and not line.startswith("#")
+              ) if "META-INF/services/java.security.Provider" in names else True,
+              "存在未重写的 provider 行")
+
+        # 5c. ⚠️ 常量池结构性残留扫描（Class/NameAndType 引用必须全部重定位；
+        # @Metadata d2 反射元数据字符串不判失败——仅 kotlin-reflect 读取，本包未携带）
+        struct_hits = 0
+        for n in names:
+            if not n.endswith(".class"):
+                continue
+            try:
+                consts, _, _ = read_constant_pool(zf.read(n))
+            except Exception:
+                struct_hits += 1
+                continue
+            for entry in consts:
+                if not entry:
+                    continue
+                if entry[0] == "ref" and entry[1] == 7:
+                    name_entry = consts[entry[2]]
+                    cname = name_entry[1] if name_entry and name_entry[0] == "utf8" else ""
+                    if any(cname.startswith(p) for p in RELOC_PREFIXES):
+                        struct_hits += 1
+                elif entry[0] == "ref2" and entry[1] == 12:
+                    desc_entry = consts[entry[3]]
+                    desc = desc_entry[1] if desc_entry and desc_entry[0] == "utf8" else ""
+                    if any(f"L{p}" in desc for p in RELOC_PREFIXES):
+                        struct_hits += 1
+        check("常量池结构性引用零残留", struct_hits == 0, f"残留 {struct_hits} 处")
+
+        # 5d. 业务类引用 shaded kotlin（证明自身字节码已同步重写）
+        qclient = zf.read("cn/huohuas001/bot/QClient.class")
+        check("QClient 引用 shaded kotlin", (SHADE + "kotlin/").encode() in qclient)
+        compat = zf.read("cn/huohuas001/bot/compat/SptCompat.class")
+        check("SptCompat 引用 shaded WebSocketClient", (SHADE + "org/java_websocket/").encode() in compat)
+
+        # 6. 模组资源
+        resources = [
+            "config.yml",
+            "fonts/NotoSansSC-Regular-subset.ttf",
+            "fonts/NotoSansSC-Bold-subset.ttf",
+            "Markdown/online.md",
+        ]
+        for entry in resources:
+            check(f"资源 {entry}", entry in names)
+        cfg = zf.read("config.yml").decode("utf-8")
+        check("config.yml 含 leaderboard 配置段", "leaderboard:" in cfg)
+        check("config.yml 含 在线排行榜 命令开关", "在线排行榜: true" in cfg)
+        check("config.yml 内置版本 16（1.5.7）", re.search(
+            r"^config-version:\s*16\b", cfg, re.M) is not None)
+        check("config.yml qq-bind.leaderboard.top 默认 15", re.search(
+            r"leaderboard:\s*\n(?:\s*#[^\n]*\n)*\s*top:\s*15", cfg) is not None)
+        check("config.yml info-card-builtin-background 默认 true", re.search(
+            r"info-card-builtin-background:\s*true", cfg) is not None)
+        check("config.yml online-list-builtin-background 默认 true", re.search(
+            r"online-list-builtin-background:\s*true", cfg) is not None)
+        check("config.yml leaderboard.builtin-background 默认 true", re.search(
+            r"builtin-background:\s*true", cfg) is not None)
+        check("config.yml 无 random-background 键残留", re.search(
+            r"^\s*random-background:", cfg, re.M) is None)
+        check("config.yml 注释含 img 回退说明", "回退" in cfg and "img" in cfg)
+
+        # 6b. 1.5.7.1 配置注释全面核对修正（与 Spigot 线同源 config.yml）
+        check("config.yml start-with 注释=触发前缀语义",
+              "只有以该字符开头的聊天才会转发到 QQ 群" in cfg)
+        check("config.yml start-with 注释含去前缀说明", "转发时自动去掉该前缀" in cfg)
+        check("config.yml filter-regex 注释=删除命中片段语义", "命中这些正则的部分会被直接删除" in cfg)
+        check("config.yml permission 注释=0所有人/非0管理员", "0 或不填 = 所有人可用" in cfg)
+        check("config.yml groups 注释强调双引号", "每一项都必须加双引号" in cfg)
+        check("config.yml kick-message 注释补 {name} 变量", "{code} = 专属绑定码，{name} = 玩家名" in cfg)
+        check("config.yml 无 ai.context-global 键", re.search(
+            r"^\s*ai\.context-global|^\s*context-global:", cfg, re.M) is None)
+        cm_ctx = cm.count(b"ai.context-global")
+        check("ConfigManager ai.context-global 仅存清理清单引用（次数=1）", cm_ctx == 1, f"次数 {cm_ctx}")
+        check("WebUiSchema 无 whitelist 失效段", b"whitelist.add-command" not in wus)
+        check("WebUiSchema 无 audit 失效段", b"audit.base-url" not in wus)
+        check("WebUiSchema 含 AI 段字段", b"ai.enabled" in wus and b"ai.context-limit" in wus)
+        check("config.yml 头部注释 /hb reload 简写说明", "可简写 /hb reload" in cfg)
+        check("config.yml checkin 注释含经济缺失自适应说明", "照常累计天数、不发放金币" in cfg)
+        check("config.yml context-limit 注释=全局一份记忆", "全局一份记忆：所有群、所有人与游戏内共用" in cfg)
+
+        # 7. 生态安全：无泄漏 / 无模块描述 / 无签名
+        check("无 net/minecraft 类泄漏", not any(n.startswith("net/minecraft/") for n in names))
+        check("无 net/neoforged 类泄漏", not any(n.startswith("net/neoforged/") for n in names))
+        check("无 module-info.class", not any(n == "module-info.class" or n.endswith("/module-info.class") for n in names))
+        check("无签名文件 (.SF/.RSA/.DSA)", not any(
+            n.startswith("META-INF/") and n.rsplit(".", 1)[-1] in {"SF", "RSA", "DSA"} for n in names))
+        check("无 plugin.yml（Spigot 标记必须缺失）", "plugin.yml" not in names)
+        check("无 server-Spigot 字节码泄漏", not any(
+            n.startswith("cn/huohuas001/huhobotPenguin/spigot/events/") or
+            n.startswith("cn/huohuas001/huhobotPenguin/spigot/commands/QqCommand") or
+            n.startswith("cn/huohuas001/huhobotPenguin/spigot/commands/HuHoBotCommand") or
+            n.startswith("cn/huohuas001/huhobotPenguin/spigot/commands/BukkitConsoleSender") or
+            n.startswith("cn/huohuas001/huhobotPenguin/spigot/commands/HybridCommand") or
+            n.startswith("cn/huohuas001/huhobotPenguin/spigot/HuHoBotSpigot")
+            for n in names))
+        check("无旧 kotlin_module 残留", "META-INF/common-Bot.kotlin_module" not in names and
+              "META-INF/server-Spigot.kotlin_module" not in names)
+        check("含模组 kotlin_module", "META-INF/server-NeoForge.kotlin_module" in names)
+
+        # 8. 目录条目（SDK 组件扫描；1.5.4.3 丢弃 META-INF/versions 后约 748 个，
+        # 阈值调整为 >700，另验 kloping 包目录条目存在——扫描兜底的关键依赖）
+        check("目录条目 > 700", dir_count > 700, f"实际 {dir_count}")
+        for d in ("io/github/kloping/", "io/github/kloping/qqbot/", "io/github/kloping/spt/"):
+            check(f"kloping 目录条目存在 {d}", d in names)
+
+        # 8b. ⚠️ 平台重复包硬门禁（split package → 模块解析 ResolutionException）
+        check("无 org/slf4j 字节码（平台 slf4j-api 提供）", not any(
+            n.startswith("org/slf4j/") and n.endswith(".class") for n in names))
+        check("无 com/google/gson 字节码（平台 gson 提供）", not any(
+            n.startswith("com/google/gson/") and n.endswith(".class") for n in names))
+        check("无 slf4j services 声明残留", not any(
+            n.startswith("META-INF/services/org.slf4j") for n in names))
+        check("无 slf4j/gson maven 元数据残留", not any(
+            n.startswith("META-INF/maven/org.slf4j/") or
+            n.startswith("META-INF/maven/com.google.code.gson/") for n in names))
+
+        # 8c. 与本地已安装 NeoForge 21.1.248 server libraries 全量包交集（深度门禁）
+        if NF_LIBS.is_dir():
+            platform_pkgs = set()
+            for lib in NF_LIBS.rglob("*.jar"):
+                with zipfile.ZipFile(lib) as lz:
+                    ln = lz.namelist()
+                    for n in ln:
+                        if n.endswith(".class") and not n.startswith("META-INF/"):
+                            parts = n.split("/")[:-1]
+                            if parts:
+                                platform_pkgs.add("/".join(parts))
+            mod_pkgs = packages_of(zf, names)
+            clash = sorted(mod_pkgs & platform_pkgs)
+            check("与 NeoForge 21.1.248 平台包零交集", not clash, str(clash[:8]))
+        else:
+            print("SKIP  未找到本地 NeoForge server libraries，跳过平台交集扫描")
+
+        # 8d. 与 kotlin-stdlib jar 包交集（1.5.4.3 重定位门禁：模拟 KFF kotlin.stdlib 共存）
+        if KOTLIN_REPRO.is_file():
+            with zipfile.ZipFile(KOTLIN_REPRO) as kz:
+                kpkgs = packages_of(kz)
+            mod_pkgs = packages_of(zf, names)
+            clash = sorted(mod_pkgs & kpkgs)
+            check("与 kotlin-stdlib 包零交集（KFF 共存）", not clash, str(clash[:8]))
+        else:
+            print("SKIP  未找到 kotlin-stdlib 复现 jar，跳过 KFF 共存交集扫描")
+
+        # 9. MANIFEST
+        manifest = zf.read("META-INF/MANIFEST.MF").decode("utf-8")
+        check("MANIFEST 含 Implementation-Title", "KERONGPenguin-NeoForge" in manifest)
+        check("MANIFEST Automatic-Module-Name=kerongpenguin", "Automatic-Module-Name: kerongpenguin" in manifest)
+
+    failed = [r for r in results if not r[1]]
+    print()
+    print(f"共 {len(results)} 项，失败 {len(failed)} 项")
+    if failed:
+        for name, _, detail in failed:
+            print(f"  FAIL: {name} {detail}")
+        sys.exit(1)
+    print("=== NeoForge 模组 JAR 全部验证通过 ===")
+
+
+if __name__ == "__main__":
+    main()
