@@ -1,7 +1,11 @@
 name: KERONGPenguin
-version: '1.5.7.2'
+version: '1.5.7.3'
 main: cn.huohuas001.huhobotPenguin.spigot.HuHoBotSpigot
 api-version: '1.18'
+# 1.5.7.3：声明支持 Folia 多线程区域化核心——调度全部经 FoliaCompat 桥接
+# （全局区域/异步/实体三类调度器），实体状态操作走实体调度器；
+# 非 Folia 服务器（Spigot/Paper/混合端）行为与旧版完全一致
+folia-supported: true
 # 0.1.5.5：软依赖 Vault（金币/前缀）与 DeluxeTags（称号），确保本插件在其后加载
 # 1.5.0：软依赖 PlayerPoints（点券统计）
 softdepend: [Vault, DeluxeTags, PlayerPoints]

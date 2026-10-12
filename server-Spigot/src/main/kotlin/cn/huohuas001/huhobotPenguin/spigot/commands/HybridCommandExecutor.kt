@@ -2,6 +2,7 @@ package cn.huohuas001.huhobotPenguin.spigot.commands
 
 import cn.huohuas001.bot.provider.HExecution
 import cn.huohuas001.huhobotPenguin.spigot.HuHoBotSpigot
+import cn.huohuas001.huhobotPenguin.spigot.scheduler.FoliaCompat
 import org.bukkit.Bukkit
 import java.util.concurrent.CompletableFuture
 
@@ -34,14 +35,15 @@ class HybridCommandExecutor(private val plugin: HuHoBotSpigot) : HExecution {
 
     /** 命令派发后延迟收集双路输出。 */
     private fun completeAfterCommandOutput(result: CompletableFuture<HExecution>) {
-        Bukkit.getScheduler().runTaskLater(plugin as org.bukkit.plugin.Plugin, Runnable {
+        // 1.5.7.3：经 FoliaCompat 桥接（Folia 全局区域线程延迟）
+        FoliaCompat.runSyncLater(plugin as org.bukkit.plugin.Plugin, COMMAND_OUTPUT_DELAY_TICKS) {
             val senderMessages = sender.getAndClearMessages()
             val loggedMessages = outputAppender.stopCapture()
             for (message in (senderMessages + loggedMessages).distinct()) {
                 sender.sendMessage(message)
             }
             result.complete(sender)
-        }, COMMAND_OUTPUT_DELAY_TICKS)
+        }
     }
 
     companion object {

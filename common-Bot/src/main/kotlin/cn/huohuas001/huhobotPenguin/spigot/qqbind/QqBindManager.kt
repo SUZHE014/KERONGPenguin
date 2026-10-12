@@ -1,5 +1,6 @@
 package cn.huohuas001.huhobotPenguin.spigot.qqbind
 
+import cn.huohuas001.huhobotPenguin.spigot.scheduler.FoliaCompat
 import org.bukkit.Bukkit
 import org.bukkit.ChatColor
 import org.bukkit.configuration.ConfigurationSection
@@ -933,9 +934,11 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
                 val player: Player? = Bukkit.getPlayerExact(playerName)
                 if (player != null && player.isOnline) {
                     val pluginRef: Plugin = plugin
-                    Bukkit.getScheduler().runTask(pluginRef, Runnable {
+                    // 1.5.7.3：踢人属实体状态写操作，经 FoliaCompat 实体调度器
+                    // （Folia 上在玩家所属区域线程执行；非 Folia 主线程）
+                    FoliaCompat.runOnPlayer(pluginRef, player) {
                         player.kickPlayer("§c你的 QQ 已被解除绑定，请重新绑定后进入服务器。")
-                    })
+                    }
                     logQuiet("[解绑踢出] 玩家=$playerName 已踢出服务器")
                 }
             } catch (error: Throwable) {

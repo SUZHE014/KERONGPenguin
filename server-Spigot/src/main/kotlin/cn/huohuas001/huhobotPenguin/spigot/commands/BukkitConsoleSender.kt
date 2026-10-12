@@ -2,6 +2,7 @@ package cn.huohuas001.huhobotPenguin.spigot.commands
 
 import cn.huohuas001.bot.provider.HExecution
 import cn.huohuas001.huhobotPenguin.spigot.HuHoBotSpigot
+import cn.huohuas001.huhobotPenguin.spigot.scheduler.FoliaCompat
 import net.md_5.bungee.api.chat.BaseComponent
 import org.bukkit.Bukkit
 import org.bukkit.command.CommandSender
@@ -160,14 +161,15 @@ class BukkitConsoleSender(private val plugin: HuHoBotSpigot) : ConsoleCommandSen
 
     /** 命令派发后延迟 2 秒收集输出（等待异步日志落盘）。 */
     private fun completeAfterCommandOutput(result: CompletableFuture<HExecution>) {
-        Bukkit.getScheduler().runTaskLater(plugin as Plugin, Runnable {
+        // 1.5.7.3：经 FoliaCompat 桥接（Folia 全局区域线程延迟，收集双路输出）
+        FoliaCompat.runSyncLater(plugin as Plugin, COMMAND_OUTPUT_DELAY_TICKS) {
             val captured = outputAppender.stopCapture()
             val senderMessages = getAndClearMessages()
             for (message in (senderMessages + captured).distinct()) {
                 sendMessage(message)
             }
             result.complete(this)
-        }, COMMAND_OUTPUT_DELAY_TICKS)
+        }
     }
 
     companion object {

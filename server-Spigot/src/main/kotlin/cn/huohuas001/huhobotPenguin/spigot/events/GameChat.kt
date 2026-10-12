@@ -5,6 +5,7 @@ import cn.huohuas001.bot.events.commands.BindCommands
 import cn.huohuas001.huhobotPenguin.spigot.commands.QqCommand
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.AiChat
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
+import cn.huohuas001.huhobotPenguin.spigot.scheduler.FoliaCompat
 import org.bukkit.Bukkit
 import org.bukkit.OfflinePlayer
 import org.bukkit.event.EventHandler
@@ -134,11 +135,12 @@ class GameChat : Listener {
                 QqBindManager.logQuiet("[GameChat] /qq 注册失败: ${safeMessage(t)}")
             }
             // 延迟补注册 /绑定 命令（等待 QQ 客户端启动）
-            Bukkit.getScheduler().runTaskLater(plugin, Runnable {
+            // 1.5.7.3：经 FoliaCompat 桥接（Folia 全局区域线程延迟）
+            FoliaCompat.runSyncLater(plugin, 40L) {
                 if (!bindRegistered) tryRegisterBind()
-            }, 40L)
+            }
             // 延迟检测经济插件（签到功能依赖）
-            Bukkit.getScheduler().runTaskLater(plugin, Runnable { checkEconomyForCheckin() }, 60L)
+            FoliaCompat.runSyncLater(plugin, 60L) { checkEconomyForCheckin() }
         }
     }
 
@@ -174,21 +176,21 @@ class GameChat : Listener {
                     event.isCancelled = true
                     val bukkitPlugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin")
                         ?: return
-                    Bukkit.getScheduler().runTaskAsynchronously(bukkitPlugin, Runnable {
+                    FoliaCompat.runAsync(bukkitPlugin) {
                         try {
                             val reply = AiChat.chat(content, manager, "server", playerName)
                             val outputPrefix = manager.serverAiOutputPrefix()
-                            Bukkit.getScheduler().runTask(bukkitPlugin, Runnable {
+                            FoliaCompat.runSync(bukkitPlugin) {
                                 Bukkit.broadcastMessage("$outputPrefix $reply")
-                            })
+                            }
                         } catch (t: Throwable) {
                             QqBindManager.logVerbose("[AI对话] 服务器调用失败: ${t.message}")
                             val outputPrefix = manager.serverAiOutputPrefix()
-                            Bukkit.getScheduler().runTask(bukkitPlugin, Runnable {
+                            FoliaCompat.runSync(bukkitPlugin) {
                                 Bukkit.broadcastMessage("$outputPrefix AI 对话失败: ${t.message}")
-                            })
+                            }
                         }
-                    })
+                    }
                     return
                 }
             }
@@ -204,7 +206,7 @@ class GameChat : Listener {
         QClient.broadcastPlayerJoin(playerName)
         val plugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin") ?: return
 
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
+        FoliaCompat.runAsync(plugin) {
             try {
                 val manager = QqBindManager.getInstance()
                 var quuid = manager.getQuuidByUuid(playerName, playerUuid)
@@ -212,12 +214,13 @@ class GameChat : Listener {
                     // 兼容旧版：按纯玩家名查找
                     quuid = manager.getQuuid(playerName)
                 }
-                if (quuid.isNullOrEmpty()) return@Runnable
+                if (quuid.isNullOrEmpty()) return@runAsync
 
                 // 补发离线签到奖励
                 val pending = manager.takePendingCoins(quuid)
                 if (pending > 0) {
-                    Bukkit.getScheduler().runTask(plugin, Runnable {
+                    // 1.5.7.3：入账经桥接（Folia 全局区域线程，Vault 线程安全）
+                    FoliaCompat.runSync(plugin) {
                         try {
                             val player = Bukkit.getPlayerExact(playerName)
                             if (player != null && player.isOnline) {
@@ -231,11 +234,11 @@ class GameChat : Listener {
                         } catch (t: Throwable) {
                             QqBindManager.logQuiet("[签到奖励] 玩家上线领取异常: ${safeMessage(t)}")
                         }
-                    })
+                    }
                 }
             } catch (_: Throwable) {
             }
-        })
+        }
     }
 
     /** 玩家退出：播报。 */

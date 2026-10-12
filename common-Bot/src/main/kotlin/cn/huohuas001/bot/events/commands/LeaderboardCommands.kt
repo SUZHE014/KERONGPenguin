@@ -6,6 +6,7 @@ import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
 import cn.huohuas001.huhobotPenguin.spigot.render.CardRenderPool
 import cn.huohuas001.huhobotPenguin.spigot.render.InfoCardAssets
 import cn.huohuas001.huhobotPenguin.spigot.render.LeaderboardRenderer
+import cn.huohuas001.huhobotPenguin.spigot.scheduler.FoliaCompat
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import org.bukkit.Bukkit
 import java.io.File
@@ -250,9 +251,9 @@ class LeaderboardCommands : CommandSupport() {
         } catch (_: Throwable) {
             null
         } ?: return emptyMap()
+        // 1.5.7.3：经 FoliaCompat 桥接（Folia 全局区域线程限时取值，超时回退空表）
         return try {
-            Bukkit.getScheduler().callSyncMethod(bukkitPlugin) { snapshot() }
-                .get(3, TimeUnit.SECONDS)
+            FoliaCompat.callSync(bukkitPlugin, 3L) { snapshot() } ?: emptyMap()
         } catch (_: Exception) {
             emptyMap()
         }

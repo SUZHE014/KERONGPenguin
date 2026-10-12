@@ -13,12 +13,12 @@ import cn.huohuas001.bot.tools.PluginFileLog
 import cn.huohuas001.huhobotPenguin.spigot.commands.BukkitConsoleSender
 import cn.huohuas001.huhobotPenguin.spigot.commands.CommandOutputAppender
 import cn.huohuas001.huhobotPenguin.spigot.commands.HuHoBotCommand
-import cn.huohuas001.huhobotPenguin.spigot.commands.HuHoBotTask
 import cn.huohuas001.huhobotPenguin.spigot.commands.HybridCommandExecutor
 import cn.huohuas001.huhobotPenguin.spigot.events.GameChat
 import cn.huohuas001.huhobotPenguin.spigot.events.PlayerEventsListener
 import cn.huohuas001.huhobotPenguin.spigot.manager.ConfigManager
 import cn.huohuas001.huhobotPenguin.spigot.render.InfoCardAssets
+import cn.huohuas001.huhobotPenguin.spigot.scheduler.FoliaCompat
 import cn.huohuas001.huhobotPenguin.spigot.stats.PlayerStatsManager
 import com.alibaba.fastjson.JSONArray
 import com.alibaba.fastjson.JSONObject
@@ -30,7 +30,6 @@ import org.bukkit.command.CommandSender
 import org.bukkit.command.PluginCommand
 import org.bukkit.command.TabCompleter
 import org.bukkit.plugin.java.JavaPlugin
-import org.bukkit.scheduler.BukkitTask
 import java.io.File
 import java.util.Locale
 
@@ -171,28 +170,29 @@ class HuHoBotSpigot : JavaPlugin(), HuHoBot {
 
     // ---------- 调度 ----------
 
+    // 1.5.7.3：全部调度经 FoliaCompat 桥接（Folia 多线程区域化核心兼容）：
+    // 非 Folia 服务器行为与旧版完全一致（主线程 / 异步线程池）；
+    // Folia 上分别路由到全局区域调度器 / 异步调度器，
+    // 实体状态操作（踢人、统计读取）由调用方走实体调度器变体。
+
     override fun broadcastMessage(msg: String) {
-        server.scheduler.runTask(this, Runnable { Bukkit.broadcastMessage(msg) })
+        FoliaCompat.runSync(this, Runnable { Bukkit.broadcastMessage(msg) })
     }
 
     override fun submit(task: Runnable): Cancelable {
-        val bukkitTask: BukkitTask = server.scheduler.runTask(this, task as Runnable)
-        return HuHoBotTask(bukkitTask)
+        return FoliaCompat.runSync(this, task)
     }
 
     override fun submitAsync(task: Runnable): Cancelable {
-        val bukkitTask: BukkitTask = server.scheduler.runTaskAsynchronously(this, task)
-        return HuHoBotTask(bukkitTask)
+        return FoliaCompat.runAsync(this, task)
     }
 
     override fun submitLater(delay: Long, task: Runnable): Cancelable {
-        val bukkitTask: BukkitTask = server.scheduler.runTaskLater(this, task, delay)
-        return HuHoBotTask(bukkitTask)
+        return FoliaCompat.runSyncLater(this, delay, task)
     }
 
     override fun submitTimer(delay: Long, period: Long, task: Runnable): Cancelable {
-        val bukkitTask: BukkitTask = server.scheduler.runTaskTimer(this, task, delay, period)
-        return HuHoBotTask(bukkitTask)
+        return FoliaCompat.runTimer(this, delay, period, task)
     }
 
     // ---------- 平台信息 ----------

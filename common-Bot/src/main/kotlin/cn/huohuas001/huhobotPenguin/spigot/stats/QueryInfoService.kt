@@ -7,6 +7,7 @@ import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
 import cn.huohuas001.huhobotPenguin.spigot.render.CardRenderPool
 import cn.huohuas001.huhobotPenguin.spigot.render.InfoCardAssets
 import cn.huohuas001.huhobotPenguin.spigot.render.InfoCardRenderer
+import cn.huohuas001.huhobotPenguin.spigot.scheduler.FoliaCompat
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import org.bukkit.Bukkit
 import org.bukkit.OfflinePlayer
@@ -364,9 +365,9 @@ object QueryInfoService {
         }
         if (Bukkit.isPrimaryThread()) return task()
         if (bukkitPlugin == null) return timeoutSnapshot()
+        // 1.5.7.3：经 FoliaCompat 桥接（Folia 全局区域线程限时取值，超时回退快照）
         return try {
-            Bukkit.getScheduler().callSyncMethod(bukkitPlugin) { task() }
-                .get(3, TimeUnit.SECONDS)
+            FoliaCompat.callSync(bukkitPlugin, 3L) { task() } ?: timeoutSnapshot()
         } catch (_: Exception) {
             timeoutSnapshot()
         }

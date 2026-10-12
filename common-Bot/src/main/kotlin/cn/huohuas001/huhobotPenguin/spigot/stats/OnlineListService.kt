@@ -6,6 +6,7 @@ import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
 import cn.huohuas001.huhobotPenguin.spigot.render.CardRenderPool
 import cn.huohuas001.huhobotPenguin.spigot.render.InfoCardAssets
 import cn.huohuas001.huhobotPenguin.spigot.render.OnlineListRenderer
+import cn.huohuas001.huhobotPenguin.spigot.scheduler.FoliaCompat
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import org.bukkit.Bukkit
 import java.io.File
@@ -210,12 +211,8 @@ object OnlineListService {
         }
         if (Bukkit.isPrimaryThread()) return snapshot()
         val bukkitPlugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin") ?: return null
-        return try {
-            Bukkit.getScheduler().callSyncMethod(bukkitPlugin) { snapshot() }
-                .get(3, TimeUnit.SECONDS)
-        } catch (_: Exception) {
-            null
-        }
+        // 1.5.7.3：经 FoliaCompat 桥接（Folia 全局区域线程限时取值，超时回退 null）
+        return FoliaCompat.callSync(bukkitPlugin, 3L) { snapshot() }
     }
 
     /**

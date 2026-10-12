@@ -5,6 +5,7 @@ import cn.huohuas001.bot.tools.PluginFileLog
 import cn.huohuas001.bot.provider.plugin
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.BeijingTimeUtil
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
+import cn.huohuas001.huhobotPenguin.spigot.scheduler.FoliaCompat
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.Statistic
@@ -124,15 +125,17 @@ object PlayerStatsManager {
         saveTask?.cancel()
         flushTask?.cancel()
         if (Bukkit.isPrimaryThread()) {
+            // Folia 的 onDisable 也在全局区域线程上执行，走此快路径
             flushOnlineSessions()
             saveToDiskBlocking()
         } else {
             val bukkitPlugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin")
             if (bukkitPlugin != null) {
-                Bukkit.getScheduler().runTask(bukkitPlugin, Runnable {
+                // 1.5.7.3：经 FoliaCompat 桥接（非主线程停用场景）
+                FoliaCompat.runSync(bukkitPlugin) {
                     flushOnlineSessions()
                     saveToDiskBlocking()
-                })
+                }
             }
         }
     }
@@ -169,15 +172,37 @@ object PlayerStatsManager {
     /**
      * 主线程同步一次在线玩家的增量（原版统计差量 + 游戏时间落账）。
      * 每次仅做几次 int 读取与减法，开销可忽略。
+     *
+     * 1.5.7.3（Folia）：原版统计（getStatistic）属实体状态，必须在玩家
+     * 所属区域线程读取——每个在线玩家的差量读取分别经实体调度器提交；
+     * 落账与脏标记（均为并发容器 / 单玩家对象）不受影响。
      */
     fun flushOnlineSessions() {
         val now = System.currentTimeMillis()
+        val folia = FoliaCompat.isFolia
+        val bukkitPlugin = if (folia) {
+            try {
+                Bukkit.getPluginManager().getPlugin("KERONGPenguin")
+            } catch (_: Throwable) {
+                null
+            }
+        } else {
+            null
+        }
         for ((uuid, session) in sessions) {
             val player = Bukkit.getPlayer(uuid) ?: continue
             val stats = loadOrCreate(uuid)
             rollTodayIfNeeded(stats)
-            applyStatDelta(player, session, stats)
             val elapsed = (now - session.lastFlushAt).coerceAtLeast(0L) / 1000L
+            if (folia && bukkitPlugin != null) {
+                // Folia：统计差量读取切到玩家区域线程（同一实体的任务串行，
+                // 不同玩家各自对象互不并发；玩家下线则任务作废，退出结算兜底）
+                FoliaCompat.runOnPlayer(bukkitPlugin, player) {
+                    applyStatDelta(player, session, stats)
+                }
+            } else {
+                applyStatDelta(player, session, stats)
+            }
             stats.playSeconds += elapsed
             stats.todaySeconds += elapsed
             session.lastFlushAt = now
@@ -234,8 +259,9 @@ object PlayerStatsManager {
 
     /**
      * 查询玩家统计快照（含在线会话的实时增量）。
-     * 线程安全：异步线程调用时自动切回主线程读取；
-     * 该玩家尚未在内存时先懒加载他的数据文件（单个小文件，开销可忽略）。
+     * 线程安全：异步线程调用时自动切回主线程读取（Folia 上切到该玩家的
+     * 实体线程——原版统计属实体状态）；该玩家尚未在内存时先懒加载他的
+     * 数据文件（单个小文件，开销可忽略）。
      */
     fun query(uuid: UUID): PlayerStats {
         val stored = ensureLoaded(uuid) ?: PlayerStats()
@@ -244,11 +270,12 @@ object PlayerStatsManager {
         return if (Bukkit.isPrimaryThread()) {
             queryOnMainThread(uuid, session, stored)
         } else {
+            // 1.5.7.3：原版统计读取——非 Folia 主线程限时；Folia 实体线程限时
+            // （超时 / 异常一律回退已存档数据，不拖死消息线程）
             try {
-                // 限时等待，避免主线程卡顿时拖死消息线程
-                Bukkit.getScheduler()
-                    .callSyncMethod(bukkitPlugin) { queryOnMainThread(uuid, session, stored) }
-                    .get(3, java.util.concurrent.TimeUnit.SECONDS)
+                FoliaCompat.callOnPlayerByUuid(bukkitPlugin, uuid, 3L) {
+                    queryOnMainThread(uuid, session, stored)
+                } ?: copyOf(stored)
             } catch (_: Exception) {
                 copyOf(stored)
             }
