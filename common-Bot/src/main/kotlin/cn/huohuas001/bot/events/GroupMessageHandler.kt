@@ -6,6 +6,7 @@ import cn.huohuas001.bot.events.commands.AdministrationCommands
 import cn.huohuas001.bot.events.commands.BaseCommand
 import cn.huohuas001.bot.events.commands.BindCommands
 import cn.huohuas001.bot.events.commands.CheckInCommands
+import cn.huohuas001.bot.events.commands.CoinsLeaderboardCommands
 import cn.huohuas001.bot.events.commands.LeaderboardCommands
 import cn.huohuas001.bot.events.commands.MotdCommands
 import cn.huohuas001.bot.events.commands.PublicCommands
@@ -13,6 +14,7 @@ import cn.huohuas001.bot.state.CommandRepositories
 import cn.huohuas001.bot.tools.QqText
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.AiChat
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.GroupMsgSender
+import cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.OpenIdDirectory
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
 import com.alibaba.fastjson.JSONArray
@@ -38,6 +40,7 @@ class GroupMessageHandler(private val plugin: HuHoBot) : ListenerHost() {
         commands.add(BindCommands())
         commands.add(CheckInCommands())
         commands.add(LeaderboardCommands())
+        commands.add(CoinsLeaderboardCommands())
     }
 
     /** 注册额外的群命令处理器。 */
@@ -62,6 +65,12 @@ class GroupMessageHandler(private val plugin: HuHoBot) : ListenerHost() {
             if (groupId == null || !isAllowedGroup(groupId)) return
         }
 
+        // 1.6.0：纯数字消息自动绑定 —— 群里发出一串纯数字（不带任何其他文字）
+        // 时，若该数字恰好是某位玩家当前的绑定码，发送者即完成绑定
+        // （与 /绑定 <验证码> 同一回复模板 bind-success）。
+        // 不匹配任何绑定码时静默放行（不影响全量转发与 AI 对话）。
+        if (tryAutoBindByDigits(event, content)) return
+
         // 1. 依次尝试命令分发
         if (dispatchCommand(event)) return
 
@@ -81,6 +90,50 @@ class GroupMessageHandler(private val plugin: HuHoBot) : ListenerHost() {
     private fun isAllowedGroup(groupId: String): Boolean {
         val allowed = plugin.groupOpenIdList()
         return allowed.isEmpty() || groupId in allowed
+    }
+
+    /**
+     * 1.6.0：纯数字消息自动绑定尝试。
+     *
+     * 仅当消息为 4-12 位纯数字（前后空白除外，不含任何其他文字/符号）时，
+     * 按绑定码提交（confirmBinding 内部校验有效期 / 黑名单 / 重复绑定）。
+     * 绑定成功 → 回复 bind-success 模板并拦截后续处理；
+     * 其余情况（非纯数字 / 无匹配码 / 绑定失败）一律返回 false，
+     * 消息继续走正常流程（命令 / AI / 全量转发），不产生任何额外回复
+     * （避免群里正常的数字闲聊被机器人骚扰）。
+     *
+     * 前置条件：QQ 绑定功能开启（qq-bind.enabled，未开启时无绑定码存在）
+     * 且 /绑定 命令未被管理员关闭（commands.绑定）。
+     */
+    private fun tryAutoBindByDigits(event: GroupMessageEvent, content: String): Boolean {
+        val text = content.trim()
+        if (text.length !in 4..12) return false
+        if (text.any { it !in '0'..'9' }) return false
+        return try {
+            val manager = try {
+                QqBindManager.getInstance()
+            } catch (_: Throwable) {
+                return false
+            }
+            if (!manager.isEnabled) return false
+            if (plugin.commandList()["绑定"] == false) return false
+            val qq = safeUserId(event)
+            if (qq == "<unknown>") return false
+            val success = try {
+                manager.confirmBinding(text, qq)
+            } catch (_: Throwable) {
+                false
+            }
+            if (success) {
+                QqBindManager.logQuiet("[自动绑定] 纯数字消息匹配绑定码 玩家绑定成功 QQ=$qq")
+                MessageTemplates.sendDirect(event, "bind-success")
+                true
+            } else {
+                false
+            }
+        } catch (_: Throwable) {
+            false
+        }
     }
 
     /** 遍历命令处理器尝试处理消息。 */
@@ -161,7 +214,7 @@ class GroupMessageHandler(private val plugin: HuHoBot) : ListenerHost() {
             }
             text = text.trim()
             if (text.isEmpty()) {
-                event.sendMessage("请在 @我 之后输入你想说的话～")
+                MessageTemplates.sendPlain(event, "ai-chat-empty")
                 return
             }
             val userId = safeUserId(event)
@@ -177,7 +230,7 @@ class GroupMessageHandler(private val plugin: HuHoBot) : ListenerHost() {
                 QqBindManager.logVerbose("[AI对话] 引用回复发送失败: ${replyError.message}")
             }
         } catch (t: Throwable) {
-            event.sendMessage("AI 对话失败：${t.message}")
+            MessageTemplates.sendPlain(event, "ai-chat-error", mapOf("error" to (t.message ?: t.toString())))
         }
     }
 

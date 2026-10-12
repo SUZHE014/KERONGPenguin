@@ -1,6 +1,7 @@
 package cn.huohuas001.bot.events.commands
 
 import cn.huohuas001.bot.HuHoBot
+import cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates
 import com.alibaba.fastjson.JSON
 import com.alibaba.fastjson.JSONObject
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
@@ -12,6 +13,12 @@ import java.nio.charset.StandardCharsets
 
 /**
  * /motd 命令：查询任意 MC 服务器的状态（minebbs MOTD API）。
+ *
+ * 1.6.0：固定文案改走消息模板（motd-usage / motd-query-failed / motd-offline /
+ * motd-error / motd-status，配置 messages 段可换文件），默认内容与旧版一致。
+ * motd-status 模板占位符：{type} {motd} {version} {protocolLine}（协议行，
+ * 无协议时为空行内容）{online} {max} {delay} {playersSection}（在线玩家小节，
+ * 无人时为空）。
  */
 class MotdCommands : CommandSupport() {
 
@@ -19,20 +26,23 @@ class MotdCommands : CommandSupport() {
     fun motd(plugin: HuHoBot, event: GroupMessageEvent, params: String) {
         val host = params.trim()
         if (host.isBlank()) {
-            reply(plugin, event, "用法: /motd <服务器地址>\n示例: /motd mc.hypixel.net")
+            MessageTemplates.sendDirect(event, "motd-usage")
             return
         }
         val apiUrl = "https://motd.minebbs.com/api/status?ip=$host&stype=auto"
         val imgUrl = "https://motd.minebbs.com/api/status_img?ip=$host&stype=auto&theme=simple"
         try {
             val response = fetchJson(apiUrl) ?: run {
-                reply(plugin, event, "查询失败，请检查服务器地址是否正确")
+                MessageTemplates.sendDirect(event, "motd-query-failed")
                 return
             }
             val status = response.getString("status") ?: "unknown"
             if (status != "online") {
                 val error = response.getString("error") ?: "服务器离线或无法连接"
-                reply(plugin, event, "服务器 $host 当前离线\n$error")
+                MessageTemplates.sendDirect(event, "motd-offline", mapOf(
+                    "host" to host,
+                    "error" to error,
+                ))
                 return
             }
             val serverType = response.getString("type") ?: "Java"
@@ -51,25 +61,27 @@ class MotdCommands : CommandSupport() {
                 ?.filter { it.isNotEmpty() }
                 ?: emptyList()
 
-            val markdown = buildString {
-                append("**MC 服务器状态查询**").append('\n').append('\n')
-                append("类型: $serverType").append('\n')
-                append("状态: 在线").append('\n')
-                append("MOTD: $motdText").append('\n')
-                append("版本: $version").append('\n')
-                if (protocol > 0) append("协议: $protocol").append('\n')
-                append("在线人数: $playersOnline/$playersMax").append('\n')
-                append("延迟: ${delay}ms").append('\n')
-                if (playerList.isNotEmpty()) {
-                    append('\n').append("**在线玩家:**").append('\n')
-                    playerList.forEach { append("- $it").append('\n') }
-                }
-            }
+            // {protocolLine}：协议 > 0 时为「协议: N\n」，否则为空（行不显示）
+            val protocolLine = if (protocol > 0) "协议: $protocol\n" else ""
+            // {playersSection}：有玩家时为「\n**在线玩家:**\n- a\n- b\n」，无人时为空
+            val playersSection = if (playerList.isNotEmpty()) {
+                "\n**在线玩家:**\n" + playerList.joinToString("\n") { "- $it" } + "\n"
+            } else ""
+            val markdown = MessageTemplates.render("motd-status", mapOf(
+                "type" to serverType,
+                "motd" to motdText,
+                "version" to version,
+                "protocolLine" to protocolLine,
+                "online" to playersOnline.toString(),
+                "max" to playersMax.toString(),
+                "delay" to delay.toString(),
+                "playersSection" to playersSection,
+            ))
             plugin.replyWithImg(event, "", imgUrl)
             plugin.sendMarkdownToGroup(groupId(event), markdown)
         } catch (e: Exception) {
             plugin.log_error("MOTD 查询异常: ${e.message}")
-            reply(plugin, event, "查询异常: ${e.message}")
+            MessageTemplates.sendDirect(event, "motd-error", mapOf("error" to (e.message ?: e.toString())))
         }
     }
 

@@ -55,15 +55,17 @@ import java.util.concurrent.TimeUnit
  * - 渲染 CPU 上限硬编码：全部图片渲染共用 [CardRenderPool]，线程数固定为
  *   主机核数一半（1..4，详见 CardRenderPool，不走配置文件）；
  * - 渲染完成后释放内存：单次渲染图像立即 flush 释放栅格，并做节流 GC 提示
- *   （两次至少间隔 60 秒，qq-bind.render.gc-after-render 可关）；
- * - 同一玩家的渲染结果在 TTL 内复用（默认 60 秒，qq-bind.render.result-cache-seconds 可调）。
+ *   （两次至少间隔 60 秒，render.gc-after-render 可关；1.6.0：配置从 qq-bind.render 迁至顶层 render 段）；
+ * - 同一玩家的渲染结果在 TTL 内复用（默认 60 秒，render.result-cache-seconds 可调）。
+ *
+ * 1.6.0：查询冷却秒数可配置（render.command-cooldown-seconds，默认 5，
+ * 0 = 关闭）；全部文本提示改走消息模板（info-not-bound /
+ * info-target-not-bound / image-send-failed / info-render-failed 等）；
+ * 卡片「金币」项标签应用经济别名（economy-alias）。
  */
 object QueryInfoService {
 
-    /** 单用户查询冷却（毫秒）。 */
-    private const val USER_COOLDOWN_MILLIS = 5_000L
-
-    /** 用户冷却记录：OpenId → 上次触发时间。 */
+    /** 用户冷却记录：OpenId → 上次触发时间（间隔秒数走 RenderSettings，1.6.0 起可配置）。 */
     private val lastQueryAt = ConcurrentHashMap<String, Long>()
 
     /** 渲染结果缓存容量上限（超出先清过期再整体清空，防膨胀）。 */
@@ -119,15 +121,19 @@ object QueryInfoService {
         targetOpenId: String? = null,
         targetName: String? = null,
     ) {
-        // 查询冷却：同一用户 5 秒内只允许一次，防止刷屏导致渲染风暴（1.5.3：按发起者计）
+        // 查询冷却：同一用户冷却间隔内只允许一次，防止刷屏导致渲染风暴（1.5.3：按发起者计；
+        // 1.6.0：秒数可配置 render.command-cooldown-seconds，默认 5，0 = 关闭）
+        val cooldownMillis = cn.huohuas001.huhobotPenguin.spigot.render.RenderSettings.commandCooldownMillis()
         val now = System.currentTimeMillis()
-        val lastAt = lastQueryAt[qqOpenId] ?: 0L
-        if (now - lastAt < USER_COOLDOWN_MILLIS) {
-            replyText(event, "查询太频繁了，请稍后再试")
-            return
+        if (cooldownMillis > 0) {
+            val lastAt = lastQueryAt[qqOpenId] ?: 0L
+            if (now - lastAt < cooldownMillis) {
+                cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates.sendPlain(event, "query-too-frequent")
+                return
+            }
+            lastQueryAt[qqOpenId] = now
+            if (lastQueryAt.size > 1024) lastQueryAt.clear()
         }
-        lastQueryAt[qqOpenId] = now
-        if (lastQueryAt.size > 1024) lastQueryAt.clear()
 
         // 查询目标：未指定则查询自己（旧版行为）
         val lookupOpenId = targetOpenId?.takeIf { it.isNotEmpty() } ?: qqOpenId
@@ -143,7 +149,7 @@ object QueryInfoService {
                         null
                     }
                     if (bindManager == null) {
-                        replyText(event, "❌ 绑定管理器未就绪，请稍后再试")
+                        cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates.sendPlain(event, "manager-not-ready-bind-retry")
                         return@submit
                     }
                     if (targetOpenId != null) {
@@ -155,11 +161,15 @@ object QueryInfoService {
                     val quuid = bindManager.findQuuidByQq(lookupOpenId)
                     if (playerName == null || playerName.isEmpty() || quuid == null || quuid.isEmpty()) {
                         // 1.5.3：查询他人未绑定时指明是谁未绑定，避免误以为查询者自己未绑定
-                        replyText(
-                            event,
-                            if (targetName != null) "@$targetName 未绑定游戏账号（该 QQ 还未完成绑定，无法查询其玩家信息）"
-                            else "该账号未绑定QQ，请先进入服务器完成绑定后再查询"
-                        )
+                        if (targetName != null) {
+                            cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates.sendPlain(
+                                event,
+                                "info-target-not-bound",
+                                mapOf("name" to targetName),
+                            )
+                        } else {
+                            cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates.sendPlain(event, "info-not-bound")
+                        }
                         return@submit
                     }
                     val playerUuid: UUID? = parseUuid(bindManager.getPlayerUuidByQuuid(quuid))
@@ -171,7 +181,7 @@ object QueryInfoService {
                     if (cached != null && System.currentTimeMillis() - cached.at < ttlMillis) {
                         val sent = QClient.replyWithImgBytes(event, cached.bytes)
                         if (!sent) {
-                            replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
+                            cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates.sendPlain(event, "image-send-failed")
                         }
                         return@submit
                     }
@@ -240,7 +250,7 @@ object QueryInfoService {
                     // 9. 发送图片（不 @）；发送失败与生成失败分开提示，便于定位问题
                     val sent = QClient.replyWithImgBytes(event, bytes)
                     if (!sent) {
-                        replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
+                        cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates.sendPlain(event, "image-send-failed")
                     }
                 } catch (error: Throwable) {
                     // 失败日志带堆栈前几帧且双写日志文件，事后可从
@@ -250,21 +260,21 @@ object QueryInfoService {
                         "[查信息] 失败堆栈: " +
                             error.stackTraceToString().lineSequence().take(8).joinToString(" | ")
                     )
-                    replyText(event, "❌ 信息卡片生成失败，请稍后重试或联系管理员")
+                    cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates.sendPlain(event, "info-render-failed")
                 }
             }
         } catch (_: Throwable) {
             // 理论上不会触发（队列无上限），兑底防止线程池异常时静默丢消息
-            replyText(event, "当前查询人数较多，请稍后再试")
+            cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates.sendPlain(event, "server-busy")
         }
     }
 
     // ---------- 结果缓存 / 统计项组装 ----------
 
-    /** qq-bind.render.result-cache-seconds：渲染结果复用秒数（默认 60，0 = 关闭，上限 600）。 */
+    /** render.result-cache-seconds：渲染结果复用秒数（默认 60，0 = 关闭，上限 600；1.6.0 起位于顶层 render 段）。 */
     private fun resultCacheMillis(): Long = try {
         (Bukkit.getPluginManager().getPlugin("KERONGPenguin") as? JavaPlugin)
-            ?.config?.getLong("qq-bind.render.result-cache-seconds", 60L) ?: 60L
+            ?.config?.getLong("render.result-cache-seconds", 60L) ?: 60L
     } catch (_: Throwable) {
         60L
     }.coerceIn(0L, 600L) * 1000L
@@ -288,7 +298,11 @@ object QueryInfoService {
         checkinTotalText: String?,
     ): List<InfoCardRenderer.CardItem> = buildList {
         if (snapshot.vaultAvailable) {
-            add(InfoCardRenderer.CardItem("金币", if (snapshot.balance != null) formatAmount(snapshot.balance) else "暂无"))
+            // 1.6.0：金币项标签应用经济别名（economy-alias，留空时仍为「金币」）
+            add(InfoCardRenderer.CardItem(
+                cn.huohuas001.huhobotPenguin.spigot.qqbind.EconomyName.current(),
+                if (snapshot.balance != null) formatAmount(snapshot.balance) else "暂无",
+            ))
         }
         if (snapshot.titleAvailable) {
             add(InfoCardRenderer.CardItem("称号", snapshot.title))
@@ -774,14 +788,6 @@ object QueryInfoService {
             look.invoke(api, playerUuid)
         } catch (_: Throwable) {
             null
-        }
-    }
-
-    /** 纯文本回复（不 @）。 */
-    private fun replyText(event: GroupMessageEvent, message: String) {
-        try {
-            event.sendMessage(message)
-        } catch (_: Throwable) {
         }
     }
 

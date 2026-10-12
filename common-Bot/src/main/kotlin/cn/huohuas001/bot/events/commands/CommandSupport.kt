@@ -3,6 +3,7 @@ package cn.huohuas001.bot.events.commands
 import cn.huohuas001.bot.HuHoBot
 import cn.huohuas001.bot.datapack.AdministratorAccessMode
 import cn.huohuas001.bot.state.CommandRepositories
+import cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates
 import com.alibaba.fastjson.JSONObject
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import io.github.kloping.qqbot.entities.qqpd.v2.Contact
@@ -49,7 +50,8 @@ abstract class CommandSupport : BaseCommand() {
             AdministratorAccessMode.BOTH -> qqAdmin || manualAdmin
         }
         if (!allowed) {
-            event.sendMessage("你没有执行此命令的管理员权限")
+            // 1.6.0：无权限提示改走消息模板 no-admin-permission.md（messages 段可换文件）
+            MessageTemplates.sendPlain(event, "no-admin-permission")
         }
         return allowed
     }

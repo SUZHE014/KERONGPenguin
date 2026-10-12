@@ -25,27 +25,27 @@ import java.awt.image.BufferedImage
  * 触发方式（1.5.1 简化）：motd.use-markdown 关闭（或模板缺失）时由 PublicCommands
  * 自动分流到本服务，不再需要 query-online.image-output 配置。
  *
- * 1. 全流程异步（1.5.1）：机器人消息线程只做 5 秒冷却判断，其余全部进入
+ * 1. 全流程异步（1.5.1）：机器人消息线程只做冷却判断（1.6.0 起秒数可配置
+ *    render.command-cooldown-seconds，默认 5，0 = 关闭），其余全部进入
  *    [CardRenderPool] —— 包括主线程在线名单快照（异步调用时自动切回主线程，
  *    3 秒超时保护），不再阻塞消息线程；
  * 2. 并发预热头像（4 线程小池 + 8 秒总预算，超时未取到的玩家渲染占位块，
  *    下次查询命中缓存后展示真实头像，避免大量玩家时首查等待过久）；
  * 3. [OnlineListRenderer] 渲染毛玻璃卡片，背景 1.5.7 起默认内置深灰底图
- *    （qq-bind.render.online-list-builtin-background，随 JAR 分发，与查信息
- *    卡片共用横版底图与缓存）；开关关闭后随机用 img/ 目录图片，
- *    img 无可用图片时自动回退内置图；长图背景处理高度封顶
+ *    （render.online-list-builtin-background，1.6.0 起位于顶层 render 段，
+ *    随 JAR 分发，与查信息卡片共用横版底图与缓存）；开关关闭后随机用
+ *    img/ 目录图片，img 无可用图片时自动回退内置图；长图背景处理高度封顶
  *    （[InfoCardAssets.ONLINE_BACKGROUND_MAX_HEIGHT]），渲染时拉伸铺满，
  *    控制内存占用；
  * 4. 分段发送（1.5.5）：超过 [OnlineListRenderer.MAX_PLAYERS_PER_PAGE] 人自动
  *    切页多张发送 —— 第一张带标题，后续只画内容，相邻间隔 400ms 对频控友好；
  * 5. 渲染走 [CardRenderPool]（硬编码 CPU 上限），完成后自动节流 GC；
  * 6. 结果缓存 20 秒（在线名单不变时重复查询秒回，整组图片复用），
- *    单用户 5 秒冷却防刷屏。
+ *    单用户冷却防刷屏（秒数可配置）。1.6.0：全部文本提示改走消息模板
+ *    （online-data-unavailable / online-render-failed / image-send-failed /
+ *    server-busy / query-too-frequent）。
  */
 object OnlineListService {
-
-    /** 单用户查询冷却（毫秒）。 */
-    private const val USER_COOLDOWN_MILLIS = 5_000L
 
     /** 头像预热线程数（网络 IO 密集，不占渲染 CPU 预算）。 */
     private const val AVATAR_FETCH_THREADS = 4
@@ -88,15 +88,18 @@ object OnlineListService {
      * 机器人消息线程仅做冷却判断，立即返回不阻塞。
      */
     fun handle(plugin: HuHoBot, event: GroupMessageEvent, qqOpenId: String) {
-        // 查询冷却：同一用户 5 秒内只允许一次，防止刷屏导致渲染风暴
+        // 查询冷却（1.6.0：秒数可配置 render.command-cooldown-seconds，默认 5，0 = 关闭）
+        val cooldownMillis = cn.huohuas001.huhobotPenguin.spigot.render.RenderSettings.commandCooldownMillis()
         val now = System.currentTimeMillis()
-        val lastAt = lastQueryAt[qqOpenId] ?: 0L
-        if (now - lastAt < USER_COOLDOWN_MILLIS) {
-            replyText(event, "查询太频繁了，请稍后再试")
-            return
+        if (cooldownMillis > 0) {
+            val lastAt = lastQueryAt[qqOpenId] ?: 0L
+            if (now - lastAt < cooldownMillis) {
+                cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates.sendPlain(event, "query-too-frequent")
+                return
+            }
+            lastQueryAt[qqOpenId] = now
+            if (lastQueryAt.size > 1024) lastQueryAt.clear()
         }
-        lastQueryAt[qqOpenId] = now
-        if (lastQueryAt.size > 1024) lastQueryAt.clear()
 
         try {
             // 1.5.1：全部工作（主线程快照 / 缓存判断 / 头像预热 / 渲染 / 发送）
@@ -106,7 +109,7 @@ object OnlineListService {
                     // 1. 主线程快照在线玩家（名字 / UUID / 皮肤 URL）
                     val snapshot = snapshotOnlinePlayers()
                     if (snapshot == null) {
-                        replyText(event, "❌ 服务器数据暂不可用，请稍后再试")
+                        cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates.sendPlain(event, "online-data-unavailable")
                         return@submit
                     }
 
@@ -115,7 +118,7 @@ object OnlineListService {
                     val cached = resultCache[cacheKey]
                     if (cached != null && System.currentTimeMillis() - cached.at < RESULT_TTL_MILLIS) {
                         if (!sendPages(event, cached.pages)) {
-                            replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
+                            cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates.sendPlain(event, "image-send-failed")
                         }
                         return@submit
                     }
@@ -166,7 +169,7 @@ object OnlineListService {
 
                     // 6. 逐张发送（相邻间隔 400ms）
                     if (pages.isEmpty() || !sendPages(event, pages)) {
-                        replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
+                        cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates.sendPlain(event, "image-send-failed")
                     }
                 } catch (error: Throwable) {
                     // 失败日志带堆栈前几帧且双写日志文件，与 /查信息 一致可事后追溯
@@ -175,12 +178,12 @@ object OnlineListService {
                         "[查在线] 失败堆栈: " +
                             error.stackTraceToString().lineSequence().take(8).joinToString(" | ")
                     )
-                    replyText(event, "❌ 在线列表图片生成失败，请稍后重试或联系管理员")
+                    cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates.sendPlain(event, "online-render-failed")
                 }
             }
         } catch (_: Throwable) {
             // 理论上不会触发（队列无上限），兜底防止线程池异常时静默丢消息
-            replyText(event, "当前查询人数较多，请稍后再试")
+            cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates.sendPlain(event, "server-busy")
         }
     }
 
@@ -264,13 +267,5 @@ object OnlineListService {
             if (!QClient.replyWithImgBytes(event, page)) return false
         }
         return true
-    }
-
-    /** 纯文本回复（不 @）。 */
-    private fun replyText(event: GroupMessageEvent, message: String) {
-        try {
-            event.sendMessage(message)
-        } catch (_: Throwable) {
-        }
     }
 }

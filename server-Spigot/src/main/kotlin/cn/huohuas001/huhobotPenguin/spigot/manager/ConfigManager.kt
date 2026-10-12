@@ -16,8 +16,11 @@ import java.util.LinkedHashMap
 /**
  * 配置管理器：加载 config.yml、补齐缺失键、提供类型安全的配置访问。
  *
- * 1.5.4：插件实例参数放宽为 JavaPlugin（平台适配器均继承自它，
- * NeoForge 适配器经由 bukkit 兼容层复用本类）。
+ * 1.6.0 配置结构修复：查在线与在线排行榜不依赖 QQ 绑定，相关配置从
+ * qq-bind 段移出——渲染设置迁至顶层 render 段（含新增性能键
+ * command-cooldown-seconds）、排行榜迁至顶层 leaderboard 段、新增金币排行榜
+ * coins-leaderboard 段与经济别名 economy-alias、新增消息模板 messages 段
+ * （每条机器人回复对应一个 .md 模板文件）。旧值经版本迁移 16→17 自动搬家。
  */
 class ConfigManager(private val plugin: JavaPlugin) {
 
@@ -60,7 +63,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 非用户手动意图，升级时同步改为新默认；用户自定义的其他值（如 30）不动）
         if (oldVersion in 1 until 15 && config.getInt("qq-bind.leaderboard.top", 15) == 20) {
             config.set("qq-bind.leaderboard.top", 15)
-            plugin.logger.info("在线排行榜每张图片展示玩家数：20 → 15（新默认，可在 qq-bind.leaderboard.top 改回）")
+            plugin.logger.info("在线排行榜每张图片展示玩家数：20 → 15（新默认，可在 leaderboard.top 改回）")
             changed = true
         }
         // 1.5.7：random-background（默认 false = 内置图）反向更名 builtin-background
@@ -69,8 +72,35 @@ class ConfigManager(private val plugin: JavaPlugin) {
             config.getBoolean("qq-bind.leaderboard.random-background", false)
         ) {
             config.set("qq-bind.leaderboard.builtin-background", false)
-            plugin.logger.info("在线排行榜背景：已按旧配置随机使用 img/ 目录图片（qq-bind.leaderboard.builtin-background=false）")
+            plugin.logger.info("在线排行榜背景：已按旧配置随机使用 img/ 目录图片（leaderboard.builtin-background=false）")
             changed = true
+        }
+        // 1.6.0：渲染与排行榜配置移出 qq-bind 段（查在线 / 排行榜不依赖 QQ 绑定）：
+        // 路径平移 + 保留用户已改值 + 清掉迁空的旧子段
+        if (oldVersion in 1 until 17) {
+            val moves = listOf(
+                "qq-bind.render.gc-after-render" to "render.gc-after-render",
+                "qq-bind.render.result-cache-seconds" to "render.result-cache-seconds",
+                "qq-bind.render.info-card-builtin-background" to "render.info-card-builtin-background",
+                "qq-bind.render.online-list-builtin-background" to "render.online-list-builtin-background",
+                "qq-bind.leaderboard.top" to "leaderboard.top",
+                "qq-bind.leaderboard.builtin-background" to "leaderboard.builtin-background",
+            )
+            var movedAny = false
+            for ((old, new) in moves) {
+                if (config.isSet(old)) {
+                    config.set(new, config.get(old))
+                    config.set(old, null)
+                    movedAny = true
+                }
+            }
+            if (movedAny) {
+                // 移空后的旧子段一并清掉（两个子段的全部子键都已迁走）
+                config.set("qq-bind.render", null)
+                config.set("qq-bind.leaderboard", null)
+                plugin.logger.info("配置结构升级：渲染与排行榜设置已从 qq-bind 段移至顶层 render / leaderboard 段（原有取值全部保留）")
+                changed = true
+            }
         }
         // 清理已废弃的配置段
         // 1.5.1：移除 query-online 段（图片输出改为 markdown 关闭时自动启用）与 motd.text（文本模板已删除）
@@ -166,6 +196,13 @@ class ConfigManager(private val plugin: JavaPlugin) {
             val value = section.get(key)
             switches[key] = if (value is Boolean) value else true
         }
+        // 1.5.7.4：命令别名共享主命令开关（别名自身不注册进 commands 段，
+        // 关闭主命令时别名一并失效，快捷菜单也不展示别名按钮）
+        for ((alias, main) in COMMAND_ALIASES) {
+            if (!switches.containsKey(alias)) {
+                switches[alias] = switches[main] ?: true
+            }
+        }
         return switches
     }
 
@@ -192,15 +229,69 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
-        private const val CURRENT_CONFIG_VERSION = 16
+        private const val CURRENT_CONFIG_VERSION = 17
 
         /**
-         * 支持开关的群命令名单（1.5.2：查信息更名对应个人信息卡片命令，新增 查询open ID）。
+         * 支持开关的群命令名单（1.5.2：查信息更名对应个人信息卡片命令，新增 查询open ID；
+         * 1.6.0：新增 金币榜）。
          */
         private val COMMAND_NAMES = listOf(
-            "查询open ID", "查信息", "绑定", "重新绑定", "查在线", "在线排行榜", "在线服务器", "发信息",
+            "查询open ID", "查信息", "绑定", "重新绑定", "查在线", "在线排行榜", "金币榜", "在线服务器", "发信息",
             "执行命令", "执行", "管理员执行", "全量", "motd", "帮助",
             "AI对话上下文", "清除当前上下文", "黑名单", "解除黑名单", "签到",
+        )
+
+        /**
+         * 1.5.7.4：命令别名表（别名 → 主命令）。
+         * 别名与主命令共用 commands 段里的开关；别名不出现在快捷指令菜单与
+         * commands 配置段（dispatch 层按别名命中后仍查主命令开关值）。
+         */
+        private val COMMAND_ALIASES = linkedMapOf(
+            "在线" to "查在线",
+        )
+
+        /**
+         * 全部消息模板 ID（1.6.0）。默认文件名 = <ID>.md（位于数据目录 Markdown/ 下，
+         * 首次启动自动释放默认模板；messages.<ID> 可改为自定义文件名）。
+         * 与 MessageTemplates.TEMPLATE_IDS 保持一致。
+         */
+        private val MESSAGE_TEMPLATE_IDS = listOf(
+            // 通用
+            "command-disabled", "no-admin-permission", "query-too-frequent", "server-busy",
+            "image-send-failed", "manager-not-ready", "manager-not-ready-bind",
+            "manager-not-ready-retry", "manager-not-ready-bind-retry", "qq-unknown", "server-status",
+            // QQ 绑定
+            "bind-usage", "bind-usage-fallback", "bind-disabled", "bind-error", "bind-success", "bind-invalid",
+            // 签到
+            "checkin-disabled", "checkin-not-bound", "checkin-data-error", "checkin-time-error",
+            "checkin-already", "checkin-success-no-economy", "checkin-reward-invalid",
+            "checkin-success", "checkin-pay-error",
+            // 查信息
+            "info-bind-disabled", "info-closed", "info-not-bound", "info-target-not-bound", "info-render-failed",
+            // 查在线
+            "online-data-unavailable", "online-render-failed",
+            // 在线排行榜
+            "leaderboard-no-data", "leaderboard-render-failed",
+            // 金币排行榜
+            "coins-leaderboard-no-economy", "coins-leaderboard-no-data", "coins-leaderboard-render-failed",
+            // 查询 OpenID
+            "openid-self", "openid-lookup",
+            // 发信息
+            "forward-disabled",
+            // AI 对话
+            "ai-context-usage", "ai-context-on", "ai-context-off", "ai-context-cleared",
+            "ai-chat-empty", "ai-chat-error",
+            // 黑名单
+            "blacklist-empty", "blacklist-list", "blacklist-added-kicked", "blacklist-added",
+            "blacklist-removed", "unblacklist-empty", "unblacklist-list",
+            // 重新绑定
+            "rebind-success", "rebind-not-bound",
+            // 帮助
+            "help",
+            // 命令执行
+            "invalid-params", "bridge-error", "sent-request", "execute-failed", "full-amount-toggled",
+            // MOTD 查询
+            "motd-usage", "motd-query-failed", "motd-offline", "motd-error", "motd-status",
         )
 
         /** 全部默认配置值（用于补齐缺失键）。 */
@@ -236,21 +327,28 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "custom-commands" to emptyList<Any>(),
             "qq-bind.enabled" to false,
             "qq-bind.personal-info" to true,
-            "qq-bind.render.gc-after-render" to true,
-            "qq-bind.render.result-cache-seconds" to 60,
-            // 1.5.7：全部图片渲染的内置背景开关（默认 true = 随 JAR 分发的深灰底图，
-            // 关闭后随机用 img/ 目录图片，img 无可用图片时自动回退内置图）
-            "qq-bind.render.info-card-builtin-background" to true,
-            "qq-bind.render.online-list-builtin-background" to true,
             "qq-bind.code-expire-minutes" to 10,
             "qq-bind.code-length" to 5,
             "qq-bind.checkin.enabled" to false,
             "qq-bind.checkin.prefix" to "[签到]",
             "qq-bind.checkin.reward" to 100.0,
-            // 1.5.5：在线排行榜（commands.在线排行榜 开关由 COMMAND_NAMES 统一注册默认 true）
-            // 1.5.6：top 默认 20 → 15；1.5.7：random-background 反向更名 builtin-background（默认 true）
-            "qq-bind.leaderboard.top" to 15,
-            "qq-bind.leaderboard.builtin-background" to true,
+            // 1.6.0：渲染设置迁至顶层 render 段（查在线 / 卡片渲染不依赖 QQ 绑定）
+            "render.gc-after-render" to true,
+            "render.result-cache-seconds" to 60,
+            // 1.6.0 新增：图片渲染命令的用户冷却秒数（旧版硬编码 5 秒；0 = 关闭）
+            "render.command-cooldown-seconds" to 5,
+            // 1.5.7：全部图片渲染的内置背景开关（默认 true = 随 JAR 分发的深灰底图，
+            // 关闭后随机用 img/ 目录图片，img 无可用图片时自动回退内置图）
+            "render.info-card-builtin-background" to true,
+            "render.online-list-builtin-background" to true,
+            // 1.5.5：在线排行榜（1.6.0 从 qq-bind.leaderboard 迁至顶层）
+            "leaderboard.top" to 15,
+            "leaderboard.builtin-background" to true,
+            // 1.6.0：金币排行榜（配置与在线排行榜一致）
+            "coins-leaderboard.top" to 15,
+            "coins-leaderboard.builtin-background" to true,
+            // 1.6.0：经济别名（留空 = 默认「金币」；填写后所有输出的金币字样替换为该名称）
+            "economy-alias" to "",
             "ai.enabled" to false,
             "ai.server-enabled" to false,
             "ai.server-prefix" to "ai",
@@ -263,6 +361,10 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "ai.url-auto-append" to true,
             "ai.context-limit" to 6,
         ).apply {
+            // 1.6.0：消息模板映射（每条回复 → Markdown 模板文件名，详见 config.yml 注释）
+            for (id in MESSAGE_TEMPLATE_IDS) {
+                put("messages.$id", "$id.md")
+            }
             for (name in COMMAND_NAMES) {
                 put("commands.$name", true)
             }

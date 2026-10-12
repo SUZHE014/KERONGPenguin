@@ -92,6 +92,12 @@ object LeaderboardRenderer {
         /** 总在线秒数（展示用文本由调用方格式化传入或用 [formatPlayTime]）。 */
         val playSeconds: Long,
         val avatar: BufferedImage? = null,
+        /**
+         * 右侧数值的自定义展示文本（1.6.0 金币榜新增）。
+         * 非 null 时优先于 [formatPlayTime] 绘制（金币榜传入金额，
+         * 在线排行不传保持时长文本，旧版渲染逐字节不变）。
+         */
+        val valueText: String? = null,
     )
 
     /** 单页渲染入参（entries 即本页内容，调用方已切好页）。 */
@@ -109,6 +115,10 @@ object LeaderboardRenderer {
          * null 表示无背景。
          */
         val background: BufferedImage? = null,
+        /** 主标题（1.6.0：金币榜传入「金币排行榜」等；默认在线排行榜，旧版不变）。 */
+        val title: String = "在线排行榜",
+        /** 列表头前缀（与 TOP N 拼接；默认总在线时长，旧版不变）。 */
+        val listHeader: String = "总在线时长",
     )
 
     /**
@@ -141,8 +151,8 @@ object LeaderboardRenderer {
 
             drawBackground(g, data.background, height)
             if (firstPage) {
-                drawHeader(g, data.totalPlayers)
-                drawListHeader(g, data.topLimit, data.totalPlayers)
+                drawHeader(g, data.title, data.totalPlayers)
+                drawListHeader(g, data.listHeader, data.topLimit, data.totalPlayers)
             }
             if (data.entries.isEmpty()) {
                 drawEmpty(g, firstPage)
@@ -193,8 +203,8 @@ object LeaderboardRenderer {
         }
     }
 
-    /** 第一页标题区：眉题 + 主标题 + 右侧统计卡。 */
-    private fun drawHeader(g: Graphics2D, totalPlayers: Long) {
+    /** 第一页标题区：眉题 + 主标题 + 右侧统计卡（1.6.0：主标题可自定义）。 */
+    private fun drawHeader(g: Graphics2D, title: String, totalPlayers: Long) {
         val top = MARGIN
 
         // 英文眉题（字距拉宽，与其他卡片统一风格）
@@ -205,7 +215,7 @@ object LeaderboardRenderer {
         // 主标题
         g.font = InfoCardRenderer.font(58f, true)
         g.color = COLOR_VALUE
-        g.drawString("在线排行榜", (MARGIN + 4).toFloat(), (top + 108).toFloat())
+        g.drawString(title, (MARGIN + 4).toFloat(), (top + 108).toFloat())
 
         // 右侧统计卡（参与排行玩家总数）
         val cardWidth = 260
@@ -224,13 +234,13 @@ object LeaderboardRenderer {
         g.drawString(countText, (cardX + cardWidth - 28 - countWidth).toFloat(), (cardY + 100).toFloat())
     }
 
-    /** 第一页列表头：标题 + 右侧人数胶囊。 */
-    private fun drawListHeader(g: Graphics2D, topLimit: Int, totalPlayers: Long) {
+    /** 第一页列表头：标题 + 右侧人数胶囊（1.6.0：列表头前缀可自定义）。 */
+    private fun drawListHeader(g: Graphics2D, listHeader: String, topLimit: Int, totalPlayers: Long) {
         val top = (MARGIN + HEADER_HEIGHT + HEADER_GAP).toFloat()
 
         g.font = InfoCardRenderer.font(34f, true)
         g.color = COLOR_VALUE
-        g.drawString("总在线时长 TOP $topLimit", (MARGIN + 4).toFloat(), top + 40f)
+        g.drawString("$listHeader TOP $topLimit", (MARGIN + 4).toFloat(), top + 40f)
 
         g.font = InfoCardRenderer.font(24f, false)
         val badgeText = "$totalPlayers 名玩家"
@@ -298,7 +308,7 @@ object LeaderboardRenderer {
 
             // 玩家名（垂直居中，超宽截断）
             val nameX = avatarX + AVATAR_SIZE + 16
-            val timeText = formatPlayTime(entry.playSeconds)
+            val timeText = entry.valueText ?: formatPlayTime(entry.playSeconds)
             g.font = InfoCardRenderer.font(26f, false)
             val timeWidth = g.getFontMetrics().stringWidth(timeText)
             val timeX = WIDTH - MARGIN - 28 - timeWidth
@@ -307,7 +317,7 @@ object LeaderboardRenderer {
             g.color = COLOR_VALUE
             g.drawString(clip(g, entry.name, nameMaxWidth), nameX.toFloat(), (rowY + ROW_HEIGHT / 2 + 10).toFloat())
 
-            // 总在线时长（右侧对齐）
+            // 右侧数值（总在线时长或金币金额；1.6.0 起可由调用方自定义文本）
             g.font = InfoCardRenderer.font(26f, false)
             g.color = COLOR_LABEL
             g.drawString(timeText, timeX.toFloat(), (rowY + ROW_HEIGHT / 2 + 10).toFloat())

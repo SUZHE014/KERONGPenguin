@@ -4,5 +4,5 @@ plugins {
 
 allprojects {
     group = "cn.huohuas001"
-    version = "1.5.7.3"
+    version = "1.6.0"
 }

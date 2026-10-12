@@ -35,13 +35,17 @@ object PluginManager {
     fun isPluginEnabled(name: String): Boolean = getPlugin(name) != null
 }
 
-/** 插件接口（兼容层最小面：isEnabled / name）。 */
+/** 插件接口（兼容层最小面：isEnabled / name / server）。 */
 interface Plugin {
     /** 是否启用（恒为 true）。 */
     val isEnabled: Boolean
 
     /** 插件名（KERONGPenguin）。 */
     val name: String
+
+    /** 服务器对象（调度入口；FoliaCompat 非 Folia 路径经 plugin.server.scheduler）。 */
+    val server: org.bukkit.Server
+        get() = org.bukkit.Bukkit.getServer()
 }
 
 /** 服务注册项（兼容层桩：provider 永不返回）。 */

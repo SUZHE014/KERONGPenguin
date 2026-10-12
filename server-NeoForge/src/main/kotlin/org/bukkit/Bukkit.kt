@@ -41,6 +41,22 @@ object Bukkit {
         return server == null || server.isSameThread
     }
 
+    // ---------- Folia 调度器入口（1.6.0 兼容层桩） ----------
+
+    // NeoForge 永远不是 Folia（FoliaCompat 按反射查找 getGlobalRegionScheduler
+    // 方法判定，本平台不存在），以下入口仅让 common-Bot 的 FoliaDelegate
+    // 编译通过；运行时永远不会被调用（调用即抛）。
+
+    /** Folia 全局区域调度器（兼容层桩，不可用）。 */
+    @JvmStatic
+    fun getGlobalRegionScheduler(): io.papermc.paper.threadedregions.scheduler.GlobalRegionScheduler =
+        throw UnsupportedOperationException("Folia 调度器仅存在于 Folia 系服务端")
+
+    /** Folia 异步调度器（兼容层桩，不可用）。 */
+    @JvmStatic
+    fun getAsyncScheduler(): io.papermc.paper.threadedregions.scheduler.AsyncScheduler =
+        throw UnsupportedOperationException("Folia 调度器仅存在于 Folia 系服务端")
+
     /** 按名称前缀匹配在线玩家（Bukkit 语义：大小写不敏感，可部分匹配）。 */
     @JvmStatic
     fun getPlayer(name: String): Player? {

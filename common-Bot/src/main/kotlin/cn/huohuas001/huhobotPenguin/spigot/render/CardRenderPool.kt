@@ -21,7 +21,8 @@ import java.util.concurrent.TimeUnit
  * 全部图片渲染合计占用不超过上述硬编码上限。
  *
  * 任务完成后做节流 GC 提示（两次至少间隔 [GC_MIN_INTERVAL_MILLIS]），
- * 避免每次渲染都 Full GC 造成停顿卡服；qq-bind.render.gc-after-render 可关。
+ * 避免每次渲染都 Full GC 造成停顿卡服；render.gc-after-render 可关
+ * （1.6.0 起位于顶层 render 段，此前在 qq-bind.render 下）。
  */
 object CardRenderPool {
 
@@ -82,7 +83,7 @@ object CardRenderPool {
      * - 单次渲染图像已在渲染器内 flush 释放栅格；
      * - 这里补一次节流的 GC 提示（System.gc，JVM 可能忽略，取决于启动参数），
      *   两次至少间隔 [GC_MIN_INTERVAL_MILLIS]，避免每次渲染都 Full GC 造成停顿卡服；
-     * - qq-bind.render.gc-after-render 关闭后完全不触发。
+     * - render.gc-after-render 关闭后完全不触发。
      */
     private fun gcAfterRenderIfDue() {
         if (!gcAfterRenderEnabled()) return
@@ -97,10 +98,10 @@ object CardRenderPool {
         }
     }
 
-    /** qq-bind.render.gc-after-render：渲染后是否做 GC 提示（默认 true）。 */
+    /** render.gc-after-render：渲染后是否做 GC 提示（默认 true；1.6.0 起位于顶层 render 段）。 */
     private fun gcAfterRenderEnabled(): Boolean = try {
         (Bukkit.getPluginManager().getPlugin("KERONGPenguin") as? JavaPlugin)
-            ?.config?.getBoolean("qq-bind.render.gc-after-render", true) ?: true
+            ?.config?.getBoolean("render.gc-after-render", true) ?: true
     } catch (_: Throwable) {
         true
     }

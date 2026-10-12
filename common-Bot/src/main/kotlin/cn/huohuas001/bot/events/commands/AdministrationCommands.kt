@@ -1,12 +1,16 @@
 package cn.huohuas001.bot.events.commands
 
 import cn.huohuas001.bot.HuHoBot
-import cn.huohuas001.bot.QClient
+import cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates
 import cn.huohuas001.bot.state.CommandRepositories
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 
 /**
  * 管理员命令：执行服务器命令、管理员自定义命令、全量转发开关。
+ *
+ * 1.6.0：全部文本回复改走消息模板（invalid-params / bridge-error /
+ * sent-request / execute-failed / full-amount-toggled，配置 messages 段可换文件），
+ * 默认内容与旧版一致。
  */
 class AdministrationCommands : CommandSupport() {
 
@@ -15,7 +19,7 @@ class AdministrationCommands : CommandSupport() {
     fun runServerCommand(plugin: HuHoBot, event: GroupMessageEvent, params: String) {
         if (!requireAdmin(plugin, event)) return
         if (params.trim().isEmpty()) {
-            sendDirect(event, "参数不正确")
+            MessageTemplates.sendDirect(event, "invalid-params")
             return
         }
         executeGameCommandWithMention(plugin, event, params, true)
@@ -26,26 +30,29 @@ class AdministrationCommands : CommandSupport() {
     fun runAdminCustomCommand(plugin: HuHoBot, event: GroupMessageEvent, params: String) {
         if (!requireAdmin(plugin, event)) return
         if (params.trim().isEmpty()) {
-            sendDirect(event, "参数不正确")
+            MessageTemplates.sendDirect(event, "invalid-params")
             return
         }
         val cmd = "huhobot adminrun ${groupId(event)} ${userId(event)} $params"
         executeGameCommandWithMention(plugin, event, cmd, true)
     }
 
-    /** /全量 —— 切换本群全量聊天转发。 */
+    /** /全量 —— 切换本群全量聊天转发（模板 full-amount-toggled，{state} = 开启/关闭）。 */
     @Commands("全量")
     fun fullAmount(plugin: HuHoBot, event: GroupMessageEvent, params: String) {
         if (!requireAdmin(plugin, event)) return
         val group = groupId(event)
         val enabled = CommandRepositories.groupSettings.fullForwarding(group, plugin.fullAmount)
         CommandRepositories.groupSettings.setFullForwarding(group, !enabled)
-        sendDirect(event, "本群全量转发已${if (!enabled) "开启" else "关闭"}")
+        MessageTemplates.sendDirect(event, "full-amount-toggled", mapOf(
+            "state" to (if (!enabled) "开启" else "关闭"),
+        ))
     }
 
     /**
      * 派发命令并带 @ 提及回复执行结果。
-     * （覆盖 CommandSupport.executeGameCommand 的纯文本回复，与绑定类命令的回复方式保持一致。）
+     * 回复模板：bridge-error（桥接失败）/ sent-request（已发送）/ execute-failed（异常）；
+     * 执行结果本身为动态内容（服务器返回原文），原样审核后经 Markdown 回复。
      */
     private fun executeGameCommandWithMention(plugin: HuHoBot, event: GroupMessageEvent, command: String, direct: Boolean) {
         try {
@@ -54,20 +61,20 @@ class AdministrationCommands : CommandSupport() {
             plugin.sendCommand(outgoingCommand).whenComplete { result, error ->
                 try {
                     when {
-                        error != null || result == null -> sendDirect(event, "游戏桥接未配置或执行失败")
-                        result.rawString.isBlank() -> sendDirect(event, "已发送执行请求")
+                        error != null || result == null -> MessageTemplates.sendDirect(event, "bridge-error")
+                        result.rawString.isBlank() -> MessageTemplates.sendDirect(event, "sent-request")
                         else -> sendDirect(event, plugin.auditText(result.rawString))
                     }
                 } catch (_: Throwable) {
                 }
             }
         } catch (t: Throwable) {
-            sendDirect(event, "执行失败: ${t.message}")
+            MessageTemplates.sendDirect(event, "execute-failed", mapOf("error" to (t.message ?: t.toString())))
         }
     }
 
-    /** 带 @ 提及的 Markdown 回复（失败时退化为纯文本）。 */
-    protected fun sendDirect(event: GroupMessageEvent, message: String) {
+    /** 带 @ 提及的 Markdown 回复（动态内容；失败时退化为纯文本）。 */
+    private fun sendDirect(event: GroupMessageEvent, message: String) {
         try {
             val userId = try {
                 userId(event)
@@ -76,7 +83,7 @@ class AdministrationCommands : CommandSupport() {
             }
             val content = if (!userId.isNullOrEmpty() && userId != "<unknown>") "<@$userId>\n$message" else message
             try {
-                QClient.replyMarkdown(event, content, null)
+                cn.huohuas001.bot.QClient.replyMarkdown(event, content, null)
             } catch (_: Throwable) {
                 event.sendMessage(content)
             }

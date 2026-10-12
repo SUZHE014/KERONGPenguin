@@ -1,5 +1,5 @@
 name: KERONGPenguin
-version: '1.5.7.3'
+version: '1.6.0'
 main: cn.huohuas001.huhobotPenguin.spigot.HuHoBotSpigot
 api-version: '1.18'
 # 1.5.7.3：声明支持 Folia 多线程区域化核心——调度全部经 FoliaCompat 桥接

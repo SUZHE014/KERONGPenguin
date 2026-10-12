@@ -1,6 +1,7 @@
 package cn.huohuas001.bot.events.commands
 
 import cn.huohuas001.bot.HuHoBot
+import cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import java.lang.reflect.Method
 import kotlin.coroutines.Continuation
@@ -60,7 +61,8 @@ abstract class BaseCommand {
         for (command in commandMap.keys.sortedByDescending { it.length }) {
             if (cleaned != command && !cleaned.startsWith("$command ")) continue
             if (plugin.commandList()[command] == false) {
-                event.sendMessage("此命令已被管理员关闭")
+                // 1.6.0：关闭提示改走消息模板 command-disabled.md（messages 段可换文件）
+                MessageTemplates.sendPlain(event, "command-disabled")
                 return true
             }
             val params = cleaned.removePrefix(command).trim()

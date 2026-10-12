@@ -2,11 +2,12 @@ package cn.huohuas001.bot.events.commands
 
 import cn.huohuas001.bot.HuHoBot
 import cn.huohuas001.bot.QClient
+import cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
 import cn.huohuas001.huhobotPenguin.spigot.render.CardRenderPool
 import cn.huohuas001.huhobotPenguin.spigot.render.InfoCardAssets
 import cn.huohuas001.huhobotPenguin.spigot.render.LeaderboardRenderer
-import cn.huohuas001.huhobotPenguin.spigot.scheduler.FoliaCompat
+import cn.huohuas001.huhobotPenguin.spigot.render.RenderSettings
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import org.bukkit.Bukkit
 import java.io.File
@@ -26,15 +27,20 @@ import java.awt.image.BufferedImage
  * 总在线时长。
  *
  * 背景（1.5.7）：默认使用内置专属背景图（深灰色主体 + 深绿色装饰，随 JAR
- * 分发，零配置零素材）；qq-bind.leaderboard.builtin-background 关闭后改用
+ * 分发，零配置零素材）；leaderboard.builtin-background 关闭后改用
  * 插件目录 img/ 随机图（img 无可用图片时自动回退内置图）。
  *
  * 数据来源：QUUID 主文件 stats.play-seconds（全部玩家，含离线；
  * 统计每 60 秒增量落盘，排行榜数值最多滞后一分钟，展示精度足够）。
  *
  * 命令开关：commands.在线排行榜（默认 true，关闭后群命令不再响应，
- * 快捷菜单按钮与 /帮助 中的条目同步消失）；
- * 显示人数：qq-bind.leaderboard.top（1.5.6 起默认 15，自动夹逼 1..100）。
+ * 快捷菜单按钮与 /帮助 里的条目同步消失）；
+ * 显示人数：leaderboard.top（1.5.6 起默认 15，自动夹逼 1..100）。
+ *
+ * 冷却（1.6.0 起可配置）：同一用户两次查询的最小间隔秒数，配置
+ * render.command-cooldown-seconds（默认 5 秒，0 = 关闭）。
+ * 提示文本模板（1.6.0）：manager-not-ready-retry / leaderboard-no-data /
+ * leaderboard-render-failed / image-send-failed / server-busy（messages 段）。
  *
  * 分段发送：超过 [LeaderboardRenderer.ROWS_PER_PAGE]（15）行时自动切页 ——
  * 第一张带标题区，后续各张只绘制行内容；逐张发送间隔 [SEND_INTERVAL_MILLIS]
@@ -43,9 +49,6 @@ import java.awt.image.BufferedImage
 class LeaderboardCommands : CommandSupport() {
 
     companion object {
-        /** 单用户查询冷却（毫秒）。 */
-        private const val USER_COOLDOWN_MILLIS = 5_000L
-
         /** 多张图片相邻发送间隔（毫秒），对频控友好。 */
         private const val SEND_INTERVAL_MILLIS = 400L
 
@@ -78,21 +81,25 @@ class LeaderboardCommands : CommandSupport() {
 
     @Commands("在线排行榜")
     fun leaderboard(plugin: HuHoBot, event: GroupMessageEvent, params: String) {
-        // 查询冷却：同一用户 5 秒内只允许一次
+        // 查询冷却（1.6.0：秒数可配置 render.command-cooldown-seconds，默认 5）
         val qq = try {
             userId(event)
         } catch (_: Throwable) {
             "<unknown>"
         }
         val cooldownKey = if (qq.isEmpty() || qq == "<unknown>") "group:${groupId(event)}" else qq
+        val cooldownMillis = RenderSettings.commandCooldownMillis()
         val now = System.currentTimeMillis()
-        val lastAt = lastQueryAt[cooldownKey] ?: 0L
-        if (now - lastAt < USER_COOLDOWN_MILLIS) {
-            sendDirect(event, "查询太频繁了，请稍后再试")
-            return
+        if (cooldownMillis > 0) {
+            val lastAt = lastQueryAt[cooldownKey] ?: 0L
+            if (now - lastAt < cooldownMillis) {
+                // 与旧版一致：命令层的频控提示带 @ 提及（服务层 replyText 为纯文本）
+                MessageTemplates.sendDirect(event, "query-too-frequent")
+                return
+            }
+            lastQueryAt[cooldownKey] = now
+            if (lastQueryAt.size > 1024) lastQueryAt.clear()
         }
-        lastQueryAt[cooldownKey] = now
-        if (lastQueryAt.size > 1024) lastQueryAt.clear()
 
         try {
             // 全流程进入共享渲染池：磁盘扫描 / 头像预热 / 渲染 / 发送，
@@ -105,14 +112,14 @@ class LeaderboardCommands : CommandSupport() {
                         null
                     }
                     if (manager == null) {
-                        sendDirect(event, "❌ 管理器未就绪，请稍后再试")
+                        MessageTemplates.sendDirect(event, "manager-not-ready-retry")
                         return@submit
                     }
 
                     // 1. 全量扫描 QUUID 主文件统计（含离线玩家）
                     val entries = collectEntries(manager)
                     if (entries.isEmpty()) {
-                        sendDirect(event, "📋 暂无在线时长统计数据")
+                        MessageTemplates.sendDirect(event, "leaderboard-no-data")
                         return@submit
                     }
                     val totalPlayers = entries.size.toLong()
@@ -178,7 +185,7 @@ class LeaderboardCommands : CommandSupport() {
                         pageStart = pageEnd
                     }
                     if (pages.isEmpty()) {
-                        sendDirect(event, "❌ 排行榜图片生成失败，请稍后重试或联系管理员")
+                        MessageTemplates.sendDirect(event, "leaderboard-render-failed")
                         return@submit
                     }
 
@@ -195,12 +202,12 @@ class LeaderboardCommands : CommandSupport() {
                         "[在线排行榜] 失败堆栈: " +
                             error.stackTraceToString().lineSequence().take(8).joinToString(" | ")
                     )
-                    sendDirect(event, "❌ 排行榜图片生成失败，请稍后重试或联系管理员")
+                    MessageTemplates.sendDirect(event, "leaderboard-render-failed")
                 }
             }
         } catch (_: Throwable) {
             // 理论上不会触发（队列无上限），兜底防止线程池异常时静默丢消息
-            sendDirect(event, "当前查询人数较多，请稍后再试")
+            MessageTemplates.sendPlain(event, "server-busy")
         }
     }
 
@@ -253,7 +260,7 @@ class LeaderboardCommands : CommandSupport() {
         } ?: return emptyMap()
         // 1.5.7.3：经 FoliaCompat 桥接（Folia 全局区域线程限时取值，超时回退空表）
         return try {
-            FoliaCompat.callSync(bukkitPlugin, 3L) { snapshot() } ?: emptyMap()
+            cn.huohuas001.huhobotPenguin.spigot.scheduler.FoliaCompat.callSync(bukkitPlugin, 3L) { snapshot() } ?: emptyMap()
         } catch (_: Exception) {
             emptyMap()
         }
@@ -317,37 +324,7 @@ class LeaderboardCommands : CommandSupport() {
             }
         }
         if (!allSent) {
-            replyText(event, "❌ 图片发送失败（机器人连接可能断开），请稍后重试")
-        }
-    }
-
-    /** 纯文本回复（不 @）。 */
-    private fun replyText(event: GroupMessageEvent, message: String) {
-        try {
-            event.sendMessage(message)
-        } catch (_: Throwable) {
-        }
-    }
-
-    /** 带 @ 提及的 Markdown 回复（失败时退化为纯文本）。 */
-    private fun sendDirect(event: GroupMessageEvent, message: String) {
-        try {
-            val senderId = try {
-                userId(event)
-            } catch (_: Throwable) {
-                null
-            }
-            val content = if (!senderId.isNullOrEmpty() && senderId != "<unknown>") "<@$senderId>\n$message" else message
-            try {
-                QClient.replyMarkdown(event, content, null)
-            } catch (_: Throwable) {
-                event.sendMessage(content)
-            }
-        } catch (_: Throwable) {
-            try {
-                event.sendMessage(message)
-            } catch (_: Throwable) {
-            }
+            MessageTemplates.sendPlain(event, "image-send-failed")
         }
     }
 }

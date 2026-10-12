@@ -2,10 +2,14 @@ package org.bukkit
 
 import java.io.File
 
-/** Server 接口（兼容层最小面：CheckInCommands 反射 getServicesManager）。 */
+/** Server 接口（兼容层最小面：CheckInCommands 反射 getServicesManager + 调度入口）。 */
 interface Server {
     /** 服务管理器（Bukkit 生态不存在，恒空）。 */
     fun getServicesManager(): org.bukkit.plugin.ServicesManager = org.bukkit.plugin.ServicesManager
+
+    /** 调度器（FoliaCompat 非 Folia 路径的 runTask / callSyncMethod 等入口）。 */
+    val scheduler: org.bukkit.scheduler.BukkitScheduler
+        get() = org.bukkit.scheduler.BukkitScheduler
 }
 
 /** World（兼容层最小面：playerdata 目录定位）。 */

@@ -524,33 +524,37 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             100.0
         }
 
-    /** 1.5.5：在线排行榜显示玩家数（1.5.6 起默认 15；配置夹逼 1..100）。 */
+    /** 1.5.5：在线排行榜显示玩家数（1.5.6 起默认 15；配置夹逼 1..100）。1.6.0：配置从 qq-bind.leaderboard.top 迁至顶层 leaderboard.top（查排行榜不依赖 QQ 绑定）。 */
     val leaderboardTop: Int
         get() = try {
-            plugin.config.getInt("qq-bind.leaderboard.top", 15).coerceIn(1, 100)
+            plugin.config.getInt("leaderboard.top", 15).coerceIn(1, 100)
         } catch (_: Throwable) {
             15
         }
 
     /**
      * 1.5.7：查信息统计卡片是否使用内置背景图（默认 true）。
+     * 1.6.0：配置从 qq-bind.render.info-card-builtin-background 迁至顶层
+     * render.info-card-builtin-background（渲染设置不依赖 QQ 绑定）。
      * true：内置深灰底图（backgrounds/card-default.png，随 JAR 分发，零配置）；
      * false：随机取插件目录 img/ 文件夹图片；img 里没有图片时自动回退内置背景。
      */
     val infoCardBuiltinBackground: Boolean
         get() = try {
-            plugin.config.getBoolean("qq-bind.render.info-card-builtin-background", true)
+            plugin.config.getBoolean("render.info-card-builtin-background", true)
         } catch (_: Throwable) {
             true
         }
 
     /**
      * 1.5.7：查在线列表图片是否使用内置背景图（默认 true）。
+     * 1.6.0：配置从 qq-bind.render.online-list-builtin-background 迁至顶层
+     * render.online-list-builtin-background（查在线不依赖 QQ 绑定）。
      * 语义同 [infoCardBuiltinBackground]，与查信息共用横版内置底图。
      */
     val onlineListBuiltinBackground: Boolean
         get() = try {
-            plugin.config.getBoolean("qq-bind.render.online-list-builtin-background", true)
+            plugin.config.getBoolean("render.online-list-builtin-background", true)
         } catch (_: Throwable) {
             true
         }
@@ -558,12 +562,36 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
     /**
      * 1.5.7：在线排行榜是否使用内置背景图（默认 true，1.5.6 的
      * random-background 开关反向更名而来：旧值 true（随机图）升级后自动迁移为 false）。
+     * 1.6.0：配置从 qq-bind.leaderboard.builtin-background 迁至顶层
+     * leaderboard.builtin-background。
      * true：内置深灰底图（backgrounds/leaderboard-default.png，随 JAR 分发）；
      * false：随机取插件目录 img/ 文件夹图片；img 里没有图片时自动回退内置背景。
      */
     val leaderboardBuiltinBackground: Boolean
         get() = try {
-            plugin.config.getBoolean("qq-bind.leaderboard.builtin-background", true)
+            plugin.config.getBoolean("leaderboard.builtin-background", true)
+        } catch (_: Throwable) {
+            true
+        }
+
+    /**
+     * 1.6.0：金币排行榜显示玩家数（配置与在线排行榜一致；夹逼 1..100，
+     * 超出单页行数自动分段发送）。
+     */
+    val coinsLeaderboardTop: Int
+        get() = try {
+            plugin.config.getInt("coins-leaderboard.top", 15).coerceIn(1, 100)
+        } catch (_: Throwable) {
+            15
+        }
+
+    /**
+     * 1.6.0：金币排行榜是否使用内置背景图（默认 true，与在线排行榜共用
+     * 竖版内置底图 leaderboard-default.png；false 时随机用 img/ 目录图片）。
+     */
+    val coinsLeaderboardBuiltinBackground: Boolean
+        get() = try {
+            plugin.config.getBoolean("coins-leaderboard.builtin-background", true)
         } catch (_: Throwable) {
             true
         }

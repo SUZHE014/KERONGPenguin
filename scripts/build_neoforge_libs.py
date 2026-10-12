@@ -51,7 +51,10 @@ def download(url: str, dest: Path, label: str) -> Path:
         return dest
     print(f"下载 {label}：{url}")
     dest.parent.mkdir(parents=True, exist_ok=True)
-    urllib.request.urlretrieve(url, dest)
+    # 2026-10：部分 maven 会拦截无 UA 的 urllib 默认请求（403），带 UA 重试
+    request = urllib.request.Request(url, headers={"User-Agent": "KERONGPenguin-build/1.6.0"})
+    with urllib.request.urlopen(request, timeout=120) as resp, open(dest, "wb") as out:
+        out.write(resp.read())
     return dest
 
 
@@ -76,13 +79,22 @@ def main() -> None:
     download(version["downloads"]["client"]["url"], client_jar, "Mojang client.jar")
     download(version["downloads"]["client_mappings"]["url"], client_txt, "Mojang client.txt（官方映射）")
 
+    # 键规范为 brigadier.jar / authlib.jar（值携带版本号用于兼容旧缓存命名）
     extra_libs = {}
     for lib in version["libraries"]:
         name = lib["name"]
-        if name.startswith("com.mojang:brigadier:") or name.startswith("com.mojang:authlib:"):
-            extra_libs[name.split(":")[-1] + ".jar"] = lib["downloads"]["artifact"]["url"]
-    for fname, url in extra_libs.items():
-        download(url, CACHE / fname, fname)
+        if name.startswith("com.mojang:brigadier:"):
+            extra_libs["brigadier.jar"] = (name.split(":")[-1], lib["downloads"]["artifact"]["url"])
+        elif name.startswith("com.mojang:authlib:"):
+            extra_libs["authlib.jar"] = (name.split(":")[-1], lib["downloads"]["artifact"]["url"])
+    for fname, (ver, url) in extra_libs.items():
+        cached = CACHE / fname
+        legacy = CACHE / f"{ver}.jar"
+        # 旧版脚本以版本号命名缓存（如 1.3.10.jar），存在则改名复用
+        if legacy.is_file() and legacy.stat().st_size > 1000 and not cached.is_file():
+            shutil.copy2(legacy, cached)
+            print(f"复用旧缓存：{legacy.name} → {fname}")
+        download(url, cached, fname)
 
     # 2. NeoForge / FML / bus 官方构件
     artifacts = {
@@ -118,8 +130,8 @@ def main() -> None:
         f"neoforge-{NEOFORGE_VERSION}-universal.jar": CACHE / f"neoforge-{NEOFORGE_VERSION}-universal.jar",
         f"loader-{FML_LOADER_VERSION}.jar": CACHE / f"loader-{FML_LOADER_VERSION}.jar",
         f"bus-{BUS_VERSION}.jar": CACHE / f"bus-{BUS_VERSION}.jar",
-        "brigadier.jar": CACHE / next(n for n in extra_libs if n.startswith("brigadier")),
-        "authlib.jar": CACHE / next(n for n in extra_libs if n.startswith("authlib")),
+        "brigadier.jar": CACHE / "brigadier.jar",
+        "authlib.jar": CACHE / "authlib.jar",
         "deps.jar": REPO / "common-Bot" / "libs" / "deps.jar",
     }
     for dest_name, src in plan.items():

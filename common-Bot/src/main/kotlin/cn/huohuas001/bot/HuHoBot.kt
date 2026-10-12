@@ -116,9 +116,16 @@ interface HuHoBot : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPr
         }
     }
 
-    /** 重新加载运行时配置：Markdown 模板与自定义命令。 */
+    /** 重新加载运行时配置：Markdown 模板、消息模板与自定义命令。 */
     fun reloadRuntimeConfig() {
         initializeMarkdownTemplates()
+        // 1.6.0：消息模板（每条群回复对应的 .md 文件，messages 段配置）
+        try {
+            cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates.initialize()
+            cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates.clearCache()
+        } catch (error: Throwable) {
+            log_warning("消息模板初始化失败: ${error.message}")
+        }
         CustomCommandRegistry.replace(customCommands())
     }
 

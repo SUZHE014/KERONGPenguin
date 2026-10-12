@@ -96,12 +96,28 @@ object WebUiSchema {
         FieldSpec("qq-bind.checkin.enabled", "启用签到", "boolean", "群内每日签到领金币（需 Vault；未装时照常签到不发金币）"),
         FieldSpec("qq-bind.checkin.prefix", "签到回复前缀", "text"),
         FieldSpec("qq-bind.checkin.reward", "签到奖励金币", "number"),
-        FieldSpec("qq-bind.render.gc-after-render", "渲染后 GC", "boolean", "渲染后 GC 提示（已节流 60 秒一次）"),
-        FieldSpec("qq-bind.render.result-cache-seconds", "结果复用秒数", "number", "同一玩家查询结果复用秒数（0=每次重渲染，上限 600）"),
-        FieldSpec("qq-bind.render.info-card-builtin-background", "查信息内置背景", "boolean", "查信息卡片是否使用内置深灰底图（默认开启；关闭后随机用 img/ 图片，img 无图自动回退内置图；1.5.7 新增）"),
-        FieldSpec("qq-bind.render.online-list-builtin-background", "查在线内置背景", "boolean", "查在线图片是否使用内置深灰底图（默认开启；语义同查信息；1.5.7 新增）"),
-        FieldSpec("qq-bind.leaderboard.top", "排行榜显示人数", "number", "在线排行榜显示前 N 名（1-100，默认 15；单张图片最多 15 行，超出自动分段发送）"),
-        FieldSpec("qq-bind.leaderboard.builtin-background", "排行榜内置背景", "boolean", "在线排行榜是否使用内置深灰底图（默认开启，1.5.7 改名自 random-background；关闭后随机用 img/ 图片，img 无图自动回退内置图）"),
+    ))
+
+    private val RENDER_SECTION = SectionSpec("render", "图片渲染", listOf(
+        FieldSpec("render.gc-after-render", "渲染后 GC", "boolean", "渲染后 GC 提示（已节流 60 秒一次）"),
+        FieldSpec("render.result-cache-seconds", "结果复用秒数", "number", "同一玩家查询结果复用秒数（0=每次重渲染，上限 600）"),
+        FieldSpec("render.command-cooldown-seconds", "命令冷却秒数", "number", "同一用户两次触发图片命令（查信息/查在线/排行榜/金币榜）的最小间隔秒数（0=关闭，默认 5）"),
+        FieldSpec("render.info-card-builtin-background", "查信息内置背景", "boolean", "查信息卡片是否使用内置深灰底图（默认开启；关闭后随机用 img/ 图片，img 无图自动回退内置图；1.5.7 新增，1.6.0 迁至顶层 render 段）"),
+        FieldSpec("render.online-list-builtin-background", "查在线内置背景", "boolean", "查在线图片是否使用内置深灰底图（默认开启；语义同查信息；1.6.0 迁至顶层 render 段）"),
+    ))
+
+    private val LEADERBOARD_SECTION = SectionSpec("leaderboard", "在线排行榜", listOf(
+        FieldSpec("leaderboard.top", "显示人数", "number", "在线排行榜显示前 N 名（1-100，默认 15；单张图片最多 15 行，超出自动分段发送；1.6.0 迁至顶层）"),
+        FieldSpec("leaderboard.builtin-background", "内置背景", "boolean", "在线排行榜是否使用内置深灰底图（默认开启；关闭后随机用 img/ 图片，img 无图自动回退内置图；1.6.0 迁至顶层）"),
+    ))
+
+    private val COINS_LEADERBOARD_SECTION = SectionSpec("coins-leaderboard", "金币排行榜", listOf(
+        FieldSpec("coins-leaderboard.top", "显示人数", "number", "金币榜显示前 N 名（1-100，默认 15；1.6.0 新增，配置与在线排行榜一致）"),
+        FieldSpec("coins-leaderboard.builtin-background", "内置背景", "boolean", "金币榜是否使用内置底图（默认开启，与在线排行榜共用；1.6.0 新增）"),
+    ))
+
+    private val ECONOMY_SECTION = SectionSpec("economy-alias", "经济名称", listOf(
+        FieldSpec("economy-alias", "金币别名", "text", "留空默认「金币」；填写后机器人所有输出中的「金币」二字替换为该名称（金币榜图片、查信息卡片、签到回复、消息模板等；1.6.0 新增）", placeholder = "金币"),
     ))
 
     private val AI_SECTION = SectionSpec("ai", "AI 对话", listOf(
@@ -134,7 +150,7 @@ object WebUiSchema {
         ),
     ))
 
-    /** 全部配置分区（与 config.yml 保持同步，whitelist/audit 段已随实现移除）。 */
+    /** 全部配置分区（与 config.yml 保持同步；1.6.0：渲染/排行榜/金币榜/经济别名独立分区，消息模板 messages 段需改配置文件调整）。 */
     val SECTIONS: List<SectionSpec> = listOf(
         BOT_SECTION,
         SERVER_SECTION,
@@ -142,6 +158,10 @@ object WebUiSchema {
         PLAYER_EVENTS_SECTION,
         MARKDOWN_SECTION,
         MOTD_SECTION,
+        RENDER_SECTION,
+        LEADERBOARD_SECTION,
+        COINS_LEADERBOARD_SECTION,
+        ECONOMY_SECTION,
         FILTER_SECTION,
         ADMIN_SECTION,
         FEATURES_SECTION,

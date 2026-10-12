@@ -1,8 +1,8 @@
 package cn.huohuas001.bot.events.commands
 
 import cn.huohuas001.bot.HuHoBot
-import cn.huohuas001.bot.QClient
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.BeijingTimeUtil
+import cn.huohuas001.huhobotPenguin.spigot.qqbind.MessageTemplates
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import org.bukkit.Bukkit
@@ -13,6 +13,10 @@ import java.lang.reflect.Method
 /**
  * /签到 —— 每日签到领取金币（依赖 Vault 经济插件）。
  * 连续签到按北京时间计算；离线玩家的奖励先记账，上线自动补发。
+ *
+ * 1.6.0：全部文本回复改走消息模板（checkin-*，配置 messages 段可换文件），
+ * 模板渲染出口统一应用经济别名（economy-alias，签到成功文案中的「金币」
+ * 二字自动替换为别名，默认不配置时与旧版输出一字不差）。
  *
  * 1.5.5：签到开启但金币插件（Vault 经济）不可用时自动关闭金币奖励——
  * 不入账也不记账，签到照常累计（连续天数 / 总次数），
@@ -25,11 +29,11 @@ class CheckInCommands : CommandSupport() {
         val manager = try {
             QqBindManager.getInstance()
         } catch (_: Throwable) {
-            sendDirect(event, "❌ 管理器未就绪")
+            MessageTemplates.sendDirect(event, "manager-not-ready")
             return
         }
         if (!manager.isCheckinEnabled) {
-            sendDirect(event, "⚠️ 签到功能未开启")
+            MessageTemplates.sendDirect(event, "checkin-disabled")
             return
         }
         val qq = try {
@@ -38,17 +42,17 @@ class CheckInCommands : CommandSupport() {
             null
         }
         if (qq.isNullOrEmpty() || qq == "<unknown>") {
-            sendDirect(event, "❌ 无法识别你的 QQ 账号")
+            MessageTemplates.sendDirect(event, "qq-unknown")
             return
         }
         val playerName = manager.findPlayerByQq(qq)
         if (playerName.isNullOrEmpty()) {
-            sendDirect(event, manager.checkinPrefix + "  ❌签到失败！\n您的QQ号暂未绑定任何玩家，请进入服务器获取验证码后绑定QQ号")
+            MessageTemplates.sendDirect(event, "checkin-not-bound", mapOf("prefix" to manager.checkinPrefix))
             return
         }
         val quuid = manager.findQuuidByQq(qq)
         if (quuid.isNullOrEmpty()) {
-            sendDirect(event, manager.checkinPrefix + "  ❌签到失败！\n数据异常，请联系管理员")
+            MessageTemplates.sendDirect(event, "checkin-data-error", mapOf("prefix" to manager.checkinPrefix))
             return
         }
 
@@ -59,7 +63,7 @@ class CheckInCommands : CommandSupport() {
             ""
         }
         if (today.isEmpty()) {
-            sendDirect(event, manager.checkinPrefix + "  ❌签到失败！\n获取服务器时间失败，请稍后重试")
+            MessageTemplates.sendDirect(event, "checkin-time-error", mapOf("prefix" to manager.checkinPrefix))
             return
         }
 
@@ -67,7 +71,7 @@ class CheckInCommands : CommandSupport() {
         val lastDate = manager.getCheckinDate(quuid)
         val prefix = manager.checkinPrefix
         if (today == lastDate) {
-            sendDirect(event, prefix + "  ❌签到失败，💰你太贪了\n今日已经签到过了，请明天再试...")
+            MessageTemplates.sendDirect(event, "checkin-already", mapOf("prefix" to prefix))
             return
         }
 
@@ -84,13 +88,17 @@ class CheckInCommands : CommandSupport() {
             manager.setCheckinDate(quuid, today)
             manager.setCheckinStreak(quuid, streak)
             manager.addCheckinTotal(quuid, 1)
-            sendDirect(event, "$prefix  ✔️签到成功！\n玩家 $playerName 已连续签到${streak}天")
+            MessageTemplates.sendDirect(event, "checkin-success-no-economy", mapOf(
+                "prefix" to prefix,
+                "player" to playerName,
+                "streak" to streak.toString(),
+            ))
             return
         }
 
         val reward = manager.checkinReward
         if (reward <= 0) {
-            sendDirect(event, prefix + "  ❌签到失败！\n奖励金币数量配置错误")
+            MessageTemplates.sendDirect(event, "checkin-reward-invalid", mapOf("prefix" to prefix))
             return
         }
 
@@ -113,9 +121,14 @@ class CheckInCommands : CommandSupport() {
             manager.setCheckinDate(quuid, today)
             manager.setCheckinStreak(quuid, streak)
             manager.addCheckinTotal(quuid, 1)
-            sendDirect(event, "$prefix  ✔️签到成功！\n玩家 $playerName 获得了${formatMoney(reward)}金币，已连续签到${streak}天")
+            MessageTemplates.sendDirect(event, "checkin-success", mapOf(
+                "prefix" to prefix,
+                "player" to playerName,
+                "reward" to formatMoney(reward),
+                "streak" to streak.toString(),
+            ))
         } else {
-            sendDirect(event, prefix + "  ❌签到失败！\n金币系统未就绪或数据异常，请联系管理员")
+            MessageTemplates.sendDirect(event, "checkin-pay-error", mapOf("prefix" to prefix))
         }
     }
 
@@ -167,26 +180,4 @@ class CheckInCommands : CommandSupport() {
     /** 金额显示（整数去掉小数点）。 */
     fun formatMoney(amount: Double): String =
         if (amount == amount.toLong().toDouble()) amount.toLong().toString() else amount.toString()
-
-    /** 带 @ 提及的 Markdown 回复（失败时退化为纯文本）。 */
-    private fun sendDirect(event: GroupMessageEvent, message: String) {
-        try {
-            val userId = try {
-                userId(event)
-            } catch (_: Throwable) {
-                null
-            }
-            val content = if (!userId.isNullOrEmpty() && userId != "<unknown>") "<@$userId>\n$message" else message
-            try {
-                QClient.replyMarkdown(event, content, null)
-            } catch (_: Throwable) {
-                event.sendMessage(content)
-            }
-        } catch (_: Throwable) {
-            try {
-                event.sendMessage(message)
-            } catch (_: Throwable) {
-            }
-        }
-    }
 }

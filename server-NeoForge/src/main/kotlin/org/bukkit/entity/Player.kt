@@ -18,6 +18,10 @@ interface Player : OfflinePlayer {
     fun kickPlayer(reason: String)
     fun getStatistic(statistic: Statistic): Int
     val playerProfile: PlayerProfile
+
+    /** 实体调度器（Folia 专用；NeoForge 恒非 Folia，访问即抛，运行时不会触达）。 */
+    val scheduler: io.papermc.paper.threadedregions.scheduler.EntityScheduler
+        get() = throw UnsupportedOperationException("实体调度器仅存在于 Folia 系服务端")
 }
 
 /** 玩家档案（兼容层最小面：皮肤贴图 URL）。 */
