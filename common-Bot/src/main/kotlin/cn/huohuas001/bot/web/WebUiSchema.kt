@@ -42,6 +42,7 @@ object WebUiSchema {
         FieldSpec("bot.secret", "Secret", "password", "QQ 开放平台机器人密钥"),
         FieldSpec("bot.name", "机器人名称", "text", "机器人显示的昵称（serverName 留空时作为后备显示名）"),
         FieldSpec("bot.groups", "群列表", "list", "允许机器人工作的群 OpenID（每行一个，需双引号包裹；留空则命令不限群，但转发/播报无目标群不发）"),
+        FieldSpec("bot.reconnect-notify", "重连过程提示", "boolean", "断线重连时输出「第 N 次（1/5）重试连接…」（关闭防刷屏；「重连超时 + /hb chs 恢复指引」的失败提示不受此开关影响；1.6.2 新增）"),
     ))
 
     private val SERVER_SECTION = SectionSpec("server", "服务器", listOf(
@@ -101,7 +102,7 @@ object WebUiSchema {
     private val RENDER_SECTION = SectionSpec("render", "图片渲染", listOf(
         FieldSpec("render.gc-after-render", "渲染后 GC", "boolean", "渲染后 GC 提示（已节流 60 秒一次）"),
         FieldSpec("render.result-cache-seconds", "结果复用秒数", "number", "同一玩家查询结果复用秒数（0=每次重渲染，上限 600）"),
-        FieldSpec("render.command-cooldown-seconds", "命令冷却秒数", "number", "同一用户两次触发图片命令（查信息/查在线/排行榜/金币榜）的最小间隔秒数（0=关闭，默认 5）"),
+        FieldSpec("render.command-cooldown-seconds", "命令冷却秒数", "number", "同一用户两次触发图片命令（查信息/查在线/排行榜/财富榜）的最小间隔秒数（0=关闭，默认 5）"),
         FieldSpec("render.info-card-builtin-background", "查信息内置背景", "boolean", "查信息卡片是否使用内置深灰底图（默认开启；关闭后随机用 img/ 图片，img 无图自动回退内置图；1.5.7 新增，1.6.0 迁至顶层 render 段）"),
         FieldSpec("render.online-list-builtin-background", "查在线内置背景", "boolean", "查在线图片是否使用内置深灰底图（默认开启；语义同查信息；1.6.0 迁至顶层 render 段）"),
     ))
@@ -112,12 +113,16 @@ object WebUiSchema {
     ))
 
     private val COINS_LEADERBOARD_SECTION = SectionSpec("coins-leaderboard", "金币排行榜", listOf(
-        FieldSpec("coins-leaderboard.top", "显示人数", "number", "金币榜显示前 N 名（1-100，默认 15；1.6.0 新增，配置与在线排行榜一致）"),
-        FieldSpec("coins-leaderboard.builtin-background", "内置背景", "boolean", "金币榜是否使用内置底图（默认开启，与在线排行榜共用；1.6.0 新增）"),
+        FieldSpec("coins-leaderboard.top", "显示人数", "number", "/财富榜 显示前 N 名（1-100，默认 15；1.6.0 新增为 /金币榜，1.6.2 更名，旧命令仍可用）"),
+        FieldSpec("coins-leaderboard.builtin-background", "内置背景", "boolean", "财富榜是否使用内置底图（默认开启，与在线排行榜共用；1.6.0 新增）"),
     ))
 
     private val ECONOMY_SECTION = SectionSpec("economy-alias", "经济名称", listOf(
-        FieldSpec("economy-alias", "金币别名", "text", "留空默认「金币」；填写后机器人所有输出中的「金币」二字替换为该名称（金币榜图片、查信息卡片、签到回复、消息模板等；1.6.0 新增）", placeholder = "金币"),
+        FieldSpec("economy-alias", "金币别名", "text", "留空默认「金币」；填写后机器人所有输出中的「金币」二字替换为该名称（财富榜图片、查信息卡片、签到回复、消息模板等；1.6.0 新增）", placeholder = "金币"),
+    ))
+
+    private val UPDATE_CHECK_SECTION = SectionSpec("update-check", "更新检查", listOf(
+        FieldSpec("update-check.enabled", "启用更新检查", "boolean", "启动后异步访问官网版本文件：有新版本时控制台输出版本号/下载页/简要日志；检测失败仅一句话提示（细节进日志）；1.6.2 新增"),
     ))
 
     private val AI_SECTION = SectionSpec("ai", "AI 对话", listOf(
@@ -150,7 +155,7 @@ object WebUiSchema {
         ),
     ))
 
-    /** 全部配置分区（与 config.yml 保持同步；1.6.0：渲染/排行榜/金币榜/经济别名独立分区，消息模板 messages 段需改配置文件调整）。 */
+    /** 全部配置分区（与 config.yml 保持同步；1.6.0：渲染/排行榜/金币榜/经济别名独立分区；1.6.2：新增更新检查分区，消息模板 messages 段需改配置文件调整）。 */
     val SECTIONS: List<SectionSpec> = listOf(
         BOT_SECTION,
         SERVER_SECTION,
@@ -162,6 +167,7 @@ object WebUiSchema {
         LEADERBOARD_SECTION,
         COINS_LEADERBOARD_SECTION,
         ECONOMY_SECTION,
+        UPDATE_CHECK_SECTION,
         FILTER_SECTION,
         ADMIN_SECTION,
         FEATURES_SECTION,

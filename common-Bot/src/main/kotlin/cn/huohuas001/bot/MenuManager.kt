@@ -44,7 +44,8 @@ object MenuManager {
      * 注意：QQ 面板点击后发送的是 name 本身（API 无独立命令字段），
      * 故 name 必须与群命令名一致；参数型命令（如 绑定）点击后仅发送命令名，
      * 玩家自行补参数。
-     * 1.6.0 新增「金币榜」按钮；「在线」为 /查在线 的输入别名，
+     * 1.6.0 新增金币榜按钮；1.6.2 更名「财富榜」（命令 /金币榜 同步更名，
+     * 旧名保留为隐藏别名不出现在菜单）；「在线」为 /查在线 的输入别名，
      * 按用户要求不出现在快捷菜单。
      */
     private data class PanelItem(val name: String, val desc: String, val command: String)
@@ -57,7 +58,7 @@ object MenuManager {
         PanelItem("重新绑定", "解除 QQ 绑定", "重新绑定"),
         PanelItem("查在线", "查询在线玩家", "查在线"),
         PanelItem("在线排行榜", "在线时长排行", "在线排行榜"),
-        PanelItem("金币榜", "金币数量排行", "金币榜"),
+        PanelItem("财富榜", "金币数量排行", "财富榜"),
         PanelItem("在线服务器", "查看服务器", "在线服务器"),
         PanelItem("发信息", "发送消息", "发信息 "),
         PanelItem("执行命令", "执行服务器命令", "执行命令 "),
@@ -78,8 +79,8 @@ object MenuManager {
     /** 依赖签到功能开启的按钮。 */
     private val CHECKIN_PANEL_NAMES = setOf("签到")
 
-    /** 依赖经济插件（Vault）开启的按钮（1.6.0：金币榜）。 */
-    private val ECONOMY_PANEL_NAMES = setOf("金币榜")
+    /** 依赖经济插件（Vault）开启的按钮（1.6.0 金币榜；1.6.2 更名财富榜）。 */
+    private val ECONOMY_PANEL_NAMES = setOf("财富榜")
 
     /**
      * 同步所有配置群的快捷面板：

@@ -158,6 +158,8 @@ object WssDiagnostics : WebSocketListener {
         eventCount = 0L
         ackCount = 0L
         fallbackHeartbeatCount = 0L
+        // 1.6.2：本次连接计入重连编排（首次启动连接也计，输出「第 N 次（1/5）重试连接…」）
+        ReconnectManager.onOpen()
         PluginFileLog.write("[WSS] 连接已打开，等待平台下发 Hello(op 10)…")
         return true
     }
@@ -211,6 +213,8 @@ object WssDiagnostics : WebSocketListener {
             PluginFileLog.write(
                 "[WSS] <- $type（鉴权成功，会话已建立）sessionId=$sessionId"
             )
+            // 1.6.2：鉴权成功通知重连编排（健康与否由存活时长判定）
+            ReconnectManager.onSessionReady()
         } else {
             // 业务事件：内存计数（volatile 写，单次纳秒级），不解析不落盘
             eventCount++
@@ -253,16 +257,22 @@ object WssDiagnostics : WebSocketListener {
                 " [本次连接累计：事件 $eventCount 帧 / 心跳应答 $ackCount 次${if (fallbackHeartbeatCount > 0) " / 插件代发心跳 $fallbackHeartbeatCount 次" else ""}]"
         )
         // 1.6.1：同 AppID 多连接互踢检测（在 readyAt 清零前先取本次会话存活时长）
+        // 1.6.2：会话存活同时交重连编排计数（健康会话重置重试计数并宣告重连成功）
         val sessionReadyAt = readyAt
         if (sessionReadyAt > 0) {
             val aliveMs = System.currentTimeMillis() - sessionReadyAt
             if (aliveMs < SHORT_SESSION_MS) {
                 trackShortSession(aliveMs)
+                ReconnectManager.onClosedAfter(aliveMs, healthy = false)
             } else {
                 // 出现一次健康长会话：清零（QQ 网关正常踢线间隔远长于阈值）
                 shortSessionCount = 0
                 firstShortCloseAt = 0L
+                ReconnectManager.onClosedAfter(aliveMs, healthy = true)
             }
+        } else {
+            // 未能完成鉴权即被关闭：一次失败的重连尝试
+            ReconnectManager.onClosedAfter(0L, healthy = false)
         }
         // 会话随连接失效，READY 需要重新等待
         readyAt = 0L
@@ -274,19 +284,25 @@ object WssDiagnostics : WebSocketListener {
      *
      * 「鉴权成功后存活不足 90 秒即被平台关闭」连续出现 3 次（且都在 10 分钟内）
      * 是同 AppID 多连接互踢的典型特征：两台服务器填同一个机器人凭据时会轮流
-     * 把对方踢下线，谁也连不稳。判定成立后调用 [QClient.stopForConflict]
-     * 停止本服务器的连接（输出失败原因），避免无限互踢。
-     * 单次短命关闭只记提示日志（网络抖动也可能偶发一次，不误判）。
+     * 把对方踢下线，谁也连不稳。
+     *
+     * 1.6.2 行为变更：判定成立后**不再停机**——改为经 [ReconnectManager]
+     * 醒目输出原因（「已有另一台服务器绑定了同一个机器人」），连接继续走
+     * 统一的重试体系（每轮 5 次、最多 3 轮自动重试，期间可用 /hb chs 手动重试），
+     * 服务器本体与插件其余功能不受影响。
+     * 单次短命关闭即输出醒目提示（error 级，修复旧版启动期无任何明确提示的问题：
+     * 网络抖动也可能偶发一次，但提示里已说明如何排查，不再静默）。
      */
     private fun trackShortSession(aliveMs: Long) {
         val now = System.currentTimeMillis()
         if (firstShortCloseAt == 0L) firstShortCloseAt = now
         shortSessionCount++
+        PluginFileLog.errorAndKeep(
+            "[WSS] 本服务器连接鉴权成功后仅存活 ${aliveMs / 1000} 秒即被平台关闭（第 $shortSessionCount 次）。" +
+                "若 bot.app-id 也填在了另一台服务器上，QQ 同一机器人只允许一条连接，会互相抢占轮流掉线；" +
+                "若确认未重复配置，则多为网络抖动，SDK 将自动重连（重连过程见「第 N 次（1/5）」提示）"
+        )
         if (shortSessionCount < CONFLICT_SHORT_SESSIONS) {
-            PluginFileLog.warnAndKeep(
-                "[WSS] 本次连接鉴权成功后仅存活 ${aliveMs / 1000} 秒即被平台关闭（第 $shortSessionCount 次）。" +
-                    "若本机器人的 AppID 也填在了另一台服务器上，QQ 同一机器人只允许一条连接，会互相踢线，请检查配置"
-            )
             return
         }
         if (now - firstShortCloseAt > CONFLICT_WINDOW_MS) {
@@ -298,9 +314,9 @@ object WssDiagnostics : WebSocketListener {
         if (conflictStopped) return
         conflictStopped = true
         QClient.stopForConflict(
-            "[WSS] 已检测到机器人连接被另一台服务器抢占：连接鉴权成功后连续 " +
+            "已检测到机器人连接被另一台服务器抢占：连接鉴权成功后连续 " +
                 "$CONFLICT_SHORT_SESSIONS 次在数秒内被平台关闭（同 AppID 多连接互踢特征）。" +
-                "原因：已有另一台服务器绑定了同一个机器人（bot.app-id 重复）。"
+                "原因：已有另一台服务器绑定了同一个机器人（bot.app-id 重复）"
         )
     }
 
@@ -355,6 +371,12 @@ object WssDiagnostics : WebSocketListener {
             if (socket == null || !socket.isOpen) continue
             val now = System.currentTimeMillis()
 
+            // 1.6.2：连接处于打开状态且鉴权成功后存活 ≥ 90 秒 → 健康会话，
+            // 重置重连计数并宣告「重连成功」（看门狗口径与连接关闭时判定口径一致）
+            if (readyAt > 0 && now - readyAt >= ReconnectManager.HEALTHY_SESSION_MS) {
+                ReconnectManager.onHealthySession()
+            }
+
             // 1) 鉴权失败快速恢复：Hello 已到但 60 秒仍未见 READY/RESUMED，
             //    主动重连触发重新取 token 并重新鉴权（90 秒限频，防止重连风暴）
             if (helloAt > 0 && readyAt < helloAt && now - helloAt > 60_000) {
@@ -388,9 +410,15 @@ object WssDiagnostics : WebSocketListener {
         }
     }
 
-    /** 主动重连（90 秒限频共用，防重连风暴；冲突停机后不再重连）。 */
+    /**
+     * 主动重连（90 秒限频共用，防重连风暴）。
+     *
+     * 1.6.2：重连超时挂起期间（ReconnectManager 已关闭 SDK 自动重连，
+     * 等待 30 分钟退避或 /hb chs）看门狗不再兑底重连；
+     * 互踢冲突不再阻断看门狗（1.6.2 起冲突不停机，重试体系继续）。
+     */
     private fun forcedReconnect(socket: WebSocketClient, message: String) {
-        if (conflictStopped) return
+        if (ReconnectManager.isSuspended()) return
         val now = System.currentTimeMillis()
         if (now - lastForcedReconnectAt <= 90_000) return
         lastForcedReconnectAt = now

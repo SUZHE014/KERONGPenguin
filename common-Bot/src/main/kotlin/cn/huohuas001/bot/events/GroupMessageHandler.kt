@@ -2,6 +2,7 @@ package cn.huohuas001.bot.events
 
 import cn.huohuas001.bot.HuHoBot
 import cn.huohuas001.bot.QClient
+import cn.huohuas001.bot.ReplySeqGuard
 import cn.huohuas001.bot.events.commands.AdministrationCommands
 import cn.huohuas001.bot.events.commands.BaseCommand
 import cn.huohuas001.bot.events.commands.BindCommands
@@ -23,6 +24,7 @@ import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import io.github.kloping.qqbot.entities.qqpd.User
 import io.github.kloping.qqbot.entities.qqpd.v2.Contact
 import io.github.kloping.qqbot.impl.ListenerHost
+import io.github.kloping.qqbot.impl.message.v2.BaseGroupMessageEvent
 import io.github.kloping.qqbot.impl.message.v2.BaseMessageEvent
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -51,6 +53,18 @@ class GroupMessageHandler(private val plugin: HuHoBot) : ListenerHost() {
     @ListenerHost.EventReceiver
     fun onGroupMessage(event: GroupMessageEvent) {
         if (event == null) return
+        // 1.6.2：为本次消息投递分配全局唯一回复序号基数（防 QQ 平台 40054005 消息去重）。
+        // QQ 网关弱网 / 会话恢复时会重投递同一条群消息，SDK 为重投递创建全新事件对象
+        // （回复序号又从 1 起算），与首次投递的回复序号重复后被平台按重复消息拒收；
+        // 此处按 msg_id 计数分配互不重叠的基数（首次 =1，第 N 次重投递 =1+(N-1)×100000），
+        // 之后本事件内任意路径的多条回复（文本 / Markdown / 多页图片）按基数递增，
+        // 任何两条回复的 msg_seq 不会重复（详见 ReconnectManager.ReplySeqGuard 注释）
+        try {
+            (event as? BaseGroupMessageEvent)?.setMsgSeq(
+                ReplySeqGuard.allocateBase(event.rawMessage?.id)
+            )
+        } catch (_: Throwable) {
+        }
         val groupId: String? = event.groupOpenId ?: event.groupId
         val content = event.rawMessage?.content ?: return
 

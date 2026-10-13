@@ -34,3 +34,4 @@ scripts/render-test/out/
 # Folia 兼容真机冒烟运行产物（scripts/folia_smoke_test.py 按需重建）
 scripts/folia-smoke-work/
 scripts/base-jar/
+scripts/smoke162/*.class

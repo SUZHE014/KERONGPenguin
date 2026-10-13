@@ -10,7 +10,10 @@ import org.bukkit.command.TabExecutor
 import java.util.Locale
 
 /**
- * /huhobot 主命令：reload / info / panel / help。
+ * /huhobot 主命令：reload / info / panel / chs / help。
+ *
+ * 1.6.2 新增 chs 子命令：机器人重连超时挂起或断线期间，手动重置重连计数
+ * 并立即重新尝试连接（等价于 30 分钟退避结束后的自动重试，任何时候可用）。
  */
 class HuHoBotCommand(private val plugin: HuHoBotSpigot) : TabExecutor {
 
@@ -28,6 +31,12 @@ class HuHoBotCommand(private val plugin: HuHoBotSpigot) : TabExecutor {
             }
             "panel" -> {
                 resyncPanel(sender)
+                return true
+            }
+            "chs" -> {
+                // 1.6.2：手动重连（重连超时挂起 / 断线期间随时可用）
+                val result = cn.huohuas001.bot.ReconnectManager.manualReconnect()
+                sender.sendMessage("${ChatColor.GREEN}$result")
                 return true
             }
         }
@@ -68,9 +77,10 @@ class HuHoBotCommand(private val plugin: HuHoBotSpigot) : TabExecutor {
         sender.sendMessage("${ChatColor.YELLOW}/$label reload${ChatColor.WHITE} - 重载配置文件")
         sender.sendMessage("${ChatColor.YELLOW}/$label info${ChatColor.WHITE} - 查看适配器信息")
         sender.sendMessage("${ChatColor.YELLOW}/$label panel${ChatColor.WHITE} - 重新同步 QQ 快捷指令面板")
+        sender.sendMessage("${ChatColor.YELLOW}/$label chs${ChatColor.WHITE} - 立即重试连接 QQ 机器人（断线 / 重连超时后用）")
     }
 
     companion object {
-        private val SUBCOMMANDS = listOf("reload", "info", "panel", "help")
+        private val SUBCOMMANDS = listOf("reload", "info", "panel", "chs", "help")
     }
 }

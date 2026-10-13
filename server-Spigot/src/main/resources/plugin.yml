@@ -1,5 +1,5 @@
 name: KERONGPenguin
-version: '1.6.1'
+version: '1.6.2'
 main: cn.huohuas001.huhobotPenguin.spigot.HuHoBotSpigot
 api-version: '1.18'
 # 1.5.7.3：声明支持 Folia 多线程区域化核心——调度全部经 FoliaCompat 桥接
@@ -15,7 +15,7 @@ author: KERONG
 commands:
   huhobot:
     description: KERONG Penguin control command
-    usage: "/huhobot reload|info|panel|help"
+    usage: "/huhobot reload|info|panel|chs|help"
     aliases: [hb]
     permission: huhobot.command
   qq:

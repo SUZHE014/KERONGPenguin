@@ -11,7 +11,8 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent
 
 /**
  * 游戏内命令注册（等价 Spigot 版 plugin.yml 命令 + HuHoBotCommand / QqCommand）：
- * - /huhobot（别名 /hb）：reload / info / panel / help，需要权限等级 2（OP）；
+ * - /huhobot（别名 /hb）：reload / info / panel / chs / help，需要权限等级 2（OP）；
+ *   1.6.2 新增 chs：机器人重连超时挂起或断线期间手动重试连接；
  * - /qq：rebind（玩家自助解绑）与 qxqq / skip / unskip（OP 管理）。
  */
 class NeoForgeCommands(private val plugin: HuHoBotNeoForge) {
@@ -52,6 +53,14 @@ class NeoForgeCommands(private val plugin: HuHoBotNeoForge) {
         builder.then(
             Commands.literal("panel").executes { context -> resyncPanel(context.source) },
         )
+        builder.then(
+            Commands.literal("chs").executes { context ->
+                // 1.6.2：手动重连（重连超时挂起 / 断线期间随时可用）
+                val result = cn.huohuas001.bot.ReconnectManager.manualReconnect()
+                context.source.sendSuccess({ Component.literal("§a$result") }, true)
+                1
+            },
+        )
         builder.executes { context ->
             sendHelp(context.source, "huhobot")
             1
@@ -76,6 +85,11 @@ class NeoForgeCommands(private val plugin: HuHoBotNeoForge) {
                 1
             })
             .then(Commands.literal("panel").executes { context -> resyncPanel(context.source) })
+            .then(Commands.literal("chs").executes { context ->
+                val result = cn.huohuas001.bot.ReconnectManager.manualReconnect()
+                context.source.sendSuccess({ Component.literal("§a$result") }, true)
+                1
+            })
             .executes { context -> sendHelp(context.source, "hb"); 1 }
         event.dispatcher.register(alias)
     }
@@ -108,6 +122,7 @@ class NeoForgeCommands(private val plugin: HuHoBotNeoForge) {
         line("§e/$label reload§f - 重载配置文件")
         line("§e/$label info§f - 查看适配器信息")
         line("§e/$label panel§f - 重新同步 QQ 快捷指令面板")
+        line("§e/$label chs§f - 立即重试连接 QQ 机器人（断线 / 重连超时后用）")
     }
 
     // ---------- /qq ----------

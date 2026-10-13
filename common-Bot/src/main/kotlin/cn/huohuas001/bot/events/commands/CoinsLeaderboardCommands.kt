@@ -23,12 +23,18 @@ import java.util.concurrent.TimeUnit
 import java.awt.image.BufferedImage
 
 /**
- * /金币榜 —— 金币持有量排行榜图片（1.6.0 新增）。
+ * /财富榜 —— 金币持有量排行榜图片（1.6.0 新增，1.6.2 由 /金币榜 更名）。
  *
  * 与 /在线排行榜 同一套渲染器（[LeaderboardRenderer]）：每名玩家一行，
  * 排名徽章（前三名金 / 银 / 铜）+ 真实皮肤头像 + 玩家名 + 右侧金币数量；
  * 主标题与列表头使用经济名称（economy-alias 配置别名后自动替换「金币」二字，
  * 默认为「金币排行榜」/「金币 TOP N」）。
+ *
+ * 1.6.2 更名：命令由 /金币榜 改为 /财富榜，快捷菜单按钮同步更名；
+ * 旧命令 /金币榜 保留为隐藏别名（不进入快捷菜单，与主命令共用开关，
+ * 配置里的 commands.金币榜 升级时自动迁移为 commands.财富榜），
+ * 旧用户使用习惯不受影响。消息模板文件名仍为 coins-leaderboard-*.md
+ * （模板 ID 与命令名解耦，已自定义模板的用户升级后不丢失）。
  *
  * 配置与在线排行榜一致（coins-leaderboard 段）：
  * - coins-leaderboard.top：显示人数（默认 15，夹逼 1..100，超出自动分页）；
@@ -39,7 +45,7 @@ import java.awt.image.BufferedImage
  * 兼容各经济插件）。NeoForge 模组版无 Vault 生态，命令回复
  * 「未安装经济插件」提示（模板 coins-leaderboard-no-economy）。
  *
- * 命令开关：commands.金币榜（默认 true）。
+ * 命令开关：commands.财富榜（默认 true）。
  * 冷却（1.6.0 起可配置）：render.command-cooldown-seconds（默认 5 秒，0 = 关闭）。
  * 提示文本模板：coins-leaderboard-no-economy / coins-leaderboard-no-data /
  * coins-leaderboard-render-failed / manager-not-ready-retry /
@@ -78,7 +84,7 @@ class CoinsLeaderboardCommands : CommandSupport() {
     /** 原始条目（扫描 + 余额查询后的数据）。 */
     private data class RawEntry(val name: String, val uuid: UUID?, val balance: Double)
 
-    @Commands("金币榜")
+    @Commands("财富榜", "金币榜")
     fun coinsLeaderboard(plugin: HuHoBot, event: GroupMessageEvent, params: String) {
         // 查询冷却（render.command-cooldown-seconds，默认 5 秒，0 = 关闭）
         val qq = try {
@@ -199,9 +205,9 @@ class CoinsLeaderboardCommands : CommandSupport() {
                     cachedAt = System.currentTimeMillis()
                     sendPages(event, pages)
                 } catch (error: Throwable) {
-                    plugin.log_error("[金币榜] 渲染失败: ${error.message}")
+                    plugin.log_error("[财富榜] 渲染失败: ${error.message}")
                     plugin.log_error(
-                        "[金币榜] 失败堆栈: " +
+                        "[财富榜] 失败堆栈: " +
                             error.stackTraceToString().lineSequence().take(8).joinToString(" | ")
                     )
                     MessageTemplates.sendDirect(event, "coins-leaderboard-render-failed")

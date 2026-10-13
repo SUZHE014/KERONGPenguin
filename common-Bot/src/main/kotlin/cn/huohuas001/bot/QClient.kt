@@ -60,7 +60,10 @@ object QClient {
      *
      * 0.1.5.5：断线自动恢复——
      * 1. 开启 SDK 的 anyCloseReconnect（对任意关闭码，含 QQ 网关正常关闭的 1000，
-     *    3 秒后自动重新鉴权重连，修复旧版“wss closed with code 1000 后机器人永久掉线”）；
+     *    3 秒后自动重新鉴权重连，修复旧版“wss closed with code 1000 后机器人永久掉线”）
+     *    1.6.2：断线重连改由 [ReconnectManager] 统一编排计数——每次重连
+     *    输出「第 N 次（1/5）重试连接…」，连续 5 次失败暂停自动重连
+     *    （提示可用 /hb chs 手动重试，30 分钟后自动再试，最多 3 轮）；
      * 2. 新增常驻连接看门狗：连接持续断开超过约 2 分钟（SDK 自身重连卡死时）
      *    由插件兑底触发重连，并写入日志文件。
      *
@@ -83,6 +86,7 @@ object QClient {
         try {
             shuttingDown = false
             lastOpenAt = 0L
+            ReconnectManager.onLaunch()
             PluginFileLog.infoAndKeep("QQ 机器人客户端初始化（AppID: $appid）…")
             groupMessageHandler = GroupMessageHandler(currentPlugin)
             val session = Starter(appid, "", secret).also { starter = it }
@@ -207,6 +211,8 @@ object QClient {
                 closedChecks++
                 // 首次发现断开先等待下一轮：给 SDK 自身 3 秒重连留出足够窗口
                 if (closedChecks < 2 || lastOpenAt == 0L) continue
+                // 1.6.2：重连超时挂起期间（等待 30 分钟退避或 /hb chs）不兑底重连
+                if (ReconnectManager.isSuspended()) continue
                 PluginFileLog.errorAndKeep(
                     "检测到 QQ 机器人连接已持续断开超过 1 分钟，尝试兑底重连…"
                 )
@@ -571,36 +577,71 @@ object QClient {
     }
 
     /**
-     * 1.6.1：同 AppID 多连接冲突时停止本服务器的机器人连接。
+     * 1.6.2：恢复机器人连接（/hb chs 手动重试 / 重连退避结束后自动重试）。
+     *
+     * 重新打开 SDK 自动重连（重连超时挂起期间会被关掉），并对当前 socket
+     * 触发一次非阻塞重连——连接成功后服务端重新下发 Hello，SDK 自动重新鉴权，
+     * 重连计数与提示由 [ReconnectManager] 统一编排。
+     *
+     * @return 是否已发起重连（客户端未启动时 false）
+     */
+    fun resumeConnection(): Boolean {
+        val session = starter ?: return false
+        if (shuttingDown) return false
+        try {
+            session.config.anyCloseReconnect = true
+        } catch (_: Throwable) {
+        }
+        val socket = try {
+            session.wssWorker?.webSocket
+        } catch (_: Throwable) {
+            null
+        }
+        return if (socket != null) {
+            try {
+                if (!socket.isOpen) {
+                    socket.reconnect()
+                }
+                true
+            } catch (error: Throwable) {
+                PluginFileLog.errorAndKeep("[重连] 手动重连触发失败: ${error.message}")
+                false
+            }
+        } else {
+            // socket 不可达（SDK 装配异常）：重新走完整启动流程
+            try {
+                val appid = plugin.botAppId
+                val secret = plugin.botSecret
+                if (appid.isBlank() || secret.isBlank()) return false
+                plugin.submitAsync {
+                    try {
+                        launchClient(appid, secret, plugin.qqBotLogFilePattern())
+                    } catch (_: Exception) {
+                    }
+                }
+                true
+            } catch (_: Throwable) {
+                false
+            }
+        }
+    }
+
+    /**
+     * 1.6.1→1.6.2：同 AppID 多连接冲突改为「提示 + 重试体系」，不再直接停机。
      *
      * 背景：QQ 开放平台同一机器人（AppID）只允许保持一条 WebSocket 网关连接。
      * 两台服务器填了同一个机器人的 app-id / secret 时，双方都会自动重连并
-     * 互相把对方踢下线（旧版表现为「两台都能用」，实际轮流掉线、消息随机丢失）。
+     * 互相把对方踢下线（表现为轮流掉线、消息随机丢失）。
      *
-     * [WssDiagnostics] 检测到「连接建立后短时间内被平台反复关闭」的互踢特征后
-     * 调用本方法：先关掉 SDK 的自动重连（避免停机竞态），再在独立线程完整走
-     * 一次 [shutdown]（关连接 / 清线程池 / 停看门狗），并输出醒目的失败原因。
-     * 服务器本体不受影响，修好配置（换独立机器人凭据）后重启插件即可恢复。
+     * [WssDiagnostics] 检测到互踢特征后调用本方法：1.6.1 会完整停机（机器人彻底
+     * 不响应，只能重启恢复）；1.6.2 起改由 [ReconnectManager.onConflictDetected]
+     * 醒目输出原因（“已有另一台服务器绑定了同一个机器人”）并继续走统一的
+     * 重试体系（每轮 5 次、最多 3 轮自动重试，期间可用 /hb chs 手动重试），
+     * 服务器本体与插件其余功能不受影响。
      */
     internal fun stopForConflict(reason: String) {
         if (shuttingDown) return
-        PluginFileLog.errorAndKeep(reason)
-        PluginFileLog.errorAndKeep(
-            "本服务器的 QQ 机器人连接已停止。请检查 bot.app-id 是否也填在了另一台服务器上，" +
-                "为每台服务器配置不同的机器人（AppID / Secret）；确认后重启服务器即可恢复"
-        )
-        // 先关闭 SDK 自动重连，防止停机过程中又被 3 秒重连拉起
-        try {
-            starter?.config?.anyCloseReconnect = false
-        } catch (_: Throwable) {
-        }
-        // 独立线程执行完整停机：不在 WSS 回调线程里清 SDK 线程池（可能自锁）
-        Thread({
-            try {
-                shutdown()
-            } catch (_: Throwable) {
-            }
-        }, "qq-conflict-stop").apply { isDaemon = true }.start()
+        ReconnectManager.onConflictDetected(reason)
     }
 
     /** 停止客户端。 */

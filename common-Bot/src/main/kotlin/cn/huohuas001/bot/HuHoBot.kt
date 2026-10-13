@@ -99,6 +99,29 @@ interface HuHoBot : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPr
         reloadRuntimeConfig()
         launchQqClient()
         WebUiServer.start()
+        // 1.6.2：更新检查（异步延迟 8 秒，错开启动高峰；update-check.enabled 可关闭）
+        scheduleUpdateCheck()
+    }
+
+    /**
+     * 1.6.2：异步延迟执行更新检查（不阻塞启用流程）。
+     *
+     * 有新版本时控制台输出「最新版本号 + 下载页 + 简要更新日志」；
+     * 检测失败只输出一句话，异常细节写入插件日志文件。
+     */
+    private fun scheduleUpdateCheck() {
+        val app = this
+        Thread({
+            try {
+                Thread.sleep(8_000)
+            } catch (_: InterruptedException) {
+                return@Thread
+            }
+            try {
+                UpdateChecker.check(app.pluginVersion)
+            } catch (_: Throwable) {
+            }
+        }, "qq-update-check").apply { isDaemon = true }.start()
     }
 
     /** 停止运行时：断开 QQ 客户端、关闭 Web 面板。 */

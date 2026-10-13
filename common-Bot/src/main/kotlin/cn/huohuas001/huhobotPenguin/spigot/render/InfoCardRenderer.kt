@@ -531,6 +531,9 @@ object InfoCardAssets {
     /** 查询失败后的短期冷却，避免连续请求打爆外部接口。 */
     private const val MISS_TTL = 60_000L
 
+    /** 名字反查负缓存（404 = 名字无正版账号）的有效期（1.6.2：从永久改为 30 分钟）。 */
+    private const val NEGATIVE_UUID_TTL = 30 * 60_000L
+
     /** 输出头像尺寸（渲染前再缩到展示尺寸）。 */
     private const val FACE_SIZE = 216
 
@@ -685,6 +688,13 @@ object InfoCardAssets {
     /**
      * 解析皮肤贴图 URL（纹理图 URL，非头像服务）。
      * 顺序：Profile 直供 → 本服 NBT → 会话服务器（正版 UUID）→ 玩家名反查。
+     *
+     * 1.6.2 修复「极少个数玩家头像始终无法获取」：
+     * 旧版第 4 步要求「名字反查到的正版 UUID ≠ 传入 UUID」才查询会话服务器，
+     * 而 Mojang 极少数老账号的 UUID 不是 v4（如 v3），第 3 步的 v4 快路径
+     * 会跳过它们，第 4 步又因「相同即跳过」被挡——两层全挡 = 头像永远失败；
+     * 现在只要名字反查到正版 UUID 就查询会话服务器（传入 UUID 是 v4 且
+     * 第 3 步已查过的除外，避免重复请求）。
      */
     private fun resolveSkinTexture(request: AvatarRequest): String? {
         // 1. 在线玩家 Profile（最准确，含皮肤插件修改）
@@ -700,14 +710,17 @@ object InfoCardAssets {
             }
         }
 
-        // 3. 正版 UUID：会话服务器查询（未知 UUID 返回 204，可检测失败）
+        // 3. 正版 UUID（v4 快路径）：会话服务器查询（未知 UUID 返回 204，可检测失败）。
+        //    非 v4 的老账号正版 UUID 走第 4 步名字反查后同样能查到
         if (uuid != null && uuid.version() == 4) {
             sessionServerSkinUrl(uuid)?.let { return it }
         }
 
-        // 4. 离线 UUID / 无 UUID：按玩家名查正版账号（非正版名返回 404）
+        // 4. 离线 UUID / 无 UUID / 非 v4 正版 UUID：按玩家名查正版账号（非正版名返回 404）
         val premiumUuid = resolvePremiumUuidByName(request.playerName)
-        if (premiumUuid != null && premiumUuid != uuid) {
+        if (premiumUuid != null &&
+            (uuid == null || premiumUuid != uuid || uuid.version() != 4)
+        ) {
             sessionServerSkinUrl(premiumUuid)?.let { return it }
         }
 
@@ -858,18 +871,55 @@ object InfoCardAssets {
         }
     }
 
-    /** 按玩家名解析正版 UUID（带正负缓存；非正版名返回 404 → null）。 */
+    /**
+     * 按玩家名解析正版 UUID（带正负缓存；非正版名返回 404 → null）。
+     *
+     * 1.6.2 修复「极少个数玩家头像始终无法获取」：旧版把 Mojang API 的
+     * 限流（429）/ 5xx / 网络异常与「名字确实不存在（404）」一律写进
+     * **永久**负缓存——排行榜并发预热 15+ 个名字很容易触发 Mojang
+     * 限流，被 429 的名字从此被判为「无正版账号」，头像永远失败。
+     * 现在区分处理：
+     * - 200 + 有效 id → 正缓存（名字 → UUID，长期有效）；
+     * - 404 / 204 → 负缓存，但带 30 分钟有效期（防玩家改名后永久失效）；
+     * - 429 / 5xx / 网络异常 → 本次 null 但**不写负缓存**，下次查询重试；
+     * - 负缓存条目超时视为无缓存，重新查询。
+     */
     private fun resolvePremiumUuidByName(name: String): UUID? {
         if (name.isBlank()) return null
         val key = name.lowercase()
+        val now = System.currentTimeMillis()
         val cached = premiumUuidCache[key]
         if (cached is UUID) return cached
-        if (cached is Long) return null // 负缓存
+        if (cached is Long) {
+            if (now - cached < NEGATIVE_UUID_TTL) return null
+            // 负缓存过期（如玩家已改名）：清掉，本次重新查询
+            premiumUuidCache.remove(key, cached)
+        }
         return try {
-            val body = httpGet("https://api.mojang.com/users/profiles/minecraft/$name", 5000)
-            val uuid = body?.let { parseDashedUuid(JSON.parseObject(String(it, Charsets.UTF_8))?.getString("id")) }
-            premiumUuidCache[key] = uuid ?: System.currentTimeMillis()
-            uuid
+            val (code, body) = httpGetWithStatus("https://api.mojang.com/users/profiles/minecraft/$name", 5000)
+            when (code) {
+                200 -> {
+                    val uuid = body?.let {
+                        parseDashedUuid(JSON.parseObject(String(it, Charsets.UTF_8))?.getString("id"))
+                    }
+                    if (uuid != null) {
+                        premiumUuidCache[key] = uuid
+                        uuid
+                    } else {
+                        // 200 但响应异常：不写负缓存，下次重试
+                        null
+                    }
+                }
+                204, 404 -> {
+                    // 名字确实无正版账号：短期负缓存（30 分钟）
+                    premiumUuidCache[key] = now
+                    null
+                }
+                else -> {
+                    // 429 限流 / 5xx / 网络异常（-1）：不写负缓存，下次查询自动重试
+                    null
+                }
+            }
         } catch (_: Throwable) {
             null
         }
@@ -891,6 +941,25 @@ object InfoCardAssets {
         if (skin.width >= 64 && skin.height >= 32) skin else null
     } catch (_: Throwable) {
         null
+    }
+
+    /** HTTP GET 带状态码（网络异常返回 code = -1；用于区分 404 与限流/网络失败）。 */
+    private fun httpGetWithStatus(url: String, timeoutMillis: Int): Pair<Int, ByteArray?> {
+        var connection: HttpURLConnection? = null
+        return try {
+            connection = URL(url).openConnection() as HttpURLConnection
+            connection.connectTimeout = timeoutMillis
+            connection.readTimeout = timeoutMillis
+            connection.setRequestProperty("User-Agent", "KERONGPenguin")
+            connection.instanceFollowRedirects = true
+            val code = connection.responseCode
+            val bytes = if (code in 200..299) connection.inputStream.use { it.readBytes() } else null
+            code to bytes
+        } catch (_: Exception) {
+            -1 to null
+        } finally {
+            connection?.disconnect()
+        }
     }
 
     /**

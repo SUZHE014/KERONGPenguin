@@ -59,6 +59,14 @@ class ConfigManager(private val plugin: JavaPlugin) {
             config.set(CONFIG_VERSION_PATH, CURRENT_CONFIG_VERSION)
             changed = true
         }
+        // 1.6.2：命令更名 /金币榜 → /财富榜（commands 段开关同步迁移保留用户取值；
+        // 旧命令名作为隐藏别名继续可用，与主命令共用开关）
+        if (oldVersion in 1 until 18 && config.isSet("commands.金币榜")) {
+            config.set("commands.财富榜", config.get("commands.金币榜"))
+            config.set("commands.金币榜", null)
+            plugin.logger.info("命令更名：/金币榜 → /财富榜（原 commands.金币榜 开关取值已迁移）")
+            changed = true
+        }
         // 1.5.6：排行榜每张图片展示玩家数 20 → 15（旧默认值 20 属 1.5.5 自动补齐，
         // 非用户手动意图，升级时同步改为新默认；用户自定义的其他值（如 30）不动）
         if (oldVersion in 1 until 15 && config.getInt("qq-bind.leaderboard.top", 15) == 20) {
@@ -229,25 +237,28 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
-        private const val CURRENT_CONFIG_VERSION = 17
+        private const val CURRENT_CONFIG_VERSION = 18
 
         /**
          * 支持开关的群命令名单（1.5.2：查信息更名对应个人信息卡片命令，新增 查询open ID；
-         * 1.6.0：新增 金币榜）。
+         * 1.6.0 新增金币榜；1.6.2 更名财富榜）。
          */
         private val COMMAND_NAMES = listOf(
-            "查询open ID", "查信息", "绑定", "重新绑定", "查在线", "在线排行榜", "金币榜", "在线服务器", "发信息",
+            "查询open ID", "查信息", "绑定", "重新绑定", "查在线", "在线排行榜", "财富榜", "在线服务器", "发信息",
             "执行命令", "执行", "管理员执行", "全量", "motd", "帮助",
             "AI对话上下文", "清除当前上下文", "黑名单", "解除黑名单", "签到",
         )
 
         /**
-         * 1.5.7.4：命令别名表（别名 → 主命令）。
+         * 命令别名表（别名 → 主命令）。
          * 别名与主命令共用 commands 段里的开关；别名不出现在快捷指令菜单与
          * commands 配置段（dispatch 层按别名命中后仍查主命令开关值）。
+         * 1.5.7.4：「在线」为 /查在线 的输入别名；
+         * 1.6.2：「金币榜」为 /财富榜 的旧名别名（命令更名后旧用户无感升级）。
          */
         private val COMMAND_ALIASES = linkedMapOf(
             "在线" to "查在线",
+            "金币榜" to "财富榜",
         )
 
         /**
@@ -301,6 +312,12 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "bot.secret" to "",
             "bot.name" to "KERONGPenguin",
             "bot.groups" to emptyList<Any>(),
+            // 1.6.2：断线重连过程提示开关（false = 关闭「第 N 次（1/5）重试连接…」防刷屏；
+            // 重连超时后的 /hb chs 恢复指引不受此开关影响，始终输出）
+            "bot.reconnect-notify" to true,
+            // 1.6.2：更新检查开关（启动后异步访问官网版本文件，发现新版本时控制台提示
+            // 版本号 / 下载页 / 简要日志；检测失败仅一句话提示，细节进日志）
+            "update-check.enabled" to true,
             "serverName" to "KERONGPenguin",
             "chat-format.from-game" to "[游戏] {message}",
             "chat-format.from-group" to "[QQ] {name}: {message}",

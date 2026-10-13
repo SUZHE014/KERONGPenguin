@@ -11,7 +11,17 @@
 
 # 配置文件版本号（插件自动维护，请勿手动修改；
 # 升级插件时会自动补齐新增的配置项、清理已废弃的配置项）
-config-version: 17
+config-version: 18
+
+# ---------------- 更新检查（1.6.2 新增） ----------------
+# 插件启动后自动访问官网版本文件，检查是否有新版本：
+#   有新版本 → 控制台输出最新版本号、官网下载页链接、简要更新日志
+#   已是最新 → 控制台输出一行提示
+#   检查失败 → 控制台只输出一句话（不影响插件运行），失败细节写入
+#              plugins/KERONGPenguin/logs/qq/ 日志文件
+# 关闭 false = 完全不联网检查
+update-check:
+  enabled: true
 
 # 服务器显示名称：用于进出服播报的 {server} 变量、统计卡片、
 # 查在线、在线排行榜、金币排行榜等展示场景
@@ -28,6 +38,13 @@ bot:
   # 机器人名称：仅用于显示（serverName 留空时作为后备显示名），
   # 可与 QQ 内实际昵称不同
   name: "KERONGPenguin"
+  # 断线重连过程提示开关（1.6.2 新增，默认 true）
+  # 机器人断开后 SDK 自动重连时，控制台会输出「第 N 次（1/5）重试连接…」，
+  # 连续 5 次失败后提示重连超时并暂停自动重连（可用 /hb chs 立即重试，
+  # 或等 30 分钟后自动进行下一轮，最多 3 轮）。
+  # 关闭 false = 不输出「第 N 次」过程提示（防刷屏）；
+  # 但「重连超时 + 可用 /hb chs 恢复」的失败提示不受此开关影响，始终输出
+  reconnect-notify: true
   # 允许机器人响应的 QQ 群列表（填"群 OpenId"，不是群号码！）
   # 获取方式：把机器人拉进群 → 在群里发送 /查询open ID → 机器人回复的"群的OpenId"就是
   # 注意：填写时每一项都必须加双引号！
@@ -116,7 +133,7 @@ render:
   # 默认 60；0 = 关闭复用（每次都重新渲染）；上限 600
   result-cache-seconds: 60
   # 图片渲染命令的用户冷却秒数（1.6.0 新增，旧版硬编码 5 秒）：
-  # 同一 QQ 用户两次发送 /查信息、/查在线、/在线排行榜、/金币榜 的最小间隔，
+  # 同一 QQ 用户两次发送 /查信息、/查在线、/在线排行榜、/财富榜 的最小间隔，
   # 防止刷屏导致渲染风暴；默认 5；0 = 关闭冷却
   command-cooldown-seconds: 5
   # 查信息卡片是否使用内置背景图（1.5.7 新增，默认 true）
@@ -156,12 +173,15 @@ leaderboard:
   # img 里没有图片时自动回退内置背景图
   builtin-background: true
 
-# ---------------- 金币排行榜（1.6.0 新增，配置与在线排行榜一致） ----------------
-# 群内发送 /金币榜 渲染金币持有量排行图片（排名徽章 + 皮肤头像 + 玩家名 +
+# ---------------- 金币排行榜（1.6.0 新增，1.6.2 命令更名 /财富榜） ----------------
+# 群内发送 /财富榜 渲染金币持有量排行图片（排名徽章 + 皮肤头像 + 玩家名 +
 # 金币数量），数据来自 Vault 经济插件余额（全部玩家，含离线）；
+# 1.6.2 起 /金币榜 更名为 /财富榜（快捷菜单按钮同步更名，旧命令 /金币榜
+# 仍可使用——作为隐藏别名不占菜单位；升级时 commands.金币榜 的开关取值
+# 自动迁移到 commands.财富榜）；消息模板文件名仍为 coins-leaderboard-*.md。
 # 未安装 Vault 时命令回复"未安装经济插件"提示。
 # 图片标题与单位使用下方 economy-alias 配置的经济名称。
-# 命令开关见 commands.金币榜
+# 命令开关见 commands.财富榜
 coins-leaderboard:
   # 显示玩家数（默认前 15 名；范围 1-100；超出 15 人自动分段发送多张图片）
   top: 15
@@ -253,7 +273,7 @@ messages:
   no-admin-permission: "no-admin-permission.md"      # 无管理员权限使用管理命令时的提示
   query-too-frequent: "query-too-frequent.md"        # 查询冷却内的"查询太频繁"提示
   server-busy: "server-busy.md"                      # 渲染队列繁忙的兜底提示
-  image-send-failed: "image-send-failed.md"          # 图片发送失败（查信息/查在线/排行榜/金币榜）
+  image-send-failed: "image-send-failed.md"          # 图片发送失败（查信息/查在线/排行榜/财富榜）
   manager-not-ready: "manager-not-ready.md"          # 数据管理器未就绪（简短版）
   manager-not-ready-bind: "manager-not-ready-bind.md"      # 绑定管理器未就绪（简短版）
   manager-not-ready-retry: "manager-not-ready-retry.md"    # 管理器未就绪请稍后再试
@@ -290,7 +310,7 @@ messages:
   leaderboard-no-data: "leaderboard-no-data.md"     # 暂无在线时长数据
   leaderboard-render-failed: "leaderboard-render-failed.md"  # 排行榜图片生成失败
   # —— 金币排行榜（1.6.0） ——
-  coins-leaderboard-no-economy: "coins-leaderboard-no-economy.md"  # 未安装 Vault 经济插件
+  coins-leaderboard-no-economy: "coins-leaderboard-no-economy.md"  # /财富榜 未安装 Vault 经济插件（模板名沿用 coins-，1.6.2 命令更名不影响）
   coins-leaderboard-no-data: "coins-leaderboard-no-data.md"        # 暂无金币数据
   coins-leaderboard-render-failed: "coins-leaderboard-render-failed.md" # 金币排行图片生成失败
   # —— 查询 OpenID ——
@@ -369,7 +389,7 @@ commands:
   重新绑定: true        # /重新绑定 —— 解除当前 QQ 绑定并踢出对应玩家（换号重绑用）
   查在线: true          # /查在线 —— 查询在线玩家列表（1.5.7.4 起可用别名 /在线，共用本开关，不出现在快捷菜单）
   在线排行榜: true      # /在线排行榜 —— 总在线时长排行（关闭后快捷菜单按钮同步消失，1.5.5 新增）
-  金币榜: true          # /金币榜 —— 金币持有量排行（需 Vault；关闭后快捷菜单按钮同步消失，1.6.0 新增）
+  财富榜: true          # /财富榜 —— 金币持有量排行（需 Vault；关闭后快捷菜单按钮同步消失；1.6.0 新增为 /金币榜，1.6.2 更名，旧命令仍可用）
   在线服务器: true      # /在线服务器 —— 查看服务器 IP 与端口
   发信息: true          # /发信息 <内容> —— 发送消息到游戏内
   执行命令: true        # /执行命令 <命令> —— 管理员执行服务器命令
