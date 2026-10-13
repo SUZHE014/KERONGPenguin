@@ -1,5 +1,6 @@
 package cn.huohuas001.bot
 
+import cn.huohuas001.huhobotPenguin.spigot.qqbind.EconomyName
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
 import com.alibaba.fastjson.JSON
 import com.alibaba.fastjson.JSONArray
@@ -122,17 +123,20 @@ object MenuManager {
             }
             // 1.6.0：长度预校验（中文按 2 单位）——超限按钮跳过并告警，
             // 防止单个按钮把整次面板提交拖垮（面板整体被拒 → 全部按钮消失）
+            // 1.6.1：描述文本应用经济别名（如「金币数量排行」/「每日签到领金币」
+            // 里的“金币”跟随 economy-alias 配置替换；按钮名即命令名不替换）
             val checked = visible.mapNotNull { item ->
+                val aliasedDesc = EconomyName.apply(item.desc)
                 when {
                     displayUnits(item.name) > 14 -> {
                         log("面板按钮「${item.name}」名称超过 14 单位（中文按 2 计），已跳过")
                         null
                     }
-                    displayUnits(item.desc) > 30 -> {
+                    displayUnits(aliasedDesc) > 30 -> {
                         log("面板按钮「${item.name}」描述超过 30 单位（中文按 2 计），已跳过")
                         null
                     }
-                    else -> item
+                    else -> PanelItem(item.name, aliasedDesc, item.command)
                 }
             }
             if (checked.isEmpty()) {

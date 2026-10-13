@@ -26,6 +26,9 @@ import java.util.Date
  */
 object PluginFileLog {
 
+    /** 颜色代码（§ + 一个字符，Minecraft / Bukkit 控制台颜色）。 */
+    private val COLOR_CODE = Regex("§.")
+
     /** 当前日志文件（按天分文件；目录与 QqBindManager 详细日志保持一致）。 */
     private fun currentFile(): File? {
         return try {
@@ -42,15 +45,19 @@ object PluginFileLog {
         try {
             val file = currentFile() ?: return
             val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())
-            PrintWriter(FileWriter(file, true)).use { it.println("[$timestamp] $message") }
+            // 1.6.1：写入前剥离 § 颜色代码（控制台彩色文本进文件后是乱码字符）
+            val plain = COLOR_CODE.replace(message, "")
+            PrintWriter(FileWriter(file, true)).use { it.println("[$timestamp] $plain") }
         } catch (_: Throwable) {
         }
     }
 
-    /** 信息：控制台 + 日志文件双写。用于连接等需要实时观察且需留档的日志。 */
+    /**
+     * 信息：控制台 + 日志文件双写。
+     * 1.6.1：log_info 本身已双写（平台适配器），直接委托，不再重复写文件。
+     */
     fun infoAndKeep(message: String) {
         plugin.log_info(message)
-        write(message)
     }
 
     /** 警告：控制台 + 日志文件双写（log_warning 已双写，直接委托）。 */

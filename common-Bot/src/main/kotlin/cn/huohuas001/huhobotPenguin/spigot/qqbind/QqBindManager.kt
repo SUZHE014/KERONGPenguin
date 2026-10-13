@@ -125,25 +125,29 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             return shared as? JavaPlugin ?: error("QqBindManager 需要 Spigot 插件实例")
         }
 
-        /** 静默日志（控制台 + 文件）。 */
+        /**
+         * 静默日志（控制台 + 文件）。
+         * 1.6.1：控制台行不再拼接 [yyyy-MM-dd HH:mm:ss] 时间戳——服务端控制台
+         * 本身已按行输出时间，插件再拼一份会出现「[KERONGPenguin] [时间]」重复；
+         * 日志文件行保留时间戳（文件没有行级时间信息，需要它定位）。
+         */
         @JvmStatic
         fun logQuiet(message: String) {
             val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())
             val prefix = if (message.startsWith("[")) "" else "[QQ绑定] "
-            val line = "[$timestamp] $prefix$message"
             try {
                 val manager = instance
                 if (manager?.plugin != null) {
-                    manager.plugin.logger.info(line)
+                    manager.plugin.logger.info(prefix + message)
                 } else {
-                    println(line)
+                    println(prefix + message)
                 }
             } catch (_: Throwable) {
-                println(line)
+                println(prefix + message)
             }
             try {
                 val file = getLogFile() ?: return
-                PrintWriter(FileWriter(file, true)).use { it.println(line) }
+                PrintWriter(FileWriter(file, true)).use { it.println("[$timestamp] $prefix$message") }
             } catch (_: Throwable) {
             }
         }

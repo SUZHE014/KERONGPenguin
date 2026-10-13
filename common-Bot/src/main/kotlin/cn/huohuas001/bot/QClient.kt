@@ -498,6 +498,17 @@ object QClient {
      * 0.1.5.5：返回是否发送成功（机器人断线 / 上传接口异常时 false），
      * 调用方（如 /查信息，1.5.2 前为 /个人信息）据此回退文本提示，与“卡片生成失败”区分开；
      * 失败详情已通过 log_error 双写控制台与插件日志文件。
+     *
+     * 1.6.1 修复「图片已发出但仍提示发送失败」：
+     * - QQ 群富媒体消息（图片）的发送接口普遍要 10 秒以上才返回应答，而 SDK
+     *   （kloping）内置 OkHttp 客户端 readTimeout 硬编码 10 秒——请求已经送达
+     *   QQ 侧并实际投递了图片，但客户端等应答先超时抛 SocketTimeoutException，
+     *   旧版一律按失败处理，于是群里出现「图片发出来了 + 紧跟一条发送失败提示」；
+     * - 现在把异常分类：读超时（请求已发出、结果未知，图片大概率已投递）不再
+     *   当作失败，只记一条 WARNING 日志供事后核查；连接失败 / 上传失败等
+     *   （请求未送达）仍按失败处理并提示重试；
+     * - 正常返回时校验 QQ 应答码 ret：200 / 空 = 成功；2022021x = QQ 已受理
+     *   （异步下发 / 风控审核中，消息实际已发出）同样算成功；其余码才视为拒收。
      */
     fun replyWithImgBytes(event: GroupMessageEvent, imageBytes: ByteArray): Boolean {
         val currentPlugin = plugin
@@ -512,12 +523,84 @@ object QClient {
         }
         val message = MessageChain().image(imageBytes)
         return try {
-            event.sendMessage(message)
-            true
+            val result = event.sendMessage(message)
+            val ret = result?.ret
+            when {
+                // null = 平台未回执（旧 SDK 行为）/ 200 = 同步成功 / 2022021x = 已受理（异步下发或审核中）
+                ret == null || ret == 200 || (ret >= 20220210 && ret <= 20220219) -> true
+                else -> {
+                    currentPlugin.log_error("回复图片消息被 QQ 拒收（ret=$ret, msg=${result.msg ?: "无"}）")
+                    false
+                }
+            }
         } catch (error: Exception) {
-            currentPlugin.log_error("回复图片消息失败: ${error.message}")
-            false
+            if (isReadTimeout(error)) {
+                // 请求已送达 QQ 侧，只是没等到应答：图片大概率已经发出，不再提示失败
+                currentPlugin.log_warning(
+                    "回复图片消息等待 QQ 应答超时（${error.javaClass.simpleName}: ${error.message ?: "无"}）——" +
+                        "请求已发出，图片大概率已投递，不再按失败处理"
+                )
+                true
+            } else {
+                currentPlugin.log_error("回复图片消息失败: ${error.message}")
+                false
+            }
         }
+    }
+
+    /**
+     * 判断异常链里是否是「读超时」（请求已发出、应答未等到）。
+     *
+     * 只匹配 SocketTimeoutException 与 message 含 timeout 的 InterruptedIOException
+     * （OkHttp 同步调用的超时形态）；连接被拒 / 未送达等异常不匹配，仍按失败处理。
+     * 最多回溯 3 层 cause，避免深链递归。
+     */
+    private fun isReadTimeout(error: Throwable): Boolean {
+        var current: Throwable? = error
+        var depth = 0
+        while (current != null && depth < 3) {
+            when {
+                current is java.net.SocketTimeoutException -> return true
+                current is java.io.InterruptedIOException &&
+                    (current.message ?: "").contains("timeout", ignoreCase = true) -> return true
+            }
+            current = current.cause
+            depth++
+        }
+        return false
+    }
+
+    /**
+     * 1.6.1：同 AppID 多连接冲突时停止本服务器的机器人连接。
+     *
+     * 背景：QQ 开放平台同一机器人（AppID）只允许保持一条 WebSocket 网关连接。
+     * 两台服务器填了同一个机器人的 app-id / secret 时，双方都会自动重连并
+     * 互相把对方踢下线（旧版表现为「两台都能用」，实际轮流掉线、消息随机丢失）。
+     *
+     * [WssDiagnostics] 检测到「连接建立后短时间内被平台反复关闭」的互踢特征后
+     * 调用本方法：先关掉 SDK 的自动重连（避免停机竞态），再在独立线程完整走
+     * 一次 [shutdown]（关连接 / 清线程池 / 停看门狗），并输出醒目的失败原因。
+     * 服务器本体不受影响，修好配置（换独立机器人凭据）后重启插件即可恢复。
+     */
+    internal fun stopForConflict(reason: String) {
+        if (shuttingDown) return
+        PluginFileLog.errorAndKeep(reason)
+        PluginFileLog.errorAndKeep(
+            "本服务器的 QQ 机器人连接已停止。请检查 bot.app-id 是否也填在了另一台服务器上，" +
+                "为每台服务器配置不同的机器人（AppID / Secret）；确认后重启服务器即可恢复"
+        )
+        // 先关闭 SDK 自动重连，防止停机过程中又被 3 秒重连拉起
+        try {
+            starter?.config?.anyCloseReconnect = false
+        } catch (_: Throwable) {
+        }
+        // 独立线程执行完整停机：不在 WSS 回调线程里清 SDK 线程池（可能自锁）
+        Thread({
+            try {
+                shutdown()
+            } catch (_: Throwable) {
+            }
+        }, "qq-conflict-stop").apply { isDaemon = true }.start()
     }
 
     /** 停止客户端。 */

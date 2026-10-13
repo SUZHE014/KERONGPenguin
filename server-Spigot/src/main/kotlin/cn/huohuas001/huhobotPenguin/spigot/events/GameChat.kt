@@ -2,6 +2,7 @@ package cn.huohuas001.huhobotPenguin.spigot.events
 
 import cn.huohuas001.bot.QClient
 import cn.huohuas001.bot.events.commands.BindCommands
+import cn.huohuas001.bot.tools.PluginFileLog
 import cn.huohuas001.huhobotPenguin.spigot.commands.QqCommand
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.AiChat
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
@@ -293,11 +294,14 @@ class GameChat : Listener {
                 }
                 if (economyReady) {
                     Bukkit.getConsoleSender().sendMessage("§a[KERONGPenguin] 签到功能已开启，已检测到经济插件 Vault（Economy 就绪）。")
+                    PluginFileLog.write("[KERONGPenguin] 签到功能已开启，已检测到经济插件 Vault（Economy 就绪）。")
                 } else {
                     Bukkit.getConsoleSender().sendMessage("§c[KERONGPenguin] 签到功能已开启，但未检测到经济前置（Economy 未就绪）。请安装 Vault 及任一经济插件（如 EssentialsX）。")
+                    PluginFileLog.write("[KERONGPenguin] 签到功能已开启，但未检测到经济前置（Economy 未就绪）。请安装 Vault 及任一经济插件（如 EssentialsX）。")
                 }
             } else {
                 Bukkit.getConsoleSender().sendMessage("§c[KERONGPenguin] 签到功能已开启，但未检测到 Vault 经济插件。请安装 Vault 及任一经济插件（如 EssentialsX）。")
+                PluginFileLog.write("[KERONGPenguin] 签到功能已开启，但未检测到 Vault 经济插件。请安装 Vault 及任一经济插件（如 EssentialsX）。")
             }
         } catch (t: Throwable) {
             QqBindManager.logQuiet("[GameChat] 签到经济检测失败: ${safeMessage(t)}")

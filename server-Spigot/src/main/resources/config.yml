@@ -2,8 +2,7 @@
 #  KERONG Penguin 配置文件
 #
 #  使用说明：
-#  - 修改本文件后需重启服务器生效（或在游戏内由 OP 执行
-#    /huhobot reload，可简写 /hb reload）
+#  - 修改本文件后需重启服务器生效
 #  - 列表项（如 bot.groups、filter-regex、admin.openids）填写时，
 #    每一项都必须加双引号，例如 ["ABC123", "DEF456"]
 #  - 含中文或特殊符号的值建议用引号包裹（如 "KERONGPenguin"），避免解析问题
@@ -221,6 +220,33 @@ qq-bind:
 # 删掉文件重启可恢复默认）；想换用别的文件名：改下面对应项的值。
 # 模板中的占位符（如 {player}）由机器人自动替换为实际值；
 # 渲染输出统一应用 economy-alias（"金币"字样自动替换为经济别名）。
+#
+# —— 占位符（变量）说明：模板里写 {变量名}，发送时自动替换为实际值；
+#    未提供的变量原样保留，按“无值时为空”设计的变量整行不显示 ——
+#   {player}          玩家名（签到 / 解绑踢出 / OpenId 反查对应的游戏玩家名）
+#   {prefix}          签到回复前缀（qq-bind.checkin.prefix 配置的文案）
+#   {reward}          本次签到获得的金币数量（已格式化，如 100）
+#   {streak}          连续签到天数（中断后从 1 重新累计）
+#   {name}            被操作成员的群昵称（黑名单 / 被查询的成员）
+#   {count}           黑名单人数
+#   {list}            黑名单名单文本（编号列表，每行一人）
+#   {error}           错误信息（异常的具体消息文本）
+#   {state}           全量转发切换后的状态（“开启”或“关闭”）
+#   {openid}          QQ 用户 OpenId（机器人在群里识别成员的编号）
+#   {group}           QQ 群 OpenId（填 bot.groups 用的那个编号）
+#   {nickname}        OpenId 对应的群昵称（无记录时为提示文案）
+#   {lastSeenPart}    最后活跃信息（有记录时为“\n最后活跃: 时间”，无记录为空、整行不显示）
+#   {version}         插件当前版本号（help 模板）/ 目标服务器版本（motd-status 模板）
+#   {leaderboardLine} 帮助里的在线排行榜条目行（commands.在线排行榜 关闭时为空、该行不显示）
+#   {ip} / {port}     服务器地址与端口（motd.server-ip / server-port 配置）
+#   {status}          AI 对话上下文当前状态（“开启”或“关闭”）
+#   {host}            MOTD 查询的目标服务器地址
+#   {type}            目标服务器类型（如 VANILLA）
+#   {motd}            目标服务器 MOTD 文本
+#   {protocolLine}    协议版本行（有值时为“协议: N\n”，无值为空、该行不显示）
+#   {online} / {max}  目标服务器当前在线人数 / 最大人数
+#   {delay}           MOTD 查询延迟（毫秒）
+#   {playersSection}  在线玩家名单段（有人时为“\n在线玩家:\n- 名单”，空服为空、整段不显示）
 messages:
   # —— 通用（多条命令共用） ——
   command-disabled: "command-disabled.md"            # 发送已被关闭的命令时的提示

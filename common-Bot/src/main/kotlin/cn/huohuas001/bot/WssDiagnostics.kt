@@ -94,9 +94,35 @@ object WssDiagnostics : WebSocketListener {
     @Volatile
     private var stopped = false
 
+    // ---------- 1.6.1：同 AppID 多连接互踢检测 ----------
+
+    /** 判定为「短命会话」的阈值：READY 后存活不足该毫秒数即被平台关闭。 */
+    private const val SHORT_SESSION_MS = 90_000L
+
+    /** 连续短命会话达到该次数判定为多连接互踢冲突。 */
+    private const val CONFLICT_SHORT_SESSIONS = 3
+
+    /** 短命会话窗口：首次短命关闭到触发判定的最大间隔（毫秒）。 */
+    private const val CONFLICT_WINDOW_MS = 600_000L
+
+    /** 连续短命会话计数（出现一次存活≥阈值的会话即清零）。 */
+    @Volatile
+    private var shortSessionCount = 0
+
+    /** 本次窗口内首次短命关闭的时间戳。 */
+    @Volatile
+    private var firstShortCloseAt = 0L
+
+    /** 已触发冲突停机（防止重复判定）。 */
+    @Volatile
+    private var conflictStopped = false
+
     /** 启动诊断看门狗（幂等）。 */
     fun start() {
         stopped = false
+        shortSessionCount = 0
+        firstShortCloseAt = 0L
+        conflictStopped = false
         if (watchdogThread?.isAlive == true) return
         val thread = Thread({
             runWatchdog()
@@ -226,9 +252,56 @@ object WssDiagnostics : WebSocketListener {
             "[WSS] 连接关闭：code=$code 原因=${reason ?: "无"} 由${if (remote) "平台" else "本端"}发起（$hint）" +
                 " [本次连接累计：事件 $eventCount 帧 / 心跳应答 $ackCount 次${if (fallbackHeartbeatCount > 0) " / 插件代发心跳 $fallbackHeartbeatCount 次" else ""}]"
         )
+        // 1.6.1：同 AppID 多连接互踢检测（在 readyAt 清零前先取本次会话存活时长）
+        val sessionReadyAt = readyAt
+        if (sessionReadyAt > 0) {
+            val aliveMs = System.currentTimeMillis() - sessionReadyAt
+            if (aliveMs < SHORT_SESSION_MS) {
+                trackShortSession(aliveMs)
+            } else {
+                // 出现一次健康长会话：清零（QQ 网关正常踢线间隔远长于阈值）
+                shortSessionCount = 0
+                firstShortCloseAt = 0L
+            }
+        }
         // 会话随连接失效，READY 需要重新等待
         readyAt = 0L
         return true
+    }
+
+    /**
+     * 1.6.1：短命会话计数与互踢判定。
+     *
+     * 「鉴权成功后存活不足 90 秒即被平台关闭」连续出现 3 次（且都在 10 分钟内）
+     * 是同 AppID 多连接互踢的典型特征：两台服务器填同一个机器人凭据时会轮流
+     * 把对方踢下线，谁也连不稳。判定成立后调用 [QClient.stopForConflict]
+     * 停止本服务器的连接（输出失败原因），避免无限互踢。
+     * 单次短命关闭只记提示日志（网络抖动也可能偶发一次，不误判）。
+     */
+    private fun trackShortSession(aliveMs: Long) {
+        val now = System.currentTimeMillis()
+        if (firstShortCloseAt == 0L) firstShortCloseAt = now
+        shortSessionCount++
+        if (shortSessionCount < CONFLICT_SHORT_SESSIONS) {
+            PluginFileLog.warnAndKeep(
+                "[WSS] 本次连接鉴权成功后仅存活 ${aliveMs / 1000} 秒即被平台关闭（第 $shortSessionCount 次）。" +
+                    "若本机器人的 AppID 也填在了另一台服务器上，QQ 同一机器人只允许一条连接，会互相踢线，请检查配置"
+            )
+            return
+        }
+        if (now - firstShortCloseAt > CONFLICT_WINDOW_MS) {
+            // 窗口外积累的零星短会话：重新开窗计数，不判冲突
+            shortSessionCount = 1
+            firstShortCloseAt = now
+            return
+        }
+        if (conflictStopped) return
+        conflictStopped = true
+        QClient.stopForConflict(
+            "[WSS] 已检测到机器人连接被另一台服务器抢占：连接鉴权成功后连续 " +
+                "$CONFLICT_SHORT_SESSIONS 次在数秒内被平台关闭（同 AppID 多连接互踢特征）。" +
+                "原因：已有另一台服务器绑定了同一个机器人（bot.app-id 重复）。"
+        )
     }
 
     /**
@@ -315,8 +388,9 @@ object WssDiagnostics : WebSocketListener {
         }
     }
 
-    /** 主动重连（90 秒限频共用，防重连风暴）。 */
+    /** 主动重连（90 秒限频共用，防重连风暴；冲突停机后不再重连）。 */
     private fun forcedReconnect(socket: WebSocketClient, message: String) {
+        if (conflictStopped) return
         val now = System.currentTimeMillis()
         if (now - lastForcedReconnectAt <= 90_000) return
         lastForcedReconnectAt = now

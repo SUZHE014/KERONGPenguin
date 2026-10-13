@@ -287,10 +287,13 @@ class HuHoBotSpigot : JavaPlugin(), HuHoBot {
     // 0.1.5.5：警告与错误改为“控制台 + 插件日志文件”双写。
     // 此前仅走 Bukkit Logger（只进控制台 / latest.log 路由不稳定的混合端），
     // 渲染失败、发送失败等报错事后无法从文件追溯——即用户反馈的
-    // “部分报错没有记录在日志里面”的问题。info 级保持仅控制台
-    // （数据保存等留档日志走 PluginFileLog.write 仅写文件，互不影响）。
+    // “部分报错没有记录在日志里面”的问题。
+    // 1.6.1：info 级同样双写（用户要求插件全部控制台输出都留档）；
+    // 数据保存等“只留档不刷屏”的日志仍走 PluginFileLog.write 仅写文件，
+    // 互不影响。文件行自动剥离 § 颜色代码（见 PluginFileLog）。
     override fun log_info(msg: String) {
         logger.info(msg)
+        PluginFileLog.write(msg)
     }
 
     override fun log_warning(msg: String) {
