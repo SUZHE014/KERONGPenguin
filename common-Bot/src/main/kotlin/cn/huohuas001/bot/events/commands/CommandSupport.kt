@@ -29,11 +29,6 @@ abstract class CommandSupport : BaseCommand() {
         event.sendMessage(plugin.auditText(message))
     }
 
-    /** 回复图片消息。 */
-    protected fun replyWithImg(plugin: HuHoBot, event: GroupMessageEvent, message: String, imgUrl: String) {
-        plugin.replyWithImg(event, message, imgUrl)
-    }
-
     /** 校验发送者是否具备管理员权限，无权限时自动回复提示。 */
     protected fun requireAdmin(plugin: HuHoBot, event: GroupMessageEvent): Boolean {
         val groupId = groupId(event)
@@ -54,30 +49,6 @@ abstract class CommandSupport : BaseCommand() {
             MessageTemplates.sendPlain(event, "no-admin-permission")
         }
         return allowed
-    }
-
-    /** 向服务器派发命令并将执行结果回复到群。 */
-    protected fun executeGameCommand(plugin: HuHoBot, event: GroupMessageEvent, command: String, direct: Boolean) {
-        val outgoingCommand = if (direct) command
-        else "huhobot run ${groupId(event)} ${userId(event)} $command"
-        plugin.sendCommand(outgoingCommand).whenComplete { result, error ->
-            if (error != null || result == null) {
-                event.sendMessage("游戏桥接未配置或执行失败")
-            } else {
-                val raw = result.rawString
-                if (raw.isBlank()) {
-                    event.sendMessage("已发送执行请求")
-                } else {
-                    event.sendMessage(plugin.auditText(raw))
-                }
-            }
-        }
-    }
-
-    /** 以自定义命令形式（run / adminrun）派发参数。 */
-    protected fun executeCustomCommand(plugin: HuHoBot, event: GroupMessageEvent, params: String, admin: Boolean) {
-        val type = if (admin) "adminrun" else "run"
-        executeGameCommand(plugin, event, "huhobot $type ${groupId(event)} ${userId(event)} $params", true)
     }
 
     /** 从消息元数据中提取发送者的群身份（owner / admin / member）。 */

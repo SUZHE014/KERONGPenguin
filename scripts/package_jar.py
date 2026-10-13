@@ -36,6 +36,21 @@ EXCLUDE_EXACT = {
     "META-INF/server-Spigot.kotlin_module",
 }
 
+# 1.6.3 死代码清理（第三方库瘦身，双模块一致）：
+# - com/mchange (c3p0) / com/zaxxer (HikariCP) / org/terracotta：仅 Quartz 的
+#   JDBC JobStore 连接池 SPI 会按类名字符串反射加载；kloping SDK 只用默认
+#   RAMJobStore，这些类运行时永不加载，合计 ~1.1MB；
+# - webui/ / schema/：依赖内残留的网页与 JSON-Schema 资源，无任何类引用
+#   （仅 fastjson2 未使用的 JSONSchema 会读 schema/）。
+# 审计结论见 1.6.3 提交说明；如未来接入 JDBC JobStore 需移除本段。
+DEAD_LIB_PREFIXES = (
+    "com/mchange/",
+    "com/zaxxer/",
+    "org/terracotta/",
+    "webui/",
+    "schema/",
+)
+
 
 def read_version(spigot_jar: str) -> str:
     with zipfile.ZipFile(spigot_jar) as zf:
@@ -47,7 +62,10 @@ def read_version(spigot_jar: str) -> str:
 
 
 def excluded(name: str) -> bool:
-    return name in EXCLUDE_EXACT or any(name.startswith(p) for p in EXCLUDE_PREFIXES)
+    if name in EXCLUDE_EXACT or any(name.startswith(p) for p in EXCLUDE_PREFIXES):
+        return True
+    # 1.6.3：未使用的第三方库瘦身
+    return any(name.startswith(p) for p in DEAD_LIB_PREFIXES)
 
 
 def main() -> None:

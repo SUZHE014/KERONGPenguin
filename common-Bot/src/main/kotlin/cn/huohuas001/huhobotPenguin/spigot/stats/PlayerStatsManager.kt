@@ -626,16 +626,6 @@ object PlayerStatsManager {
         dirtyUuids.add(uuid)
     }
 
-    /** 玩家是否已有统计记录（内存或其 QUUID 主文件 stats 节）。 */
-    fun hasData(uuid: UUID): Boolean {
-        if (statsByUuid.containsKey(uuid)) return true
-        val manager = bindManagerOrNull() ?: return false
-        val quuid = manager.getQuuidByPlayerUuid(uuid.toString()) ?: return false
-        return manager.readQuuidRecord(quuid)?.contains("stats") == true
-    }
-
-    /** 调试用：当前内存中已加载统计的玩家数（懒加载，仅含本次启动触达的玩家）。 */
-    fun trackedCount(): Int = statsByUuid.size
 
     /**
      * 北京当前日期（1.5.4）：优先异步网络校时缓存（与签到同一时间基准）；

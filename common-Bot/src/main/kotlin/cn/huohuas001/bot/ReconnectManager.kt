@@ -103,6 +103,7 @@ object ReconnectManager {
         conflictAnnounced = false
         conflictReason = null
         lastOpenAt = 0L
+        ConflictWatch.reset()
     }
 
     /**
@@ -202,6 +203,23 @@ object ReconnectManager {
         PluginFileLog.errorAndKeep(builder.toString())
 
         // 关闭 SDK 自动重连 + 断开当前 socket（给 QQ 网关降温，也停止无意义的互踢循环）
+        suspendConnection()
+
+        // 30 分钟退避后自动恢复（最后一轮之后不再恢复，等待 /hb chs）
+        if (nextRound <= BIG_ROUND_MAX) {
+            scheduleBackoffWake(myGen, nextRound)
+        }
+    }
+
+    /**
+     * 挂起连接：关闭 SDK 自动重连并断开当前 socket。
+     *
+     * 供「重连超时退避」与「确凿冲突处置」两条路径共用：
+     * - anyCloseReconnect=false → SDK 不再自行重连；
+     * - 主动断开 socket → 看门狗/兑底重连均凭 [isSuspended] 停连，
+     *   本服不再与另一台服务器争抢网关与消息。
+     */
+    private fun suspendConnection() {
         try {
             QClient.starter?.config?.anyCloseReconnect = false
         } catch (_: Throwable) {
@@ -209,11 +227,6 @@ object ReconnectManager {
         try {
             QClient.starter?.wssWorker?.webSocket?.close()
         } catch (_: Throwable) {
-        }
-
-        // 30 分钟退避后自动恢复（最后一轮之后不再恢复，等待 /hb chs）
-        if (nextRound <= BIG_ROUND_MAX) {
-            scheduleBackoffWake(myGen, nextRound)
         }
     }
 
@@ -251,6 +264,37 @@ object ReconnectManager {
     }
 
     /**
+     * 1.6.3：确凿冲突处置（[ConflictWatch] 判定：本服被动回复被 QQ 去重拒收，
+     * 另一台同 AppID 服务器抢先回复了同一条群消息）。
+     *
+     * 与「疑似冲突」（连接级特征，[onConflictDetected] 仅提示后继续重试）不同，
+     * 这是实锤：继续在线只会继续互抢消息（双方各有一半回复被拒收）。因此：
+     * - 醒目输出原因与处理方法（不可关闭，与重连超时提示同一原则）；
+     * - 断开本服机器人连接并停止自动重连（服务器本体与插件其余功能不受影响）；
+     * - **不走 30 分钟自动轮次**：配置错误无法靠重试解决，自动重试只会反复
+     *   抢占、反复断开；管理员关闭其中一台服务器（或换用不同机器人）后，
+     *   用 /hb chs 手动恢复本服连接。
+     */
+    fun onDedupConflictConfirmed() {
+        conflictReason =
+            "同一机器人（bot.app-id）已绑定在另一台服务器上，两台服务器同时在回复群消息（本服回复被 QQ 去重拒收）"
+        conflictAnnounced = true
+        PluginFileLog.errorAndKeep(
+            "[冲突] 已确认同一机器人被两台服务器同时使用：本服回复连续被 QQ 按「消息被去重(40054005)」拒收——" +
+                "另一台服务器抢先回复了同一条群消息（本进程回复序号不可能自发重复）。\n" +
+                "[冲突] 两台服务器共用一个机器人会导致双方回复互相挤占、图片与文本随机发送失败。" +
+                "已断开本服机器人连接并停止自动重连（服务器本体与插件其余功能不受影响；" +
+                "重试无法解决配置问题，不再自动重试）。\n" +
+                "[冲突] 处理方法：关闭其中一台服务器的机器人（bot.app-id / secret 留空即可），" +
+                "或为每台服务器申请各自的机器人（免费）；处理完成后在服务器内使用 /hb chs 手动恢复本服连接。"
+        )
+        if (suspended) return
+        suspended = true
+        generation.incrementAndGet()
+        suspendConnection()
+    }
+
+    /**
      * 手动重连（/hb chs）：重置全部计数，立即恢复连接。
      *
      * @return 给命令发送者的结果文本
@@ -263,6 +307,7 @@ object ReconnectManager {
         bigRound.set(0)
         suspended = false
         successAnnounced = false
+        ConflictWatch.reset()
         val launched = QClient.resumeConnection()
         return if (launched) {
             if (wasSuspended) {

@@ -7,7 +7,6 @@ import cn.huohuas001.bot.provider.CustomCommandDetail
 import cn.huohuas001.bot.provider.HExecution
 import cn.huohuas001.bot.provider.Motd
 import cn.huohuas001.bot.provider.PlayerEventFormat
-import cn.huohuas001.bot.provider.WhiteList
 import cn.huohuas001.bot.tools.Cancelable
 import cn.huohuas001.bot.tools.PluginFileLog
 import cn.huohuas001.huhobotPenguin.spigot.commands.BukkitConsoleSender
@@ -218,8 +217,6 @@ class HuHoBotSpigot : JavaPlugin(), HuHoBot {
 
     override val motd: Motd
         get() = configManager.motd()
-
-    override fun whiteList(): WhiteList = configManager.whiteList()
 
     override fun filterRegexList(): List<String> = configManager.filterRegexList()
 

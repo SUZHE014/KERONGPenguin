@@ -44,10 +44,6 @@ object QClient {
         handler.registerCommand(command)
     }
 
-    /** 群命令处理器（未启动时为 null）。 */
-    val messageHandler: GroupMessageHandler?
-        get() = groupMessageHandler
-
     /**
      * 启动 QQ 客户端。
      *
@@ -266,21 +262,10 @@ object QClient {
         }
     }
 
-    /** 向所有配置的群发送文本（1.5.4.5：经异步发送队列，入队即返回）。 */
-    private fun sendTextToGroups(content: String, action: String) {
-        if (content.isBlank()) return
-        sendPayloadToGroups(V2MsgData().setContent(content), action)
-    }
-
     /** 向所有配置的群发送文本（同步内核，仅由发送队列线程调用）。 */
     private fun sendTextToGroupsSync(content: String, action: String) {
         if (content.isBlank()) return
         sendPayloadToGroupsSync(V2MsgData().setContent(content), action)
-    }
-
-    /** 将消息载荷发送到所有配置的群（1.5.4.5：经异步发送队列，入队即返回）。 */
-    private fun sendPayloadToGroups(payload: V2MsgData, action: String) {
-        OutboxQueue.submit { sendPayloadToGroupsSync(payload, action) }
     }
 
     /** 同步发送内核：直接向所有群发送（仅由发送队列线程调用，不阻塞调用线程）。 */
@@ -360,6 +345,8 @@ object QClient {
             val groupId = event.groupOpenId ?: event.groupId ?: return
             session.bot?.groupBaseV2?.send(groupId, JSON.toJSONString(payload), Channel.SEND_MESSAGE_HEADERS)
         } catch (error: Exception) {
+            // 1.6.3：去重拒收（40054005）是双服务器同绑同一机器人的实锤证据
+            ConflictWatch.onReplyRejected(error)
             currentPlugin.log_error("回复 Markdown 失败: ${error.message}")
         }
     }
@@ -414,6 +401,8 @@ object QClient {
                 "[AI引用] 引用回复未被平台确认（result=${result}），回退普通被动回复"
             )
         } catch (error: Throwable) {
+            // 1.6.3：去重拒收（40054005）是双服务器同绑同一机器人的实锤证据
+            ConflictWatch.onReplyRejected(error)
             QqBindManager.logVerbose(
                 "[AI引用] 引用回复发送失败: ${error.message}，回退普通被动回复"
             )
@@ -493,6 +482,8 @@ object QClient {
         try {
             event.sendMessage(message)
         } catch (error: Exception) {
+            // 1.6.3：去重拒收（40054005）是双服务器同绑同一机器人的实锤证据
+            ConflictWatch.onReplyRejected(error)
             currentPlugin.log_error("回复图片消息失败: ${error.message}")
         }
     }
@@ -535,6 +526,8 @@ object QClient {
                 // null = 平台未回执（旧 SDK 行为）/ 200 = 同步成功 / 2022021x = 已受理（异步下发或审核中）
                 ret == null || ret == 200 || (ret >= 20220210 && ret <= 20220219) -> true
                 else -> {
+                    // 1.6.3：去重拒收（40054005）是双服务器同绑同一机器人的实锤证据
+                    ConflictWatch.onReplyRejectedDetail("code is [$ret] msg=${result.msg ?: "无"}")
                     currentPlugin.log_error("回复图片消息被 QQ 拒收（ret=$ret, msg=${result.msg ?: "无"}）")
                     false
                 }
@@ -548,6 +541,8 @@ object QClient {
                 )
                 true
             } else {
+                // 1.6.3：去重拒收（40054005）是双服务器同绑同一机器人的实锤证据
+                ConflictWatch.onReplyRejected(error)
                 currentPlugin.log_error("回复图片消息失败: ${error.message}")
                 false
             }

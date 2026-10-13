@@ -76,12 +76,6 @@ object BukkitScheduler {
     private val nextId = java.util.concurrent.atomic.AtomicInteger(0)
 }
 
-/** 周期任务句柄（submitTimer 用）。 */
-class NeoScheduledHandle(private val future: ScheduledFuture<*>) : cn.huohuas001.bot.tools.Cancelable {
-    override fun cancel() {
-        future.cancel(false)
-    }
-}
 
 /** 调度任务句柄（对齐 Spigot 的 BukkitTask；立即执行的任务无 future，取消为空操作）。 */
 interface BukkitTask {

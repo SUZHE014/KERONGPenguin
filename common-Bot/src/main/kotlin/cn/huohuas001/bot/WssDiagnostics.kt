@@ -137,6 +137,78 @@ object WssDiagnostics : WebSocketListener {
         )
     }
 
+    /**
+     * 1.6.3：互踢证据统一入口。
+     *
+     * 1.6.2 只统计「鉴权成功后存活 <90 秒被关闭」的短命会话；实测双服务器
+     * 场景还存在另一种形态——第二台服务器发起的连接在**鉴权完成前**就被
+     * 平台关闭（Identify/Resume 被拒），此时 readyAt 恒为 0，旧版只把它当
+     * 普通失败重连，永不触发互踢判定，第二台服务器控制台因此只有
+     * 「第 N 次（1/5）重试连接…」和一条没有原因的「重连超时」——
+     * 这正是「两台服务器同时绑同一机器人却毫无冲突提示」的另一半根因。
+     *
+     * 现在：凭据自检（[QqTokenHealth.lastCheckOk]）已通过时，鉴权期被关
+     * 的连接同样计入互踢证据窗口（凭据有效却连不上，指向网关拒绝本连接，
+     * 而非凭据问题）；凭据自检失败则不计（那是凭据问题，另有明确提示）。
+     */
+    private fun trackAuthRejected() {
+        recordConflictEvidence(
+            hint = "本服务器连接在鉴权完成前即被平台关闭（AppID 凭据自检已通过，" +
+                "凭据本身可用）。若 bot.app-id 没有填在另一台服务器上，则多为网关/网络问题；" +
+                "若填了，QQ 同一机器人只允许一条稳定连接，本服大概率是被抢占的后来者"
+        ) { count ->
+            "已检测到机器人连接疑似被另一台服务器抢占：凭据有效但连接连续 $count 次" +
+                "在鉴权完成前被平台关闭（同 AppID 多连接冲突特征之一）。" +
+                "原因：极可能已有另一台服务器绑定了同一个机器人（bot.app-id 重复）"
+        }
+    }
+
+    /**
+     * 1.6.1：短命会话计数与互踢判定。
+     *
+     * 「鉴权成功后存活不足 90 秒即被平台关闭」连续出现 3 次（且都在 10 分钟内）
+     * 是同 AppID 多连接互踢的典型特征：两台服务器填同一个机器人凭据时会轮流
+     * 把对方踢下线，谁也连不稳。
+     *
+     * 1.6.2 行为变更：判定成立后**不再停机**——改为经 [ReconnectManager]
+     * 醒目输出原因（「已有另一台服务器绑定了同一个机器人」），连接继续走
+     * 统一的重试体系（每轮 5 次、最多 3 轮自动重试，期间可用 /hb chs 手动重试），
+     * 服务器本体与插件其余功能不受影响。
+     * 单次短命关闭即输出醒目提示（error 级，修复旧版启动期无任何明确提示的问题：
+     * 网络抖动也可能偶发一次，但提示里已说明如何排查，不再静默）。
+     */
+    private fun trackShortSession(aliveMs: Long) {
+        recordConflictEvidence(
+            hint = "本服务器连接鉴权成功后仅存活 ${aliveMs / 1000} 秒即被平台关闭。" +
+                "若 bot.app-id 也填在了另一台服务器上，QQ 同一机器人只允许一条连接，会互相抢占轮流掉线；" +
+                "若确认未重复配置，则多为网络抖动，SDK 将自动重连（重连过程见「第 N 次（1/5）」提示）"
+        ) { count ->
+            "已检测到机器人连接被另一台服务器抢占：连接鉴权成功后连续 " +
+                "$count 次在数秒内被平台关闭（同 AppID 多连接互踢特征）。" +
+                "原因：已有另一台服务器绑定了同一个机器人（bot.app-id 重复）"
+        }
+    }
+
+    /** 互踢证据计数（窗口内累计达到阈值即判定冲突，只判定一次）。 */
+    private fun recordConflictEvidence(hint: String, reasonBuilder: (Int) -> String) {
+        val now = System.currentTimeMillis()
+        if (firstShortCloseAt == 0L || now - firstShortCloseAt > CONFLICT_WINDOW_MS) {
+            // 重新开窗：窗口外的零星证据不计入
+            firstShortCloseAt = now
+            shortSessionCount = 0
+        }
+        shortSessionCount++
+        PluginFileLog.errorAndKeep(
+            "[WSS] $hint（第 $shortSessionCount/$CONFLICT_SHORT_SESSIONS 次）"
+        )
+        if (shortSessionCount < CONFLICT_SHORT_SESSIONS) {
+            return
+        }
+        if (conflictStopped) return
+        conflictStopped = true
+        QClient.stopForConflict(reasonBuilder(shortSessionCount))
+    }
+
     /** 停止看门狗（插件停机）。 */
     fun stop() {
         stopped = true
@@ -271,53 +343,22 @@ object WssDiagnostics : WebSocketListener {
                 ReconnectManager.onClosedAfter(aliveMs, healthy = true)
             }
         } else {
-            // 未能完成鉴权即被关闭：一次失败的重连尝试
+            // 未能完成鉴权即被关闭：一次失败的重连尝试；
+            // 1.6.3：凭据自检已通过时，鉴权期被关的连接计入互踢证据窗口
+            // （凭据有效却连不上 = 网关拒绝本连接，同 AppID 被另一台服务器占用的特征）
+            val tokenOk = try {
+                QqTokenHealth.lastCheckOk == true
+            } catch (_: Throwable) {
+                false
+            }
+            if (tokenOk) {
+                trackAuthRejected()
+            }
             ReconnectManager.onClosedAfter(0L, healthy = false)
         }
         // 会话随连接失效，READY 需要重新等待
         readyAt = 0L
         return true
-    }
-
-    /**
-     * 1.6.1：短命会话计数与互踢判定。
-     *
-     * 「鉴权成功后存活不足 90 秒即被平台关闭」连续出现 3 次（且都在 10 分钟内）
-     * 是同 AppID 多连接互踢的典型特征：两台服务器填同一个机器人凭据时会轮流
-     * 把对方踢下线，谁也连不稳。
-     *
-     * 1.6.2 行为变更：判定成立后**不再停机**——改为经 [ReconnectManager]
-     * 醒目输出原因（「已有另一台服务器绑定了同一个机器人」），连接继续走
-     * 统一的重试体系（每轮 5 次、最多 3 轮自动重试，期间可用 /hb chs 手动重试），
-     * 服务器本体与插件其余功能不受影响。
-     * 单次短命关闭即输出醒目提示（error 级，修复旧版启动期无任何明确提示的问题：
-     * 网络抖动也可能偶发一次，但提示里已说明如何排查，不再静默）。
-     */
-    private fun trackShortSession(aliveMs: Long) {
-        val now = System.currentTimeMillis()
-        if (firstShortCloseAt == 0L) firstShortCloseAt = now
-        shortSessionCount++
-        PluginFileLog.errorAndKeep(
-            "[WSS] 本服务器连接鉴权成功后仅存活 ${aliveMs / 1000} 秒即被平台关闭（第 $shortSessionCount 次）。" +
-                "若 bot.app-id 也填在了另一台服务器上，QQ 同一机器人只允许一条连接，会互相抢占轮流掉线；" +
-                "若确认未重复配置，则多为网络抖动，SDK 将自动重连（重连过程见「第 N 次（1/5）」提示）"
-        )
-        if (shortSessionCount < CONFLICT_SHORT_SESSIONS) {
-            return
-        }
-        if (now - firstShortCloseAt > CONFLICT_WINDOW_MS) {
-            // 窗口外积累的零星短会话：重新开窗计数，不判冲突
-            shortSessionCount = 1
-            firstShortCloseAt = now
-            return
-        }
-        if (conflictStopped) return
-        conflictStopped = true
-        QClient.stopForConflict(
-            "已检测到机器人连接被另一台服务器抢占：连接鉴权成功后连续 " +
-                "$CONFLICT_SHORT_SESSIONS 次在数秒内被平台关闭（同 AppID 多连接互踢特征）。" +
-                "原因：已有另一台服务器绑定了同一个机器人（bot.app-id 重复）"
-        )
     }
 
     /**
@@ -497,8 +538,18 @@ object WssDiagnostics : WebSocketListener {
  */
 object QqTokenHealth {
 
+    /**
+     * 最近一次自检结果（1.6.3 新增）：true = 凭据有效，false = 凭据无效，
+     * null = 自检未完成或无法访问接口。供 [WssDiagnostics] 鉴别「鉴权期被关」
+     * 的连接是凭据问题还是同 AppID 被另一台服务器占用。
+     */
+    @Volatile
+    var lastCheckOk: Boolean? = null
+        private set
+
     /** 执行自检并返回结果描述（调用方负责落盘，token 只返回前 8 位避免泄露）。 */
     fun check(appid: String, secret: String): String {
+        lastCheckOk = null
         var connection: java.net.HttpURLConnection? = null
         return try {
             val body = JSONObject()
@@ -522,6 +573,8 @@ object QqTokenHealth {
                 } catch (_: Throwable) {
                     null
                 }
+                // 1.6.3：记录自检结果（供 WssDiagnostics 鉴别鉴权期被关的连接成因）
+                lastCheckOk = !token.isNullOrEmpty()
                 if (!token.isNullOrEmpty()) {
                     "[鉴权自检] AppID 凭据有效（token 获取成功：${token.take(8)}****，接口返回 200）。" +
                         "若机器人仍无法鉴权，请查看日志中的 [WSS] 帧对话与错误堆栈定位协议层问题"
@@ -529,6 +582,8 @@ object QqTokenHealth {
                     "[鉴权自检] 接口返回 200 但响应缺少 access_token：${response.take(200)}"
                 }
             } else {
+                // 1.6.3：记录自检结果（false = 凭据无效，不计入互踢证据）
+                lastCheckOk = false
                 "[鉴权自检] AppID 凭据可能无效（接口 HTTP $code）：${response.take(200)}。" +
                     "请到 QQ 开放平台核对 AppID 与 Secret；凭据无效时机器人会持续陷入鉴权失败重连循环"
             }

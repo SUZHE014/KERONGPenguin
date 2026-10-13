@@ -104,8 +104,6 @@ object OpenIdDirectory {
         }
     }
 
-    /** 目录条目数（诊断用；懒加载下为本次启动已触达的条目数）。 */
-    fun size(): Int = directory.size
 
     /** 查条目：内存优先，没有则反查该 OpenId 绑定玩家的 QUUID 主文件。 */
     private fun lookupEntry(openId: String): Entry? {

@@ -6,7 +6,6 @@ import cn.huohuas001.bot.provider.ConfigUpgrader
 import cn.huohuas001.bot.provider.CustomCommandDetail
 import cn.huohuas001.bot.provider.Motd
 import cn.huohuas001.bot.provider.PlayerEventFormat
-import cn.huohuas001.bot.provider.WhiteList
 import org.bukkit.configuration.ConfigurationSection
 import org.bukkit.configuration.file.FileConfiguration
 import org.bukkit.plugin.java.JavaPlugin
@@ -174,8 +173,6 @@ class ConfigManager(private val plugin: JavaPlugin) {
         }
         return files
     }
-
-    fun whiteList(): WhiteList = WhiteList("whitelist add {name}", "whitelist remove {name}")
 
     fun motd(): Motd = Motd(
         plugin.config.getString("motd.server-ip", "") ?: "",

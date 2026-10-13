@@ -48,29 +48,29 @@ object MenuManager {
      * 旧名保留为隐藏别名不出现在菜单）；「在线」为 /查在线 的输入别名，
      * 按用户要求不出现在快捷菜单。
      */
-    private data class PanelItem(val name: String, val desc: String, val command: String)
+    private data class PanelItem(val name: String, val desc: String)
 
     private val PANEL_ITEMS = listOf(
-        PanelItem("帮助", "查看所有命令", "帮助"),
-        PanelItem("查询open ID", "查询 OpenId", "查询open ID"),
-        PanelItem("查信息", "查询玩家统计卡片", "查信息"),
-        PanelItem("绑定", "绑定 QQ", "绑定 "),
-        PanelItem("重新绑定", "解除 QQ 绑定", "重新绑定"),
-        PanelItem("查在线", "查询在线玩家", "查在线"),
-        PanelItem("在线排行榜", "在线时长排行", "在线排行榜"),
-        PanelItem("财富榜", "金币数量排行", "财富榜"),
-        PanelItem("在线服务器", "查看服务器", "在线服务器"),
-        PanelItem("发信息", "发送消息", "发信息 "),
-        PanelItem("执行命令", "执行服务器命令", "执行命令 "),
-        PanelItem("执行", "执行自定义命令", "执行 "),
-        PanelItem("管理员执行", "管理员执行", "管理员执行 "),
-        PanelItem("全量", "切换全量转发", "全量"),
-        PanelItem("motd", "查询服务器", "motd "),
-        PanelItem("AI对话上下文", "AI对话上下文", "AI对话上下文 "),
-        PanelItem("清除当前上下文", "AI清除", "清除当前上下文"),
-        PanelItem("黑名单", "黑名单", "黑名单 "),
-        PanelItem("解除黑名单", "解除黑名单", "解除黑名单"),
-        PanelItem("签到", "每日签到领金币", "签到"),
+        PanelItem("帮助", "查看所有命令"),
+        PanelItem("查询open ID", "查询 OpenId"),
+        PanelItem("查信息", "查询玩家统计卡片"),
+        PanelItem("绑定", "绑定 QQ"),
+        PanelItem("重新绑定", "解除 QQ 绑定"),
+        PanelItem("查在线", "查询在线玩家"),
+        PanelItem("在线排行榜", "在线时长排行"),
+        PanelItem("财富榜", "金币数量排行"),
+        PanelItem("在线服务器", "查看服务器"),
+        PanelItem("发信息", "发送消息"),
+        PanelItem("执行命令", "执行服务器命令"),
+        PanelItem("执行", "执行自定义命令"),
+        PanelItem("管理员执行", "管理员执行"),
+        PanelItem("全量", "切换全量转发"),
+        PanelItem("motd", "查询服务器"),
+        PanelItem("AI对话上下文", "AI对话上下文"),
+        PanelItem("清除当前上下文", "AI清除"),
+        PanelItem("黑名单", "黑名单"),
+        PanelItem("解除黑名单", "解除黑名单"),
+        PanelItem("签到", "每日签到领金币"),
     )
 
     /** 依赖 QQ 绑定功能开启的按钮（绑定关闭时一并隐藏；1.5.2：个人信息按钮更名为查信息）。 */
@@ -137,7 +137,7 @@ object MenuManager {
                         log("面板按钮「${item.name}」描述超过 30 单位（中文按 2 计），已跳过")
                         null
                     }
-                    else -> PanelItem(item.name, aliasedDesc, item.command)
+                    else -> PanelItem(item.name, aliasedDesc)
                 }
             }
             if (checked.isEmpty()) {
@@ -219,11 +219,6 @@ object MenuManager {
         }
     }
 
-    /** 获取按钮对应的命令触发文本。 */
-    fun getCommandTrigger(name: String?): String? {
-        if (name == null) return null
-        return PANEL_ITEMS.firstOrNull { it.name == name }?.command
-    }
 
     // ---------- HTTP 调用（全部带响应校验与错误码日志） ----------
 

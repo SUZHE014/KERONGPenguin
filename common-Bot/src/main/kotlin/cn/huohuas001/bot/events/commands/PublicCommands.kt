@@ -387,9 +387,22 @@ class PublicCommands : CommandSupport() {
         ))
     }
 
-    /** /motd —— 查询服务器状态文本（模板 server-status；带参数时走 MotdCommands 的状态查询）。 */
+    /**
+     * /motd —— 无参数：查询本服状态（模板 server-status）；
+     * 带参数（/motd <host>）：委托 [MotdCommands] 查询任意 MC 服务器状态
+     * （minebbs MOTD API，模板 motd-*）。
+     *
+     * 1.6.3 修复：旧版注释声称「带参数时走 MotdCommands 的状态查询」，但
+     * PublicCommands 先于 MotdCommands 注册、命令分发首个匹配即短路，
+     * MotdCommands 实际永不可达（带参数也只会回本服状态）——现补上真正的
+     * 转发调用，/motd <host> 恢复可用，motd-* 五个模板恢复被渲染。
+     */
     @Commands("motd")
     fun motd(plugin: HuHoBot, event: GroupMessageEvent, params: String) {
+        if (params.isNotBlank()) {
+            MotdCommands().motd(plugin, event, params)
+            return
+        }
         val config = plugin.motd
         MessageTemplates.sendDirect(event, "server-status", mapOf(
             "ip" to config.serverIP,

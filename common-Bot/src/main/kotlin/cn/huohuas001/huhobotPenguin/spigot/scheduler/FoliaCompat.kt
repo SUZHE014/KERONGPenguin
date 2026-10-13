@@ -127,19 +127,9 @@ object FoliaCompat {
         else runSync(plugin, task)
     }
 
-    /**
-     * 在玩家实体所属线程取值并限时等待（超时 / 离线返回 null）。
-     * 典型用途：读取玩家原版统计（getStatistic 属实体状态，Folia 要求
-     * 在实体所属区域线程访问）。
-     * 非 Folia：与 callSync 等价（主线程 + 限时）。
-     */
-    fun <T> callOnPlayer(plugin: Plugin, player: Player, timeoutSec: Long, task: () -> T): T? {
-        if (isFolia) return FoliaDelegate.callOnPlayer(plugin, player, timeoutSec, task)
-        return callSync(plugin, timeoutSec, task)
-    }
 
     /**
-     * 按玩家 UUID 在其实体线程取值（[callOnPlayer] 的 UUID 变体）：
+     * 按玩家 UUID 在其实体线程取值（FoliaDelegate.callOnPlayer 的 UUID 变体）：
      * 在线时走实体线程，离线时（无实体可调度）退全局区域线程执行——
      * 离线场景任务内部自行兜底（如查不到实体返回已存档数据）。
      */

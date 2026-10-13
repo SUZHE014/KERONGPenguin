@@ -7,7 +7,6 @@ import cn.huohuas001.bot.provider.CustomCommandDetail
 import cn.huohuas001.bot.provider.HExecution
 import cn.huohuas001.bot.provider.Motd
 import cn.huohuas001.bot.provider.PlayerEventFormat
-import cn.huohuas001.bot.provider.WhiteList
 import cn.huohuas001.bot.tools.Cancelable
 import cn.huohuas001.bot.tools.PluginFileLog
 import cn.huohuas001.huhobotPenguin.spigot.manager.ConfigManager
@@ -178,8 +177,6 @@ class HuHoBotNeoForge : JavaPlugin(), HuHoBot {
     override val motd: Motd
         get() = configManager.motd()
 
-    override fun whiteList(): WhiteList = configManager.whiteList()
-
     override fun filterRegexList(): List<String> = configManager.filterRegexList()
 
     override fun adminMode(): AdminMode = configManager.adminMode()
@@ -296,7 +293,7 @@ class HuHoBotNeoForge : JavaPlugin(), HuHoBot {
             .resolve("kerongpenguin").toFile()
 
         /** 模组版本（与 neoforge.mods.toml 一致）。 */
-        private const val MOD_VERSION = "1.6.2"
+        private const val MOD_VERSION = "1.6.3"
 
         /** 当前模组实例（命令与事件层访问）。 */
         @Volatile

@@ -850,14 +850,4 @@ object QueryInfoService {
         }
     }
 
-    /** 距离：8.44 km。 */
-    fun formatDistance(cm: Long): String {
-        if (cm <= 0) return "0 m"
-        val meters = cm / 100.0
-        return if (meters >= 1000) {
-            trimZero(meters / 1000.0, 2) + " km"
-        } else {
-            trimZero(meters, 0) + " m"
-        }
-    }
 }

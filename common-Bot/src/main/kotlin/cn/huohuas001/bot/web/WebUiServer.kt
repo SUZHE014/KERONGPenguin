@@ -10,18 +10,4 @@ object WebUiServer {
 
     @Suppress("unused")
     fun stop() {}
-
-    @Suppress("unused")
-    fun invalidateAllTokens() {}
-}
-
-/**
- * Web 面板密码管理占位实现。
- */
-object WebUiPassword {
-    @Suppress("unused")
-    fun changePassword(password: String): Boolean = false
-
-    @Suppress("unused")
-    fun isConfigured(): Boolean = false
 }

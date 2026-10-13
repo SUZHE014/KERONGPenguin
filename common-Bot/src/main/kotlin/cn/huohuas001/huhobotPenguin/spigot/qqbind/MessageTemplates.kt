@@ -223,6 +223,7 @@ object MessageTemplates {
     /**
      * 带 @ 提及的模板回复（与旧版 sendDirect 行为一致）：
      * Markdown 优先、失败回退纯文本；渲染结果为空串时直接跳过（模板被清空的场景）。
+     * 1.6.3：发送异常时接入 [cn.huohuas001.bot.ConflictWatch]（去重拒收 = 双服务器同绑同一机器人的实锤证据）。
      */
     fun sendDirect(event: GroupMessageEvent, id: String, vars: Map<String, String> = emptyMap()) {
         val message = render(id, vars)
@@ -237,13 +238,16 @@ object MessageTemplates {
             val content = if (!userId.isNullOrEmpty()) "<@$userId>\n$message" else message
             try {
                 QClient.replyMarkdown(event, content, null)
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                cn.huohuas001.bot.ConflictWatch.onReplyRejected(t)
                 event.sendMessage(content)
             }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            cn.huohuas001.bot.ConflictWatch.onReplyRejected(t)
             try {
                 event.sendMessage(message)
-            } catch (_: Throwable) {
+            } catch (t2: Throwable) {
+                cn.huohuas001.bot.ConflictWatch.onReplyRejected(t2)
             }
         }
     }
@@ -254,7 +258,8 @@ object MessageTemplates {
         if (message.isEmpty()) return
         try {
             event.sendMessage(message)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            cn.huohuas001.bot.ConflictWatch.onReplyRejected(t)
         }
     }
 

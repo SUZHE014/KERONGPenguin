@@ -14,7 +14,6 @@ interface LoggerProvider {
     fun log_info(msg: String)
     fun log_warning(msg: String)
     fun log_error(msg: String)
-    fun log_debug(msg: String) = log_info(msg)
 }
 
 /** 任务调度能力。 */

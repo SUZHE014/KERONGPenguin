@@ -3,7 +3,7 @@ package cn.huohuas001.bot.provider
 import java.io.File
 
 /**
- * 配置数据模型集合：AdminMode / ChatFormat / Motd / PlayerEventFormat / WhiteList / CustomCommandDetail。
+ * 配置数据模型集合：AdminMode / ChatFormat / Motd / PlayerEventFormat / CustomCommandDetail。
  * 由 [ConfigProvider] 的各平台实现负责从真实配置文件中构造。
  */
 
@@ -48,12 +48,6 @@ data class PlayerEventFormat(
     val joinFormat: String,
     val quitEnabled: Boolean,
     val quitFormat: String,
-)
-
-/** 白名单增删命令模板（{name} 占位）。 */
-data class WhiteList(
-    val addCommand: String,
-    val delCommand: String,
 )
 
 /** 自定义命令详情（QQ 群触发 → 服务器执行）。 */
@@ -110,9 +104,6 @@ interface ConfigProvider {
         quitEnabled = true,
         quitFormat = "[游戏] {name} 离开了服务器",
     )
-
-    /** 白名单命令模板。 */
-    fun whiteList(): WhiteList = WhiteList("whitelist add {name}", "whitelist remove {name}")
 
     /** 配置文件路径（用于定位 Markdown / 敏感词目录），无配置文件的平台返回 null。 */
     val configFile: File?

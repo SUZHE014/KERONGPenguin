@@ -100,7 +100,10 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         loadBlacklist()
         loadAiContext()
         val boundCount = buildReverseIndexes()
-        logQuiet("===== QqBindManager 已就绪 (enabled=$isEnabled, 绑定玩家数=$boundCount) =====")
+        // 1.6.3：构造期 instance 尚未赋值（logQuiet 此时退到 println，NeoForge 下
+        // 会以 [STDOUT/] 原始格式输出），构造期日志直接走 plugin.logger——
+        // Spigot 为 Bukkit 插件日志器、NeoForge 为 JUL→SLF4J 桥接后的标准前缀
+        plugin.logger.info("[QQ绑定] ===== QqBindManager 已就绪 (enabled=$isEnabled, 绑定玩家数=$boundCount) =====")
     }
 
     // ---------- 单例 ----------
@@ -163,10 +166,6 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             } catch (_: Throwable) {
             }
         }
-
-        /** 对外暴露的当前日志文件路径（供日志重定向使用）。 */
-        @JvmStatic
-        fun currentLogFile(): File? = getLogFile()
 
         /** 当前日志文件（超 1GB 自动轮转）。 */
         private fun getLogFile(): File? = try {
@@ -782,8 +781,6 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
     }
 
     fun listBlacklist(): List<String> = ArrayList(blacklist.keys)
-
-    fun listBlacklistNames(): List<String> = ArrayList(blacklist.values)
 
     fun getBlacklistName(qq: String?): String? = if (qq == null) null else blacklist[qq]
 

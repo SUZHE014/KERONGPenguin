@@ -72,7 +72,6 @@ object InfoCardRenderer {
     internal const val WIDTH = 900
 
     /** 满项卡片高度（9 项 / 3 行；1.5.3 起实际高度随项数自适应，见 [cardHeight]）。 */
-    internal const val HEIGHT = 760
 
     /** 配色（毛玻璃深色系）。 */
     private val COLOR_EYEBROW = Color(0x93, 0xA7, 0xBC)
@@ -658,10 +657,6 @@ object InfoCardAssets {
         builtinBackgroundResolvedPaths.clear()
     }
 
-    /** 全部素材缓存当前占用估算（字节，诊断/日志用）。 */
-    fun estimatedCacheBytes(): Long =
-        backgroundCache.values.sumOf { it.bytes } +
-            avatarCache.size * (FACE_SIZE.toLong() * FACE_SIZE * 4)
 
     /** 缓存超限时淘汰最旧条目。 */
     private fun evictIfOversized() {

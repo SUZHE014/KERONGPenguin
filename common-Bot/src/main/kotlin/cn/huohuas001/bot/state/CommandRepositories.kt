@@ -129,11 +129,6 @@ class GroupSettingsRepository(private val persist: () -> Unit) {
     fun administratorMode(groupId: String, defaultMode: AdministratorAccessMode): AdministratorAccessMode =
         administratorModes[groupId] ?: defaultMode
 
-    /** 设置 [groupId] 群的管理员判定模式。 */
-    fun setAdministratorMode(groupId: String, mode: AdministratorAccessMode) {
-        administratorModes[groupId] = mode
-        persist()
-    }
 
     /** 获取 [groupId] 群是否全量转发（未配置时返回 [defaultValue]）。 */
     fun fullForwarding(groupId: String, defaultValue: Boolean): Boolean =

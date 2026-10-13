@@ -92,6 +92,17 @@ PLATFORM_CLASH_META_PREFIXES = (
     "META-INF/maven/com.google.code.gson/",
 )
 
+# 1.6.3 死代码清理（第三方库瘦身，与 Spigot 打包一致）：
+# c3p0 / HikariCP / terracotta 仅 Quartz JDBC JobStore SPI 反射加载（SDK 只用
+# RAMJobStore 永不加载）；webui/ schema/ 为依赖残留资源，无类引用。
+DEAD_LIB_PREFIXES = (
+    "com/mchange/",
+    "com/zaxxer/",
+    "org/terracotta/",
+    "webui/",
+    "schema/",
+)
+
 
 def read_mod_version() -> str:
     with zipfile.ZipFile(MODULE_JAR) as zf:
@@ -107,6 +118,9 @@ def excluded(name: str) -> bool:
         return True
     # 平台重复库剔除（split package 崩溃修复）
     if any(name.startswith(p) for p in PLATFORM_CLASH_PREFIXES):
+        return True
+    # 1.6.3：未使用的第三方库瘦身
+    if any(name.startswith(p) for p in DEAD_LIB_PREFIXES):
         return True
     if any(name.startswith(p) for p in PLATFORM_CLASH_META_PREFIXES):
         return True
