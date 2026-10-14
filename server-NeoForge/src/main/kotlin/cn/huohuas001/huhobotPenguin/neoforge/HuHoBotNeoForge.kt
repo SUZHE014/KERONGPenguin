@@ -81,7 +81,29 @@ class HuHoBotNeoForge : JavaPlugin(), HuHoBot {
         // 共享实例注册 → 装载状态 → 异步启动 QQ 客户端（与 Spigot onEnable 同序）
         initializeRuntime()
         PlayerStatsManager.initialize()
+        registerBindLoginGate()
         modLogger.info("KERONGPenguin NeoForge 已加载（${pluginVersion} / MC ${serverVersion}）")
+    }
+
+    /**
+     * 挂载绑定登录闸门（1.6.4）：监听 mod 总线的 RegisterConfigurationTasksEvent，
+     * 未绑定老玩家在配置阶段（进入世界之前）直接断开，绑定提示显示在连接失败
+     * 界面。挂载失败不影响功能（退化为加入后踢出的旧版兜底路径）。
+     */
+    private fun registerBindLoginGate() {
+        try {
+            val container = net.neoforged.fml.ModList.get()
+                .getModContainerById("kerongpenguin").orElse(null)
+            val modBus = (container as? net.neoforged.fml.javafmlmod.FMLModContainer)?.getEventBus()
+            if (modBus != null) {
+                BindLoginGate.registerTo(modBus)
+                modLogger.info("[QQ绑定] 登录闸门已挂载（未绑定老玩家在配置阶段拦截）")
+            } else {
+                modLogger.warn("[QQ绑定] 登录闸门挂载失败（未取得 mod 事件总线），老玩家拦截退化为加入后踢出")
+            }
+        } catch (t: Throwable) {
+            modLogger.warn("[QQ绑定] 登录闸门挂载异常（老玩家拦截退化为加入后踢出）: ${t.message}")
+        }
     }
 
     /** 服务器停止中（ServerStoppingEvent）：落账并保存。 */
@@ -272,18 +294,21 @@ class HuHoBotNeoForge : JavaPlugin(), HuHoBot {
 
     // 1.6.1：info 级与警告/错误一致双写（控制台 + 插件日志文件），
     // 保证插件全部控制台输出都能从 logs/qq/qq-bind-日期.log 追溯。
+    // 1.6.4：控制台输出前剥离 § 颜色码——log4j 不渲染颜色码，
+    // 共享源码里的彩色控制台文案（如更新检查更新日志）在 NeoForge 控制台
+    // 会显示成乱码字符；文件日志 PluginFileLog.write 本身已剥离，不受影响。
     override fun log_info(msg: String) {
-        modLogger.info(msg)
+        modLogger.info(PluginFileLog.stripColorCodes(msg))
         PluginFileLog.write(msg)
     }
 
     override fun log_warning(msg: String) {
-        modLogger.warn(msg)
+        modLogger.warn(PluginFileLog.stripColorCodes(msg))
         PluginFileLog.write("[警告] $msg")
     }
 
     override fun log_error(msg: String) {
-        modLogger.error(msg)
+        modLogger.error(PluginFileLog.stripColorCodes(msg))
         PluginFileLog.write("[错误] $msg")
     }
 
@@ -293,7 +318,7 @@ class HuHoBotNeoForge : JavaPlugin(), HuHoBot {
             .resolve("kerongpenguin").toFile()
 
         /** 模组版本（与 neoforge.mods.toml 一致）。 */
-        private const val MOD_VERSION = "1.6.3"
+        private const val MOD_VERSION = "1.6.4"
 
         /** 当前模组实例（命令与事件层访问）。 */
         @Volatile

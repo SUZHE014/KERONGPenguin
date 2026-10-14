@@ -133,8 +133,11 @@ class NeoForgeEvents(private val plugin: HuHoBotNeoForge) {
     }
 
     /**
-     * 登录绑定校验（等价 Spigot 版 GameChat.onPlayerLogin 的未绑定拒入）：
-     * NeoForge 事件在进入完成后触发，改为加入即断开并在断开界面展示绑定码。
+     * 登录绑定校验（未绑定玩家的加入后踢出，与 Spigot 版 GameChat.enforceJoinBinding 同源）。
+     * 1.6.4 分工：未绑定的老玩家已在配置阶段被 BindLoginGate 拦截（提示直接显示
+     * 在“无法连接到服务器”界面）；此处负责新玩家（服务器先建档 UUID 再踢出）
+     * 与闸门失效（总线挂载失败 / 反射异常）时的兜底——所有走到加入事件的
+     * 未绑定玩家一律踢出并展示绑定码。
      */
     private fun enforceLoginBinding(player: ServerPlayer) {
         val manager = try {

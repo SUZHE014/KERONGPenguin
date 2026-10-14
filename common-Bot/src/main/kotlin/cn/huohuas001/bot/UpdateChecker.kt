@@ -74,18 +74,20 @@ object UpdateChecker {
                 PluginFileLog.infoAndKeep("[更新检查] 当前已是最新版本（$currentVersion）")
                 return
             }
+            // 1.6.4：更新日志带颜色输出（§ 码）——Spigot 系控制台渲染为彩色；
+            // NeoForge 控制台不支持 § 码，平台适配器 log_info 会自动剥离（文件日志同样剥离）。
             val lines = StringBuilder()
-            lines.append("[更新检查] 发现新版本：$latest（当前 $currentVersion）")
-            lines.append("\n[更新检查] 下载页面：$pageUrl")
+            lines.append("§e[更新检查] §f发现新版本：§a§l$latest §7（当前 $currentVersion）")
+            lines.append("\n§e[更新检查] §f下载页面：§b$pageUrl")
             if (changelog.isEmpty()) {
-                lines.append("\n[更新检查] 更新内容：详见官网更新日志")
+                lines.append("\n§e[更新检查] §7更新内容：§f详见官网更新日志")
             } else {
                 // 简要日志：最多 6 行，每行截断 60 字（防占满屏幕）
                 for (item in changelog.take(6)) {
-                    lines.append("\n[更新检查] - ${item.take(60)}")
+                    lines.append("\n§e[更新检查] §7- §f${item.take(60)}")
                 }
                 if (changelog.size > 6) {
-                    lines.append("\n[更新检查] - ……其余 ${changelog.size - 6} 条见官网更新日志")
+                    lines.append("\n§e[更新检查] §7- ……其余 §f${changelog.size - 6} §7条见官网更新日志")
                 }
             }
             PluginFileLog.infoAndKeep(lines.toString())

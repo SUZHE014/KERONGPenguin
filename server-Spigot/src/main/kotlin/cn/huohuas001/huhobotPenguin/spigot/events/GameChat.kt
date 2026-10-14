@@ -199,13 +199,17 @@ class GameChat : Listener {
         QClient.broadcastGameMessage(playerName, message)
     }
 
-    /** 玩家进入：播报 + 补发离线签到奖励。 */
+    /** 玩家进入：播报 + 补发离线签到奖励 + 未绑定新玩家建档后踢出。 */
     @EventHandler
     fun onPlayerJoin(event: PlayerJoinEvent) {
         val playerName = event.player.name
         val playerUuid = event.player.uniqueId.toString()
         QClient.broadcastPlayerJoin(playerName)
         val plugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin") ?: return
+
+        // 1.6.4：未绑定的新玩家在此踢出（登录期已放行，服务器已建档 UUID/
+        // 玩家数据，之后在 QQ 群完成绑定即可正常进服）
+        enforceJoinBinding(event.player)
 
         FoliaCompat.runAsync(plugin) {
             try {
@@ -248,7 +252,15 @@ class GameChat : Listener {
         QClient.broadcastPlayerQuit(event.player.name)
     }
 
-    /** 未绑定 QQ 的玩家登录拒入（UUID 绑定机制）。 */
+    /**
+     * 未绑定 QQ 玩家登录拦截（1.6.4 双段策略，与 NeoForge 版同源）：
+     * - 老玩家（服务器已有档案）→ 登录期直接拒入，绑定提示直接显示在
+     *   “无法连接到服务器”界面（等价原版白名单/封禁提示的显示路径，
+     *   不会被加入流程或“服务器连接失败”覆盖）；
+     * - 新玩家（服务器还没建档案）→ 放行进入加入流程（服务器创建 UUID
+     *   与玩家数据），加入事件里再踢出并展示绑定码（见 [enforceJoinBinding]，
+     *   新玩家必须先建档否则绑定后进服无档案）。
+     */
     @EventHandler(priority = EventPriority.LOW)
     fun onPlayerLogin(event: PlayerLoginEvent) {
         if (!bindRegistered) {
@@ -268,9 +280,47 @@ class GameChat : Listener {
         manager.getOrCreateQuuidByUuid(playerName, playerUuid)
         if (manager.isBoundByUuid(playerName, playerUuid)) return
 
-        // 未绑定：生成绑定码并拒入
+        if (hasServerPlayerData(event.player)) {
+            // 老玩家：登录期拒入（断开界面直接显示绑定提示）
+            val code = manager.generateCode(playerName, playerUuid)
+            event.disallow(PlayerLoginEvent.Result.KICK_OTHER, manager.formatKickMessage(code, playerName))
+        }
+        // 新玩家：放行 → onPlayerJoin 的 enforceJoinBinding 拦截
+    }
+
+    /**
+     * 服务器是否已有该玩家的档案（1.6.4 老玩家判定）：
+     * usercache 有记录（hasPlayedBefore）或世界存档目录存在 playerdata/<uuid>.dat。
+     * 两者任一成立即视为老玩家（usercache 被清理时文件判定兜底）。
+     */
+    private fun hasServerPlayerData(player: org.bukkit.entity.Player): Boolean {
+        if (player.hasPlayedBefore()) return true
+        return try {
+            val world = Bukkit.getWorlds().firstOrNull() ?: return false
+            java.io.File(world.worldFolder, "playerdata/${player.uniqueId}.dat").exists()
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /**
+     * 未绑定玩家加入后踢出（新玩家路径 + 登录期拦截失效的兜底）：
+     * 服务器已完成建档（UUID/玩家数据），踢出界面展示专属绑定码。
+     */
+    private fun enforceJoinBinding(player: org.bukkit.entity.Player) {
+        val manager = try {
+            QqBindManager.getInstance()
+        } catch (_: Throwable) {
+            return
+        }
+        if (!manager.isEnabled) return
+        val playerName = player.name
+        val playerUuid = player.uniqueId.toString()
+        if (manager.isSkipped(playerName)) return
+        manager.getOrCreateQuuidByUuid(playerName, playerUuid)
+        if (manager.isBoundByUuid(playerName, playerUuid)) return
         val code = manager.generateCode(playerName, playerUuid)
-        event.disallow(PlayerLoginEvent.Result.KICK_OTHER, manager.formatKickMessage(code, playerName))
+        player.kickPlayer(manager.formatKickMessage(code, playerName))
     }
 
     /** 启动时检测经济插件可用性（签到功能提示）。 */

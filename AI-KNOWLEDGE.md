@@ -1,7 +1,17 @@
 # KERONGPenguin AI 交接知识库
 
 > **本文档的用途**：把本文件丢给一个对项目一无所知的 AI，它能立刻了解当前情况并接手工作。
-> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-14（v1.6.3 发版时）。
+> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-14（v1.6.4 发版时）。
+
+### 1.1 受限网络环境重建（2026-10-14 实战，环境重置后可用）
+
+本地环境丢失时按此重建（GitHub/Maven 官方源不通，走镜像）：
+- 克隆：`git clone https://gh-proxy.com/https://github.com/SUZHE014/KERONGPenguin.git`；
+- `common-Bot/libs/deps.jar` 不在 git：从官网下载 Spigot 分发 JAR，剔除 `cn/huohuas001/**`、`Markdown/`、`backgrounds/`、`fonts/`、`plugin.yml`、`config.yml` 后重建（脚本思路见 `/home/z/my-project/scripts/rebuild_deps_jar.py`）；
+- NeoForge libs：`scripts/build_neoforge_libs.py` 的镜像变体（BMCLAPI：`piston-meta/piston-data/libraries.minecraft.net/maven.neoforged.net/maven.minecraftforge.net` → `https://bmclapi2.bangbang93.com[+路径]`，maven 前缀多一级 `/maven`，libraries 前缀 `/libraries`）；ART 重映射耗时 5-10 分钟、内存 2G 够用；
+- Gradle 发行版：腾讯镜像 `https://mirrors.cloud.tencent.com/gradle/gradle-8.14.5-bin.zip` 预置到 `~/.gradle/wrapper/dists/gradle-8.14.5-bin/<wrapper 期望哈希>/`（哈希不是 md5，先跑一次 wrapper 看它建的目录名）；
+- JDK：华为镜像 `https://mirrors.huaweicloud.com/openjdk/21.0.2/openjdk-21.0.2_linux-x64_bin.tar.gz` + `~/.gradle/gradle.properties` 设 `org.gradle.java.installations.paths` 与 `auto-download=false`（foojay 会走 GitHub releases 被墙）；
+- Maven Central/PaperMC/Spigot/插件门户均直连可用；pip 用阿里云镜像。
 
 ---
 
@@ -112,9 +122,9 @@ QQ 同一 AppID 的第二条连接**不总是被立刻踢**。三种实测形态
 
 **ReplySeqGuard（1.6.2，保留）**：GroupMessageHandler 入口按 msg_id 分配回复序号基数（第 1 次=1，第 N 次重投递=1+(N-1)×100000），防网关弱网/会话恢复重投递到**本服**时的序号重复；同时使 40054005 成为双服冲突的可靠信号。
 
-### 3.4 更新检查（1.6.2）
+### 3.4 更新检查（1.6.2，1.6.4 彩色）
 
-`bot/UpdateChecker.kt`：启动后异步 8 秒 GET `https://kerong.xin/penguin/version.json`，逐段数字比较版本；有新版→控制台输出版本号/下载页/最多 6 行简要日志；失败→控制台一句话，细节进日志。`update-check.enabled` 可关。**每次发版必须更新服务器上的 version.json**。
+`bot/UpdateChecker.kt`：启动后异步 8 秒 GET `https://kerong.xin/penguin/version.json`，逐段数字比较版本；有新版→控制台输出带 § 颜色码的版本号/下载页/最多 6 行简要日志（1.6.4：版本号绿色加粗、链接蓝色、条目灰白分级）；失败→控制台一句话，细节进日志。`update-check.enabled` 可关。**每次发版必须更新服务器上的 version.json**。§ 颜色码处理：Spigot 系控制台直接渲染；NeoForge 适配器 `log_info/log_warning/log_error` 输出前统一过 `PluginFileLog.stripColorCodes`（log4j 不渲染 §，否则乱码）；文件日志始终剥离。共享代码可以放心在控制台文案里用 § 颜色码。
 
 ### 3.5 渲染管线
 
@@ -123,6 +133,14 @@ CPU 渲染（CardRenderPool 共享线程池）、结果缓存、头像 LRU+字�
 ### 3.6 配置系统
 
 `ConfigManager.kt`（共享源码）：DEFAULT_VALUES 全量默认 + `ConfigUpgrader.fillMissing` 补齐缺失键 + `CONFIG_VERSION_PATH` 版本迁移链（**当前 config-version 18**：16→17 render/leaderboard 顶层化，17→18 金币榜→财富榜）。修改配置一律重启生效（无热重载指令，教程与注释已如此说明）。
+
+### 3.7 QQ 绑定拦截策略（1.6.4 双端统一）
+
+未绑定玩家分两段拦截（开启 qq-bind.enabled 后）：
+- **老玩家**（服务器已有档案：Spigot 用 `hasPlayedBefore()` + `playerdata/<uuid>.dat` 双判定；NeoForge 用 `playerdata/<uuid>.dat` 文件判定）→ **进入游戏之前**拦截：Spigot 在 `PlayerLoginEvent.disallow`；NeoForge 在**配置阶段**断开（`BindLoginGate.kt`：mod 总线 RegisterConfigurationTasksEvent 注册自定义 ConfigurationTask，任务 start() 时 listener.disconnect(绑定提示 Component)）。显示路径等价原版白名单/封禁——绑定码直接显示在“无法连接到服务器”界面，不会被加入流程/“服务器连接失败”覆盖。
+- **新玩家**（没档案）→ 放行完成加入（服务器建档 UUID/玩家数据），随后踢出展示绑定码：Spigot `GameChat.enforceJoinBinding`（PlayerJoinEvent 内直接 kickPlayer）；NeoForge `NeoForgeEvents.enforceLoginBinding`（加入后 1 tick disconnect）。
+- **兜底链**：NeoForge 闸门任何环节异常（mod 总线挂载失败/反射失败/管理器未就绪）一律放行，由加入后踢出兜底；Spigot 登录期未拦到（如登录时管理器未就绪）也由加入后踢出兜底。
+- **NeoForge 关键事实**：1.21.1 无登录期玩家事件；PlayerLoggedInEvent 在 placeNewPlayer 末尾（全太晚）；ConfigurationTask.start(Consumer<Packet<?>>) 的参数是**发包器**，任务完成靠监听器响应包驱动（finishCurrentTask）——所以闸门采用“注册时判定、仅拦截时注册任务、任务 start 直接断开”的模式（放行时零干扰，拦截时无需完成任务）。
 
 ---
 
@@ -183,9 +201,10 @@ CPU 渲染（CardRenderPool 共享线程池）、结果缓存、头像 LRU+字�
 
 ---
 
-## 7. 当前已知状态（2026-10-14，v1.6.3）
+## 7. 当前已知状态（2026-10-14，v1.6.4）
 
-- 双端 1.6.3 已发版：官网 version.json/index/tutorial 已同步，JAR 已上传，git 已推送。
-- 1.6.3 改动：双服同绑实锤检测（ConflictWatch）、鉴权期被拒计入互踢证据、NeoForge JUL→SLF4J 桥（控制台格式修复）、/motd 转发修复、死代码清理+依赖瘦身（各 -1.3MB）。
-- 待观察：ConflictWatch 在真实双服环境的触发情况（用户此前用 NeoForge+Spigot 各一台绑同一机器人复现过）。
+- 双端 1.6.4 代码完成、构建打包门禁冒烟全部通过；发版流程：git commit→push、上传 JAR/源码包、官网三文件同步（见第 5 节清单）。
+- 1.6.4 改动：QQ 绑定拦截策略双端重做（老玩家进服前拦截/新玩家建档后踢出，NeoForge 配置阶段闸门 BindLoginGate）、更新检查更新日志彩色输出（NeoForge 自动剥 §）。
+- 1.6.3 已发版完成（双服同绑实锤检测 ConflictWatch、JUL→SLF4J 桥、死代码瘦身）。
+- 待观察：ConflictWatch 在真实双服环境的触发情况（用户此前用 NeoForge+Spigot 各一台绑同一机器人复现过）；BindLoginGate 在真实未绑定老玩家连接下的提示显示效果。
 - 官网历史下载目前保留：1.5.6.1 ~ 1.6.3 共 9 版 ×2 JAR；再旧版本已按用户要求删除（保留策略如需调整问用户）。

@@ -29,6 +29,9 @@ object PluginFileLog {
     /** 颜色代码（§ + 一个字符，Minecraft / Bukkit 控制台颜色）。 */
     private val COLOR_CODE = Regex("§.")
 
+    /** 剥离 § 颜色码（1.6.4 公开：NeoForge 控制台不渲染颜色码，输出前需剥离）。 */
+    fun stripColorCodes(message: String): String = COLOR_CODE.replace(message, "")
+
     /** 当前日志文件（按天分文件；目录与 QqBindManager 详细日志保持一致）。 */
     private fun currentFile(): File? {
         return try {
