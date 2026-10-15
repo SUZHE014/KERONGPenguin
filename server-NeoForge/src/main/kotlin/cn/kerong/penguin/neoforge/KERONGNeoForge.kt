@@ -31,7 +31,7 @@ import java.util.concurrent.TimeUnit
  * KERONGPenguin 模组主类（NeoForge 1.21.1 适配器）。
  *
  * 与 Spigot 版（KERONGSpigot）同源：共用 common-Bot 全部业务
- * （QQ 机器人 / 命令系统 / 绑定 / 签到 / 统计 / 信息卡渲染 / Web 面板），
+ * （QQ 机器人 / 命令系统 / 绑定 / 签到 / 统计 / 信息卡渲染），
  * 平台差异经 org.bukkit 兼容层桥接：
  * - 主线程 = 服务器线程（MinecraftServer#execute）；
  * - 玩家查询 / 统计 / 皮肤 / playerdata 定位 → PlayerList / StatsCounter /
@@ -281,15 +281,6 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             )
         }
     }
-
-    // ---------- Web 面板配置 ----------
-
-    override fun webUiConfigValues(): Map<String, Any> = mapOf(
-        "platform" to platform,
-        "version" to pluginVersion,
-    )
-
-    override fun applyWebUiConfigChanges(changes: com.alibaba.fastjson.JSONObject): Boolean = false
 
     // ---------- 日志 ----------
 

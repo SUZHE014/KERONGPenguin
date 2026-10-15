@@ -117,11 +117,6 @@ object PlayerStatsManager {
         saveTask = plugin.submitTimer(20L * 60 * 5, 20L * 60 * 5) { saveToDiskAsync() }
         // 每 60 秒主线程增量同步（读取在线玩家原版统计 + 结算游戏时间）
         flushTask = plugin.submitTimer(20L * 60, 20L * 60) { flushOnlineSessions() }
-        // 1.6.4：PlayTimeManager 在线时长同步（检测到才启用，每 30 分钟周期对齐）
-        try {
-            PlayTimeSync.initialize()
-        } catch (_: Throwable) {
-        }
     }
 
     /** 由插件停用时调用：结算并保存。 */
@@ -129,11 +124,6 @@ object PlayerStatsManager {
         beijingRefreshTask?.cancel()
         saveTask?.cancel()
         flushTask?.cancel()
-        // 1.6.4：停止 PlayTimeManager 同步周期任务
-        try {
-            PlayTimeSync.shutdown()
-        } catch (_: Throwable) {
-        }
         if (Bukkit.isPrimaryThread()) {
             // Folia 的 onDisable 也在全局区域线程上执行，走此快路径
             flushOnlineSessions()
@@ -176,15 +166,6 @@ object PlayerStatsManager {
         val uuid = player.uniqueId
         val session = sessions.remove(uuid) ?: return
         settleSession(player, session)
-        // 1.6.4：结算后若检测到 PlayTimeManager，把总在线时长同步过去
-        // （差值对齐，阈值/冷却防护，失败不影响退出流程）
-        try {
-            val settled = statsByUuid[uuid]
-            if (settled != null) {
-                PlayTimeSync.scheduleSync(player.name, settled.playSeconds)
-            }
-        } catch (_: Throwable) {
-        }
         saveToDiskAsync()
     }
 

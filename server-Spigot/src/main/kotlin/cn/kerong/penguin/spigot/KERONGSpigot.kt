@@ -21,8 +21,6 @@ import cn.kerong.penguin.spigot.render.InfoCardAssets
 import cn.kerong.penguin.spigot.scheduler.FoliaCompat
 import cn.kerong.penguin.spigot.stats.PapiDependencyCheck
 import cn.kerong.penguin.spigot.stats.PlayerStatsManager
-import com.alibaba.fastjson.JSONArray
-import com.alibaba.fastjson.JSONObject
 import org.bukkit.Bukkit
 import org.bukkit.command.Command
 import org.bukkit.command.CommandExecutor
@@ -280,29 +278,6 @@ class KERONGSpigot : JavaPlugin(), KERONG {
 
     override val serverVersion: String
         get() = server.version
-
-    // ---------- Web 面板配置 ----------
-
-    override fun webUiConfigValues(): Map<String, Any> = config.getValues(true)
-
-    override fun applyWebUiConfigChanges(changes: JSONObject): Boolean = try {
-        for ((path, value) in changes) {
-            config.set(path, convertJsonValue(value))
-        }
-        saveConfig()
-        reloadPluginConfig()
-        true
-    } catch (error: Exception) {
-        log_error("WebUI 保存配置失败: ${error.message}")
-        false
-    }
-
-    /** fastjson 值转 Bukkit 配置值（递归转换 Map/List）。 */
-    private fun convertJsonValue(value: Any?): Any? = when (value) {
-        is JSONObject -> value.entries.associate { (k, v) -> k to convertJsonValue(v) }
-        is JSONArray -> value.map { convertJsonValue(it) }
-        else -> value
-    }
 
     // ---------- 日志 ----------
 

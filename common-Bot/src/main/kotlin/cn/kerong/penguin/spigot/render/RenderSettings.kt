@@ -19,6 +19,9 @@ object RenderSettings {
     /** 头像磁盘缓存默认有效期（小时，1.6.6.1 新增配置化）。 */
     const val DEFAULT_AVATAR_CACHE_HOURS = 3.0
 
+    /** 头像获取优先方式（1.6.6.1 覆盖版新增配置）。 */
+    enum class AvatarFetchPriority { LOCAL, EXTERNAL }
+
     /** 图片渲染命令的用户冷却（毫秒；0 = 无冷却）。 */
     fun commandCooldownMillis(): Long {
         val seconds = try {
@@ -48,5 +51,29 @@ object RenderSettings {
             DEFAULT_AVATAR_CACHE_HOURS
         }
         return if (hours < 0) DEFAULT_AVATAR_CACHE_HOURS else hours
+    }
+
+    /**
+     * 头像获取优先方式（1.6.6.1 覆盖版新增）。
+     *
+     * - render.avatar-fetch-priority（默认 local）：
+     *   - local：优先本地（在线玩家 Profile 皮肤 + 本服存档数据），
+     *     本地取不到自动切换外置接口（Mojang 官方 API → 头像多线路）；
+     *   - external：优先外置接口，全部失败后再试本地；
+     * - 值不区分大小写，未识别的值一律按 local 处理；
+     * - 实时读取（/kerong reload 后立即生效）。
+     */
+    fun avatarFetchPriority(): AvatarFetchPriority {
+        val value = try {
+            (BotShared.instance as? JavaPlugin)?.config?.getString("render.avatar-fetch-priority", "local")
+                ?: "local"
+        } catch (_: Throwable) {
+            "local"
+        }
+        return if (value.trim().equals("external", ignoreCase = true)) {
+            AvatarFetchPriority.EXTERNAL
+        } else {
+            AvatarFetchPriority.LOCAL
+        }
     }
 }

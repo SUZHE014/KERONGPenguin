@@ -324,12 +324,12 @@ object OnlineListRenderer {
             g.color = Color(0xFF, 0xFF, 0xFF, 16)
             g.fill(RoundRectangle2D.Float(cellX.toFloat(), cellY.toFloat(), cellWidth.toFloat(), CELL_HEIGHT.toFloat(), 14f, 14f))
 
-            // 头像（无皮肤数据画占位块：深色圆角 + 名字首字符）
+            // 头像（无皮肤数据画占位块：深色圆角 + 名字首字符）；
+            // 1.6.6.1 覆盖版：圆角头像零拷贝直绘（不再先拷一张圆角小图）
             val avatarX = cellX + 16
             val avatarY = cellY + (CELL_HEIGHT - AVATAR_SIZE) / 2
             if (entry.avatar != null) {
-                val rounded = roundImage(entry.avatar, AVATAR_SIZE)
-                g.drawImage(rounded, null, avatarX, avatarY)
+                InfoCardRenderer.drawRoundedAvatar(g, entry.avatar, avatarX, avatarY, AVATAR_SIZE, 12)
                 g.color = Color(0xFF, 0xFF, 0xFF, 170)
                 g.stroke = BasicStroke(1.5f)
                 g.draw(RoundRectangle2D.Float(avatarX + 0.5f, avatarY + 0.5f, (AVATAR_SIZE - 1).toFloat(), (AVATAR_SIZE - 1).toFloat(), 12f, 12f))
@@ -358,20 +358,5 @@ object OnlineListRenderer {
         var end = text.length
         while (end > 0 && metrics.stringWidth(text.substring(0, end)) > maxWidth) end--
         return text.substring(0, end).dropLast(1) + "…"
-    }
-
-    /** 圆角头像（与个人信息卡片一致的圆角处理）。 */
-    private fun roundImage(source: BufferedImage, size: Int): BufferedImage {
-        val result = BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
-        val g = result.createGraphics()
-        try {
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-            g.clip(RoundRectangle2D.Float(0f, 0f, size.toFloat(), size.toFloat(), 12f, 12f))
-            g.drawImage(source, 0, 0, size, size, null)
-        } finally {
-            g.dispose()
-        }
-        return result
     }
 }

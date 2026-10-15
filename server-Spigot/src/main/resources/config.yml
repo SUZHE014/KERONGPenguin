@@ -129,6 +129,13 @@ render:
   # 默认 3；支持小数（如 0.5 = 半小时）；0 = 关闭磁盘缓存（每次实时获取）；
   # 改动后 /kerong reload 立即生效，无需重启
   avatar-cache-hours: 3
+  # 头像获取优先方式（1.6.6.1 新增）：
+  #   local    = 优先本地：直接用服务器已有的玩家皮肤数据（在线玩家档案
+  #              + 本服存档），取不到时自动切换外置接口
+  #   external = 优先外置接口：Mojang 官方 API → MC-Heads / Minotar /
+  #              MinePic / Crafatar 多线路，全部失败后再尝试本地；
+  # 默认 local；改动后 /kerong reload 立即生效，无需重启
+  avatar-fetch-priority: local
   # 图片渲染命令的用户冷却秒数（1.6.0 新增，旧版硬编码 5 秒）：
   # 同一 QQ 用户两次发送 /查信息、/查在线、/在线排行榜、/财富榜 的最小间隔，
   # 防止刷屏导致渲染风暴；默认 5；0 = 关闭冷却

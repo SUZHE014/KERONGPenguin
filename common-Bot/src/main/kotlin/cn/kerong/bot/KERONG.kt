@@ -11,8 +11,6 @@ import cn.kerong.bot.provider.MessageProvider
 import cn.kerong.bot.provider.SchedulerProvider
 import cn.kerong.bot.state.CommandRepositories
 import cn.kerong.bot.tools.PluginFileLog
-import cn.kerong.bot.web.WebUiServer
-import com.alibaba.fastjson.JSONObject
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import io.github.kloping.qqbot.entities.ex.Keyboard
 import io.github.kloping.qqbot.utils.LoggerImpl
@@ -72,8 +70,9 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
     }
 
     /**
-     * 初始化运行时：注册共享实例、装载状态、启动 QQ 客户端与 Web 面板。
+     * 初始化运行时：注册共享实例、装载状态、启动 QQ 客户端。
      * 由平台实现于插件启用时调用。
+     * （1.6.6.1 覆盖版：Web 面板占位模块已随 WebUI 功能整体移除。）
      */
     fun initializeRuntime() {
         BotShared.setInstance(this)
@@ -98,7 +97,6 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
         CommandRepositories.initialize(configDirectory)
         reloadRuntimeConfig()
         launchQqClient()
-        WebUiServer.start()
         // 1.6.2：更新检查（异步延迟 8 秒，错开启动高峰；update-check.enabled 可关闭）
         scheduleUpdateCheck()
     }
@@ -124,7 +122,7 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
         }, "qq-update-check").apply { isDaemon = true }.start()
     }
 
-    /** 停止运行时：断开 QQ 客户端、关闭 Web 面板。 */
+    /** 停止运行时：断开 QQ 客户端。 */
     fun shutdownRuntime() {
         try {
             QClient.shutdown()
@@ -134,7 +132,6 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
                 cn.kerong.penguin.spigot.qqbind.OpenIdDirectory.flush()
             } catch (_: Throwable) {
             }
-            WebUiServer.stop()
             LoggerImpl.clearLogSink()
         }
     }
@@ -195,12 +192,6 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
         }
         return dispatchCommand(resolved.command!!)
     }
-
-    /** Web 面板可展示的配置值（平台按需覆写）。 */
-    fun webUiConfigValues(): Map<String, Any> = emptyMap()
-
-    /** 应用 Web 面板提交的配置修改（平台按需覆写）。 */
-    fun applyWebUiConfigChanges(changes: JSONObject): Boolean = false
 
     /** 异步启动 QQ 机器人客户端（0.1.5.4：启动过程日志同步落盘）。 */
     fun launchQqClient() {

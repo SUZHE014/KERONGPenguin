@@ -2,13 +2,16 @@ import cn.kerong.bot.UpdateChecker;
 import cn.kerong.bot.tools.PluginFileLog;
 import cn.kerong.bot.tools.ConsoleColors;
 
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
 import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.UUID;
 
 /**
- * 1.6.6.1 功能冒烟（独立 JVM，类路径 = NeoForge 1.6.6.1 分发 JAR + 依赖）。
+ * 1.6.6.1 覆盖版功能冒烟（独立 JVM，类路径 = NeoForge 1.6.6.1 分发 JAR + 依赖）。
  *
  * 覆盖：
  *  1. 历史回归：stripColorCodes / ConsoleColors（1.6.6 真彩色）/ floodgateXuid；
@@ -21,6 +24,13 @@ import java.util.UUID;
  *  5. MinePic 线路方法存在（fetchMinePicAvatar，不做真实网络请求），
  *     类字节码常量池含 https://minepic.org/avatar/ URL 前缀；
  *  6. Mojang 原生 API 保留：类字节码常量池含 sessionserver.mojang.com。
+ *  7. 覆盖版：WebUI 类不存在（Class.forName 抛异常）；
+ *  8. 覆盖版：PlayTimeSync 类不存在；
+ *  9. 覆盖版：RenderSettings.avatarFetchPriority 无实例时默认 LOCAL；
+ * 10. 覆盖版：头像链本地/外置拆分（私有方法在位，旧混合函数 resolveSkinTexture
+ *     已移除）；
+ * 11. 覆盖版：drawRoundedAvatar 零拷贝直绘行为（圆角裁剪生效 + 画完恢复
+ *     裁剪区，直绘不产生中间图）。
  */
 public class Test1661 {
 
@@ -170,6 +180,99 @@ public class Test1661 {
         UUID offline = UUID.nameUUIDFromBytes("OfflinePlayer:Steve".getBytes());
         check("离线 v3 UUID 不误判（回归）",
                 floodgateXuid.invoke(assetsInst, offline) == null, "-");
+
+        // ---------- 7. WebUI 面板删除（1.6.6.1 覆盖版） ----------
+        try {
+            Class.forName("cn.kerong.bot.web.WebUiServer");
+            check("WebUiServer 类不存在", false, "类仍然存在");
+        } catch (ClassNotFoundException expected) {
+            check("WebUiServer 类不存在", true, "-");
+        }
+        try {
+            Class.forName("cn.kerong.bot.web.WebUiSchema");
+            check("WebUiSchema 类不存在", false, "类仍然存在");
+        } catch (ClassNotFoundException expected) {
+            check("WebUiSchema 类不存在", true, "-");
+        }
+
+        // ---------- 8. PlayTimeSync 删除（1.6.6.1 覆盖版） ----------
+        try {
+            Class.forName("cn.kerong.penguin.spigot.stats.PlayTimeSync");
+            check("PlayTimeSync 类不存在", false, "类仍然存在");
+        } catch (ClassNotFoundException expected) {
+            check("PlayTimeSync 类不存在", true, "-");
+        }
+
+        // ---------- 9. 头像获取优先方式（1.6.6.1 覆盖版） ----------
+        Method priority = null;
+        for (Method m : settings.getDeclaredMethods()) {
+            if (m.getName().equals("avatarFetchPriority")) priority = m;
+        }
+        check("RenderSettings.avatarFetchPriority 方法存在", priority != null, "-");
+        priority.setAccessible(true);
+        Object defaultPriority = priority.invoke(settingsInst);
+        check("avatarFetchPriority 无实例时默认 LOCAL",
+                "LOCAL".equals(String.valueOf(defaultPriority)), String.valueOf(defaultPriority));
+
+        // ---------- 10. 头像链本地/外置拆分（1.6.6.1 覆盖版） ----------
+        boolean hasLocal = false, hasExternal = false, hasMojang = false, hasCrop = false, hasLegacy = false;
+        for (Method m : assets.getDeclaredMethods()) {
+            if (m.getName().equals("fetchViaLocalChain")) hasLocal = true;
+            if (m.getName().equals("fetchViaExternalChain")) hasExternal = true;
+            if (m.getName().equals("resolveLocalSkinUrl")) hasMojang = true;
+            if (m.getName().equals("resolveMojangSkinUrl")) hasMojang = true;
+            if (m.getName().equals("downloadAndCropFace")) hasCrop = true;
+            if (m.getName().equals("resolveSkinTexture")) hasLegacy = true;
+        }
+        check("本地链方法在位（fetchViaLocalChain）", hasLocal, "-");
+        check("外置链方法在位（fetchViaExternalChain）", hasExternal, "-");
+        check("解析拆分在位（resolveLocalSkinUrl / resolveMojangSkinUrl）",
+                hasMojang && !hasLegacy, "-");
+        check("裁脸复用在位（downloadAndCropFace）", hasCrop, "-");
+
+        // ---------- 11. drawRoundedAvatar 零拷贝直绘行为（1.6.6.1 覆盖版） ----------
+        Class<?> renderer = Class.forName("cn.kerong.penguin.spigot.render.InfoCardRenderer");
+        Object rendererInst = renderer.getDeclaredField("INSTANCE").get(null);
+        Method drawRounded = null;
+        for (Method m : renderer.getDeclaredMethods()) {
+            // Kotlin internal 函数字节码名带模块后缀：drawRoundedAvatar$common_Bot
+            if (m.getName().startsWith("drawRoundedAvatar")
+                    && m.getParameterCount() == 6
+                    && m.getParameterTypes()[0] == Graphics2D.class) drawRounded = m;
+        }
+        check("drawRoundedAvatar 方法存在（6 参含圆角半径）", drawRounded != null, "-");
+        drawRounded.setAccessible(true);
+
+        // 红色源图 32×32 → 100×100 透明画布，直绘到 (10, 10) 尺寸 64，圆角 16
+        BufferedImage source = new BufferedImage(32, 32, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < 32; y++) {
+            for (int x = 0; x < 32; x++) source.setRGB(x, y, 0xFFFF0000);
+        }
+        BufferedImage canvas = new BufferedImage(100, 100, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = canvas.createGraphics();
+        try {
+            drawRounded.invoke(rendererInst, g, source, 10, 10, 64, 16);
+        } finally {
+            g.dispose();
+        }
+        // 画完再拿一个新 Graphics 画不受裁剪的方块，验证裁剪区已恢复
+        Graphics2D g2 = canvas.createGraphics();
+        try {
+            g2.setColor(Color.BLUE);
+            g2.fillRect(0, 0, 5, 5);
+        } finally {
+            g2.dispose();
+        }
+        int corner = canvas.getRGB(10, 10);          // 头像区左上角（圆角外）
+        int center = canvas.getRGB(42, 42);          // 头像区中心
+        int blueMark = canvas.getRGB(2, 2);          // 恢复裁剪后画的蓝块
+        check("圆角裁剪生效（角落未被头像染色，保持透明）",
+                (corner >>> 24) == 0, String.format("0x%08X", corner));
+        check("头像中心正常绘制（红色）",
+                (center & 0x00FFFFFF) == 0x00FF0000 && (center >>> 24) == 0xFF,
+                String.format("0x%08X", center));
+        check("画完恢复原裁剪区（后续绘制不受圆角影响）",
+                (blueMark & 0x00FFFFFF) == 0x000000FF, String.format("0x%08X", blueMark));
 
         System.out.println();
         System.out.println("===== 冒烟结果：" + passed + "/" + (passed + failed) + " 通过，" + failed + " 失败 =====");

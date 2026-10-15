@@ -184,15 +184,14 @@ object InfoCardRenderer {
         g.color = Color(0xFF, 0xFF, 0xFF, 38)
         g.fill(RoundRectangle2D.Float(x, y, w, h, 24f, 24f))
 
-        // 头像（右上角，圆角描边）
+        // 头像（右上角，圆角描边；1.6.6.1 覆盖版：零中间图直接绘制——
+        // 在画布上裁剪圆角区域后直接把头像缩放画进去，不再先拷贝一份
+        // 圆角小图，省一次栅格分配与拷贝）
         val avatarSize = 108
         val avatarX = WIDTH - 24 - 40 - avatarSize
         val avatarY = 24 + (200 - avatarSize) / 2
         if (data.avatar != null) {
-            val rounded = roundImage(data.avatar, avatarSize)
-            g.drawImage(rounded, null, avatarX, avatarY)
-            // 1.6.5：圆角头像中间图画完即释放
-            try { rounded.flush() } catch (_: Throwable) {}
+            drawRoundedAvatar(g, data.avatar, avatarX, avatarY, avatarSize)
             g.color = Color(0xFF, 0xFF, 0xFF, 200)
             g.stroke = BasicStroke(2f)
             g.draw(RoundRectangle2D.Float(avatarX + 0.5f, avatarY + 0.5f, avatarSize - 1f, avatarSize - 1f, 16f, 16f))
@@ -476,19 +475,42 @@ object InfoCardRenderer {
         return text.substring(0, end)
     }
 
-    /** 圆角头像。 */
-    internal fun roundImage(source: BufferedImage, size: Int): BufferedImage {
-        val result = BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
-        val g = result.createGraphics()
+    /**
+     * 圆角头像零拷贝绘制（1.6.6.1 覆盖版，三个渲染器共用）。
+     *
+     * 旧版先 `roundImage` 拷贝一张 size×size ARGB 圆角小图再画到画布，
+     * 每页每个头像都多一次栅格分配 + 全图拷贝（在线列表一页 60 人）；
+     * 现在直接在目标画布上设置圆角裁剪区域后把头像源图缩放画进去，
+     * 无中间图、无额外分配，画完恢复原裁剪区。
+     *
+     * @param g      目标画布 Graphics2D
+     * @param source 头像源图（通常 216×216）
+     * @param x      画布上的左上角 x
+     * @param y      画布上的左上角 y
+     * @param size   目标边长（绘制时双线性缩放到该尺寸）
+     * @param radius 圆角半径（像素）
+     */
+    internal fun drawRoundedAvatar(
+        g: Graphics2D,
+        source: BufferedImage,
+        x: Int,
+        y: Int,
+        size: Int,
+        radius: Int = 16,
+    ) {
+        if (size <= 0 || source.width <= 0 || source.height <= 0) return
+        val oldClip = g.clip
+        val oldHint = g.getRenderingHint(RenderingHints.KEY_INTERPOLATION)
         try {
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-            g.clip(RoundRectangle2D.Float(0f, 0f, size.toFloat(), size.toFloat(), 16f, 16f))
-            g.drawImage(source, 0, 0, size, size, null)
+            g.clip(RoundRectangle2D.Float(x.toFloat(), y.toFloat(), size.toFloat(), size.toFloat(), radius.toFloat(), radius.toFloat()))
+            g.drawImage(source, x, y, size, size, null)
         } finally {
-            g.dispose()
+            g.clip = oldClip
+            if (oldHint != null) {
+                g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, oldHint)
+            }
         }
-        return result
     }
 
     /** 从类路径加载内置字体。 */
@@ -529,8 +551,12 @@ object InfoCardAssets {
     /** 头像缓存有效期（毫秒）。 */
     private const val AVATAR_TTL = 10 * 60_000L
 
-    /** 头像缓存容量上限。 */
-    private const val AVATAR_CACHE_MAX = 128
+    /**
+     * 头像内存缓存容量上限（1.6.6.1 覆盖版：128 → 64）。旧上限峰值
+     * ~24MB（128 条 × 216² ARGB）；磁盘缓存（3 小时 TTL）就位后淘汰
+     * 条目可从磁盘秒级回填，上限减半到 ~12MB 无感知成本。
+     */
+    private const val AVATAR_CACHE_MAX = 64
 
     /** 查询失败后的短期冷却，避免连续请求打爆外部接口。 */
     private const val MISS_TTL = 60_000L
@@ -652,11 +678,13 @@ object InfoCardAssets {
      *
      * 查找顺序（1.6.6.1）：内存缓存 → 磁盘缓存（plugins/KERONGPenguin/
      * cache/avatars/，默认 3 小时，render.avatar-cache-hours 可配置；
-     * 过期文件由后台清扫线程删除，命中即回填内存）→ 本地皮肤数据
-     * （Profile / NBT）裁脸 → Mojang 官方原生 API（会话服务器直查 +
-     * 玩家名反查，始终保留）→ 外部头像服务回退链（MC-Heads →
-     * Minotar → MinePic → Crafatar，基岩玩家走 MC-Heads 的 xuid 线路，
-     * 见 [fetchExternalAvatar]）。
+     * 过期文件由后台清扫线程删除，命中即回填内存）→ 按配置的优先方式
+     * 获取（render.avatar-fetch-priority，默认 local）：
+     * - local：本地方式优先（在线玩家 Profile + 本服存档 NBT 解析皮肤
+     *   贴图，仅下载贴图文件本身，不走账号 API），取不到自动切换外置；
+     * - external：外置方式优先（Mojang 官方 API → MC-Heads → Minotar →
+     *   MinePic → Crafatar），全部失败后再试本地；
+     * 先试的一方失败自动切换另一方，两种方式都不成时才记入失败冷却。
      */
     fun fetchAvatar(request: AvatarRequest): BufferedImage? {
         val key = request.uuid?.toString() ?: "name:${request.playerName.lowercase()}"
@@ -681,16 +709,15 @@ object InfoCardAssets {
             return disk
         }
 
-        // 4. 解析皮肤贴图（本地 Profile / NBT / Mojang 官方链路）
-        // 1.6.5：皮肤贴图中间产物裁完即 flush（即用即释，不等 GC）
-        val skinUrl = resolveSkinTexture(request)
-        val face: BufferedImage? = skinUrl?.let { url ->
-            downloadSkin(url)?.let { skin ->
-                val cropped = cropFace(skin, FACE_SIZE)
-                try { skin.flush() } catch (_: Throwable) {}
-                cropped
-            }
-        } ?: fetchExternalAvatar(request)
+        // 4. 按配置优先级获取：local = 本地优先，取不到自动切外置；
+        //    external = 外置优先，全部失败再试本地（1.6.6.1 覆盖版）
+        val preferExternal = RenderSettings.avatarFetchPriority() ==
+            RenderSettings.AvatarFetchPriority.EXTERNAL
+        val face: BufferedImage? = if (preferExternal) {
+            fetchViaExternalChain(request) ?: fetchViaLocalChain(request)
+        } else {
+            fetchViaLocalChain(request) ?: fetchViaExternalChain(request)
+        }
 
         if (face != null) {
             avatarCache[key] = CacheEntry(face, now)
@@ -753,24 +780,56 @@ object InfoCardAssets {
         }
     }
 
-    // ---------- 皮肤贴图解析链 ----------
+    // ---------- 皮肤贴图解析链（1.6.6.1 覆盖版：本地 / Mojang 官方两段拆分） ----------
 
     /**
-     * 解析皮肤贴图 URL（纹理图 URL，非头像服务）。
-     * 顺序：Profile 直供 → 本服 NBT → 会话服务器（正版 UUID）→ 玩家名反查。
+     * 本地方式获取头像（1.6.6.1 覆盖版）：本服已有数据解析皮肤贴图 URL
+     * → 下载贴图 → 裁脸。
      *
-     * 1.6.2 修复「极少个数玩家头像始终无法获取」：
-     * 旧版第 4 步要求「名字反查到的正版 UUID ≠ 传入 UUID」才查询会话服务器，
-     * 而 Mojang 极少数老账号的 UUID 不是 v4（如 v3），第 3 步的 v4 快路径
-     * 会跳过它们，第 4 步又因「相同即跳过」被挡——两层全挡 = 头像永远失败；
-     * 现在只要名字反查到正版 UUID 就查询会话服务器（传入 UUID 是 v4 且
-     * 第 3 步已查过的除外，避免重复请求）。
-     *
-     * 1.6.4：Mojang 官方链路（第 3 / 4 步）在网络冷却期（见
-     * [MOJANG_NETWORK_COOLDOWN_MS]）内整体跳过，避免每个玩家都等一次
-     * 5 秒超时；官方链路失败由外部多线路回退兜底（见 [fetchExternalAvatar]）。
+     * - 数据源仅限本服：在线玩家 Profile（含 SkinsRestorer 等皮肤插件
+     *   修改后的结果，主线程捕获）与本服 playerdata NBT 存档；
+     * - 账号 / 贴图解析完全不走外部接口，仅需下载贴图 PNG 本身
+     *   （textures.minecraft.net，服务器不保存皮肤文件，这是物理上限）；
+     * - 本地数据缺失或下载 / 裁剪失败返回 null，调用方自动切换外置方式
+     *   （基岩玩家的 Profile 无贴图属性，同样自动落外置 xuid 线路）。
      */
-    private fun resolveSkinTexture(request: AvatarRequest): String? {
+    private fun fetchViaLocalChain(request: AvatarRequest): BufferedImage? {
+        val skinUrl = resolveLocalSkinUrl(request) ?: return null
+        return downloadAndCropFace(skinUrl)
+    }
+
+    /**
+     * 外置方式获取头像（1.6.6.1 覆盖版）：Mojang 官方原生 API
+     * （会话服务器直查 + 玩家名反查，网络冷却见
+     * [MOJANG_NETWORK_COOLDOWN_MS]）解析贴图 → 下载裁脸；官方链路
+     * 拿不到时再走外部头像服务多线路回退（[fetchExternalAvatar]）。
+     * 官方数据优先于外部头像服务（用户明确要求保留 Mojang 原生 API）。
+     */
+    private fun fetchViaExternalChain(request: AvatarRequest): BufferedImage? {
+        val skinUrl = resolveMojangSkinUrl(request)
+        if (skinUrl != null) {
+            downloadAndCropFace(skinUrl)?.let { return it }
+        }
+        return fetchExternalAvatar(request)
+    }
+
+    /**
+     * 下载皮肤贴图并裁脸（1.6.5：中间贴图用后即 flush，即用即释不等 GC；
+     * 下载失败 / 尺寸异常返回 null）。
+     */
+    private fun downloadAndCropFace(skinUrl: String): BufferedImage? {
+        val skin = downloadSkin(skinUrl) ?: return null
+        val cropped = cropFace(skin, FACE_SIZE)
+        try { skin.flush() } catch (_: Throwable) {}
+        return cropped
+    }
+
+    /**
+     * 解析本地皮肤贴图 URL：仅用本服已有数据，不访问任何外部接口。
+     * 顺序：在线玩家 Profile（含皮肤插件修改）→ 本服 playerdata NBT
+     * （离线服 + SkinsRestorer 的主要来源）。
+     */
+    private fun resolveLocalSkinUrl(request: AvatarRequest): String? {
         // 1. 在线玩家 Profile（最准确，含皮肤插件修改）
         request.skinUrl?.takeIf { it.startsWith("http") }?.let { return it }
 
@@ -783,10 +842,29 @@ object InfoCardAssets {
                 extractNbtSkinUrl(datFile)?.let { return it }
             }
         }
+        return null
+    }
 
+    /**
+     * Mojang 官方原生 API 解析皮肤贴图 URL（用户要求始终保留）：
+     * 会话服务器 UUID 直查 + 玩家名反查。
+     *
+     * 1.6.2 修复「极少个数玩家头像始终无法获取」：
+     * 旧版第 4 步要求「名字反查到的正版 UUID ≠ 传入 UUID」才查询会话服务器，
+     * 而 Mojang 极少数老账号的 UUID 不是 v4（如 v3），第 3 步的 v4 快路径
+     * 会跳过它们，第 4 步又因「相同即跳过」被挡——两层全挡 = 头像永远失败；
+     * 现在只要名字反查到正版 UUID 就查询会话服务器（传入 UUID 是 v4 且
+     * 第 3 步已查过的除外，避免重复请求）。
+     *
+     * 1.6.4：官方链路在网络冷却期（见 [MOJANG_NETWORK_COOLDOWN_MS]）内
+     * 整体跳过，避免每个玩家都等一次 5 秒超时；跳过时由外部多线路回退
+     * 兜底（见 [fetchExternalAvatar]）。
+     */
+    private fun resolveMojangSkinUrl(request: AvatarRequest): String? {
         // 官方链路网络冷却期内不再逐玩家等超时（1.6.4）
         if (mojangInCooldown()) return null
 
+        val uuid = request.uuid
         // 3. 正版 UUID（v4 快路径）：会话服务器查询（未知 UUID 返回 204，可检测失败）。
         //    非 v4 的老账号正版 UUID 走第 4 步名字反查后同样能查到
         if (uuid != null && uuid.version() == 4) {
@@ -1039,8 +1117,8 @@ object InfoCardAssets {
      * 任一成功即返回（在线列表 8 秒预热预算保护，不做四线全等）。
      *
      * 注：本链路之前还有 Mojang 官方原生 API（会话服务器 + 名字反查，
-     * 见 [resolveSkinTexture]）——官方数据始终优先，本链路仅在其失败
-     * 或网络冷却期内兜底，不替代官方接口。
+     * 见 [fetchViaExternalChain] / [resolveMojangSkinUrl]）——官方数据
+     * 始终优先，本链路仅在其失败或网络冷却期内兜底，不替代官方接口。
      *
      * - 基岩玩家（Floodgate UUID，见 [floodgateXuid]）：MC-Heads 的
      *   xuid 线路（实测 200，官方支持 Xbox 头像）；其余 Java 侧
@@ -1455,8 +1533,11 @@ object InfoCardAssets {
      * - [useBuiltin] 为 true（默认）→ 直接使用 [builtinResource] 内置背景；
      * - false → 随机取数据目录 img/ 文件夹图片；**img 里没有任何可用图片时
      *   自动回退内置背景**（不再退纯色渐变，保证出图风格统一）；
-     * - 长图背景处理高度封顶 [ONLINE_BACKGROUND_MAX_HEIGHT] 防栅格膨胀（1.5.1），
-     *   渲染时拉伸铺满视觉无差异；卡片矮图不受影响。
+     * - 长图背景处理高度封顶 [ONLINE_BACKGROUND_MAX_HEIGHT] 防栅格膨胀（1.5.1
+     *   仅随机图封顶；1.6.6.1 覆盖版内置图同样封顶——查在线 / 排行榜渲染器
+     *   本就双线性拉伸铺满全画布，视觉一致，且不再为每种页高各存一张 10MB 级
+     *   cover 条目；查信息卡片高 ≤ 856px 不受影响），渲染时拉伸铺满；
+     * - 卡片矮图不受影响。
      *
      * @param dataDirectory 插件 / 模组数据目录（img/ 的父目录），可为 null
      * @param useBuiltin    是否使用内置背景图（对应各自配置开关，默认 true）
@@ -1471,12 +1552,13 @@ object InfoCardAssets {
         useBuiltin: Boolean,
         builtinResource: String = BUILTIN_BACKGROUND_CARD,
     ): BufferedImage? {
+        // 1.6.6.1 覆盖版：背景处理高度统一封顶（详见 KDoc）
+        val cappedHeight = height.coerceAtMost(ONLINE_BACKGROUND_MAX_HEIGHT)
         if (!useBuiltin) {
-            val cappedHeight = height.coerceAtMost(ONLINE_BACKGROUND_MAX_HEIGHT)
             val random = dataDirectory?.let { processedBackground(it, width, cappedHeight) }
             if (random != null) return random
         }
-        return processedBuiltinBackground(builtinResource, width, height)
+        return processedBuiltinBackground(builtinResource, width, cappedHeight)
     }
 
     /**
