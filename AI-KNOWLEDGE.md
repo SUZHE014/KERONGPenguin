@@ -1,7 +1,7 @@
 # KERONGPenguin AI 交接知识库
 
 > **本文档的用途**：把本文件丢给一个对项目一无所知的 AI，它能立刻了解当前情况并接手工作。
-> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-15（v1.6.6.1 覆盖版发版完成）。
+> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-16（v1.6.6.2 发版完成）。
 > 自包含版本（发给本地无任何东西的 AI）见官网 `AI-KNOWLEDGE.txt`，含从零开始的环境重建与凭据获取说明。
 
 ### 1.1 受限网络环境重建（2026-10-14 实战，环境重置后可用）
@@ -20,7 +20,7 @@
 
 KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项目：玩家在 QQ 群里查数据/签到/聊天，插件在服务器内渲染统计卡片图片并回发。Kotlin 多模块：`common-Bot`（全部业务核心）+ `server-Spigot`（Bukkit 插件版，支持 Spigot/Paper/Folia/混合端）+ `server-NeoForge`（NeoForge 1.21.1 模组版，复用 common-Bot 全部源码 + Spigot 的 manager 源码）。
 
-**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.6.1）。当前版本 **1.6.6.1（覆盖重发版：同版本号重新构建部署，覆盖同日早发的初版）**（头像本地优先获取可配置 + 头像磁盘缓存默认 3 小时可配置 + 新增 MinePic 线路，Mojang 原生 API 保留 / 渲染内存再优化（零中间图头像直绘、缓存减半、内置背景封顶）/ 删除 WebUI 面板残留 / 删除 PlayTimeManager 时长同步 / 1.6.6：控制台真彩色、头像多备用线路与落盘缓存、PlaceholderAPI 依赖检测，包名 cn.kerong.bot 与 cn.kerong.penguin，主类 KERONGSpigot / KERONGNeoForge）。
+**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.6.2）。当前版本 **1.6.6.2**（修复清除缓存后极少玩家头像获取失败（网络抖动型失败不写冷却）+ 内存缓存 128 条 + 超 10KB 大头像只走磁盘缓存 + 渲染空闲内存释放（render.idle-release-minutes，默认 5）+ 磁盘缓存强关后启动即清 + 头像获取方式写日志 / 1.6.6.1 覆盖版：头像本地优先可配置、磁盘缓存 3 小时可配置、MinePic 线路、渲染内存再优化、删 WebUI、删 PlayTimeManager 时长同步 / 1.6.6：控制台真彩色、头像多线路与落盘、PlaceholderAPI 依赖检测，包名 cn.kerong.bot 与 cn.kerong.penguin，主类 KERONGSpigot / KERONGNeoForge）。
 
 ---
 
@@ -37,7 +37,7 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 | 打包脚本 | `scripts/package_jar.py`（Spigot）、`scripts/package_jar_neoforge.py`（NeoForge） |
 | 门禁脚本 | `scripts/verify_jar_<版本>.py`（每版新写一个）+ `scripts/smoke<版本>/`（功能冒烟，独立 JVM） |
 | 工作日志 | `/home/z/my-project/worklog.md`（多 agent 共享，每次工作后追加） |
-| Java | 21（gradle 自带 JDK 在 `~/.gradle/jdks/eclipse_adoptium-21-amd64-linux.2/`，系统 javac 不在 PATH） |
+| Java | 21（本环境装在 `/home/z/jdk21`（TUNA Adoptium 镜像），含 javac；系统 apt 的 openjdk-21 是 JRE-only 无 javac；`~/.gradle/gradle.properties` 指向它） |
 
 **打包关键点（历史血泪）**：
 - fat JAR 必须保留**目录条目**（目录 entry），否则 SDK 组件扫描 NPE、机器人启动失败（0.1.5.1/0.1.5.4 的坑）；
@@ -128,14 +128,15 @@ QQ 同一 AppID 的第二条连接**不总是被立刻踢**。三种实测形态
 
 `bot/UpdateChecker.kt`：启动后异步 8 秒 GET `https://kerong.xin/penguin/version.json`，逐段数字比较版本；有新版→控制台输出带 § 颜色码的版本号/下载页/最多 6 行简要日志（1.6.4：版本号绿色加粗、链接蓝色、条目灰白分级）；失败→控制台一句话，细节进日志。`update-check.enabled` 可关。**每次发版必须更新服务器上的 version.json**。§ 颜色码处理：Spigot 系控制台直接渲染；NeoForge 适配器 `log_info/log_warning/log_error` 输出前统一过 `PluginFileLog.stripColorCodes`（log4j 不渲染 §，否则乱码）；文件日志始终剥离。共享代码可以放心在控制台文案里用 § 颜色码。
 
-### 3.5 渲染管线与头像获取（1.6.4 头像修复，1.6.5 内存与性能，1.6.6 多线路与落盘，1.6.6.1 覆盖版：本地优先 + 缓存配置化 + MinePic + 内存再优化）
+### 3.5 渲染管线与头像获取（1.6.4 头像修复，1.6.5 内存与性能，1.6.6 多线路与落盘，1.6.6.1 覆盖版：本地优先 + 缓存配置化 + MinePic，1.6.6.2：缓存分层 + 空闲释放 + 失败分类 + 获取方式日志）
 
-CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结果缓存、头像 LRU+字节预算、背景图内置+随机 LRU、长图封顶 1600px、子采样解码防 OOM。图片发送：`replyWithImgBytes`（base64 上传），读超时（SDK OkHttp 10 秒 < QQ 富媒体普遍 10 秒+应答）**不算失败**（图片大概率已投递，1.6.1）；ret 2022021x=已受理算成功。**1.6.5 内存策略**：移除渲染后 System.gc() 提示（Full GC 停顿伤 tick，render.gc-after-render 配置已废除并由升级器清理），改为确定性 flush——单次画布（各 render() 末尾）、中间图（皮肤贴图/缩放/cover）、缓存淘汰与 clearCaches 均在失去引用前 flush，剩余堆内存交给常规新生代 GC。**1.6.6.1 覆盖版内存再优化**：①三渲染器（InfoCard/OnlineList/Leaderboard）圆角头像零中间图直绘（共享 `InfoCardRenderer.drawRoundedAvatar`，画布 clip+双线性直绘，旧版每个头像先拷一张圆角小图）；②头像内存缓存上限 128→64 条（磁盘缓存兜底，峰值 ~24MB→~12MB）；③内置背景处理高度也封顶 1600px（旧版仅随机图封顶，百人在线列表的内置 cover 条目可达 10MB+/张且每种页高各一份，渲染器本就拉伸铺满视觉一致）。
+CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结果缓存、背景图内置+随机 LRU、长图封顶 1600px、子采样解码防 OOM。图片发送：`replyWithImgBytes`（base64 上传），读超时（SDK OkHttp 10 秒 < QQ 富媒体普遍 10 秒+应答）**不算失败**（图片大概率已投递，1.6.1）；ret 2022021x=已受理算成功。**1.6.5 内存策略**：确定性 flush（单次画布 / 中间图 / 缓存淘汰 / clearCaches 均在失去引用前 flush，剩余堆内存交给常规新生代 GC，System.gc 与 gc-after-render 已废除）。**1.6.6.1 覆盖版内存再优化**：三渲染器圆角头像零中间图直绘（共享 `InfoCardRenderer.drawRoundedAvatar`）；内置背景处理高度统一封顶 1600px。**1.6.6.2 缓存与内存策略**：①头像内存缓存上限 64→**128 条**，并新增 **AVATAR_MEMORY_MAX_BYTES = 10KB 单张门槛**——PNG 编码后超 10KB 的大头像只写磁盘缓存不进内存（`cacheAndStoreAvatar`：`encodeAvatarPng` 编码一次，磁盘写入与内存门槛共用；磁盘缓存关闭时退回全量内存缓存；磁盘命中 `DiskAvatar` 带文件字节数超门槛不回填）；②**渲染空闲内存释放**：`render.idle-release-minutes`（默认 5，支持小数，0 = 关闭）——CardRenderPool 任务收尾（含异常收尾）刷新 `markRenderCompleted` 时间戳 + `activeRenders` 活跃计数护栏，render-idle-releaser 守护线程每 30 秒检查，距上次渲染完成超阈值且无进行中渲染时 flush + 清空 avatar/background/builtin 三类图像缓存并重置计时，missCache / premiumUuidCache 轻量元数据保留，释放动作写日志；③内存缓存及时清理：sweepDiskCache 每轮开头 `purgeMemoryAvatarCache` 清超 TTL（10 分钟）条目，仅无活跃渲染时执行；④磁盘缓存强制关机后可清：`ensureAvatarSweeper` 双端主类启动即调用（首轮 10 秒后清停服/强关期间过期文件）。
 
-**头像链路**（`InfoCardRenderer.kt` 的 InfoCardAssets）：内存缓存（10 分钟）→ **磁盘缓存**（1.6.6 新增，1.6.6.1 有效期默认 3 小时且可配置：`render.avatar-cache-hours`（RenderSettings.avatarCacheHours 实时读，支持小数，0 = 关闭不读不写），插件版 plugins/KERONGPenguin/cache/avatars/、模组版 kerongpenguin/cache/avatars/，512 文件上限，命中回填内存，重启后免重复请求；过期文件由 avatar-cache-sweeper 守护线程每 30 分钟清扫删除（首轮启动 10 秒后，顺带清停服期间过期文件），查询命中过期文件时也顺手删）→ **按 `render.avatar-fetch-priority` 决定本地/外置先后（1.6.6.1 覆盖版新增，RenderSettings.avatarFetchPriority 实时读，local/external 不区分大小写，无效值按 local）**：
+**头像链路**（`InfoCardRenderer.kt` 的 InfoCardAssets）：内存缓存（10 分钟，上限 128 条，**1.6.6.2 起只存 PNG ≤ 10KB 的小头像**；超时条目由清扫线程每轮顺带清除）→ **磁盘缓存**（1.6.6 新增，1.6.6.1 有效期默认 3 小时且可配置：`render.avatar-cache-hours`（RenderSettings.avatarCacheHours 实时读，支持小数，0 = 关闭不读不写），插件版 plugins/KERONGPenguin/cache/avatars/、模组版 kerongpenguin/cache/avatars/，512 文件上限，**超 10KB 大头像只存这里不进内存**，重启后免重复请求；过期文件由 avatar-cache-sweeper 守护线程每 30 分钟清扫删除（首轮启动 10 秒后，**双端主类启动时即启动该线程（1.6.6.2，强制关机后残留过期文件下次启动 10 秒内清掉，不依赖运行期状态）**），查询命中过期文件时也顺手删）→ **按 `render.avatar-fetch-priority` 决定本地/外置先后（1.6.6.1 覆盖版新增，RenderSettings.avatarFetchPriority 实时读，local/external 不区分大小写，无效值按 local）**：
 - **本地方式（默认 local，先试）**：本服已有数据解析皮肤贴图 URL（在线玩家 Profile（含 SkinsRestorer 修改，主线程捕获进 AvatarRequest.skinUrl）→ 本服 playerdata NBT（extractNbtSkinUrl，离线服+皮肤插件场景））→ 下载贴图 PNG（textures.minecraft.net，服务器不存皮肤文件本身这是物理上限，但不走任何账号 API）→ cropFace 裁脸；
 - **外置方式**：Mojang 官方原生 API（会话服务器 v4 直查 + 玩家名反查，网络冷却见下）→ 下载裁脸；官方链路拿不到再走 **外部多线路回退**（1.6.6 起：MC-Heads → Minotar → **MinePic（1.6.6.1 新增，minepic.org/avatar/<无横线UUID或名字>/216，实测 1.7~6s 波动大、未知账号不响应按失败处理，超时 3 秒）** → Crafatar 按实测速度排序；基岩玩家（Floodgate UUID：msb 全 0 + lsb 高 16 位 0x0009，低 48 位为 xuid）走 MC-Heads xuid 线路 `https://mc-heads.net/avatar/xuid:<xuid>/216`；名字线路 MC-Heads → Minotar → MinePic；生产实测 2026-10：MC-Heads 0.4s / Minotar 0.5s / MinePic 1.7~6s / Crafatar 5.8s，LittleSkin 与 mc-api.io 不可达弃用；**Mojang 原生官方 API 始终保留且优先于外部线路**（用户明确要求，外部线路仅兜底））；
-- 先试的一方失败自动切换另一方（external 模式 = 外置全败后再试本地），两者都不成才写 missCache。
+- 先试的一方失败自动切换另一方（external 模式 = 外置全败后再试本地）。**1.6.6.2 失败分类**（修复「极少玩家在清除缓存后头像获取失败」：磁盘缓存整批到期→集中重取风暴→Mojang 429/网络级失败进 5 分钟全局冷却→风暴尾部玩家失败被写入 missCache 60 秒冷却重试无门）：`networkTrouble` ThreadLocal 逐次尝试标记（httpGet/httpGetWithStatus 网络异常、官方冷却期内跳过、markMojangUnreachable 429/5xx 均置位，fetchAvatar 开头重置），**网络抖动型失败不写 missCache，下次查询立即重试；确定性失败（404 等）才写冷却**。
+- **获取方式日志（1.6.6.2）**：每次成功获取（含磁盘命中）记 `[头像] 玩家名 ← 方式`（本地皮肤贴图（在线Profile/存档NBT）/ Mojang官方API / MC-Heads（含基岩 xuid 与名字线路）/ Minotar / MinePic / Crafatar / 本地磁盘缓存（NKB）），失败记一行含是否可重试；内存缓存命中不记（非获取动作）。排查某玩家头像链路看日志即可。
 
 **1.6.4 关键修复：Mojang 官方接口网络级失败（超时/IO/429/5xx）开启 5 分钟全局冷却**——「大部分玩家头像获取失败」的根因是服务器到 Mojang 的线路不稳，旧版每个玩家都先等 5 秒超时才能失败，在线列表 8 秒预热预算全部耗尽；冷却期内直接跳过官方链路（走外部线路或诚实失败），不再逐玩家等超时。会话服务器超时也从 5 秒降到 3 秒。离线服无皮肤数据的玩家仍诚实画占位块（不做「人人史蒂夫」假回退）。
 
@@ -205,15 +206,25 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
 | 图片读超时≠失败 | QQ 富媒体应答普遍 10 秒+ > SDK OkHttp readTimeout 10 秒，读超时按 WARNING 不提示失败 |
 | Mojang 429 限流/网络不可达 | 名字反查限流/网络异常不写负缓存（1.6.2 修）；1.6.4 网络级失败另开 5 分钟全局冷却（避免逐玩家等超时）；404 才写且 30 分钟有效 |
 | 停机 zip closed | Paper/Purpur 停机阶段会提前关插件 jar 的 ZipFile，onDisable 首次类加载报错；onEnable 预热 CommandOutputAppender.getInstance()（1.6.4 修），onDisable 每步独立 try-catch |
+| 复用旧 build 目录 | 环境重置后复用残留 build/classes 时，旧包名**空目录**（如 cn/huohuas001/）会被 Gradle jar 任务连同空目录一起打进产物，门禁「全 JAR 无旧字样」失败——**发布前 gradlew clean 全量重建**（1.6.6.2 实测踩坑） |
+| 工具输出吞 [h | Bash 工具输出管道会吞 `[h` 转义序列（`[hb]` 显示成 `b]`，仅显示层不影响文件字节）——**断言字符串以文件字节为准，别照抄屏幕显示**（1.6.6.2 实测踩坑） |
 | 指令重载配置 | 已移除该概念：改配置一律重启（配置头注释+教程+文档三处一致） |
 | Kloping 线程池 | 关服后 50+ 非守护线程不退出 → SptCompat 清扫 + 5 秒 halt(0) 兜底 |
 | 死代码教训 | 1.6.3 审计删除 21 项零引用声明+剔除 1.3MB 未用库；新死代码判定要查**三个模块+脚本+资源+反射**（@Commands/@SubscribeEvent/@EventReceiver 反射入口不算死） |
 
 ---
 
-## 7. 当前已知状态（2026-10-15，v1.6.6.1 覆盖版发版完成）
+## 7. 当前已知状态（2026-10-16，v1.6.6.2 发版完成）
 
-- 双端 1.6.6.1 覆盖版全部完成（同版本号覆盖重发：构建 / 门禁 / 冒烟通过）：
+- 双端 1.6.6.2 全部完成（构建 / 门禁 116 项 / 冒烟 54 项 / 官网部署在线验证 15 项 / git 推送 1befe73）：
+  - 修复「极少玩家在清除缓存后头像获取失败」：失败分类（networkTrouble ThreadLocal）——网络抖动型失败（超时 / IO 异常 / 官方冷却期内跳过 / 429 / 5xx）不写 missCache，下次查询立即重试；确定性失败（404 等）才写 60 秒冷却；
+  - 头像内存缓存 64 → 128 条 + AVATAR_MEMORY_MAX_BYTES = 10KB 单张门槛（PNG 编码后超 10KB 只走磁盘缓存；encodeAvatarPng + writeDiskAvatar 拆分；磁盘缓存关闭时退回全量内存缓存）；
+  - 渲染空闲内存释放：`render.idle-release-minutes`（默认 5，支持小数，0 = 关闭，实时读）——CardRenderPool 任务收尾 markRenderCompleted + activeRenders 护栏，render-idle-releaser 守护线程每 30 秒检查，超时且无进行中渲染时 flush + 清空图像缓存（轻量元数据保留），释放写日志；
+  - 内存缓存及时清理：sweepDiskCache 每轮开头 purgeMemoryAvatarCache（清超 10 分钟 TTL 条目，仅无活跃渲染时执行）；
+  - 磁盘缓存强制关机后可清：ensureAvatarSweeper 双端主类启动即调用（不再惰性等首次取头像）；
+  - 头像获取方式写日志：FetchedFace 标签贯穿本地 / 外置链路，每次成功（含磁盘命中）记 `[头像] 玩家名 ← 方式`，失败记一行含 retryable 说明；
+  - 官网：下载卡片 1.6.6.2（删覆盖重发与双端描述四段、新增「支持 MC 的版本请详见下方」指引），历史表 8 版本（1.6.1+，删 1.6.0），更新日志 1.6.6.2 详细段 + 1.6.5/1.6.4 折叠一行版；version.json 五条；tutorial render 段含 idle-release-minutes 与 1.6.6.2 缓存行为说明。
+- 双端 1.6.6.1 覆盖版历史项（构建 / 门禁 / 冒烟通过）：
   - 头像本地优先：`render.avatar-fetch-priority`（local 默认 / external，无效值按 local，实时读），本地链（Profile + NBT）与外置链（Mojang 官方 + 多线路）按配置先后互为兜底，先试失败自动切换；
   - 头像磁盘缓存配置化：默认 24 小时 → 3 小时，`render.avatar-cache-hours`（支持小数，0 = 关闭；ConfigManager DEFAULT_VALUES 自动补键，fillMissing 机制无需 config-version 迁移）；过期文件 avatar-cache-sweeper 守护线程每 30 分钟清扫（惰性启动，clearCaches 关闭，可重启）；
   - MinePic 线路：插在 Minotar 与 Crafatar 之间（v4 与名字线路），实测波动大、未知账号不响应；
