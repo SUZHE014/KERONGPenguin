@@ -26,7 +26,7 @@ import java.util.UUID
  * - 未绑定 QQ 的玩家登录时拒入并发绑定码；
  * - 抑制 Forge 网络日志刷屏。
  *
- * 0.1.5.2：Bot SDK 日志接管统一在 HuHoBot.initializeRuntime 中完成
+ * 0.1.5.2：Bot SDK 日志接管统一在运行时初始化（initializeRuntime）中完成
  * （错误上控制台、其余写文件），此处不再重复重定向。
  */
 class GameChat : Listener {

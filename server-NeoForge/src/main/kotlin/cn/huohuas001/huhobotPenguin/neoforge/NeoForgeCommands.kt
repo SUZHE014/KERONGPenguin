@@ -4,6 +4,8 @@ import cn.huohuas001.bot.MenuManager
 import cn.huohuas001.bot.QClient
 import cn.huohuas001.huhobotPenguin.spigot.qqbind.QqBindManager
 import com.mojang.brigadier.arguments.StringArgumentType
+import com.mojang.brigadier.builder.LiteralArgumentBuilder
+import net.minecraft.commands.CommandSourceStack
 import net.minecraft.commands.Commands
 import net.minecraft.network.chat.Component
 import net.neoforged.bus.api.SubscribeEvent
@@ -11,26 +13,38 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent
 
 /**
  * 游戏内命令注册（等价 Spigot 版 plugin.yml 命令 + HuHoBotCommand / QqCommand）：
- * - /huhobot（别名 /hb）：reload / info / panel / chs / help，需要权限等级 2（OP）；
+ * - /kerong（别名 /hb、/huhobot）：reload / info / panel / chs / help，需要权限等级 2（OP）；
  *   1.6.2 新增 chs：机器人重连超时挂起或断线期间手动重试连接；
+ *   1.6.5：主命令由 /huhobot 更名 /kerong，旧命令名保留为别名；
  * - /qq：rebind（玩家自助解绑）与 qxqq / skip / unskip（OP 管理）。
  */
 class NeoForgeCommands(private val plugin: HuHoBotNeoForge) {
 
+    /** 主命令全部注册名：/kerong 为主，/hb 与旧名 /huhobot 为别名（子命令一致）。 */
+    private val MAIN_COMMAND_LABELS = listOf("kerong", "hb", "huhobot")
+
     @SubscribeEvent
     fun onRegisterCommands(event: RegisterCommandsEvent) {
-        registerHuHoBot(event)
+        registerKerong(event)
         registerQq(event)
     }
 
-    // ---------- /huhobot ----------
+    // ---------- /kerong（别名 /hb、/huhobot） ----------
 
-    private fun registerHuHoBot(event: RegisterCommandsEvent) {
-        val builder = Commands.literal("huhobot").requires { it.hasPermission(2) }
+    private fun registerKerong(event: RegisterCommandsEvent) {
+        // 1.6.5：主命令 /kerong；旧主命令 /huhobot 与短别名 /hb 一并注册（同一套子命令）
+        for (label in MAIN_COMMAND_LABELS) {
+            event.dispatcher.register(buildMainCommand(label))
+        }
+    }
+
+    /** 构造主命令节点（label = kerong / hb / huhobot，子命令完全一致）。 */
+    private fun buildMainCommand(label: String): LiteralArgumentBuilder<CommandSourceStack> {
+        val builder = Commands.literal(label).requires { it.hasPermission(2) }
 
         builder.then(
             Commands.literal("help").executes { context ->
-                sendHelp(context.source, "huhobot")
+                sendHelp(context.source, label)
                 1
             },
         )
@@ -62,36 +76,10 @@ class NeoForgeCommands(private val plugin: HuHoBotNeoForge) {
             },
         )
         builder.executes { context ->
-            sendHelp(context.source, "huhobot")
+            sendHelp(context.source, label)
             1
         }
-        event.dispatcher.register(builder)
-
-        // 别名 /hb
-        val alias = Commands.literal("hb").requires { it.hasPermission(2) }
-            .then(Commands.literal("help").executes { context ->
-                sendHelp(context.source, "hb"); 1
-            })
-            .then(Commands.literal("reload").executes { context ->
-                plugin.reloadPluginConfig()
-                context.source.sendSuccess({ Component.literal("§6已重载配置文件。") }, true)
-                1
-            })
-            .then(Commands.literal("info").executes { context ->
-                context.source.sendSuccess(
-                    { Component.literal("平台: ${plugin.platform}  版本: ${plugin.pluginVersion}") },
-                    false,
-                )
-                1
-            })
-            .then(Commands.literal("panel").executes { context -> resyncPanel(context.source) })
-            .then(Commands.literal("chs").executes { context ->
-                val result = cn.huohuas001.bot.ReconnectManager.manualReconnect()
-                context.source.sendSuccess({ Component.literal("§a$result") }, true)
-                1
-            })
-            .executes { context -> sendHelp(context.source, "hb"); 1 }
-        event.dispatcher.register(alias)
+        return builder
     }
 
     private fun resyncPanel(source: net.minecraft.commands.CommandSourceStack): Int {

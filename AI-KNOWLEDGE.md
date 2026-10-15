@@ -1,7 +1,7 @@
 # KERONGPenguin AI 交接知识库
 
 > **本文档的用途**：把本文件丢给一个对项目一无所知的 AI，它能立刻了解当前情况并接手工作。
-> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-15（v1.6.4 第二批改动完成时）。
+> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-15（v1.6.5 发版完成）。
 > 自包含版本（发给本地无任何东西的 AI）见官网 `AI-KNOWLEDGE.txt`，含从零开始的环境重建与凭据获取说明。
 
 ### 1.1 受限网络环境重建（2026-10-14 实战，环境重置后可用）
@@ -20,7 +20,7 @@
 
 KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项目：玩家在 QQ 群里查数据/签到/聊天，插件在服务器内渲染统计卡片图片并回发。Kotlin 多模块：`common-Bot`（全部业务核心）+ `server-Spigot`（Bukkit 插件版，支持 Spigot/Paper/Folia/混合端）+ `server-NeoForge`（NeoForge 1.21.1 模组版，复用 common-Bot 全部源码 + Spigot 的 manager 源码）。
 
-**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.4）。当前版本 **1.6.4**（含两批改动：拦截策略/彩色日志 + 双连接保护重做/插件适配/头像修复）。
+**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.5）。当前版本 **1.6.5**（品牌统一去 HuHoBot 化 / 重连成功提示修复 / 渲染内存与性能 / OpenId 反查隐私 / 配置注释精简）。
 
 ---
 
@@ -70,7 +70,7 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 | AI 对话 | `spigot/qqbind/AiChat.kt` + `QClient.replyMarkdownWithReference` | @机器人触发；引用回复（MessageReference 协议）失败三级回退：引用→普通被动→纯文本；全局一份上下文 |
 | 快捷面板 | `cn/huohuas001/bot/MenuManager.kt` | QQ 官方面板 API，PUT 原地更新防丢面板，按钮 name≤14/desc≤30 单位预校验，40030009 重试 3 次；未装 Vault 隐藏财富榜按钮 |
 | 管理命令 | `events/commands/AdministrationCommands.kt`（/执行 /管理员执行 /全量 /发信息 /黑名单…）+ `state/CommandRepositories.kt`（群级持久化） | 管理员判定：群主/群管理员（admin.mode=qq）或 OpenId 名单 |
-| 查询 OpenID | `PublicCommands`（/查询open ID[ <OpenId>]）+ `spigot/qqbind/OpenIdDirectory.kt` | OpenId↔QQ 昵称/绑定玩家 反查，懒加载 + 脏标记落盘 |
+| 查询 OpenID | `PublicCommands`（/查询open ID[ <OpenId>]）+ `spigot/qqbind/OpenIdDirectory.kt` | OpenId↔QQ 昵称/绑定玩家 反查，懒加载 + 脏标记落盘；**1.6.5：反查结果的 OpenId 行仅管理员可见**（{openidPart} 变量 + CommandSupport.isAdmin 静默判定，旧默认模板经 MessageTemplates.DEFAULT_CONTENT_UPGRADES 自动升级） |
 
 ### 2.2 服务器侧
 
@@ -109,8 +109,8 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 启动链：`HuHoBot.initializeRuntime` → `QClient.launchClient`（Starter(kloping SDK)，anyCloseReconnect=true，挂 `WssDiagnostics` 钩子）→ 凭据自检 `QqTokenHealth.check`（异步，结果存 `lastCheckOk`）。
 
 - **WssDiagnostics**（`bot/WssDiagnostics.kt`）：纯观察者钩子（**必须返回 true**，返回 false 会掐断 SDK 协议链——1.5.3 的 1006 死循环教训）。职责：协议帧落盘（Hello/READY/RESUMED/Identify/关闭/错误堆栈，业务帧仅计数）、心跳自愈（代发+假死检测）、鉴权 60 秒超时主动重连（90 秒限频）、看门狗（10 秒，MIN_PRIORITY）。
-- **ReconnectManager**（`bot/ReconnectManager.kt`）：重连编排。每次连接打开=1 次尝试 →「第 N 次（1/5）重试连接…」；健康=READY 后存活≥90 秒→「重连成功」清零；连续 5 次失败→「重连超时」挂起（anyCloseReconnect=false+断开 socket），30 分钟后自动下一轮，最多 3 轮，之后只能 /hb chs。过程提示 `bot.reconnect-notify: false` 可关，**失败后的恢复指引不可关**。
-- **/hb chs**：手动重连（重置全部计数→QClient.resumeConnection；socket 不可达时回退完整重启）。Spigot：HuHoBotCommand+plugin.yml；NeoForge：NeoForgeCommands 双 literal。
+- **ReconnectManager**（`bot/ReconnectManager.kt`）：重连编排。每次连接打开=1 次尝试 →「第 N 次（1/5）重试连接…」；连续 5 次失败→「重连超时」挂起（anyCloseReconnect=false+断开 socket），30 分钟后自动下一轮（新一轮清零计数），最多 3 轮，之后只能 /kerong chs。过程提示 `bot.reconnect-notify: false` 可关，**失败后的恢复指引不可关**。**1.6.5 成功提示双路**：鉴权完成（READY/RESUMED）即宣告「重连成功（第 N/5 次尝试）」——旧版要等存活满 90 秒，会话在 90 秒内被再次踢线就永远等不到（「部分重连成功没有提示」的根因）；互踢抖动（上一条会话短命）时保持沉默等 90 秒健康判定兑底，防成功/失败提示来回刷屏；首次连接（无关闭历史）不宣告。健康（≥90 秒）时仍清零全部计数。
+- **/kerong chs**（1.6.5 前主命令 /huhobot，别名 /hb、/huhobot 均保留）：手动重连（重置全部计数→QClient.resumeConnection；socket 不可达时回退完整重启）。Spigot：HuHoBotCommand+plugin.yml（命令名 kerong，aliases [hb, huhobot]，权限 kerong.command）；NeoForge：NeoForgeCommands 三 literal（kerong/hb/huhobot）。
 - 看门狗/兜底重连在挂起期间凭 `ReconnectManager.isSuspended()` 停连。
 
 ### 3.3 双服务器同绑一个机器人（1.6.3 检测，1.6.4 处置重做，务必理解）
@@ -120,7 +120,7 @@ QQ 同一 AppID 的第二条连接**不总是被立刻踢**。三种实测形态
 2. **鉴权期被拒**（第二台 Identify/Resume 被关，readyAt=0）：凭据自检 lastCheckOk==true 时计入互踢证据（凭据有效却连不上=网关拒本连接）→ 同上判定。
 3. **双连接共存**（1.6.3 新发现）：两台同时在线同时处理同一条消息。被动回复去重键=(msg_id, msg_seq)，两台序号都从 1 起→后发的被 40054005「消息被去重」拒收；图片渲染慢必输——**这是 1.6.0/1.6.1「回复图片消息失败」的真正根因**（当时误判为网关重投递）。
 
-**消息级实锤检测 ConflictWatch**（`bot/ConflictWatch.kt`）：ReplySeqGuard 保证本进程序号不重复→被 40054005 拒收的唯一解释=另一个客户端抢先回复同一条消息。10 分钟内 3 次→判定成立→`ReconnectManager.onDedupConflictConfirmed`：醒目输出一次原因+处理方法（关闭其一或换机器人）。**1.6.4 处置（参考 HuHoBot 主客户端「连接层永不放弃重试」的做法）：不再断开连接、不再停止自动重连**，连接与统一重试体系（每轮 5 次×3 轮 + /hb chs）照常运转；管理员处理后连接自然稳定。钩子挂点：QClient 四个回复方法的 catch+ret 分支、MessageTemplates、GroupMsgSender。WssDiagnostics 的互踢证据（短命会话/鉴权期被关）1.6.4 起也改为**仅文件短记录**（不再每次输出嘆人的控制台 ERROR，判定成立才醒目提示一次）。
+**消息级实锤检测 ConflictWatch**（`bot/ConflictWatch.kt`）：ReplySeqGuard 保证本进程序号不重复→被 40054005 拒收的唯一解释=另一个客户端抢先回复同一条消息。10 分钟内 3 次→判定成立→`ReconnectManager.onDedupConflictConfirmed`：醒目输出一次原因+处理方法（关闭其一或换机器人）。**1.6.4 处置（参考上游开源主客户端「连接层永不放弃重试」的做法）：不再断开连接、不再停止自动重连**，连接与统一重试体系（每轮 5 次×3 轮 + /hb chs）照常运转；管理员处理后连接自然稳定。钩子挂点：QClient 四个回复方法的 catch+ret 分支、MessageTemplates、GroupMsgSender。WssDiagnostics 的互踢证据（短命会话/鉴权期被关）1.6.4 起也改为**仅文件短记录**（不再每次输出嘆人的控制台 ERROR，判定成立才醒目提示一次）。
 
 **ReplySeqGuard（1.6.2，保留）**：GroupMessageHandler 入口按 msg_id 分配回复序号基数（第 1 次=1，第 N 次重投递=1+(N-1)×100000），防网关弱网/会话恢复重投递到**本服**时的序号重复；同时使 40054005 成为双服冲突的可靠信号。
 
@@ -128,15 +128,15 @@ QQ 同一 AppID 的第二条连接**不总是被立刻踢**。三种实测形态
 
 `bot/UpdateChecker.kt`：启动后异步 8 秒 GET `https://kerong.xin/penguin/version.json`，逐段数字比较版本；有新版→控制台输出带 § 颜色码的版本号/下载页/最多 6 行简要日志（1.6.4：版本号绿色加粗、链接蓝色、条目灰白分级）；失败→控制台一句话，细节进日志。`update-check.enabled` 可关。**每次发版必须更新服务器上的 version.json**。§ 颜色码处理：Spigot 系控制台直接渲染；NeoForge 适配器 `log_info/log_warning/log_error` 输出前统一过 `PluginFileLog.stripColorCodes`（log4j 不渲染 §，否则乱码）；文件日志始终剥离。共享代码可以放心在控制台文案里用 § 颜色码。
 
-### 3.5 渲染管线与头像获取（1.6.4 头像修复）
+### 3.5 渲染管线与头像获取（1.6.4 头像修复，1.6.5 内存与性能）
 
-CPU 渲染（CardRenderPool 共享线程池）、结果缓存、头像 LRU+字节预算、背景图内置+随机 LRU、长图封顶 1600px、子采样解码防 OOM。图片发送：`replyWithImgBytes`（base64 上传），读超时（SDK OkHttp 10 秒 < QQ 富媒体普遍 10 秒+应答）**不算失败**（图片大概率已投递，1.6.1）；ret 2022021x=已受理算成功。
+CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结果缓存、头像 LRU+字节预算、背景图内置+随机 LRU、长图封顶 1600px、子采样解码防 OOM。图片发送：`replyWithImgBytes`（base64 上传），读超时（SDK OkHttp 10 秒 < QQ 富媒体普遍 10 秒+应答）**不算失败**（图片大概率已投递，1.6.1）；ret 2022021x=已受理算成功。**1.6.5 内存策略**：移除渲染后 System.gc() 提示（Full GC 停顿伤 tick，render.gc-after-render 配置已废除并由升级器清理），改为确定性 flush——单次画布（各 render() 末尾）、中间图（皮肤贴图/缩放/cover）、缓存淘汰与 clearCaches 均在失去引用前 flush，剩余堆内存交给常规新生代 GC。
 
 **头像链路**（`InfoCardRenderer.kt` 的 InfoCardAssets）：在线 Profile → playerdata NBT → Mojang 会话服务器（v4）→ 名字反查 →（均失败时 1.6.4 新增）**Crafatar CDN 回退**（`https://crafatar.com/avatars/<uuid>?size=216&overlay`，仅 v4 UUID，404 可检测）。**1.6.4 关键修复：Mojang 官方接口网络级失败（超时/IO/429/5xx）开启 5 分钟全局冷却**——「大部分玩家头像获取失败」的根因是服务器到 Mojang 的线路不稳，旧版每个玩家都先等 5 秒超时才能失败，在线列表 8 秒预热预算全部耗尽；冷却期内直接跳过官方链路（走 Crafatar 或诚实失败），不再逐玩家等超时。会话服务器超时也从 5 秒降到 3 秒。离线服无皮肤数据的玩家仍诚实画占位块（不做「人人史蒂夫」假回退）。
 
 ### 3.6 配置系统
 
-`ConfigManager.kt`（共享源码）：DEFAULT_VALUES 全量默认 + `ConfigUpgrader.fillMissing` 补齐缺失键 + `CONFIG_VERSION_PATH` 版本迁移链（**当前 config-version 18**：16→17 render/leaderboard 顶层化，17→18 金币榜→财富榜）。修改配置一律重启生效（无热重载指令，教程与注释已如此说明）。
+`ConfigManager.kt`（共享源码）：DEFAULT_VALUES 全量默认 + `ConfigUpgrader.fillMissing` 补齐缺失键 + `CONFIG_VERSION_PATH` 版本迁移链（**当前 config-version 19**：16→17 render/leaderboard 顶层化，17→18 金币榜→财富榜，18→19 from-game 默认带玩家名 + gc-after-render 废除清理）。修改配置一律重启生效（无热重载指令，教程与注释已如此说明）。
 
 ### 3.7 QQ 绑定拦截策略（1.6.4 双端统一）
 
@@ -206,11 +206,16 @@ CPU 渲染（CardRenderPool 共享线程池）、结果缓存、头像 LRU+字�
 
 ---
 
-## 7. 当前已知状态（2026-10-15，v1.6.4 第二批完成）
+## 7. 当前已知状态（2026-10-15，v1.6.5 发版完成）
 
-- 双端 1.6.4 全部完成（构建/门禁 82 项/冒烟 13 项通过）：
-  - 第一批：QQ 绑定拦截策略双端重做（老玩家进服前拦截/新玩家建档后踢出，NeoForge 配置阶段闸门 BindLoginGate）、更新检查更新日志彩色输出（NeoForge 自动剥 §）；
-  - 第二批（2026-10-15）：停机 zip closed 修复（onEnable 类预热）；双服同绑保护重做（确凿冲突不再断开不停重试，参考 HuHoBot；单次短命提示删除仅文件短记录）；PlayerTitle 称号适配（PAPI %playerTitle_use%，来源链 DeluxeTags→PlayerTitle→Vault）；PlayTimeManager 在线时长同步（PlayTimeSync 差值对齐）；头像修复（Mojang 网络全局冷却 + Crafatar CDN 回退 + 会话服务器 3 秒超时）；logQuiet 兑底改走 BotShared（消除 [STDOUT] 裸格式）。
-- 1.6.3 已发版完成；1.6.2 及更早历史版本详见 git log 与官网更新日志。
-- 待观察：PlayTimeSync 在真实 PTM 环境的修正效果（需同时装 PlayTimeManager + PlaceholderAPI）；头像 Crafatar 回退在中国大陆的可达性；BindLoginGate 在真实未绑定老玩家连接下的提示显示效果。
+- 双端 1.6.5 全部完成（构建/门禁 82 项/冒烟 17 项通过）：
+  - 启动消息「HuHoBot Penguin 已加载」→「KERONG Penguin 已加载」；
+  - 品牌统一：主命令 /huhobot→/kerong（plugin.yml+双端命令注册，旧名与 /hb 均为别名）；内部协议 huhobot run|adminrun→kerong（解析端兼容旧前缀）；审核环境变量 HUHOBOT_AUDIT_*→KERONG_AUDIT_*（旧名兑底）；状态文件头/BotShared 错误文案/mods.toml 描述等全部 KERONG 化。**类名与包名（HuHoBotSpigot 等标识符）刻意保留**（改类名会破坏 KERONGPenguinAPI 第三方兼容，且非用户可见）；
+  - 重连成功提示修复（READY 即宣告 + 互踢防抖 + 退避新一轮清零计数）；
+  - 渲染：移除 System.gc()（Full GC 停顿伤 tick），全链路确定性 flush；render.gc-after-render 配置废除（升级器自动清理）；
+  - OpenId 反查管理员可见（含旧默认模板自动升级机制 DEFAULT_CONTENT_UPGRADES）；
+  - from-game 默认 [游戏] <{name}> {message}（config-version 19 迁移）；
+  - 配置注释精简（删更新检查结果说明/版本分隔条/留空[]说明）。
+- 1.6.4 及更早历史详见 git log 与官网更新日志。
+- 待观察：重连成功提示在真实网关踢线场景的节奏（每次踢线都会有一条「第 1/5 重试 + 重连成功」，属预期行为）；OpenId 反查在 admin.mode=manual 下的判定体验。
 - 官网历史下载：1.6.4 起只保留 1.6.0+ 版本（更旧已按用户要求删除）。

@@ -318,7 +318,7 @@ class HuHoBotNeoForge : JavaPlugin(), HuHoBot {
             .resolve("kerongpenguin").toFile()
 
         /** 模组版本（与 neoforge.mods.toml 一致）。 */
-        private const val MOD_VERSION = "1.6.4"
+        private const val MOD_VERSION = "1.6.5"
 
         /** 当前模组实例（命令与事件层访问）。 */
         @Volatile

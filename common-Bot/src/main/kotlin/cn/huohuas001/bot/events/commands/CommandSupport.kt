@@ -29,8 +29,14 @@ abstract class CommandSupport : BaseCommand() {
         event.sendMessage(plugin.auditText(message))
     }
 
-    /** 校验发送者是否具备管理员权限，无权限时自动回复提示。 */
-    protected fun requireAdmin(plugin: HuHoBot, event: GroupMessageEvent): Boolean {
+    /**
+     * 静默判定发送者是否具备管理员权限（不输出任何提示）。
+     *
+     * 1.6.5 新增：OpenId 反查等「同一命令按身份展示不同内容」的场景使用
+     * （无权限时不应拒绝执行，只是隐藏敏感字段，因此不能复用会回复提示的
+     * [requireAdmin]）。
+     */
+    protected fun isAdmin(plugin: HuHoBot, event: GroupMessageEvent): Boolean {
         val groupId = groupId(event)
         val userId = userId(event)
         val qqAdmin = memberRole(event) in setOf("owner", "admin")
@@ -39,11 +45,16 @@ abstract class CommandSupport : BaseCommand() {
 
         val defaultMode = AdministratorAccessMode.fromConfig(plugin.adminMode())
         val configuredMode = CommandRepositories.groupSettings.administratorMode(groupId, defaultMode)
-        val allowed = when (configuredMode) {
+        return when (configuredMode) {
             AdministratorAccessMode.QQ -> qqAdmin
             AdministratorAccessMode.MANUAL -> manualAdmin
             AdministratorAccessMode.BOTH -> qqAdmin || manualAdmin
         }
+    }
+
+    /** 校验发送者是否具备管理员权限，无权限时自动回复提示。 */
+    protected fun requireAdmin(plugin: HuHoBot, event: GroupMessageEvent): Boolean {
+        val allowed = isAdmin(plugin, event)
         if (!allowed) {
             // 1.6.0：无权限提示改走消息模板 no-admin-permission.md（messages 段可换文件）
             MessageTemplates.sendPlain(event, "no-admin-permission")

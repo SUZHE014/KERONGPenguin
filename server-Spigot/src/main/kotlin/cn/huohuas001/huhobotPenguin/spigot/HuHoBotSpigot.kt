@@ -54,12 +54,12 @@ class HuHoBotSpigot : JavaPlugin(), HuHoBot {
         // 启动 QQ 机器人运行时（注册共享实例 → 装载状态 → 异步启动 QQ 客户端）
         initializeRuntime()
 
-        // 初始化命令
+        // 初始化命令（1.6.5：主命令 /huhobot 更名 /kerong，旧名与 /hb 保留为别名）
         val command = HuHoBotCommand(this)
-        getCommand("huhobot")?.let { pluginCommand ->
+        getCommand("kerong")?.let { pluginCommand ->
             pluginCommand.setExecutor(command)
             pluginCommand.setTabCompleter(command)
-        } ?: log_error("无法注册 /huhobot 命令，请检查 plugin.yml")
+        } ?: log_error("无法注册 /kerong 命令，请检查 plugin.yml")
 
         // 注册游戏事件监听（GameChat 构造时会初始化 QqBindManager，需在共享实例注册后）
         server.pluginManager.registerEvents(GameChat(), this)
@@ -81,7 +81,8 @@ class HuHoBotSpigot : JavaPlugin(), HuHoBot {
         }
 
         logCommandExecutor()
-        log_info("HuHoBot Penguin 已加载")
+        // 1.6.5：品牌统一（旧版误印 HuHoBot）
+        log_info("KERONG Penguin 已加载")
     }
 
     override fun onDisable() {

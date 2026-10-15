@@ -1,7 +1,5 @@
 package cn.huohuas001.huhobotPenguin.spigot.render
 
-import org.bukkit.Bukkit
-import org.bukkit.plugin.java.JavaPlugin
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -20,9 +18,14 @@ import java.util.concurrent.TimeUnit
  * 不会触发拒绝），多个命令（/查信息、/查在线 等，查信息 1.5.2 前为 /个人信息）共用本池，
  * 全部图片渲染合计占用不超过上述硬编码上限。
  *
- * 任务完成后做节流 GC 提示（两次至少间隔 [GC_MIN_INTERVAL_MILLIS]），
- * 避免每次渲染都 Full GC 造成停顿卡服；render.gc-after-render 可关
- * （1.6.0 起位于顶层 render 段，此前在 qq-bind.render 下）。
+ * 1.6.5：移除「渲染后 System.gc() 提示」（原 render.gc-after-render 开关一并废除）。
+ * - System.gc 在默认 JVM 参数下触发一次 Full GC（全停顿标记-压缩，几十到几百毫秒），
+ *   在 20 TPS 的游戏服务器上等于凭空丢若干 tick——是渲染链路里最大的自伤性能点；
+ * - 内存释放改为**确定性 flush**：单次画布（各渲染器 render() 末尾的 image.flush()）、
+ *   中间图（皮肤贴图 / 头像缩放 / cover 裁剪）、缓存淘汰条目
+ *   （见 InfoCardAssets 的 evict / clear 路径）都在失去引用前 flush，
+ *   栅格与绘制缓存即时归还，剩余少量堆内存由 JVM 常规新生代 GC 秒级回收，
+ *   不再需要全停顿的显式 GC 兜底。
  */
 object CardRenderPool {
 
@@ -37,25 +40,12 @@ object CardRenderPool {
     @Volatile
     private var pool: ThreadPoolExecutor? = null
 
-    /** 渲染后 GC 节流：两次 GC 提示的最小间隔（防止频繁 Full GC 停顿卡服）。 */
-    private const val GC_MIN_INTERVAL_MILLIS = 60_000L
-
-    /** 上次渲染后 GC 提示时间戳。 */
-    @Volatile
-    private var lastRenderGcAt = 0L
-
     /**
-     * 提交一次图片渲染任务：任务执行完成后自动做节流 GC 提示。
+     * 提交一次图片渲染任务。
      * 任务的异常由调用方自行捕获（渲染失败已有日志与文本回退提示）。
      */
     fun submit(task: Runnable) {
-        pool().execute {
-            try {
-                task.run()
-            } finally {
-                gcAfterRenderIfDue()
-            }
-        }
+        pool().execute(task)
     }
 
     /** 渲染线程池（固定 [MAX_THREADS] 线程，守护线程，空闲 60 秒回收）。 */
@@ -76,33 +66,5 @@ object CardRenderPool {
             pool = created
             return created
         }
-    }
-
-    /**
-     * 渲染完成后释放 JVM 内存：
-     * - 单次渲染图像已在渲染器内 flush 释放栅格；
-     * - 这里补一次节流的 GC 提示（System.gc，JVM 可能忽略，取决于启动参数），
-     *   两次至少间隔 [GC_MIN_INTERVAL_MILLIS]，避免每次渲染都 Full GC 造成停顿卡服；
-     * - render.gc-after-render 关闭后完全不触发。
-     */
-    private fun gcAfterRenderIfDue() {
-        if (!gcAfterRenderEnabled()) return
-        val now = System.currentTimeMillis()
-        synchronized(this) {
-            if (now - lastRenderGcAt < GC_MIN_INTERVAL_MILLIS) return
-            lastRenderGcAt = now
-        }
-        try {
-            System.gc()
-        } catch (_: Throwable) {
-        }
-    }
-
-    /** render.gc-after-render：渲染后是否做 GC 提示（默认 true；1.6.0 起位于顶层 render 段）。 */
-    private fun gcAfterRenderEnabled(): Boolean = try {
-        (Bukkit.getPluginManager().getPlugin("KERONGPenguin") as? JavaPlugin)
-            ?.config?.getBoolean("render.gc-after-render", true) ?: true
-    } catch (_: Throwable) {
-        true
     }
 }

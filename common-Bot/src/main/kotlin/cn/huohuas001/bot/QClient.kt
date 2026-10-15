@@ -49,7 +49,7 @@ object QClient {
      *
      * 0.1.5.2：移除了 System.out 输出过滤器（旧实现对每次控制台输出
      * 都捕获全线程栈，是 CPU / 内存占用的重要来源）；SDK 日志已通过
-     * LogSink 全量接管（见 HuHoBot.initializeRuntime），不会再进入控制台。
+     * LogSink 全量接管（见运行时初始化 initializeRuntime），不会再进入控制台。
      *
      * 0.1.5.4：连接生命周期日志（初始化/鉴权/装配/连接成功/超时）改为
      * 控制台 + 插件日志文件双写，不再只留存在控制台，事后可追溯。

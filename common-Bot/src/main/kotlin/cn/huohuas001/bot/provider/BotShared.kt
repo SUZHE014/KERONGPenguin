@@ -22,4 +22,4 @@ object BotShared {
 /** 快捷访问当前插件实例。 */
 val plugin: HuHoBot
     get() = BotShared.instance
-        ?: error("HuHoBot 插件实例尚未初始化")
+        ?: error("KERONG 插件实例尚未初始化")

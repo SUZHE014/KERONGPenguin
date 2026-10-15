@@ -74,14 +74,14 @@ interface ConfigProvider {
     /** 插件版本。 */
     val pluginVersion: String
 
-    /** 敏感词审核接口地址（环境变量 HUHOBOT_AUDIT_BASE_URL）。 */
-    fun auditBaseUrl(): String? = System.getenv("HUHOBOT_AUDIT_BASE_URL")
+    /** 敏感词审核接口地址（环境变量 KERONG_AUDIT_BASE_URL，兼容旧名 HUHOBOT_AUDIT_BASE_URL）。 */
+    fun auditBaseUrl(): String? = System.getenv("KERONG_AUDIT_BASE_URL") ?: System.getenv("HUHOBOT_AUDIT_BASE_URL")
 
-    /** 敏感词审核 API Key（环境变量 HUHOBOT_AUDIT_API_KEY）。 */
-    fun auditApiKey(): String? = System.getenv("HUHOBOT_AUDIT_API_KEY")
+    /** 敏感词审核 API Key（环境变量 KERONG_AUDIT_API_KEY，兼容旧名）。 */
+    fun auditApiKey(): String? = System.getenv("KERONG_AUDIT_API_KEY") ?: System.getenv("HUHOBOT_AUDIT_API_KEY")
 
-    /** 敏感词审核模型名（环境变量 HUHOBOT_AUDIT_MODEL）。 */
-    fun auditModel(): String? = System.getenv("HUHOBOT_AUDIT_MODEL")
+    /** 敏感词审核模型名（环境变量 KERONG_AUDIT_MODEL，兼容旧名）。 */
+    fun auditModel(): String? = System.getenv("KERONG_AUDIT_MODEL") ?: System.getenv("HUHOBOT_AUDIT_MODEL")
 
     /** 敏感词列表：读取插件目录与工作目录下 sensitive-words 目录内的 txt 文件。 */
     fun sensitiveWords(): List<String> {

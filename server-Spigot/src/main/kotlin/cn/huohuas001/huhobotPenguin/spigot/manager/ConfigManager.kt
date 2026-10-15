@@ -58,6 +58,15 @@ class ConfigManager(private val plugin: JavaPlugin) {
             config.set(CONFIG_VERSION_PATH, CURRENT_CONFIG_VERSION)
             changed = true
         }
+        // 1.6.5：游戏→群 转发默认格式带上玩家名（旧默认值未含发送者，群友看不出
+        // 是谁说的话；仅仍是旧默认值的配置升级，用户自定义值不动）
+        if (oldVersion in 1 until 19 &&
+            "[游戏] {message}" == config.getString("chat-format.from-game")
+        ) {
+            config.set("chat-format.from-game", "[游戏] <{name}> {message}")
+            plugin.logger.info("聊天转发：游戏→群默认格式已升级为 [游戏] <{name}> {message}（带上玩家名，可自行修改）")
+            changed = true
+        }
         // 1.6.2：命令更名 /金币榜 → /财富榜（commands 段开关同步迁移保留用户取值；
         // 旧命令名作为隐藏别名继续可用，与主命令共用开关）
         if (oldVersion in 1 until 18 && config.isSet("commands.金币榜")) {
@@ -116,9 +125,11 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 手动开启过随机的用户已在上方迁移逻辑中保留意图）
         // 1.5.7.1：移除 ai.context-global（旧默认值误写进用户配置，实际无任何功能——
         // AI 上下文自 1.5.3 起即为全局一份记忆，不存在按群/按人切换）
+        // 1.6.5：移除 render.gc-after-render（渲染后 GC 提示已废除——System.gc
+        // 触发的 Full GC 停顿伤 tick，内存释放改为确定性 flush，见 CardRenderPool）
         for (removed in listOf(
             "agent", "audit", "whitelist", "query-online", "motd.text", "commands.个人信息",
-            "qq-bind.leaderboard.random-background", "ai.context-global",
+            "qq-bind.leaderboard.random-background", "ai.context-global", "render.gc-after-render",
         )) {
             if (config.contains(removed)) {
                 config.set(removed, null)
@@ -148,7 +159,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
     fun commandSender(): String = plugin.config.getString("command-sender", "Auto") ?: "Auto"
 
     fun chatFormat(): ChatFormat = ChatFormat(
-        plugin.config.getString("chat-format.from-game", "[游戏] {message}") ?: "[游戏] {message}",
+        plugin.config.getString("chat-format.from-game", "[游戏] <{name}> {message}") ?: "[游戏] <{name}> {message}",
         plugin.config.getString("chat-format.from-group", "[QQ] {name}: {message}") ?: "[QQ] {name}: {message}",
         plugin.config.getBoolean("chat-format.post-chat", true),
         plugin.config.getString("chat-format.start-with", "") ?: "",
@@ -234,7 +245,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
-        private const val CURRENT_CONFIG_VERSION = 18
+        private const val CURRENT_CONFIG_VERSION = 19
 
         /**
          * 支持开关的群命令名单（1.5.2：查信息更名对应个人信息卡片命令，新增 查询open ID；
@@ -316,7 +327,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 版本号 / 下载页 / 简要日志；检测失败仅一句话提示，细节进日志）
             "update-check.enabled" to true,
             "serverName" to "KERONGPenguin",
-            "chat-format.from-game" to "[游戏] {message}",
+            "chat-format.from-game" to "[游戏] <{name}> {message}",
             "chat-format.from-group" to "[QQ] {name}: {message}",
             "chat-format.post-chat" to true,
             "chat-format.start-with" to "#",
@@ -346,8 +357,8 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "qq-bind.checkin.enabled" to false,
             "qq-bind.checkin.prefix" to "[签到]",
             "qq-bind.checkin.reward" to 100.0,
-            // 1.6.0：渲染设置迁至顶层 render 段（查在线 / 卡片渲染不依赖 QQ 绑定）
-            "render.gc-after-render" to true,
+            // 1.6.0：渲染设置迁至顶层 render 段（查在线 / 卡片渲染不依赖 QQ 绑定）；
+            // 1.6.5：gc-after-render 已移除（改确定性 flush 释放，见 CardRenderPool）
             "render.result-cache-seconds" to 60,
             // 1.6.0 新增：图片渲染命令的用户冷却秒数（旧版硬编码 5 秒；0 = 关闭）
             "render.command-cooldown-seconds" to 5,

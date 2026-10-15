@@ -56,7 +56,7 @@ class HumanReadableStateFile {
         outputFile.parentFile?.mkdirs()
         val temporaryFile = File(outputFile.absolutePath + ".tmp")
         BufferedWriter(OutputStreamWriter(FileOutputStream(temporaryFile), StandardCharsets.UTF_8)).use { writer ->
-            writer.append("# HuHoBot 群命令运行状态").append('\n')
+            writer.append("# KERONG 群命令运行状态").append('\n')
             writer.append("# 建议仅在服务器停止时手动编辑此文件。").append('\n').append('\n')
             writeUserSection(writer, "administrators", snapshot.administrators)
             writeUserSection(writer, "authenticated-users", snapshot.authenticatedUsers)

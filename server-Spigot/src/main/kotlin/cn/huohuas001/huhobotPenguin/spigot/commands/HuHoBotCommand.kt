@@ -10,7 +10,8 @@ import org.bukkit.command.TabExecutor
 import java.util.Locale
 
 /**
- * /huhobot 主命令：reload / info / panel / chs / help。
+ * /kerong 主命令（1.6.5 前主命令为 /huhobot，旧名与 /hb 均保留为别名）：
+ * reload / info / panel / chs / help。
  *
  * 1.6.2 新增 chs 子命令：机器人重连超时挂起或断线期间，手动重置重连计数
  * 并立即重新尝试连接（等价于 30 分钟退避结束后的自动重试，任何时候可用）。

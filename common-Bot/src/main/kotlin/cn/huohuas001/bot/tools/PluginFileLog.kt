@@ -21,7 +21,7 @@ import java.util.Date
  * （低频日志，单行写入原子性由追加模式保证），开销可忽略。
  *
  * 0.1.5.5：警告/错误统一双写——平台 log_warning/log_error
- * 本身已改为“控制台 + 本文件”双写（见 HuHoBotSpigot），
+ * 本身已改为“控制台 + 本文件”双写（见平台适配器），
  * 此处 warnAndKeep/errorAndKeep 直接委托，避免双写重复。
  */
 object PluginFileLog {

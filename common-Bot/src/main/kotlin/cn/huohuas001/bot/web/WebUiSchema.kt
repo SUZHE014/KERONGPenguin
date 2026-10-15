@@ -51,7 +51,7 @@ object WebUiSchema {
     ))
 
     private val CHAT_FORMAT_SECTION = SectionSpec("chat-format", "聊天格式", listOf(
-        FieldSpec("chat-format.from-game", "游戏→群 格式", "text", "占位符：{name} 玩家名，{message}/{msg} 消息", placeholder = "[游戏] {message}"),
+        FieldSpec("chat-format.from-game", "游戏→群 格式", "text", "占位符：{name} 玩家名，{message}/{msg} 消息", placeholder = "[游戏] <{name}> {message}"),
         FieldSpec("chat-format.from-group", "群→游戏 格式", "text", "占位符：{name}/{nick} 昵称，{message}/{msg} 消息", placeholder = "[QQ] {name}: {message}"),
         FieldSpec("chat-format.post-chat", "转发游戏聊天", "boolean", "是否开启游戏↔群双向聊天转发"),
         FieldSpec("chat-format.start-with", "触发前缀", "text", "游戏消息必须以此前缀开头才转发（转发时去掉前缀）；留空转发全部", placeholder = "#"),

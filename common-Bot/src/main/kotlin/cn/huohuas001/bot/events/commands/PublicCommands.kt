@@ -83,7 +83,10 @@ class PublicCommands : CommandSupport() {
      * 用法（1.5.3）：
      * - `/查询open ID`：显示自己的 OpenId 与群 OpenId（用于配置 bot.groups）；
      * - `/查询open ID <OpenId>`：反查该 OpenId 对应的 QQ 账号（群昵称 + 绑定玩家）；
-     * - `/查询open ID @成员`：查看被 @ 成员的 OpenId 与其绑定信息。
+     * - `/查询open ID @成员`：查看被 @ 成员的绑定信息。
+     *
+     * 1.6.5：反查结果中的 OpenId 行仅管理员可见（避免普通群成员批量收集
+     * OpenId 冒充绑定）；非管理员只看到群昵称、最后活跃、绑定玩家。
      *
      * 群昵称来自插件维护的 OpenId 目录（从每条群消息的发送者与被 @ 成员积累，
      * 见 OpenIdDirectory）；机器人无法通过接口按 OpenId 查询群资料。
@@ -108,6 +111,10 @@ class PublicCommands : CommandSupport() {
     /**
      * 反查 OpenId 对应的 QQ 账号：群昵称 + 最后活跃 + 绑定玩家。
      * 绑定查找（磁盘扫描）在当前消息线程完成，规模小可接受。
+     *
+     * 1.6.5：OpenId 行仅管理员可见——非管理员查询时 {openidPart} 为空
+     * （模板整行隐藏），只展示群昵称 / 最后活跃 / 绑定玩家，防止 OpenId
+     * 被普通群成员收集冒用（OpenId 是配置 admin.openids 与冒充绑定的凭证）。
      */
     private fun reverseLookupOpenId(plugin: HuHoBot, event: GroupMessageEvent, openId: String) {
         val bindManager = try {
@@ -132,8 +139,10 @@ class PublicCommands : CommandSupport() {
         }
         // {lastSeenPart}：有记录时为「\n最后活跃: xxx」，无记录时为空（行不显示）
         val lastSeenPart = if (lastSeen != null) "\n最后活跃: $lastSeen" else ""
+        // {openidPart}（1.6.5）：管理员查询时为「OpenId: xxx\n」，非管理员为空（行不显示）
+        val openidPart = if (isAdmin(plugin, event)) "OpenId: $openId\n" else ""
         MessageTemplates.sendDirect(event, "openid-lookup", mapOf(
-            "openid" to openId,
+            "openidPart" to openidPart,
             "nickname" to (nickname ?: "未知（该账号未在机器人可见的群消息中出现过）"),
             "lastSeenPart" to lastSeenPart,
             "player" to (boundPlayer?.takeIf { it.isNotEmpty() } ?: "未绑定任何游戏玩家"),
@@ -417,7 +426,7 @@ class PublicCommands : CommandSupport() {
             MessageTemplates.sendDirect(event, "invalid-params")
             return
         }
-        val cmd = "huhobot run ${groupId(event)} ${userId(event)} $params"
+        val cmd = "kerong run ${groupId(event)} ${userId(event)} $params"
         executeGameCommandWithMention(plugin, event, cmd, true)
     }
 
@@ -448,7 +457,7 @@ class PublicCommands : CommandSupport() {
     private fun executeGameCommandWithMention(plugin: HuHoBot, event: GroupMessageEvent, command: String, direct: Boolean) {
         try {
             val outgoingCommand = if (direct) command
-            else "huhobot run ${groupId(event)} ${userId(event)} $command"
+            else "kerong run ${groupId(event)} ${userId(event)} $command"
             val future: CompletableFuture<cn.huohuas001.bot.provider.HExecution> = plugin.sendCommand(outgoingCommand)
             future.whenComplete { result, error ->
                 try {

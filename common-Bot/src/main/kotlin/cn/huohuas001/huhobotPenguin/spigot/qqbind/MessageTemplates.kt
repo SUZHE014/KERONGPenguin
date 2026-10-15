@@ -121,6 +121,21 @@ object MessageTemplates {
     /** 模板内容缓存：文件路径 →（修改时间戳，内容）。 */
     private val cache = ConcurrentHashMap<String, Pair<Long, String>>()
 
+    /**
+     * 默认模板内容升级表（1.6.5 新增）：旧默认内容 → 新默认内容。
+     *
+     * 模板文件首次释放后不会覆盖用户修改，但默认内容本身偶尔需要演进
+     * （如 1.6.5 OpenId 反查的 OpenId 行改为管理员可见）。仅当磁盘上的
+     * 文件仍是**旧默认内容**（未被用户改过）时才替换，自定义内容一律不动。
+     */
+    private val DEFAULT_CONTENT_UPGRADES: Map<String, Pair<String, String>> = mapOf(
+        // 1.6.5：OpenId 行改为 {openidPart}（管理员查询才显示）
+        "openid-lookup" to (
+            "【OpenID 反查】\nOpenId: {openid}\n群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}" to
+                "【OpenID 反查】\n{openidPart}群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}"
+            ),
+    )
+
     /** 平台插件实例（Spigot / NeoForge 适配器均为 JavaPlugin 子类）。 */
     private fun plugin(): JavaPlugin? = try {
         BotShared.instance as? JavaPlugin
@@ -147,7 +162,7 @@ object MessageTemplates {
     /**
      * 释放全部默认模板到数据目录 Markdown/（已存在的文件不覆盖；
      * 自定义文件名的模板不在此释放，读取时回退内置默认内容）。
-     * 由 HuHoBot.reloadRuntimeConfig() 在启动与 /hb reload 时调用。
+     * 由运行时初始化（reloadRuntimeConfig）在启动与 /hb reload 时调用。
      */
     fun initialize() {
         val dir = directory() ?: run {
@@ -175,8 +190,32 @@ object MessageTemplates {
                 BotShared.instance?.log_warning("初始化消息模板 $fileName 失败: ${error.message}")
             }
         }
+        // 1.6.5：仍是旧默认内容的模板升级到新默认（用户改过的不动）
+        upgradedDefaultContents(dir)
         if (released > 0) {
             BotShared.instance?.log_info("已释放 $released 个默认消息模板到 ${dir.path}（可自行编辑，删除后重启恢复默认）")
+        }
+    }
+
+    /** 旧默认内容 → 新默认内容（仅未修改过的文件替换；幂等）。 */
+    private fun upgradedDefaultContents(dir: File) {
+        for ((id, upgrade) in DEFAULT_CONTENT_UPGRADES) {
+            val fileName = fileNameOf(id)
+            if (fileName != "$id.md") continue
+            val target = dir.resolve(fileName)
+            val current = try {
+                if (target.isFile) target.readText(Charsets.UTF_8) else null
+            } catch (_: Throwable) {
+                null
+            } ?: continue
+            if (current.trim() != upgrade.first.trim()) continue
+            try {
+                target.writeText(upgrade.second, Charsets.UTF_8)
+                cache.remove(target.path)
+                BotShared.instance?.log_info("消息模板 $fileName 已升级到新默认内容（自定义过的模板不受影响）")
+            } catch (error: Exception) {
+                BotShared.instance?.log_warning("升级消息模板 $fileName 失败: ${error.message}")
+            }
         }
     }
 

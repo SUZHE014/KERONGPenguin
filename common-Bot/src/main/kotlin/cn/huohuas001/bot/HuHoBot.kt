@@ -21,7 +21,7 @@ import java.nio.file.Files
 import java.util.concurrent.CompletableFuture
 
 /**
- * HuHoBot 插件平台契约。
+ * KERONG 插件平台契约。
  *
  * 各平台适配器（Spigot / Allay / Nukkit / Proxy ...）实现本接口，
  * 由 common-Bot 中的 QQ 客户端与命令系统驱动。
@@ -37,7 +37,7 @@ interface HuHoBot : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPr
     /** 创建当前平台的一次命令执行器。 */
     fun createCommandExecutor(): HExecution
 
-    /** 重新加载插件配置（/huhobot reload）。 */
+    /** 重新加载插件配置（/kerong reload）。 */
     fun reloadPluginConfig()
 
     /** 在线玩家名列表。 */

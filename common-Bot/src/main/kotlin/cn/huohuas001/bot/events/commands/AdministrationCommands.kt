@@ -33,7 +33,7 @@ class AdministrationCommands : CommandSupport() {
             MessageTemplates.sendDirect(event, "invalid-params")
             return
         }
-        val cmd = "huhobot adminrun ${groupId(event)} ${userId(event)} $params"
+        val cmd = "kerong adminrun ${groupId(event)} ${userId(event)} $params"
         executeGameCommandWithMention(plugin, event, cmd, true)
     }
 
@@ -57,7 +57,7 @@ class AdministrationCommands : CommandSupport() {
     private fun executeGameCommandWithMention(plugin: HuHoBot, event: GroupMessageEvent, command: String, direct: Boolean) {
         try {
             val outgoingCommand = if (direct) command
-            else "huhobot run ${groupId(event)} ${userId(event)} $command"
+            else "kerong run ${groupId(event)} ${userId(event)} $command"
             plugin.sendCommand(outgoingCommand).whenComplete { result, error ->
                 try {
                     when {

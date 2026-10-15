@@ -1,5 +1,5 @@
 name: KERONGPenguin
-version: '1.6.4'
+version: '1.6.5'
 main: cn.huohuas001.huhobotPenguin.spigot.HuHoBotSpigot
 api-version: '1.18'
 # 1.5.7.3：声明支持 Folia 多线程区域化核心——调度全部经 FoliaCompat 桥接
@@ -9,20 +9,21 @@ folia-supported: true
 # 0.1.5.5：软依赖 Vault（金币/前缀）与 DeluxeTags（称号），确保本插件在其后加载
 # 1.5.0：软依赖 PlayerPoints（点券统计）
 softdepend: [Vault, DeluxeTags, PlayerPoints]
-description: KERONG Penguin - HuHoBot QQ bot integration with QQ binding, check-in and player stats
+description: KERONG Penguin - QQ bot integration with QQ binding, check-in and player stats
 author: KERONG
 
 commands:
-  huhobot:
+  # 1.6.5：主命令由 /huhobot 更名 /kerong；旧命令名与 /hb 保留为别名（老服务器习惯不受影响）
+  kerong:
     description: KERONG Penguin control command
-    usage: "/huhobot reload|info|panel|chs|help"
-    aliases: [hb]
-    permission: huhobot.command
+    usage: "/kerong reload|info|panel|chs|help"
+    aliases: [hb, huhobot]
+    permission: kerong.command
   qq:
     description: QQ binding management command
     usage: "/qq help|rebind|qxqq|skip|unskip"
 
 permissions:
-  huhobot.command:
+  kerong.command:
     description: Allows use of KERONG Penguin control commands
     default: op

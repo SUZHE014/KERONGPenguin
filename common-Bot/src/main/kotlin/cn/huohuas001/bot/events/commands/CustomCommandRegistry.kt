@@ -7,7 +7,8 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * 自定义命令注册表：维护 QQ 群快捷命令 → 服务器命令模板的映射。
  *
- * 命令串格式：`huhobot run|adminrun <群Id> <用户Id> <key> [params]`
+ * 命令串格式：`kerong run|adminrun <群Id> <用户Id> <key> [params]`
+ * （1.6.5 前协议前缀为 huhobot；解析端同时接受旧前缀，旧版外部脚本不断裂）
  * 模板占位符：{params} {group} {user} {0} {&1} ...（按空白拆分 params 后的位置参数）
  */
 object CustomCommandRegistry {
@@ -27,7 +28,8 @@ object CustomCommandRegistry {
      */
     fun resolve(raw: String): ResolvedCommand {
         val parts = Regex("\\s+").split(raw.trim(), 6)
-        if (parts.size < 2 || parts[0] != "huhobot" || parts[1] !in setOf("run", "adminrun")) {
+        // 1.6.5：协议前缀 huhobot → kerong（旧前缀仍接受，兼容外部旧脚本）
+        if (parts.size < 2 || parts[0] !in setOf("kerong", "huhobot") || parts[1] !in setOf("run", "adminrun")) {
             // 非自定义命令协议，原样透传
             return ResolvedCommand(command = raw)
         }

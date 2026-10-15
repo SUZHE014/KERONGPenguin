@@ -188,6 +188,8 @@ object InfoCardRenderer {
         if (data.avatar != null) {
             val rounded = roundImage(data.avatar, avatarSize)
             g.drawImage(rounded, null, avatarX, avatarY)
+            // 1.6.5：圆角头像中间图画完即释放
+            try { rounded.flush() } catch (_: Throwable) {}
             g.color = Color(0xFF, 0xFF, 0xFF, 200)
             g.stroke = BasicStroke(2f)
             g.draw(RoundRectangle2D.Float(avatarX + 0.5f, avatarY + 0.5f, avatarSize - 1f, avatarSize - 1f, 16f, 16f))
@@ -658,9 +660,14 @@ object InfoCardAssets {
         if (missed != null && now - missed.createdAt < MISS_TTL) return null
 
         // 3. 解析皮肤贴图（URL 列表，逐个尝试；官方链路失败后回退 Crafatar CDN）
+        // 1.6.5：皮肤贴图中间产物裁完即 flush（即用即释，不等 GC）
         val skinUrl = resolveSkinTexture(request)
         val face: BufferedImage? = skinUrl?.let { url ->
-            downloadSkin(url)?.let { skin -> cropFace(skin, FACE_SIZE) }
+            downloadSkin(url)?.let { skin ->
+                val cropped = cropFace(skin, FACE_SIZE)
+                try { skin.flush() } catch (_: Throwable) {}
+                cropped
+            }
         } ?: fetchCrafatarAvatar(request.uuid)
 
         if (face != null) {
@@ -676,6 +683,17 @@ object InfoCardAssets {
 
     /** 清空全部素材缓存（插件停用时调用，释放图像内存）。 */
     fun clearCaches() {
+        // 1.6.5：先 flush 再清空——立即释放各图像的栅格与绘制缓存占用的内存，
+        // 不等 GC 兜底（缓存里的背景长图可达 MB 级）
+        for (entry in avatarCache.values) {
+            try { entry.image.flush() } catch (_: Throwable) {}
+        }
+        for (entry in backgroundCache.values) {
+            try { entry.image.flush() } catch (_: Throwable) {}
+        }
+        for (source in builtinBackgroundSources.values) {
+            try { source.flush() } catch (_: Throwable) {}
+        }
         avatarCache.clear()
         missCache.clear()
         premiumUuidCache.clear()
@@ -686,14 +704,16 @@ object InfoCardAssets {
     }
 
 
-    /** 缓存超限时淘汰最旧条目。 */
+    /** 缓存超限时淘汰最旧条目（1.6.5：淘汰即 flush，栅格立即释放）。 */
     private fun evictIfOversized() {
         if (avatarCache.size <= AVATAR_CACHE_MAX) return
         val toRemove = avatarCache.entries
             .sortedBy { it.value.createdAt }
             .take(AVATAR_CACHE_MAX / 8 + 1)
         for (entry in toRemove) {
-            avatarCache.remove(entry.key, entry.value)
+            if (avatarCache.remove(entry.key, entry.value)) {
+                try { entry.value.image.flush() } catch (_: Throwable) {}
+            }
         }
     }
 
@@ -1005,7 +1025,10 @@ object InfoCardAssets {
             when {
                 image.width <= 0 || image.height <= 0 -> null
                 image.width == FACE_SIZE -> image
-                else -> scaleNearest(image, FACE_SIZE)
+                // 1.6.5：缩放完成即释放源图栅格
+                else -> scaleNearest(image, FACE_SIZE).also {
+                    try { image.flush() } catch (_: Throwable) {}
+                }
             }
         } catch (_: Throwable) {
             null
@@ -1145,9 +1168,17 @@ object InfoCardAssets {
         val decoded = decodeBackground(file) ?: return null
         if (decoded.width <= 0 || decoded.height <= 0) return null
 
-        val processed = darkOverlay(coverImage(decoded, width, height))
+        val cover = coverImage(decoded, width, height)
+        val processed = darkOverlay(cover)
         val bytes = processed.width.toLong() * processed.height * 4
-        backgroundCache[path] = BackgroundEntry(stamp, sizeKey, processed, bytes, now)
+        // 1.6.5：中间图即用即释（cover 与 scaled 父图共享栅格，flush cover 即一并释放）
+        try { cover.flush() } catch (_: Throwable) {}
+        try { decoded.flush() } catch (_: Throwable) {}
+        // 旧条目（文件已更换或尺寸不同）被覆盖前 flush，避免其栅格等 GC
+        val stale = backgroundCache.put(path, BackgroundEntry(stamp, sizeKey, processed, bytes, now))
+        if (stale != null) {
+            try { stale.image.flush() } catch (_: Throwable) {}
+        }
         evictBackgroundsIfOversized()
         return processed
     }
@@ -1227,7 +1258,11 @@ object InfoCardAssets {
 
         val processed = coverImage(source, width, height)
         val bytes = processed.width.toLong() * processed.height * 4
-        backgroundCache[cacheKey] = BackgroundEntry(0L, sizeKey, processed, bytes, now)
+        // 1.6.5：旧条目被覆盖前 flush（尺寸变化重入时旧图不再等 GC）
+        val stale = backgroundCache.put(cacheKey, BackgroundEntry(0L, sizeKey, processed, bytes, now))
+        if (stale != null) {
+            try { stale.image.flush() } catch (_: Throwable) {}
+        }
         evictBackgroundsIfOversized()
         return processed
     }
@@ -1287,14 +1322,18 @@ object InfoCardAssets {
         }
     }
 
-    /** 背景缓存超限淘汰：先按张数上限，再按字节预算，均淘汰最久未使用的条目（1.5.1）。 */
+    /** 背景缓存超限淘汰：先按张数上限，再按字节预算，均淘汰最久未使用的条目（1.5.1；1.6.5 淘汰即 flush 释放栅格）。 */
     private fun evictBackgroundsIfOversized() {
         val overflow = backgroundCache.size - BACKGROUND_CACHE_MAX
         if (overflow > 0) {
             backgroundCache.entries
                 .sortedBy { it.value.lastUsedAt }
                 .take(overflow)
-                .forEach { backgroundCache.remove(it.key, it.value) }
+                .forEach {
+                    if (backgroundCache.remove(it.key, it.value)) {
+                        try { it.value.image.flush() } catch (_: Throwable) {}
+                    }
+                }
         }
         var totalBytes = backgroundCache.values.sumOf { it.bytes }
         if (totalBytes > BACKGROUND_CACHE_MAX_BYTES) {
@@ -1303,6 +1342,7 @@ object InfoCardAssets {
                 .forEach { entry ->
                     if (totalBytes <= BACKGROUND_CACHE_MAX_BYTES) return@forEach
                     if (backgroundCache.remove(entry.key, entry.value)) {
+                        try { entry.value.image.flush() } catch (_: Throwable) {}
                         totalBytes -= entry.value.bytes
                     }
                 }

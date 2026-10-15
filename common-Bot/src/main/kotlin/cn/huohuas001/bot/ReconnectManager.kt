@@ -78,6 +78,14 @@ object ReconnectManager {
     @Volatile
     private var successAnnounced = false
 
+    /** 1.6.5：自本次启动以来是否发生过连接关闭（区分「首次连接」与「重连」：首次连接另有启动日志，不该报「重连成功」）。 */
+    @Volatile
+    private var hadAnyClose = false
+
+    /** 1.6.5：上一条会话是否短命（短命会话后的 READY 不立即宣告成功，避免互踢场景成功/失败提示来回抖动）。 */
+    @Volatile
+    private var lastSessionShort = false
+
     /** 是否输出过本轮的冲突原因（互踢判定提示只醒目输出一次）。 */
     @Volatile
     private var conflictAnnounced = false
@@ -103,6 +111,8 @@ object ReconnectManager {
         conflictAnnounced = false
         conflictReason = null
         lastOpenAt = 0L
+        hadAnyClose = false
+        lastSessionShort = false
         ConflictWatch.reset()
     }
 
@@ -125,11 +135,23 @@ object ReconnectManager {
 
     /**
      * READY / RESUMED 到达：本次尝试鉴权成功。
-     * 健康与否由存活时长判定（见 [onClosedAfter] 与看门狗健康检查）。
+     *
+     * 1.6.5 修复「部分重连成功没有提示」：旧版把「重连成功」的提示推迟到
+     * 会话存活满 90 秒才输出，而 QQ 网关在 90 秒内再次踢线、或连续两次
+     * 断连间隔小于 90 秒时，成功提示永远等不到（机器人实际已恢复收发）。
+     * 现改在鉴权完成（READY/RESUMED）时即宣告成功；仅当上一条会话是
+     * 短命会话（互踢抖动特征）时保持旧版沉默策略，等 90 秒健康判定兜底，
+     * 避免互踢场景下成功/失败提示来回刷屏。
      */
     fun onSessionReady() {
-        // 暂不输出：等健康存活 90 秒后由 [onHealthySession] 统一宣告成功，
-        // 避免互踢场景下「连接成功→3 秒后又被踢」造成成功/失败提示来回抖动
+        if (hadAnyClose && !lastSessionShort && !successAnnounced && attempt.get() > 0) {
+            PluginFileLog.infoAndKeep(
+                "[重连] QQ 机器人重连成功（第 ${attempt.get()}/$SMALL_RETRY_MAX 次尝试），消息收发已恢复"
+            )
+            successAnnounced = true
+            // 计数器不在此清零：短命会话仍按 5 次上限计数（防重连风暴），
+            // 健康判定（存活≥90 秒）达成后再统一清零
+        }
     }
 
     /**
@@ -137,12 +159,13 @@ object ReconnectManager {
      * 重置全部计数并宣告「重连成功」（成功提示一句话，不属防刷屏范围）。
      */
     fun onHealthySession() {
-        if (!successAnnounced && attempt.get() > 0) {
+        if (hadAnyClose && !successAnnounced && attempt.get() > 0) {
             PluginFileLog.infoAndKeep(
                 "[重连] QQ 机器人重连成功（第 ${attempt.get()}/$SMALL_RETRY_MAX 次尝试），消息收发已恢复"
             )
         }
         successAnnounced = true
+        lastSessionShort = false
         attempt.set(0)
         bigRound.set(0)
         suspended = false
@@ -157,12 +180,15 @@ object ReconnectManager {
      * @return 是否已触发「重连超时」挂起（挂起后 SDK 不再自动重连）
      */
     fun onClosedAfter(survivedMs: Long, healthy: Boolean): Boolean {
+        hadAnyClose = true
         if (healthy) {
             // 健康会话正常关闭（QQ 网关例行踢线）：视为已成功过，计数清零，
             // SDK 3 秒后的自动重连按第 1 次重新计
             onHealthySession()
             return false
         }
+        // 1.6.5：短命会话标记（下一条会话 READY 时不立即宣告成功，防抖）
+        lastSessionShort = true
         val n = attempt.get()
         if (n < SMALL_RETRY_MAX) {
             // 未到上限：SDK 会自动重连，下一次 onOpen 计第 n+1 次
@@ -240,6 +266,10 @@ object ReconnectManager {
             }
             // 期间发生过手动重试或重新挂起：本线程作废
             if (generation.get() != myGen || !suspended) return@Thread
+            // 1.6.5：新一轮开始——清零小轮计数（旧版沿用上一轮 attempt，
+            // 退避恢复后提示「第 6/5 次」超出上限显示）
+            attempt.set(0)
+            successAnnounced = false
             PluginFileLog.warnAndKeep(
                 "[重连] 30 分钟退避结束，开始第 $round/$BIG_ROUND_MAX 轮自动重试（每轮 $SMALL_RETRY_MAX 次）"
             )
@@ -267,7 +297,7 @@ object ReconnectManager {
      * 1.6.3：确凿冲突处置（[ConflictWatch] 判定：本服被动回复被 QQ 去重拒收，
      * 另一台同 AppID 服务器抢先回复了同一条群消息）。
      *
-     * 1.6.4 行为变更（参考 HuHoBot 主客户端的做法：连接层永不放弃重试）：
+     * 1.6.4 行为变更（参考上游开源主客户端「连接层永不放弃重试」的做法）：
      * **不再断开连接、不再停止自动重连**，与「疑似冲突」
      * （[onConflictDetected]）一样只醒目提示一次原因与处理方法，
      * 连接与重试体系（每轮 5 次、最多 3 轮 + /hb chs）照常运转。
