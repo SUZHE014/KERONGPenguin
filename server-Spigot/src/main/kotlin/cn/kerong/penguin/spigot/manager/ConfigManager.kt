@@ -360,6 +360,8 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 1.6.0：渲染设置迁至顶层 render 段（查在线 / 卡片渲染不依赖 QQ 绑定）；
             // 1.6.5：gc-after-render 已移除（改确定性 flush 释放，见 CardRenderPool）
             "render.result-cache-seconds" to 60,
+            // 1.6.6.1：头像磁盘缓存有效期（小时；默认 3，支持小数，0 = 关闭）
+            "render.avatar-cache-hours" to 3,
             // 1.6.0 新增：图片渲染命令的用户冷却秒数（旧版硬编码 5 秒；0 = 关闭）
             "render.command-cooldown-seconds" to 5,
             // 1.5.7：全部图片渲染的内置背景开关（默认 true = 随 JAR 分发的深灰底图，

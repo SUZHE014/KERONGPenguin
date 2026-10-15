@@ -1,7 +1,7 @@
 # KERONGPenguin AI 交接知识库
 
 > **本文档的用途**：把本文件丢给一个对项目一无所知的 AI，它能立刻了解当前情况并接手工作。
-> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-15（v1.6.6 发版完成）。
+> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-15（v1.6.6.1 发版完成）。
 > 自包含版本（发给本地无任何东西的 AI）见官网 `AI-KNOWLEDGE.txt`，含从零开始的环境重建与凭据获取说明。
 
 ### 1.1 受限网络环境重建（2026-10-14 实战，环境重置后可用）
@@ -20,7 +20,7 @@
 
 KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项目：玩家在 QQ 群里查数据/签到/聊天，插件在服务器内渲染统计卡片图片并回发。Kotlin 多模块：`common-Bot`（全部业务核心）+ `server-Spigot`（Bukkit 插件版，支持 Spigot/Paper/Folia/混合端）+ `server-NeoForge`（NeoForge 1.21.1 模组版，复用 common-Bot 全部源码 + Spigot 的 manager 源码）。
 
-**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.6）。当前版本 **1.6.6**（控制台真彩色 / 头像多备用线路与落盘缓存 / PlaceholderAPI 依赖检测 / 内部标识与包结构统一：包名 cn.kerong.bot 与 cn.kerong.penguin，主类 KERONGSpigot / KERONGNeoForge）。
+**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.6.1）。当前版本 **1.6.6.1**（头像磁盘缓存默认 3 小时可配置 + 过期清扫 / 新增 MinePic 线路，Mojang 原生 API 保留 / 1.6.6：控制台真彩色、头像多备用线路与落盘缓存、PlaceholderAPI 依赖检测、包名 cn.kerong.bot 与 cn.kerong.penguin，主类 KERONGSpigot / KERONGNeoForge）。
 
 ---
 
@@ -62,7 +62,7 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 | 消息模板 | `spigot/qqbind/MessageTemplates.kt` + 资源 `Markdown/*.md`（68 个） | 全部文本回复走模板：首次启动释放到数据目录 `Markdown/`，用户可改；`messages` 配置段映射模板 id→文件名。发文本用 sendDirect（带@）/sendPlain |
 | 绑定/解绑/黑名单 | `spigot/qqbind/QqBindManager.kt`（单例）+ `events/commands/BindCommands.kt` | 玩家进服未绑定发 5 位绑定码（可配置踢出拦截），群里 `/绑定 <码>` 或纯数字 4-12 位自动绑定；`/重新绑定`、`/黑名单`、`/解除黑名单` |
 | 签到 | `events/commands/CheckInCommands.kt` | 每日一次（网络北京时间，见 PlayerStatsManager.beijingToday），经 Vault 发金币，无经济插件走记账模式（离线暂存上线补发） |
-| 查信息统计卡 | `events/commands/PublicCommands.kt` → `spigot/stats/QueryInfoService.kt` → `spigot/render/CardRenderPool.kt` + `InfoCardRenderer.kt` | CPU 异步渲染 PNG（CardRenderPool 线程池，核数一半 1~4），9 项统计，依赖缺失自适应（Vault 金币 / DeluxeTags **或 PlayerTitle**（1.6.4，PAPI %playerTitle_use%） / PlayerPoints 点券），头像四级链 + **Crafatar CDN 回退与 Mojang 网络全局冷却**（1.6.4，详见 3.5） |
+| 查信息统计卡 | `events/commands/PublicCommands.kt` → `spigot/stats/QueryInfoService.kt` → `spigot/render/CardRenderPool.kt` + `InfoCardRenderer.kt` | CPU 异步渲染 PNG（CardRenderPool 线程池，核数一半 1~4），9 项统计，依赖缺失自适应（Vault 金币 / DeluxeTags **或 PlayerTitle**（1.6.4，PAPI %playerTitle_use%） / PlayerPoints 点券），头像多级链 + **外部多线路回退（含 MinePic）与 Mojang 网络全局冷却**（1.6.4~1.6.6.1，详见 3.5） |
 | 在线时长同步 | `spigot/stats/PlayTimeSync.kt`（1.6.4 新增） | 检测到 PlayTimeManager + PlaceholderAPI 时，把本插件统计的总在线时长与 PTM 差值对齐（读 `%PTM_playtime_s_<名>%` 秒数 → 控制台 `/playtime <名> add|remove <差值>s`）；玩家退出时 + 每 30 分钟周期兑底；阈值 300s/冷却 10 分钟防抖；未装则整体不启用 |
 | 查在线/在线排行榜/财富榜 | `PublicCommands.kt` + `LeaderboardCommands.kt` + `CoinsLeaderboardCommands.kt` + `render/OnlineListRenderer.kt`/`LeaderboardRenderer.kt` | 图片分段发送（每页 15 人）、命令冷却 `render.command-cooldown-seconds`、内置背景图（backgrounds/，img/ 可自定义随机） |
 | /查在线 markdown | `markdown.queryOnline` → online.md | 关图片走模板文本 |
@@ -128,11 +128,11 @@ QQ 同一 AppID 的第二条连接**不总是被立刻踢**。三种实测形态
 
 `bot/UpdateChecker.kt`：启动后异步 8 秒 GET `https://kerong.xin/penguin/version.json`，逐段数字比较版本；有新版→控制台输出带 § 颜色码的版本号/下载页/最多 6 行简要日志（1.6.4：版本号绿色加粗、链接蓝色、条目灰白分级）；失败→控制台一句话，细节进日志。`update-check.enabled` 可关。**每次发版必须更新服务器上的 version.json**。§ 颜色码处理：Spigot 系控制台直接渲染；NeoForge 适配器 `log_info/log_warning/log_error` 输出前统一过 `PluginFileLog.stripColorCodes`（log4j 不渲染 §，否则乱码）；文件日志始终剥离。共享代码可以放心在控制台文案里用 § 颜色码。
 
-### 3.5 渲染管线与头像获取（1.6.4 头像修复，1.6.5 内存与性能）
+### 3.5 渲染管线与头像获取（1.6.4 头像修复，1.6.5 内存与性能，1.6.6.1 缓存配置化与 MinePic）
 
 CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结果缓存、头像 LRU+字节预算、背景图内置+随机 LRU、长图封顶 1600px、子采样解码防 OOM。图片发送：`replyWithImgBytes`（base64 上传），读超时（SDK OkHttp 10 秒 < QQ 富媒体普遍 10 秒+应答）**不算失败**（图片大概率已投递，1.6.1）；ret 2022021x=已受理算成功。**1.6.5 内存策略**：移除渲染后 System.gc() 提示（Full GC 停顿伤 tick，render.gc-after-render 配置已废除并由升级器清理），改为确定性 flush——单次画布（各 render() 末尾）、中间图（皮肤贴图/缩放/cover）、缓存淘汰与 clearCaches 均在失去引用前 flush，剩余堆内存交给常规新生代 GC。
 
-**头像链路**（`InfoCardRenderer.kt` 的 InfoCardAssets）：内存缓存（10 分钟）→ **磁盘缓存**（1.6.6 新增，plugins/KERONGPenguin/cache/avatars/，24 小时，512 文件上限，命中回填内存，重启后免重复请求）→ 在线 Profile → playerdata NBT → Mojang 会话服务器（v4）→ 名字反查 →（均失败时）**外部多线路回退**（1.6.6：MC-Heads → Minotar → Crafatar 按实测速度排序；基岩玩家（Floodgate UUID：msb 全 0 + lsb 高 16 位 0x0009，低 48 位为 xuid）走 MC-Heads xuid 线路 `https://mc-heads.net/avatar/xuid:<xuid>/216`；名字线路 MC-Heads → Minotar；生产实测 2026-10：MC-Heads 0.4s / Minotar 0.5s / Crafatar 5.8s，LittleSkin 与 mc-api.io 不可达弃用）。**1.6.4 关键修复：Mojang 官方接口网络级失败（超时/IO/429/5xx）开启 5 分钟全局冷却**——「大部分玩家头像获取失败」的根因是服务器到 Mojang 的线路不稳，旧版每个玩家都先等 5 秒超时才能失败，在线列表 8 秒预热预算全部耗尽；冷却期内直接跳过官方链路（走 Crafatar 或诚实失败），不再逐玩家等超时。会话服务器超时也从 5 秒降到 3 秒。离线服无皮肤数据的玩家仍诚实画占位块（不做「人人史蒂夫」假回退）。
+**头像链路**（`InfoCardRenderer.kt` 的 InfoCardAssets）：内存缓存（10 分钟）→ **磁盘缓存**（1.6.6 新增，1.6.6.1 有效期默认 3 小时且可配置：`render.avatar-cache-hours`（RenderSettings.avatarCacheHours 实时读，支持小数，0 = 关闭不读不写），插件版 plugins/KERONGPenguin/cache/avatars/、模组版 kerongpenguin/cache/avatars/，512 文件上限，命中回填内存，重启后免重复请求；过期文件由 avatar-cache-sweeper 守护线程每 30 分钟清扫删除（首轮启动 10 秒后，顺带清停服期间过期文件），查询命中过期文件时也顺手删）→ 在线 Profile → playerdata NBT → Mojang 会话服务器（v4）→ 名字反查 →（均失败时）**外部多线路回退**（1.6.6 起：MC-Heads → Minotar → **MinePic（1.6.6.1 新增，minepic.org/avatar/<无横线UUID或名字>/216，实测 1.7~6s 波动大、未知账号不响应按失败处理，超时 3 秒）** → Crafatar 按实测速度排序；基岩玩家（Floodgate UUID：msb 全 0 + lsb 高 16 位 0x0009，低 48 位为 xuid）走 MC-Heads xuid 线路 `https://mc-heads.net/avatar/xuid:<xuid>/216`；名字线路 MC-Heads → Minotar → MinePic；生产实测 2026-10：MC-Heads 0.4s / Minotar 0.5s / MinePic 1.7~6s / Crafatar 5.8s，LittleSkin 与 mc-api.io 不可达弃用；**Mojang 原生官方 API 始终保留且优先于外部线路**（用户明确要求，外部线路仅兜底））。**1.6.4 关键修复：Mojang 官方接口网络级失败（超时/IO/429/5xx）开启 5 分钟全局冷却**——「大部分玩家头像获取失败」的根因是服务器到 Mojang 的线路不稳，旧版每个玩家都先等 5 秒超时才能失败，在线列表 8 秒预热预算全部耗尽；冷却期内直接跳过官方链路（走 Crafatar 或诚实失败），不再逐玩家等超时。会话服务器超时也从 5 秒降到 3 秒。离线服无皮肤数据的玩家仍诚实画占位块（不做「人人史蒂夫」假回退）。
 
 ### 3.6 配置系统
 
@@ -206,11 +206,16 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
 
 ---
 
-## 7. 当前已知状态（2026-10-15，v1.6.6 发版完成）
+## 7. 当前已知状态（2026-10-15，v1.6.6.1 发版完成）
 
-- 双端 1.6.6 全部完成（构建 / 门禁 / 冒烟通过）：
+- 双端 1.6.6.1 全部完成（构建 / 门禁 66/66 / 冒烟 29/29 通过）：
+  - 头像磁盘缓存配置化：默认 24 小时 → 3 小时，`render.avatar-cache-hours`（支持小数，0 = 关闭；ConfigManager DEFAULT_VALUES 自动补键，fillMissing 机制无需 config-version 迁移）；过期文件 avatar-cache-sweeper 守护线程每 30 分钟清扫（惰性启动，clearCaches 关闭，可重启）；
+  - MinePic 线路：插在 Minotar 与 Crafatar 之间（v4 与名字线路），实测波动大、未知账号不响应；
+  - Mojang 原生 API 保留（官方链路优先，外部线路兜底）；
+  - WebUI 面板：删已废除的 render.gc-after-render 字段、新增头像缓存字段（QueryInfoService 过时注释一并修正）。
+- 双端 1.6.6 历史项（构建 / 门禁 / 冒烟通过）：
   - 控制台真彩色：ConsoleColors（§→ANSI 转义 + TerminalConsoleAppender 能力探测），双端 log_* 输出前转换（不支持 ANSI 的输出自动退化纯文本，文件日志始终剥离）；
-  - 头像：外部多线路回退（MC-Heads/Minotar/Crafatar + Floodgate xuid 基岩线路）+ 磁盘缓存（cache/avatars，24h）；
+  - 头像：外部多线路回退（MC-Heads/Minotar/Crafatar + Floodgate xuid 基岩线路）+ 磁盘缓存（cache/avatars，1.6.6 时为 24h，1.6.6.1 起默认 3h 可配置）；
   - PapiDependencyCheck：无 PlaceholderAPI 时启动后 12 秒与查询时各提示一次（金币 Vault 直连与 DeluxeTags 称号不受影响的说明写进提示）；
   - 内部标识与包结构统一：包结构统一为 cn.kerong.*（bot / penguin），主类 KERONGSpigot / KERONGNeoForge / KERONG 接口，旧长名命令别名与旧协议前缀兼容层已删除；
   - 1.6.5 历史项：启动消息「KERONG Penguin 已加载」；

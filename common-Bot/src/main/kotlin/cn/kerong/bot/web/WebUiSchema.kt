@@ -100,8 +100,8 @@ object WebUiSchema {
     ))
 
     private val RENDER_SECTION = SectionSpec("render", "图片渲染", listOf(
-        FieldSpec("render.gc-after-render", "渲染后 GC", "boolean", "渲染后 GC 提示（已节流 60 秒一次）"),
         FieldSpec("render.result-cache-seconds", "结果复用秒数", "number", "同一玩家查询结果复用秒数（0=每次重渲染，上限 600）"),
+        FieldSpec("render.avatar-cache-hours", "头像缓存小时", "number", "皮肤头像磁盘缓存有效期（小时，1.6.6.1 新增）：保存到 cache/avatars/，过期自动删除；默认 3，支持小数（如 0.5），0=关闭磁盘缓存"),
         FieldSpec("render.command-cooldown-seconds", "命令冷却秒数", "number", "同一用户两次触发图片命令（查信息/查在线/排行榜/财富榜）的最小间隔秒数（0=关闭，默认 5）"),
         FieldSpec("render.info-card-builtin-background", "查信息内置背景", "boolean", "查信息卡片是否使用内置深灰底图（默认开启；关闭后随机用 img/ 图片，img 无图自动回退内置图；1.5.7 新增，1.6.0 迁至顶层 render 段）"),
         FieldSpec("render.online-list-builtin-background", "查在线内置背景", "boolean", "查在线图片是否使用内置深灰底图（默认开启；语义同查信息；1.6.0 迁至顶层 render 段）"),

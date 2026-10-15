@@ -18,7 +18,10 @@ import java.net.URL
 import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ThreadLocalRandom
+import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
 import javax.imageio.ImageIO
 
@@ -647,11 +650,13 @@ object InfoCardAssets {
      * 获取玩家皮肤正面贴图头像（异步线程调用）。
      * 返回 FACE_SIZE × FACE_SIZE 的脸部图像；无皮肤数据时返回 null。
      *
-     * 1.6.6 查找顺序：内存缓存 → 磁盘缓存（plugins/KERONGPenguin/
-     * cache/avatars/，24 小时，命中回填内存，重启后不再重新请求外部接口）
-     * → 本地皮肤数据（Profile / NBT）裁脸 → Mojang 官方链路 →
-     * 外部头像服务回退链（MC-Heads → Minotar → Crafatar，基岩玩家走
-     * MC-Heads 的 xuid 线路，见 [fetchExternalAvatar]）。
+     * 查找顺序（1.6.6.1）：内存缓存 → 磁盘缓存（plugins/KERONGPenguin/
+     * cache/avatars/，默认 3 小时，render.avatar-cache-hours 可配置；
+     * 过期文件由后台清扫线程删除，命中即回填内存）→ 本地皮肤数据
+     * （Profile / NBT）裁脸 → Mojang 官方原生 API（会话服务器直查 +
+     * 玩家名反查，始终保留）→ 外部头像服务回退链（MC-Heads →
+     * Minotar → MinePic → Crafatar，基岩玩家走 MC-Heads 的 xuid 线路，
+     * 见 [fetchExternalAvatar]）。
      */
     fun fetchAvatar(request: AvatarRequest): BufferedImage? {
         val key = request.uuid?.toString() ?: "name:${request.playerName.lowercase()}"
@@ -665,7 +670,9 @@ object InfoCardAssets {
         val missed = missCache[key]
         if (missed != null && now - missed.createdAt < MISS_TTL) return null
 
-        // 3. 磁盘缓存（24 小时；命中回填内存，避免重启后重复请求外部接口）
+        // 3. 磁盘缓存（默认 3 小时，render.avatar-cache-hours 可配置；
+        // 命中回填内存，重启后不重复请求外部接口；缓存关闭时直接跳过）
+        ensureAvatarSweeper()
         val disk = loadDiskAvatar(key, now)
         if (disk != null) {
             avatarCache[key] = CacheEntry(disk, now)
@@ -718,6 +725,9 @@ object InfoCardAssets {
         builtinBackgroundSources.clear()
         builtinBackgroundResolvedPaths.clear()
         mojangNetworkFailureAt = 0L
+        // 1.6.6.1：停用磁盘缓存清扫线程（下次使用头像时自动重启）
+        avatarSweeper?.shutdownNow()
+        avatarSweeper = null
     }
 
 
@@ -758,7 +768,7 @@ object InfoCardAssets {
      *
      * 1.6.4：Mojang 官方链路（第 3 / 4 步）在网络冷却期（见
      * [MOJANG_NETWORK_COOLDOWN_MS]）内整体跳过，避免每个玩家都等一次
-     * 5 秒超时；官方链路失败由 [fetchCrafatarAvatar] 的 CDN 回退兑底。
+     * 5 秒超时；官方链路失败由外部多线路回退兜底（见 [fetchExternalAvatar]）。
      */
     private fun resolveSkinTexture(request: AvatarRequest): String? {
         // 1. 在线玩家 Profile（最准确，含皮肤插件修改）
@@ -1020,20 +1030,27 @@ object InfoCardAssets {
     }
 
     /**
-     * 外部头像服务回退链（1.6.6：官方皮肤链路失败后的兜底数据源，多线路）。
+     * 外部头像服务回退链（1.6.6：官方皮肤链路失败后的兜底数据源，多线路；
+     * 1.6.6.1 新增 MinePic 第三线路）。
      *
      * 生产实测可达性（2026-10）：MC-Heads ≈ 0.4s、Minotar ≈ 0.5s、
+     * MinePic ≈ 1.7~6s（可用但波动大，偶发超时，见 [fetchMinePicAvatar]）、
      * Crafatar ≈ 5.8s（慢但可用）；线路顺序按实测速度排（快 → 慢），
-     * 任一成功即返回（在线列表 8 秒预热预算保护，不做三线全等）。
+     * 任一成功即返回（在线列表 8 秒预热预算保护，不做四线全等）。
+     *
+     * 注：本链路之前还有 Mojang 官方原生 API（会话服务器 + 名字反查，
+     * 见 [resolveSkinTexture]）——官方数据始终优先，本链路仅在其失败
+     * 或网络冷却期内兜底，不替代官方接口。
      *
      * - 基岩玩家（Floodgate UUID，见 [floodgateXuid]）：MC-Heads 的
-     *   xuid 线路（实测 200，官方支持 Xbox 头像）；其余三个 Java 侧
+     *   xuid 线路（实测 200，官方支持 Xbox 头像）；其余 Java 侧
      *   CDN 只收录正版 Java 账号，基岩玩家此前永远拿不到外部头像；
-     * - 正版 UUID（v4）：MC-Heads → Minotar → Crafatar（均直接返回
-     *   头部头像 PNG，含帽子层，与 cropFace 的裁剪结果同观感）；
+     * - 正版 UUID（v4）：MC-Heads → Minotar → MinePic → Crafatar
+     *   （均直接返回头部头像 PNG，含帽子层，与 cropFace 的裁剪结果
+     *   同观感）；
      * - 仅玩家名（无 UUID / 离线 UUID）：名字线路（MC-Heads →
-     *   Minotar；语义与「名字反查正版账号」一致——该名被正版账号
-     *   注册则返回其头像）；
+     *   Minotar → MinePic；语义与「名字反查正版账号」一致——该名
+     *   被正版账号注册则返回其头像）；
      * - 404 / 网络失败 / 解码失败一律返回 null（渲染占位块，不假回退）。
      */
     private fun fetchExternalAvatar(request: AvatarRequest): BufferedImage? {
@@ -1045,9 +1062,10 @@ object InfoCardAssets {
                 return fetchAvatarFromUrl("https://mc-heads.net/avatar/xuid:$xuid/$FACE_SIZE", 3000)
             }
             if (uuid.version() == 4) {
-                // 正版账号：快线路优先，慢线路（Crafatar）仅在前两者都失败后尝试
+                // 正版账号：快线路优先，慢线路（MinePic / Crafatar）仅在前两者都失败后尝试
                 return fetchAvatarFromUrl("https://mc-heads.net/avatar/$uuid/$FACE_SIZE", 3000)
                     ?: fetchAvatarFromUrl("https://minotar.net/avatar/$uuid/$FACE_SIZE", 3000)
+                    ?: fetchMinePicAvatar(uuid.toString().replace("-", ""))
                     ?: fetchCrafatarAvatar(uuid)
             }
         }
@@ -1055,9 +1073,23 @@ object InfoCardAssets {
         if (request.playerName.isNotBlank()) {
             return fetchAvatarFromUrl("https://mc-heads.net/avatar/${request.playerName}/$FACE_SIZE", 3000)
                 ?: fetchAvatarFromUrl("https://minotar.net/avatar/${request.playerName}/$FACE_SIZE", 3000)
+                ?: fetchMinePicAvatar(request.playerName)
         }
         return null
     }
+
+    /**
+     * MinePic 线路（1.6.6.1 新增）：https://minepic.org/avatar/<UUID 或玩家名>/<尺寸>。
+     *
+     * - 同时支持 32 位无横线 UUID 与玩家名（调用方传参前已归一化）；
+     * - 实测（2026-10）可用但波动较大：成功时 1.7~6s，偶发超时 / 连接
+     *   中断，未知账号不响应（按失败处理，不会返回默认皮肤假头像）；
+     *   因此作为第三线路插在 Minotar 之后、Crafatar 之前，超时 3 秒
+     *   不挤占后续线路预算；http 会 301 跳 https，此处直接走 https；
+     * - 返回尺寸即请求尺寸（实测 216×216 RGBA），命中时无需二次缩放。
+     */
+    private fun fetchMinePicAvatar(id: String): BufferedImage? =
+        fetchAvatarFromUrl("https://minepic.org/avatar/$id/$FACE_SIZE", 3000)
 
     /**
      * Floodgate 基岩玩家 UUID → Xbox xuid（非基岩 UUID 返回 null）。
@@ -1094,13 +1126,75 @@ object InfoCardAssets {
         }
     }
 
-    // ---------- 头像磁盘缓存（1.6.6） ----------
+    // ---------- 头像磁盘缓存（1.6.6；1.6.6.1 有效期可配置 + 过期清扫） ----------
 
-    /** 头像磁盘缓存有效期（24 小时：比内存缓存长，重启后仍可用）。 */
-    private const val AVATAR_DISK_TTL = 24 * 3600_000L
+    /** 磁盘缓存默认有效期（小时）：render.avatar-cache-hours 可改。 */
+    internal const val DEFAULT_AVATAR_DISK_TTL_HOURS = 3.0
 
     /** 头像磁盘缓存文件数上限（超出删最旧；PNG 约 2-8KB/个，总量很小）。 */
     private const val AVATAR_DISK_MAX_FILES = 512
+
+    /**
+     * 磁盘缓存有效期（毫秒），实时读配置（/kerong reload 后立即生效）：
+     * - render.avatar-cache-hours（默认 3 小时，支持小数如 0.5）；
+     * - 0 = 关闭磁盘缓存（不读不写，清扫时把已有文件全部删掉）；
+     * - 负数按默认处理；有效值下限 1 分钟（防误填 0.0001 之类的抖动值）。
+     */
+    internal fun avatarDiskTtlMillis(): Long {
+        val hours = RenderSettings.avatarCacheHours()
+        if (hours <= 0.0) return 0L
+        return (hours * 3600_000.0).toLong().coerceAtLeast(60_000L)
+    }
+
+    /**
+     * 过期文件清扫线程（1.6.6.1：有效期缩短为小时级后，仅靠「查询命中时
+     * 顺手删」会让不再上线的玩家头像长期滞留磁盘，改为后台主动清扫）。
+     *
+     * - 惰性启动：首次取头像时启动（[ensureAvatarSweeper]），守护线程；
+     * - 首轮 10 秒后（错开启动高峰，顺带删掉停服期间过期的文件），
+     *   此后每 30 分钟一轮：删过期文件 + 超上限删最旧；
+     * - [clearCaches] 停机时关闭线程，下次使用时自动重启。
+     */
+    @Volatile
+    private var avatarSweeper: ScheduledExecutorService? = null
+
+    private fun ensureAvatarSweeper() {
+        if (avatarSweeper != null) return
+        synchronized(this) {
+            if (avatarSweeper != null) return
+            try {
+                val executor = Executors.newSingleThreadScheduledExecutor { runnable ->
+                    Thread(runnable, "avatar-cache-sweeper").apply { isDaemon = true }
+                }
+                executor.scheduleAtFixedRate(
+                    { sweepDiskCache() },
+                    10_000L,
+                    30 * 60_000L,
+                    TimeUnit.MILLISECONDS,
+                )
+                avatarSweeper = executor
+            } catch (_: Throwable) {
+                // 清扫线程只是磁盘卫生，起不来不影响头像功能本身
+            }
+        }
+    }
+
+    /** 清扫一轮磁盘缓存：删过期文件（缓存关闭时全删）+ 超上限删最旧。 */
+    internal fun sweepDiskCache() {
+        try {
+            val dir = avatarDiskDir() ?: return
+            val ttl = avatarDiskTtlMillis()
+            val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".png") } ?: return
+            val now = System.currentTimeMillis()
+            for (file in files) {
+                if (ttl <= 0L || now - file.lastModified() > ttl) {
+                    try { file.delete() } catch (_: Throwable) {}
+                }
+            }
+            trimDiskCache(dir)
+        } catch (_: Throwable) {
+        }
+    }
 
     /** 磁盘缓存目录（plugins/KERONGPenguin/cache/avatars/）。 */
     private fun avatarDiskDir(): File? {
@@ -1121,12 +1215,14 @@ object InfoCardAssets {
         return File(dir, "${key.replace(':', '_')}.png")
     }
 
-    /** 读取磁盘缓存（过期文件顺手删除；解码失败返回 null）。 */
+    /** 读取磁盘缓存（缓存关闭时跳过；过期文件顺手删除；解码失败返回 null）。 */
     private fun loadDiskAvatar(key: String, now: Long): BufferedImage? {
         return try {
+            val ttl = avatarDiskTtlMillis()
+            if (ttl <= 0L) return null
             val file = avatarDiskFile(key) ?: return null
             if (!file.isFile) return null
-            if (now - file.lastModified() > AVATAR_DISK_TTL) {
+            if (now - file.lastModified() > ttl) {
                 try { file.delete() } catch (_: Throwable) {}
                 return null
             }
@@ -1138,9 +1234,10 @@ object InfoCardAssets {
         }
     }
 
-    /** 写入磁盘缓存（临时文件原子替换，失败静默）。 */
+    /** 写入磁盘缓存（缓存关闭时跳过；临时文件原子替换，失败静默）。 */
     private fun saveDiskAvatar(key: String, image: BufferedImage) {
         try {
+            if (avatarDiskTtlMillis() <= 0L) return
             val file = avatarDiskFile(key) ?: return
             val tmp = File(file.parentFile, "${file.name}.tmp")
             java.io.FileOutputStream(tmp).use { out ->

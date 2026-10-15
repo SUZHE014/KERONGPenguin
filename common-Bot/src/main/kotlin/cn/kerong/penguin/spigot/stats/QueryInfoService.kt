@@ -54,8 +54,8 @@ import java.util.concurrent.TimeUnit
  * 1.5.0（覆盖更新）：
  * - 渲染 CPU 上限硬编码：全部图片渲染共用 [CardRenderPool]，线程数固定为
  *   主机核数一半（1..4，详见 CardRenderPool，不走配置文件）；
- * - 渲染完成后释放内存：单次渲染图像立即 flush 释放栅格，并做节流 GC 提示
- *   （两次至少间隔 60 秒，render.gc-after-render 可关；1.6.0：配置从 qq-bind.render 迁至顶层 render 段）；
+ * - 渲染完成后释放内存：单次渲染图像立即 flush 释放栅格
+ *   （1.6.5 起为确定性 flush 释放，旧版节流 GC 提示已废除）；
  * - 同一玩家的渲染结果在 TTL 内复用（默认 60 秒，render.result-cache-seconds 可调）。
  *
  * 1.6.0：查询冷却秒数可配置（render.command-cooldown-seconds，默认 5，
