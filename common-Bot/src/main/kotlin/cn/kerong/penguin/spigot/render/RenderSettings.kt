@@ -19,6 +19,9 @@ object RenderSettings {
     /** 头像磁盘缓存默认有效期（小时，1.6.6.1 新增配置化）。 */
     const val DEFAULT_AVATAR_CACHE_HOURS = 3.0
 
+    /** 渲染空闲内存释放默认阈值（分钟，1.6.6.2 新增配置化）。 */
+    const val DEFAULT_IDLE_RELEASE_MINUTES = 5.0
+
     /** 头像获取优先方式（1.6.6.1 覆盖版新增配置）。 */
     enum class AvatarFetchPriority { LOCAL, EXTERNAL }
 
@@ -75,5 +78,28 @@ object RenderSettings {
         } else {
             AvatarFetchPriority.LOCAL
         }
+    }
+
+    /**
+     * 渲染空闲内存释放阈值（毫秒，1.6.6.2 新增）。
+     *
+     * - render.idle-release-minutes（默认 5）：一次渲染完成后指定分钟内
+     *   没有下一次渲染时，自动释放头像 / 背景等图像素材缓存占用的内存
+     *   （flush + 清空；磁盘头像缓存与轻量元数据缓存保留，下次渲染
+     *   从磁盘 / 外部接口秒级恢复）；
+     * - 默认 5；支持小数（如 2.5 = 2 分半）；0 = 关闭空闲释放；
+     * - 负数按默认处理；实时读取（/kerong reload 后立即生效）。
+     */
+    fun idleReleaseMillis(): Long {
+        val minutes = try {
+            (BotShared.instance as? JavaPlugin)?.config?.getDouble(
+                "render.idle-release-minutes",
+                DEFAULT_IDLE_RELEASE_MINUTES,
+            ) ?: DEFAULT_IDLE_RELEASE_MINUTES
+        } catch (_: Throwable) {
+            DEFAULT_IDLE_RELEASE_MINUTES
+        }
+        if (minutes < 0) return (DEFAULT_IDLE_RELEASE_MINUTES * 60_000L).toLong()
+        return (minutes * 60_000.0).toLong()
     }
 }

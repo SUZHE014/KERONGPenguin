@@ -365,6 +365,8 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 1.6.6.1 覆盖版：头像获取优先方式（local = 本地优先取不到自动切外置，
             // external = 外置优先全部失败再试本地）
             "render.avatar-fetch-priority" to "local",
+            // 1.6.6.2：渲染空闲内存释放阈值（分钟；默认 5，支持小数，0 = 关闭）
+            "render.idle-release-minutes" to 5,
             // 1.6.0 新增：图片渲染命令的用户冷却秒数（旧版硬编码 5 秒；0 = 关闭）
             "render.command-cooldown-seconds" to 5,
             // 1.5.7：全部图片渲染的内置背景开关（默认 true = 随 JAR 分发的深灰底图，

@@ -1,5 +1,6 @@
 package cn.kerong.penguin.spigot.render
 
+import cn.kerong.bot.provider.BotShared
 import com.alibaba.fastjson.JSON
 import java.awt.BasicStroke
 import java.awt.Color
@@ -552,13 +553,28 @@ object InfoCardAssets {
     private const val AVATAR_TTL = 10 * 60_000L
 
     /**
-     * 头像内存缓存容量上限（1.6.6.1 覆盖版：128 → 64）。旧上限峰值
-     * ~24MB（128 条 × 216² ARGB）；磁盘缓存（3 小时 TTL）就位后淘汰
-     * 条目可从磁盘秒级回填，上限减半到 ~12MB 无感知成本。
+     * 头像内存缓存容量上限（1.6.6.2：64 → 128）。配套 [AVATAR_MEMORY_MAX_BYTES]
+     * 门槛，只缓存 PNG 编码后 ≤ 10KB 的小头像；大头像只落磁盘缓存，
+     * 不占常驻内存，淘汰条目也可从磁盘秒级回填，上限翻回 128 条。
      */
-    private const val AVATAR_CACHE_MAX = 64
+    private const val AVATAR_CACHE_MAX = 128
 
-    /** 查询失败后的短期冷却，避免连续请求打爆外部接口。 */
+    /**
+     * 头像进内存缓存的单张大小门槛（1.6.6.2 新增）：PNG 编码后超过
+     * 10KB 的头像不进内存缓存，只写入磁盘缓存（下次渲染从磁盘解码，
+     * 毫秒级）；磁盘缓存关闭时退回全量内存缓存（避免无任何缓存层）。
+     */
+    internal const val AVATAR_MEMORY_MAX_BYTES = 10 * 1024
+
+    /** 查询失败后的短期冷却，避免连续请求打爆外部接口。
+     *
+     * 1.6.6.2 修复「极少玩家在清除缓存后头像获取失败」：磁盘缓存整批
+     * 同时到期时，下一张渲染会集中重取几十个头像，容易触发 Mojang
+     * 429 / 网络级失败（官方链路进入 5 分钟全局冷却），风暴尾部的少数
+     * 玩家本地无数据且外置线路慢 → 获取失败。旧版把这类**网络抖动型
+     * 失败**也写入本冷却（60 秒内重试无门，反复查询都判失败）。现在
+     * 只有确定性失败（404 名字无正版账号等）才写冷却；网络抖动型
+     * 失败不写（见 [networkTrouble]），下次查询立即重试。 */
     private const val MISS_TTL = 60_000L
 
     /** 名字反查负缓存（404 = 名字无正版账号）的有效期（1.6.2：从永久改为 30 分钟）。 */
@@ -580,15 +596,26 @@ object InfoCardAssets {
     @Volatile
     private var mojangNetworkFailureAt = 0L
 
+    /**
+     * 本次头像获取尝试的网络抖动标记（1.6.6.2 新增，ThreadLocal：
+     * 渲染线程一次只处理一个获取请求，无串扰）。任一链路发生网络级
+     * 失败（超时 / IO 异常 / 官方链路冷却期内跳过 / 429 / 5xx）时置
+     * true：最终失败属于网络抖动型，不写入 missCache，下次查询立即
+     * 重试（修复「清除缓存后集中重取风暴中极少玩家获取失败且 60 秒
+     * 内重试无门」的问题）；确定性失败（404 等）仍写冷却保护外部接口。
+     */
+    private val networkTrouble = ThreadLocal.withInitial { false }
+
     /** Mojang 官方接口是否处于网络冷却期（冷却内跳过官方链路）。 */
     private fun mojangInCooldown(): Boolean {
         val at = mojangNetworkFailureAt
         return at > 0L && System.currentTimeMillis() - at < MOJANG_NETWORK_COOLDOWN_MS
     }
 
-    /** 记录一次 Mojang 官方接口网络级失败（开启全局冷却）。 */
+    /** 记录一次 Mojang 官方接口网络级失败（开启全局冷却 + 标记本次尝试网络抖动）。 */
     private fun markMojangUnreachable() {
         mojangNetworkFailureAt = System.currentTimeMillis()
+        networkTrouble.set(true)
     }
 
     /** 输出头像尺寸（渲染前再缩到展示尺寸）。 */
@@ -607,6 +634,16 @@ object InfoCardAssets {
     private class CacheEntry(val image: BufferedImage, val createdAt: Long)
 
     private class NegativeEntry(val createdAt: Long)
+
+    /**
+     * 带获取方式标签的头像获取结果（1.6.6.2 新增）：标签用于把「头像
+     * 获取用的方法」写进日志（本地贴图 / Mojang 官方 / 各外置线路），
+     * 方便运维排查某玩家的头像到底走的哪条链路。
+     */
+    private class FetchedFace(val image: BufferedImage, val method: String)
+
+    /** 磁盘缓存命中结果（image + 文件字节数，字节数用于 10KB 内存门槛判定）。 */
+    private class DiskAvatar(val image: BufferedImage, val fileSize: Long)
 
     /** 头像缓存：uuid（或 name:name）→ 正面脸部图。 */
     private val avatarCache = ConcurrentHashMap<String, CacheEntry>()
@@ -685,12 +722,20 @@ object InfoCardAssets {
      * - external：外置方式优先（Mojang 官方 API → MC-Heads → Minotar →
      *   MinePic → Crafatar），全部失败后再试本地；
      * 先试的一方失败自动切换另一方，两种方式都不成时才记入失败冷却。
+     *
+     * 1.6.6.2：
+     * - 每次成功获取（含磁盘缓存命中）把获取方式写入日志（[logAvatarSource]）；
+     * - 单张 PNG 超过 [AVATAR_MEMORY_MAX_BYTES]（10KB）的头像只走磁盘缓存，
+     *   不再进内存缓存（内存缓存条目上限恢复 128 条，见 [AVATAR_CACHE_MAX]）。
      */
     fun fetchAvatar(request: AvatarRequest): BufferedImage? {
         val key = request.uuid?.toString() ?: "name:${request.playerName.lowercase()}"
         val now = System.currentTimeMillis()
+        // 1.6.6.2：每次尝试重置网络抖动标记（渲染线程复用，防上次尝试的
+        // 抖动状态串扰本次失败分类）
+        networkTrouble.set(false)
 
-        // 1. 命中内存缓存直接返回
+        // 1. 命中内存缓存直接返回（内存命中不算获取动作，首次获取时已记录来源日志）
         val cached = avatarCache[key]
         if (cached != null && now - cached.createdAt < AVATAR_TTL) return cached.image
 
@@ -699,37 +744,96 @@ object InfoCardAssets {
         if (missed != null && now - missed.createdAt < MISS_TTL) return null
 
         // 3. 磁盘缓存（默认 3 小时，render.avatar-cache-hours 可配置；
-        // 命中回填内存，重启后不重复请求外部接口；缓存关闭时直接跳过）
+        // 命中按 10KB 门槛决定是否回填内存，重启后不重复请求外部接口；缓存关闭时直接跳过）
         ensureAvatarSweeper()
         val disk = loadDiskAvatar(key, now)
         if (disk != null) {
-            avatarCache[key] = CacheEntry(disk, now)
-            evictIfOversized()
+            // 1.6.6.2：超过 10KB 的大头像不进内存缓存（只走磁盘），
+            // 小头像回填内存供后续渲染秒级复用
+            if (disk.fileSize <= AVATAR_MEMORY_MAX_BYTES) {
+                avatarCache[key] = CacheEntry(disk.image, now)
+                evictIfOversized()
+            }
             missCache.remove(key)
-            return disk
+            logAvatarSource(request, "本地磁盘缓存（${disk.fileSize / 1024}KB）")
+            return disk.image
         }
 
         // 4. 按配置优先级获取：local = 本地优先，取不到自动切外置；
         //    external = 外置优先，全部失败再试本地（1.6.6.1 覆盖版）
         val preferExternal = RenderSettings.avatarFetchPriority() ==
             RenderSettings.AvatarFetchPriority.EXTERNAL
-        val face: BufferedImage? = if (preferExternal) {
+        val fetched: FetchedFace? = if (preferExternal) {
             fetchViaExternalChain(request) ?: fetchViaLocalChain(request)
         } else {
             fetchViaLocalChain(request) ?: fetchViaExternalChain(request)
         }
 
-        if (face != null) {
-            avatarCache[key] = CacheEntry(face, now)
-            evictIfOversized()
-            // 成功结果落盘（临时文件原子替换；失败静默，磁盘缓存仅是加速）
-            saveDiskAvatar(key, face)
+        if (fetched != null) {
+            cacheAndStoreAvatar(key, fetched.image, now)
             missCache.remove(key)
-            return face
+            logAvatarSource(request, fetched.method)
+            return fetched.image
+        }
+        // 1.6.6.2 修复「清除缓存后极少玩家头像获取失败」：区分失败类型——
+        // 网络抖动型（任一链路超时 / IO 异常 / 官方链路冷却期内跳过 / 429 / 5xx）
+        // 不写 missCache，下次查询立即重试；确定性失败（404 等）才写 60 秒冷却
+        if (networkTrouble.get()) {
+            trimMissCache()
+            logAvatarMiss(request, retryable = true)
+            return null
         }
         missCache[key] = NegativeEntry(now)
         trimMissCache()
+        logAvatarMiss(request, retryable = false)
         return null
+    }
+
+    /**
+     * 获取成功的来源日志（1.6.6.2：把头像获取用的方法写到日志里）。
+     * 逐次记录（内存缓存命中不记录——不是获取动作），渲染一页 60 人
+     * 即 60 行，属于可接受的排查信息量。
+     */
+    private fun logAvatarSource(request: AvatarRequest, method: String) {
+        try {
+            BotShared.instance?.log_info("[头像] ${request.playerName} ← $method")
+        } catch (_: Throwable) {
+        }
+    }
+
+    /**
+     * 获取失败日志（本地与外置链路均未命中；占位块渲染属正常降级）。
+     * 1.6.6.2：[retryable] = true 表示网络抖动型失败（未写失败冷却，
+     * 下次查询立即重试）；false = 确定性失败（60 秒冷却内不重试）。
+     */
+    private fun logAvatarMiss(request: AvatarRequest, retryable: Boolean) {
+        try {
+            if (retryable) {
+                BotShared.instance?.log_info("[头像] ${request.playerName} 获取失败（本次链路遇网络抖动，未写失败冷却，下次查询立即重试；本张渲染占位块）")
+            } else {
+                BotShared.instance?.log_info("[头像] ${request.playerName} 获取失败（本地与外置链路均未命中，60 秒内不重试；本张渲染占位块）")
+            }
+        } catch (_: Throwable) {
+        }
+    }
+
+    /**
+     * 获取成功后的缓存落位（1.6.6.2）：
+     * - PNG 编码一次，磁盘写入与 10KB 内存门槛共用同一份数据；
+     * - PNG ≤ [AVATAR_MEMORY_MAX_BYTES] → 内存缓存 + 磁盘缓存；
+     * - PNG 超门槛 → 只写磁盘缓存（下次渲染从磁盘毫秒级解码）；
+     * - 编码失败（罕见）或磁盘缓存关闭 → 退回全量内存缓存。
+     */
+    private fun cacheAndStoreAvatar(key: String, image: BufferedImage, now: Long) {
+        val png = encodeAvatarPng(image)
+        if (png != null) {
+            writeDiskAvatar(key, png)
+        }
+        val diskEnabled = avatarDiskTtlMillis() > 0L
+        if (png == null || !diskEnabled || png.size <= AVATAR_MEMORY_MAX_BYTES) {
+            avatarCache[key] = CacheEntry(image, now)
+            evictIfOversized()
+        }
     }
 
     /** 清空全部素材缓存（插件停用时调用，释放图像内存）。 */
@@ -752,9 +856,13 @@ object InfoCardAssets {
         builtinBackgroundSources.clear()
         builtinBackgroundResolvedPaths.clear()
         mojangNetworkFailureAt = 0L
+        lastRenderCompletedAt = 0L
         // 1.6.6.1：停用磁盘缓存清扫线程（下次使用头像时自动重启）
         avatarSweeper?.shutdownNow()
         avatarSweeper = null
+        // 1.6.6.2：停用渲染空闲释放线程（下次渲染完成时自动重启）
+        idleReleaser?.shutdownNow()
+        idleReleaser = null
     }
 
 
@@ -783,8 +891,8 @@ object InfoCardAssets {
     // ---------- 皮肤贴图解析链（1.6.6.1 覆盖版：本地 / Mojang 官方两段拆分） ----------
 
     /**
-     * 本地方式获取头像（1.6.6.1 覆盖版）：本服已有数据解析皮肤贴图 URL
-     * → 下载贴图 → 裁脸。
+     * 本地方式获取头像（1.6.6.1 覆盖版；1.6.6.2 返回带方式标签）：本服
+     * 已有数据解析皮肤贴图 URL → 下载贴图 → 裁脸。
      *
      * - 数据源仅限本服：在线玩家 Profile（含 SkinsRestorer 等皮肤插件
      *   修改后的结果，主线程捕获）与本服 playerdata NBT 存档；
@@ -793,9 +901,10 @@ object InfoCardAssets {
      * - 本地数据缺失或下载 / 裁剪失败返回 null，调用方自动切换外置方式
      *   （基岩玩家的 Profile 无贴图属性，同样自动落外置 xuid 线路）。
      */
-    private fun fetchViaLocalChain(request: AvatarRequest): BufferedImage? {
-        val skinUrl = resolveLocalSkinUrl(request) ?: return null
-        return downloadAndCropFace(skinUrl)
+    private fun fetchViaLocalChain(request: AvatarRequest): FetchedFace? {
+        val resolved = resolveLocalSkinUrl(request) ?: return null
+        val face = downloadAndCropFace(resolved.url) ?: return null
+        return FetchedFace(face, "本地皮肤贴图（${resolved.source}）")
     }
 
     /**
@@ -805,10 +914,10 @@ object InfoCardAssets {
      * 拿不到时再走外部头像服务多线路回退（[fetchExternalAvatar]）。
      * 官方数据优先于外部头像服务（用户明确要求保留 Mojang 原生 API）。
      */
-    private fun fetchViaExternalChain(request: AvatarRequest): BufferedImage? {
+    private fun fetchViaExternalChain(request: AvatarRequest): FetchedFace? {
         val skinUrl = resolveMojangSkinUrl(request)
         if (skinUrl != null) {
-            downloadAndCropFace(skinUrl)?.let { return it }
+            downloadAndCropFace(skinUrl)?.let { return FetchedFace(it, "Mojang官方API") }
         }
         return fetchExternalAvatar(request)
     }
@@ -824,14 +933,19 @@ object InfoCardAssets {
         return cropped
     }
 
+    /** 本地皮肤 URL 解析结果（1.6.6.2：带数据源标签，用于获取方式日志）。 */
+    private class LocalSkinRef(val url: String, val source: String)
+
     /**
      * 解析本地皮肤贴图 URL：仅用本服已有数据，不访问任何外部接口。
      * 顺序：在线玩家 Profile（含皮肤插件修改）→ 本服 playerdata NBT
      * （离线服 + SkinsRestorer 的主要来源）。
      */
-    private fun resolveLocalSkinUrl(request: AvatarRequest): String? {
+    private fun resolveLocalSkinUrl(request: AvatarRequest): LocalSkinRef? {
         // 1. 在线玩家 Profile（最准确，含皮肤插件修改）
-        request.skinUrl?.takeIf { it.startsWith("http") }?.let { return it }
+        request.skinUrl?.takeIf { it.startsWith("http") }?.let {
+            return LocalSkinRef(it, "在线Profile")
+        }
 
         // 2. 本服 playerdata NBT（离线服 + SkinsRestorer 的主要来源）
         val uuid = request.uuid
@@ -839,7 +953,7 @@ object InfoCardAssets {
         if (uuid != null && playerDataDir != null) {
             val datFile = File(playerDataDir, "$uuid.dat")
             if (datFile.isFile) {
-                extractNbtSkinUrl(datFile)?.let { return it }
+                extractNbtSkinUrl(datFile)?.let { return LocalSkinRef(it, "存档NBT") }
             }
         }
         return null
@@ -861,8 +975,13 @@ object InfoCardAssets {
      * 兜底（见 [fetchExternalAvatar]）。
      */
     private fun resolveMojangSkinUrl(request: AvatarRequest): String? {
-        // 官方链路网络冷却期内不再逐玩家等超时（1.6.4）
-        if (mojangInCooldown()) return null
+        // 官方链路网络冷却期内不再逐玩家等超时（1.6.4）；
+        // 1.6.6.2：冷却期内跳过属于网络抖动型失败（本次尝试标记，
+        // 最终失败时不写 missCache，下次查询立即重试）
+        if (mojangInCooldown()) {
+            networkTrouble.set(true)
+            return null
+        }
 
         val uuid = request.uuid
         // 3. 正版 UUID（v4 快路径）：会话服务器查询（未知 UUID 返回 204，可检测失败）。
@@ -1131,26 +1250,26 @@ object InfoCardAssets {
      *   被正版账号注册则返回其头像）；
      * - 404 / 网络失败 / 解码失败一律返回 null（渲染占位块，不假回退）。
      */
-    private fun fetchExternalAvatar(request: AvatarRequest): BufferedImage? {
+    private fun fetchExternalAvatar(request: AvatarRequest): FetchedFace? {
         val uuid = request.uuid
         if (uuid != null) {
             // 基岩玩家：Floodgate UUID（前 64 位全 0 + 标志段 0x0009）
             val xuid = floodgateXuid(uuid)
             if (xuid != null) {
-                return fetchAvatarFromUrl("https://mc-heads.net/avatar/xuid:$xuid/$FACE_SIZE", 3000)
+                return fetchAvatarFromUrl("https://mc-heads.net/avatar/xuid:$xuid/$FACE_SIZE", 3000, "MC-Heads（基岩xuid线路）")
             }
             if (uuid.version() == 4) {
                 // 正版账号：快线路优先，慢线路（MinePic / Crafatar）仅在前两者都失败后尝试
-                return fetchAvatarFromUrl("https://mc-heads.net/avatar/$uuid/$FACE_SIZE", 3000)
-                    ?: fetchAvatarFromUrl("https://minotar.net/avatar/$uuid/$FACE_SIZE", 3000)
+                return fetchAvatarFromUrl("https://mc-heads.net/avatar/$uuid/$FACE_SIZE", 3000, "MC-Heads")
+                    ?: fetchAvatarFromUrl("https://minotar.net/avatar/$uuid/$FACE_SIZE", 3000, "Minotar")
                     ?: fetchMinePicAvatar(uuid.toString().replace("-", ""))
                     ?: fetchCrafatarAvatar(uuid)
             }
         }
         // 仅玩家名（离线 UUID / 无 UUID）：名字线路
         if (request.playerName.isNotBlank()) {
-            return fetchAvatarFromUrl("https://mc-heads.net/avatar/${request.playerName}/$FACE_SIZE", 3000)
-                ?: fetchAvatarFromUrl("https://minotar.net/avatar/${request.playerName}/$FACE_SIZE", 3000)
+            return fetchAvatarFromUrl("https://mc-heads.net/avatar/${request.playerName}/$FACE_SIZE", 3000, "MC-Heads（名字线路）")
+                ?: fetchAvatarFromUrl("https://minotar.net/avatar/${request.playerName}/$FACE_SIZE", 3000, "Minotar（名字线路）")
                 ?: fetchMinePicAvatar(request.playerName)
         }
         return null
@@ -1166,8 +1285,8 @@ object InfoCardAssets {
      *   不挤占后续线路预算；http 会 301 跳 https，此处直接走 https；
      * - 返回尺寸即请求尺寸（实测 216×216 RGBA），命中时无需二次缩放。
      */
-    private fun fetchMinePicAvatar(id: String): BufferedImage? =
-        fetchAvatarFromUrl("https://minepic.org/avatar/$id/$FACE_SIZE", 3000)
+    private fun fetchMinePicAvatar(id: String): FetchedFace? =
+        fetchAvatarFromUrl("https://minepic.org/avatar/$id/$FACE_SIZE", 3000, "MinePic")
 
     /**
      * Floodgate 基岩玩家 UUID → Xbox xuid（非基岩 UUID 返回 null）。
@@ -1186,16 +1305,17 @@ object InfoCardAssets {
     /**
      * 通用外部头像下载（PNG 直出，无需裁剪）：尺寸不符时最近邻缩放到
      * [FACE_SIZE]（保持像素风），源图用后即 flush。
+     * 1.6.6.2：[method] 为线路名，随结果返回用于获取方式日志。
      */
-    private fun fetchAvatarFromUrl(url: String, timeoutMillis: Int): BufferedImage? {
+    private fun fetchAvatarFromUrl(url: String, timeoutMillis: Int, method: String): FetchedFace? {
         return try {
             val bytes = httpGet(url, timeoutMillis) ?: return null
             val image = ImageIO.read(ByteArrayInputStream(bytes)) ?: return null
             when {
                 image.width <= 0 || image.height <= 0 -> null
-                image.width == FACE_SIZE && image.height == FACE_SIZE -> image
+                image.width == FACE_SIZE && image.height == FACE_SIZE -> FetchedFace(image, method)
                 // 缩放完成即释放源图栅格
-                else -> scaleNearest(image, FACE_SIZE).also {
+                else -> FetchedFace(scaleNearest(image, FACE_SIZE), method).also {
                     try { image.flush() } catch (_: Throwable) {}
                 }
             }
@@ -1231,12 +1351,22 @@ object InfoCardAssets {
      * - 惰性启动：首次取头像时启动（[ensureAvatarSweeper]），守护线程；
      * - 首轮 10 秒后（错开启动高峰，顺带删掉停服期间过期的文件），
      *   此后每 30 分钟一轮：删过期文件 + 超上限删最旧；
-     * - [clearCaches] 停机时关闭线程，下次使用时自动重启。
+     * - 1.6.6.2：双端主类 onEnable / 服务器启动时也会调用
+     *   [ensureAvatarSweeper]（不再等到首次取头像）——强制关机 / 崩溃
+     *   后残留的过期磁盘缓存文件，在下次启动 10 秒内就会被清掉，
+     *   磁盘清理不依赖任何运行期状态；
+     * - [clearCaches] 停机时关闭线程，下次使用时自动重启；
+     * - 每轮顺带清理内存缓存中超过 TTL 的过期条目（见
+     *   [purgeMemoryAvatarCache]，内存缓存及时清理）。
      */
     @Volatile
     private var avatarSweeper: ScheduledExecutorService? = null
 
-    private fun ensureAvatarSweeper() {
+    /**
+     * 启动磁盘缓存清扫线程（幂等；双端启动时与首次取头像时都会调用；
+     * public：双端主类模块需跨模块调用）。
+     */
+    fun ensureAvatarSweeper() {
         if (avatarSweeper != null) return
         synchronized(this) {
             if (avatarSweeper != null) return
@@ -1257,8 +1387,10 @@ object InfoCardAssets {
         }
     }
 
-    /** 清扫一轮磁盘缓存：删过期文件（缓存关闭时全删）+ 超上限删最旧。 */
+    /** 清扫一轮磁盘缓存：删过期文件（缓存关闭时全删）+ 超上限删最旧 + 顺手清内存过期条目。 */
     internal fun sweepDiskCache() {
+        // 1.6.6.2：内存过期条目清理放在最前（不依赖磁盘目录是否可得）
+        purgeMemoryAvatarCache()
         try {
             val dir = avatarDiskDir() ?: return
             val ttl = avatarDiskTtlMillis()
@@ -1271,6 +1403,26 @@ object InfoCardAssets {
             }
             trimDiskCache(dir)
         } catch (_: Throwable) {
+        }
+    }
+
+    /**
+     * 内存缓存及时清理（1.6.6.2）：清除超过 [AVATAR_TTL] 未被使用的
+     * 内存头像条目（flush 后移除，栅格立即释放）。磁盘缓存仍在，后续
+     * 渲染从磁盘秒级回填。仅在无渲染进行中时执行，避免 flush 正在
+     * 画布上的图像。
+     */
+    private fun purgeMemoryAvatarCache() {
+        if (avatarCache.isEmpty()) return
+        if (CardRenderPool.activeRenders() > 0) return
+        val now = System.currentTimeMillis()
+        avatarCache.entries.removeIf { entry ->
+            if (now - entry.value.createdAt >= AVATAR_TTL) {
+                try { entry.value.image.flush() } catch (_: Throwable) {}
+                true
+            } else {
+                false
+            }
         }
     }
 
@@ -1293,8 +1445,13 @@ object InfoCardAssets {
         return File(dir, "${key.replace(':', '_')}.png")
     }
 
-    /** 读取磁盘缓存（缓存关闭时跳过；过期文件顺手删除；解码失败返回 null）。 */
-    private fun loadDiskAvatar(key: String, now: Long): BufferedImage? {
+    /**
+     * 读取磁盘缓存（缓存关闭时跳过；过期文件顺手删除；解码失败返回
+     * null）。1.6.6.2：返回 [DiskAvatar]（图像 + 文件字节数），调用方
+     * 用字节数判定是否回填内存（超过 [AVATAR_MEMORY_MAX_BYTES] 的大
+     * 头像只走磁盘，不进内存缓存）。
+     */
+    private fun loadDiskAvatar(key: String, now: Long): DiskAvatar? {
         return try {
             val ttl = avatarDiskTtlMillis()
             if (ttl <= 0L) return null
@@ -1306,20 +1463,32 @@ object InfoCardAssets {
             }
             val bytes = file.readBytes()
             val image = ImageIO.read(ByteArrayInputStream(bytes))
-            image?.takeIf { it.width > 0 && it.height > 0 }
+            image?.takeIf { it.width > 0 && it.height > 0 }?.let { DiskAvatar(it, bytes.size.toLong()) }
         } catch (_: Throwable) {
             null
         }
     }
 
-    /** 写入磁盘缓存（缓存关闭时跳过；临时文件原子替换，失败静默）。 */
-    private fun saveDiskAvatar(key: String, image: BufferedImage) {
+    /** 头像 PNG 编码（1.6.6.2：磁盘写入与 10KB 内存门槛共用；失败返回 null）。 */
+    private fun encodeAvatarPng(image: BufferedImage): ByteArray? = try {
+        val out = ByteArrayOutputStream()
+        if (ImageIO.write(image, "png", out)) out.toByteArray() else null
+    } catch (_: Throwable) {
+        null
+    }
+
+    /**
+     * 写入磁盘缓存（1.6.6.2：调用方先 [encodeAvatarPng] 编码，此处只负责
+     * 落盘；缓存关闭时跳过；临时文件原子替换，失败静默）。
+     */
+    private fun writeDiskAvatar(key: String, png: ByteArray) {
         try {
             if (avatarDiskTtlMillis() <= 0L) return
             val file = avatarDiskFile(key) ?: return
             val tmp = File(file.parentFile, "${file.name}.tmp")
             java.io.FileOutputStream(tmp).use { out ->
-                if (!ImageIO.write(image, "png", out)) return
+                out.write(png)
+                out.flush()
             }
             if (!tmp.renameTo(file)) {
                 try { tmp.delete() } catch (_: Throwable) {}
@@ -1344,6 +1513,95 @@ object InfoCardAssets {
         }
     }
 
+    // ---------- 渲染空闲内存释放（1.6.6.2 新增） ----------
+
+    /** 最近一次渲染完成时间戳（0 = 尚未渲染过；CardRenderPool 任务收尾时刷新）。 */
+    @Volatile
+    private var lastRenderCompletedAt = 0L
+
+    /** 空闲释放检查线程（守护；首次渲染完成时惰性启动）。 */
+    @Volatile
+    private var idleReleaser: ScheduledExecutorService? = null
+
+    /**
+     * 渲染完成时间戳刷新（1.6.6.2）：[CardRenderPool] 在每个渲染任务
+     * 收尾时调用（含异常收尾——渲染尝试结束即可重算空闲起点），并
+     * 惰性启动空闲释放检查线程。
+     */
+    fun markRenderCompleted() {
+        lastRenderCompletedAt = System.currentTimeMillis()
+        ensureIdleReleaser()
+    }
+
+    /** 惰性启动空闲释放检查线程（每 30 秒检查一次，守护线程，幂等）。 */
+    private fun ensureIdleReleaser() {
+        if (idleReleaser != null) return
+        synchronized(this) {
+            if (idleReleaser != null) return
+            try {
+                val executor = Executors.newSingleThreadScheduledExecutor { runnable ->
+                    Thread(runnable, "render-idle-releaser").apply { isDaemon = true }
+                }
+                executor.scheduleAtFixedRate(
+                    { releaseIfIdle() },
+                    30_000L,
+                    30_000L,
+                    TimeUnit.MILLISECONDS,
+                )
+                idleReleaser = executor
+            } catch (_: Throwable) {
+                // 释放线程只是内存卫生，起不来不影响渲染功能本身
+            }
+        }
+    }
+
+    /**
+     * 空闲释放检查（1.6.6.2）：一次渲染完成后 [RenderSettings.idleReleaseMillis]
+     * （render.idle-release-minutes，默认 5 分钟）内没有下一次渲染、且当前
+     * 无进行中的渲染任务时，释放头像 / 背景等图像素材缓存占用的内存
+     * （flush + 清空，栅格立即归还；磁盘头像缓存与 miss / UUID 等轻量
+     * 元数据缓存保留，下次渲染从磁盘 / 外部接口秒级恢复）。
+     *
+     * - 释放后记录一条日志（释放条目数）；
+     * - 配置为 0 = 关闭空闲释放；
+     * - 下次渲染完成后自动重新填充缓存并重新计时。
+     */
+    internal fun releaseIfIdle() {
+        try {
+            val idleMillis = RenderSettings.idleReleaseMillis()
+            if (idleMillis <= 0L) return
+            val last = lastRenderCompletedAt
+            if (last <= 0L) return
+            if (System.currentTimeMillis() - last < idleMillis) return
+            if (CardRenderPool.activeRenders() > 0) return
+            if (avatarCache.isEmpty() && backgroundCache.isEmpty() && builtinBackgroundSources.isEmpty()) return
+
+            val avatars = avatarCache.size
+            val backgrounds = backgroundCache.size
+            val sources = builtinBackgroundSources.size
+            for (entry in avatarCache.values) {
+                try { entry.image.flush() } catch (_: Throwable) {}
+            }
+            for (entry in backgroundCache.values) {
+                try { entry.image.flush() } catch (_: Throwable) {}
+            }
+            for (source in builtinBackgroundSources.values) {
+                try { source.flush() } catch (_: Throwable) {}
+            }
+            avatarCache.clear()
+            backgroundCache.clear()
+            builtinBackgroundSources.clear()
+            builtinBackgroundResolvedPaths.clear()
+            // 重置计时基准：释放完成后需等下一次渲染完成才重新开始计时
+            lastRenderCompletedAt = 0L
+            BotShared.instance?.log_info(
+                "[渲染] 已 ${"%.1f".format(idleMillis / 60_000.0)} 分钟无渲染，释放素材缓存内存" +
+                    "（头像 $avatars 条 / 背景处理结果 $backgrounds 张 / 背景源图 $sources 张，下次渲染自动从磁盘恢复）"
+            )
+        } catch (_: Throwable) {
+        }
+    }
+
     /**
      * Crafatar CDN 头像回退（1.6.4：官方皮肤链路失败后的兜底数据源，
      * 1.6.6：作为多线路的末位）。
@@ -1360,7 +1618,7 @@ object InfoCardAssets {
      * - 离线 UUID（非 v4）玩家无皮肤数据时依然诚实返回 null（占位块），
      *   不做「人人史蒂夫」的假回退（0.1.5.2 设计决策保持不变）。
      */
-    private fun fetchCrafatarAvatar(uuid: UUID?): BufferedImage? {
+    private fun fetchCrafatarAvatar(uuid: UUID?): FetchedFace? {
         if (uuid == null || uuid.version() != 4) return null
         return try {
             // 1.6.6：实测 Crafatar 响应较慢（约 5.8s），超时放宽到 5 秒（末位线路）
@@ -1368,9 +1626,9 @@ object InfoCardAssets {
             val image = ImageIO.read(ByteArrayInputStream(bytes)) ?: return null
             when {
                 image.width <= 0 || image.height <= 0 -> null
-                image.width == FACE_SIZE -> image
+                image.width == FACE_SIZE -> FetchedFace(image, "Crafatar")
                 // 1.6.5：缩放完成即释放源图栅格
-                else -> scaleNearest(image, FACE_SIZE).also {
+                else -> FetchedFace(scaleNearest(image, FACE_SIZE), "Crafatar").also {
                     try { image.flush() } catch (_: Throwable) {}
                 }
             }
@@ -1414,6 +1672,8 @@ object InfoCardAssets {
             val bytes = if (code in 200..299) connection.inputStream.use { it.readBytes() } else null
             code to bytes
         } catch (_: Exception) {
+            // 1.6.6.2：网络级异常（超时 / 连接失败）标记本次尝试为网络抖动型
+            networkTrouble.set(true)
             -1 to null
         } finally {
             connection?.disconnect()
@@ -1771,6 +2031,8 @@ object InfoCardAssets {
             if (code !in 200..299) return null
             connection.inputStream.use { it.readBytes() }
         } catch (_: Exception) {
+            // 1.6.6.2：网络级异常（超时 / 连接失败）标记本次尝试为网络抖动型
+            networkTrouble.set(true)
             null
         } finally {
             connection?.disconnect()

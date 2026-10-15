@@ -82,6 +82,13 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         // 共享实例注册 → 装载状态 → 异步启动 QQ 客户端（与 Spigot onEnable 同序）
         initializeRuntime()
         PlayerStatsManager.initialize()
+        // 1.6.6.2：启动即开启磁盘缓存清扫线程（首轮 10 秒后执行）——
+        // 强制关机 / 崩溃后残留的过期头像缓存文件在下次启动 10 秒内
+        // 就会被清掉，磁盘清理不依赖运行期状态（与 Spigot 同序）
+        try {
+            InfoCardAssets.ensureAvatarSweeper()
+        } catch (_: Throwable) {
+        }
         registerBindLoginGate()
         modLogger.info("KERONGPenguin NeoForge 已加载（${pluginVersion} / MC ${serverVersion}）")
     }
@@ -311,7 +318,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             .resolve("kerongpenguin").toFile()
 
         /** 模组版本（与 neoforge.mods.toml 一致）。 */
-        private const val MOD_VERSION = "1.6.6.1"
+        private const val MOD_VERSION = "1.6.6.2"
 
         /** 当前模组实例（命令与事件层访问）。 */
         @Volatile

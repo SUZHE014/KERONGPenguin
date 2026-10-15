@@ -68,6 +68,15 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         // 注册统计记录器（/查信息 数据源）
         PlayerStatsManager.initialize()
 
+        // 1.6.6.2：启动即开启磁盘缓存清扫线程（首轮 10 秒后执行）——
+        // 不再等到首次取头像才惰性启动，强制关机 / 崩溃后残留的过期
+        // 头像缓存文件在下次启动 10 秒内就会被清掉，磁盘清理不依赖
+        // 运行期状态（关机前已过期但未清的文件同样覆盖）
+        try {
+            InfoCardAssets.ensureAvatarSweeper()
+        } catch (_: Throwable) {
+        }
+
         // 1.6.4：类预热（停机 zip closed 修复）
         // Paper/Purpur 停机阶段会提前关闭插件 jar 的 ZipFile 句柄，此时若
         // onDisable 里首次触发某个类的加载（旧版 CommandOutputAppender 的

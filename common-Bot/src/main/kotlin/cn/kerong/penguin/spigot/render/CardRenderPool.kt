@@ -3,6 +3,7 @@ package cn.kerong.penguin.spigot.render
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 卡片渲染共享线程池（1.5.0 覆盖更新：CPU 上限硬编码，不走配置文件）。
@@ -26,6 +27,10 @@ import java.util.concurrent.TimeUnit
  *   （见 InfoCardAssets 的 evict / clear 路径）都在失去引用前 flush，
  *   栅格与绘制缓存即时归还，剩余少量堆内存由 JVM 常规新生代 GC 秒级回收，
  *   不再需要全停顿的显式 GC 兜底。
+ *
+ * 1.6.6.2：任务收尾时刷新渲染完成时间戳（InfoCardAssets.markRenderCompleted，
+ * 空闲释放的判断基准）并维护活跃任务计数（activeRenders，空闲释放与
+ * 过期清扫仅在无渲染进行中时执行，避免 flush 正在画布上的图像）。
  */
 object CardRenderPool {
 
@@ -40,12 +45,31 @@ object CardRenderPool {
     @Volatile
     private var pool: ThreadPoolExecutor? = null
 
+    /** 进行中的渲染任务数（1.6.6.2：空闲释放 / 过期清扫的安全护栏）。 */
+    private val activeRenders = AtomicInteger()
+
+    /** 当前进行中的渲染任务数（0 = 空闲）。 */
+    fun activeRenders(): Int = activeRenders.get()
+
     /**
      * 提交一次图片渲染任务。
-     * 任务的异常由调用方自行捕获（渲染失败已有日志与文本回退提示）。
+     * 任务的异常由调用方自行捕获（渲染失败已有日志与文本回退提示）；
+     * 1.6.6.2：任务真正开始执行时计入活跃数，收尾（含异常收尾）时刷新
+     * 渲染完成时间戳——「渲染完图片 N 分钟内无下次渲染即释放内存」的基准。
      */
     fun submit(task: Runnable) {
-        pool().execute(task)
+        pool().execute {
+            activeRenders.incrementAndGet()
+            try {
+                task.run()
+            } finally {
+                activeRenders.decrementAndGet()
+                try {
+                    InfoCardAssets.markRenderCompleted()
+                } catch (_: Throwable) {
+                }
+            }
+        }
     }
 
     /** 渲染线程池（固定 [MAX_THREADS] 线程，守护线程，空闲 60 秒回收）。 */

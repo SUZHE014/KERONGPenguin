@@ -1,5 +1,5 @@
 name: KERONGPenguin
-version: '1.6.6.1'
+version: '1.6.6.2'
 main: cn.kerong.penguin.spigot.KERONGSpigot
 api-version: '1.18'
 # 1.5.7.3：声明支持 Folia 多线程区域化核心——调度全部经 FoliaCompat 桥接
