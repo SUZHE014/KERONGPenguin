@@ -74,6 +74,20 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
                 1
             },
         )
+        builder.then(
+            Commands.literal("mem").executes { context ->
+                // 1.6.6.2 覆盖版：内存诊断（JVM 堆存活/已提交/上限 + 插件各级缓存条目）
+                context.source.sendSuccess({ Component.literal("§6===== KERONGPenguin 内存诊断 =====") }, false)
+                for (lineText in cn.kerong.penguin.spigot.render.InfoCardAssets.cacheStats().split('\n')) {
+                    context.source.sendSuccess({ Component.literal("§7$lineText") }, false)
+                }
+                context.source.sendSuccess(
+                    { Component.literal("§e提示: §f已提交堆是 JVM 预留量，渲染高峰后扩张、空闲释放时回落（render.idle-gc-hint 控制归还）；若此处存活堆很小而面板内存很高，多查其他插件 / JVM 参数（-Xmx 与 GC 行为）") },
+                    false,
+                )
+                1
+            },
+        )
         builder.executes { context ->
             sendHelp(context.source, label)
             1
@@ -110,6 +124,7 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
         line("§e/$label info§f - 查看适配器信息")
         line("§e/$label panel§f - 重新同步 QQ 快捷指令面板")
         line("§e/$label chs§f - 立即重试连接 QQ 机器人（断线 / 重连超时后用）")
+        line("§e/$label mem§f - 查看插件内存与缓存诊断（JVM 堆 + 各级缓存）")
     }
 
     // ---------- /qq ----------

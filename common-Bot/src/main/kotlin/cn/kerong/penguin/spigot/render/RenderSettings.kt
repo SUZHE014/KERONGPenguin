@@ -22,6 +22,9 @@ object RenderSettings {
     /** 渲染空闲内存释放默认阈值（分钟，1.6.6.2 新增配置化）。 */
     const val DEFAULT_IDLE_RELEASE_MINUTES = 5.0
 
+    /** 空闲释放后是否向 JVM 发 GC 提示归还内存（1.6.6.2 覆盖版新增，默认开）。 */
+    const val DEFAULT_IDLE_GC_HINT = true
+
     /** 头像获取优先方式（1.6.6.1 覆盖版新增配置）。 */
     enum class AvatarFetchPriority { LOCAL, EXTERNAL }
 
@@ -101,5 +104,28 @@ object RenderSettings {
         }
         if (minutes < 0) return (DEFAULT_IDLE_RELEASE_MINUTES * 60_000L).toLong()
         return (minutes * 60_000.0).toLong()
+    }
+
+    /**
+     * 空闲释放后是否向 JVM 发一次 GC 提示（1.6.6.2 覆盖版新增）。
+     *
+     * - render.idle-gc-hint（默认 true）：渲染空闲释放清空图像缓存后，
+     *   向 JVM 发一次 full GC 提示——G1 借此把渲染高峰期扩张的堆归还
+     *   操作系统（面板 / 进程管理器显示的内存随之回落）。触发时机是
+     *   「已空闲整个空闲周期 + 缓存已清空」的存活对象最低水位，停顿
+     *   为毫秒级，与 1.6.5 移除的「渲染后每次 System.gc」高频全停顿
+     *   行为完全不同；
+     * - false = 关闭（完全不触发 GC 提示，堆保持自然回落节奏）；
+     * - 实时读取（/kerong reload 后立即生效）。
+     */
+    fun idleGcHint(): Boolean {
+        return try {
+            (BotShared.instance as? JavaPlugin)?.config?.getBoolean(
+                "render.idle-gc-hint",
+                DEFAULT_IDLE_GC_HINT,
+            ) ?: DEFAULT_IDLE_GC_HINT
+        } catch (_: Throwable) {
+            DEFAULT_IDLE_GC_HINT
+        }
     }
 }

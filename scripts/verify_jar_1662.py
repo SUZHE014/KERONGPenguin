@@ -267,6 +267,51 @@ def main():
         check("L17 清空缓存停用空闲释放线程（源码断言 idleReleaser?.shutdownNow）",
               "idleReleaser?.shutdownNow()" in render_src)
 
+        # ---- M. 1.6.6.2 覆盖版（日志刷屏 / 启动内存 / 设计署名） ----
+        settings_src = source(
+            "common-Bot/src/main/kotlin/cn/kerong/penguin/spigot/render/RenderSettings.kt")
+        cmds_cls = zf.read("cn/kerong/penguin/spigot/commands/KERONGCommand.class")
+        online_src = source(
+            "common-Bot/src/main/kotlin/cn/kerong/penguin/spigot/render/OnlineListRenderer.kt")
+        leaderboard_src = source(
+            "common-Bot/src/main/kotlin/cn/kerong/penguin/spigot/render/LeaderboardRenderer.kt")
+        readme_src = source("README.md")
+        check("M1 获取方式日志改文件日志（源码断言 PluginFileLog.write（[头像]）",
+              'PluginFileLog.write("[头像]' in render_src
+              and 'log_info("[头像]' not in render_src)
+        check("M2 获取失败日志同样仅文件（源码断言）",
+              'PluginFileLog.write("[头像] ${request.playerName} 获取失败' in render_src)
+        check("M3 获取方式日志会话去重（loggedAvatarSources）",
+              b"loggedAvatarSources" in render_blob and "LOGGED_SOURCES_MAX" in render_src)
+        check("M4 单飞门闩内部类（FetchLatch）",
+              "cn/kerong/penguin/spigot/render/InfoCardAssets$FetchLatch.class" in names)
+        check("M5 并发获取去重表（inFlightFetches + 等待 8 秒）",
+              b"inFlightFetches" in render_blob and b"IN_FLIGHT_WAIT_MILLIS" in render_blob)
+        check("M6 等待者超时语义（await 8 秒 TimeUnit 毫秒，源码断言）",
+              "await(IN_FLIGHT_WAIT_MILLIS, TimeUnit.MILLISECONDS)" in render_src)
+        check("M7 空闲 GC 提示配置（idleGcHint + render.idle-gc-hint）",
+              b"idleGcHint" in settings_cls and b"idle-gc-hint" in settings_cls
+              and "fun idleGcHint(): Boolean" in settings_src)
+        check("M8 空闲释放后 System.gc 提示（源码断言，区别于旧版渲染后 GC）",
+              "if (RenderSettings.idleGcHint()) {" in render_src and "System.gc()" in render_src)
+        check("M9 config.yml 含 idle-gc-hint: true 与说明",
+              "idle-gc-hint: true" in config_yml and "GC 提示归还内存" in config_yml)
+        check("M10 ConfigManager 默认值含 idle-gc-hint",
+              b"idle-gc-hint" in manager)
+        check("M11 缓存诊断快照（cacheStats）",
+              b"cacheStats" in render_blob)
+        check("M12 /kerong mem 子命令（Spigot 命令类引用 cacheStats）",
+              b"cacheStats" in cmds_cls
+              and '"reload", "info", "panel", "chs", "mem", "help"' in source(
+                  "server-Spigot/src/main/kotlin/cn/kerong/penguin/spigot/commands/KERONGCommand.kt"))
+        check("M13 渲染器设计来源署名（三个渲染器文件头）",
+              "新亭泪" in render_src and "新亭泪" in online_src and "新亭泪" in leaderboard_src)
+        check("M14 渲染器署名含设计来源链接（xintinglei.cn）",
+              "xintinglei.cn" in online_src and "xintinglei.cn" in render_src)
+        check("M15 README 设计来源段（BaiZhouziYou / 新亭泪 / issue #1）",
+              "新亭泪" in readme_src and "xintinglei.cn" in readme_src
+              and "issues/1" in readme_src)
+
     # ================= NeoForge =================
     with zipfile.ZipFile(NEOFORGE) as zf:
         names = zf.namelist()
@@ -352,6 +397,19 @@ def main():
         nf_manager = zf.read("cn/kerong/penguin/spigot/manager/ConfigManager.class")
         check("N32 NF ConfigManager 默认值含 idle-release-minutes",
               b"idle-release-minutes" in nf_manager)
+
+        # 1.6.6.2 覆盖版同步断言（NF 产物）
+        check("N33 NF 日志改文件日志 + 会话去重（loggedAvatarSources / PluginFileLog 引用）",
+              b"loggedAvatarSources" in nf_render_blob
+              and b"cn/kerong/bot/tools/PluginFileLog" in nf_render_blob)
+        check("N34 NF 单飞去重同步（FetchLatch / inFlightFetches）",
+              b"inFlightFetches" in nf_render_blob
+              and "cn/kerong/penguin/spigot/render/InfoCardAssets$FetchLatch.class" in names)
+        check("N35 NF 空闲 GC 提示同步（idleGcHint / idle-gc-hint）",
+              b"idleGcHint" in nf_settings
+              and "idle-gc-hint: true" in nf_config)
+        check("N36 NF /kerong mem 子命令同步（NeoForgeCommands 引用 cacheStats）",
+              b"cacheStats" in nf_cmds)
 
     total = passed + failed
     print(f"\n===== 门禁结果：{passed}/{total} 通过，{failed} 失败 =====")

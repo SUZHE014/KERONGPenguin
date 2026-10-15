@@ -1,6 +1,7 @@
 package cn.kerong.penguin.spigot.render
 
 import cn.kerong.bot.provider.BotShared
+import cn.kerong.bot.tools.PluginFileLog
 import com.alibaba.fastjson.JSON
 import java.awt.BasicStroke
 import java.awt.Color
@@ -28,6 +29,11 @@ import javax.imageio.ImageIO
 
 /**
  * 玩家信息卡片渲染器（/查信息，1.5.2 前为 /个人信息）。
+ *
+ * 设计来源（issue #1）：图片渲染界面的参考设计来自 BaiZhouziYou / 新亭泪
+ * 发布在 EasyBot 资源市场的图片模板（https://xintinglei.cn/）——早期版本
+ * 的毛玻璃深色风格模板是参照该模板图复刻的，其后的独立改进见各版本
+ * 更新日志。感谢原作者的设计。
  *
  * 以 Java2D 绘制毛玻璃风格统计卡片：
  * - 顶部欢迎区（玩家名 + 问候 + MC 头像正面贴图）
@@ -645,6 +651,44 @@ object InfoCardAssets {
     /** 磁盘缓存命中结果（image + 文件字节数，字节数用于 10KB 内存门槛判定）。 */
     private class DiskAvatar(val image: BufferedImage, val fileSize: Long)
 
+    /**
+     * 进行中的头像获取门闩（1.6.6.2 覆盖版新增）。
+     *
+     * 第一个到达的请求成为「执行者」真正走网络获取；并发到达的其余
+     * 请求成为「等待者」，等待执行者完成后直接取其结果——同一玩家
+     * 的并发查询只产生一次网络请求与一套中间对象。
+     */
+    private class FetchLatch {
+        val done = java.util.concurrent.CountDownLatch(1)
+
+        /** 执行者的获取结果（成功时直接经门闩传给等待者，绕过 10KB 内存门槛）。 */
+        @Volatile
+        var image: BufferedImage? = null
+    }
+
+    /**
+     * 正在进行的头像获取（key → 门闩）。1.6.6.2 覆盖版：启动 / 刷屏场景
+     * 下多张渲染并发预热同一批玩家的头像时，旧版每个渲染都各自发起一
+     * 轮完整获取（N 个并发渲染 = N 倍网络请求、解码与 PNG 编码分配，
+     * 是启动期内存与 IO 突增的放大器）；现在同 key 只有一个执行者。
+     */
+    private val inFlightFetches = ConcurrentHashMap<String, FetchLatch>()
+
+    /** 等待并发获取结果的最长时间（与在线列表头像预热预算同量级）。 */
+    private const val IN_FLIGHT_WAIT_MILLIS = 8_000L
+
+    /**
+     * 已记录过获取方式的玩家（key → 上次记录的方式）。
+     * 1.6.6.2 覆盖版：获取方式日志改「仅写文件日志 + 会话内按玩家去重」
+     * ——同一玩家首次获取与更换线路时各记一条，不再逐次记录（旧版
+     * 一页 60 人在线列表即 60 行控制台 + 60 行文件，刷屏且刷盘）。
+     */
+    private val loggedAvatarSources = ConcurrentHashMap<String, String>()
+
+    /** 获取方式日志的去重表容量上限（超过即整体重置，防长期运行缓慢增长）。 */
+    private const val LOGGED_SOURCES_MAX = 2048
+
+
     /** 头像缓存：uuid（或 name:name）→ 正面脸部图。 */
     private val avatarCache = ConcurrentHashMap<String, CacheEntry>()
 
@@ -761,42 +805,78 @@ object InfoCardAssets {
 
         // 4. 按配置优先级获取：local = 本地优先，取不到自动切外置；
         //    external = 外置优先，全部失败再试本地（1.6.6.1 覆盖版）
-        val preferExternal = RenderSettings.avatarFetchPriority() ==
-            RenderSettings.AvatarFetchPriority.EXTERNAL
-        val fetched: FetchedFace? = if (preferExternal) {
-            fetchViaExternalChain(request) ?: fetchViaLocalChain(request)
-        } else {
-            fetchViaLocalChain(request) ?: fetchViaExternalChain(request)
+        //
+        // 1.6.6.2 覆盖版：single-flight 去重——并发查询同一玩家时只有
+        // 第一个请求真正走网络（执行者），其余请求等待其完成后直接
+        // 取结果（等待者），超时未等到按获取失败渲染占位块。启动 /
+        // 刷屏场景下多张渲染并发预热同一批头像时，网络请求与中间对象
+        // 分配量按并发数成倍削减（见 [inFlightFetches]）。
+        val latch = FetchLatch()
+        val existing = inFlightFetches.putIfAbsent(key, latch)
+        if (existing != null) {
+            try {
+                existing.done.await(IN_FLIGHT_WAIT_MILLIS, TimeUnit.MILLISECONDS)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return null
+            }
+            return existing.image
         }
+        try {
+            val preferExternal = RenderSettings.avatarFetchPriority() ==
+                RenderSettings.AvatarFetchPriority.EXTERNAL
+            val fetched: FetchedFace? = if (preferExternal) {
+                fetchViaExternalChain(request) ?: fetchViaLocalChain(request)
+            } else {
+                fetchViaLocalChain(request) ?: fetchViaExternalChain(request)
+            }
 
-        if (fetched != null) {
-            cacheAndStoreAvatar(key, fetched.image, now)
-            missCache.remove(key)
-            logAvatarSource(request, fetched.method)
-            return fetched.image
-        }
-        // 1.6.6.2 修复「清除缓存后极少玩家头像获取失败」：区分失败类型——
-        // 网络抖动型（任一链路超时 / IO 异常 / 官方链路冷却期内跳过 / 429 / 5xx）
-        // 不写 missCache，下次查询立即重试；确定性失败（404 等）才写 60 秒冷却
-        if (networkTrouble.get()) {
+            if (fetched != null) {
+                cacheAndStoreAvatar(key, fetched.image, now)
+                missCache.remove(key)
+                logAvatarSource(request, fetched.method)
+                latch.image = fetched.image
+                return fetched.image
+            }
+            // 1.6.6.2 修复「清除缓存后极少玩家头像获取失败」：区分失败类型——
+            // 网络抖动型（任一链路超时 / IO 异常 / 官方链路冷却期内跳过 / 429 / 5xx）
+            // 不写 missCache，下次查询立即重试；确定性失败（404 等）才写 60 秒冷却
+            if (networkTrouble.get()) {
+                trimMissCache()
+                logAvatarMiss(request, retryable = true)
+                return null
+            }
+            missCache[key] = NegativeEntry(now)
             trimMissCache()
-            logAvatarMiss(request, retryable = true)
+            logAvatarMiss(request, retryable = false)
             return null
+        } finally {
+            inFlightFetches.remove(key, latch)
+            latch.done.countDown()
         }
-        missCache[key] = NegativeEntry(now)
-        trimMissCache()
-        logAvatarMiss(request, retryable = false)
-        return null
     }
 
     /**
      * 获取成功的来源日志（1.6.6.2：把头像获取用的方法写到日志里）。
-     * 逐次记录（内存缓存命中不记录——不是获取动作），渲染一页 60 人
-     * 即 60 行，属于可接受的排查信息量。
+     *
+     * 1.6.6.2 覆盖版修复「获取方式日志泄漏到控制台」：
+     * - 仅写入插件日志文件（PluginFileLog，logs/qq/qq-bind-日期.log），
+     *   不再进控制台——旧版走 log_info 双写，一页 60 人在线列表即向
+     *   控制台刷 60 行，刷屏且每行都开一次日志文件句柄；
+     * - 会话内按玩家去重（[loggedAvatarSources]）：同一玩家首次获取
+     *   与更换获取方式时各记一条；内存缓存命中不记录（非获取动作）。
      */
     private fun logAvatarSource(request: AvatarRequest, method: String) {
         try {
-            BotShared.instance?.log_info("[头像] ${request.playerName} ← $method")
+            val key = request.uuid?.toString() ?: "name:${request.playerName.lowercase()}"
+            val previous = loggedAvatarSources.putIfAbsent(key, method)
+            if (previous == null) {
+                if (loggedAvatarSources.size > LOGGED_SOURCES_MAX) loggedAvatarSources.clear()
+                PluginFileLog.write("[头像] ${request.playerName} ← $method")
+            } else if (previous != method) {
+                loggedAvatarSources[key] = method
+                PluginFileLog.write("[头像] ${request.playerName} ← $method（线路已切换，上次为 $previous）")
+            }
         } catch (_: Throwable) {
         }
     }
@@ -805,13 +885,17 @@ object InfoCardAssets {
      * 获取失败日志（本地与外置链路均未命中；占位块渲染属正常降级）。
      * 1.6.6.2：[retryable] = true 表示网络抖动型失败（未写失败冷却，
      * 下次查询立即重试）；false = 确定性失败（60 秒冷却内不重试）。
+     *
+     * 1.6.6.2 覆盖版：同样改仅写文件日志（失败风暴日逐玩家逐次刷控制
+     * 台屏同样是泄漏，且失败已由 missCache 冷却与 networkTrouble 机制
+     * 约束，不需要控制台实时提示）。
      */
     private fun logAvatarMiss(request: AvatarRequest, retryable: Boolean) {
         try {
             if (retryable) {
-                BotShared.instance?.log_info("[头像] ${request.playerName} 获取失败（本次链路遇网络抖动，未写失败冷却，下次查询立即重试；本张渲染占位块）")
+                PluginFileLog.write("[头像] ${request.playerName} 获取失败（本次链路遇网络抖动，未写失败冷却，下次查询立即重试；本张渲染占位块）")
             } else {
-                BotShared.instance?.log_info("[头像] ${request.playerName} 获取失败（本地与外置链路均未命中，60 秒内不重试；本张渲染占位块）")
+                PluginFileLog.write("[头像] ${request.playerName} 获取失败（本地与外置链路均未命中，60 秒内不重试；本张渲染占位块）")
             }
         } catch (_: Throwable) {
         }
@@ -857,6 +941,9 @@ object InfoCardAssets {
         builtinBackgroundResolvedPaths.clear()
         mojangNetworkFailureAt = 0L
         lastRenderCompletedAt = 0L
+        // 1.6.6.2 覆盖版：清空并发获取与来源日志去重表
+        inFlightFetches.clear()
+        loggedAvatarSources.clear()
         // 1.6.6.1：停用磁盘缓存清扫线程（下次使用头像时自动重启）
         avatarSweeper?.shutdownNow()
         avatarSweeper = null
@@ -1598,8 +1685,59 @@ object InfoCardAssets {
                 "[渲染] 已 ${"%.1f".format(idleMillis / 60_000.0)} 分钟无渲染，释放素材缓存内存" +
                     "（头像 $avatars 条 / 背景处理结果 $backgrounds 张 / 背景源图 $sources 张，下次渲染自动从磁盘恢复）"
             )
+            // 1.6.6.2 覆盖版：空闲释放后向 JVM 发一次 full GC 提示
+            //（render.idle-gc-hint，默认开）。
+            //
+            // 修复「服务器启动时安装本插件后内存飙升 1.5~2.5GB 且不回落」：
+            // 启动期 QQ 群集中查询（查在线 / 查信息）会在短时间内产生大量
+            // 渲染与头像获取的临时对象，G1 为承接分配速率把堆扩张到接近
+            // -Xmx 并长期保持（面板显示的内存 = 已提交量，而非实际存活
+            // 数据——本插件的图像缓存全为小容量上限，见 cacheStats）。
+            // 空闲释放把图像缓存清空后，此刻是存活对象最少、full GC 停顿
+            // 最短的时机：借 System.gc 提示触发一次 full GC，G1 会把闲置
+            // 堆区归还操作系统，面板内存曲线随之回落。
+            //
+            // 与 1.6.5 移除的「渲染后每次 System.gc()」的本质区别：
+            // 旧版在渲染高峰后立即触发（大存活集 + 高频 = 反复全停顿
+            // 丢 tick）；本提示只在「已空闲整个空闲周期 + 缓存已清空」的
+            // 最低水位触发，每个空闲周期至多一次，停顿为毫秒级。
+            // render.idle-gc-hint: false 可整体关闭。
+            if (RenderSettings.idleGcHint()) {
+                try {
+                    System.gc()
+                } catch (_: Throwable) {
+                }
+            }
         } catch (_: Throwable) {
         }
+    }
+
+    /**
+     * 缓存与内存诊断快照（1.6.6.2 覆盖版：/kerong mem 子命令输出）。
+     *
+     * 用于排查「面板内存高」类问题：JVM 已提交堆 ≠ 插件实际占用的
+     * 存活内存（渲染高峰后 G1 扩张的堆需要 full GC / 空闲归还才会
+     * 回落，见 [releaseIfIdle] 的 idle-gc-hint）。
+     */
+    fun cacheStats(): String {
+        val runtime = Runtime.getRuntime()
+        val usedMb = (runtime.totalMemory() - runtime.freeMemory()) / 1048576L
+        val committedMb = runtime.totalMemory() / 1048576L
+        val maxMb = runtime.maxMemory() / 1048576L
+        val backgroundBytes = try {
+            backgroundCache.values.sumOf { it.bytes }
+        } catch (_: Throwable) {
+            0L
+        }
+        return "JVM 堆: 存活 ${usedMb}MB / 已提交 ${committedMb}MB / 上限 ${maxMb}MB" +
+            "（已提交为 JVM 预留量，渲染高峰后扩张、空闲释放时回落，不等于插件占用）\n" +
+            "头像内存缓存: ${avatarCache.size} 条（上限 $AVATAR_CACHE_MAX，单张 ≤ ${AVATAR_MEMORY_MAX_BYTES / 1024}KB；" +
+            "大头像只走磁盘缓存 cache/avatars/）\n" +
+            "失败冷却: ${missCache.size} 条（60 秒 TTL）/ 名字反查缓存: ${premiumUuidCache.size} 条\n" +
+            "背景缓存: ${backgroundCache.size} 张（约 ${backgroundBytes / 1024}KB，上限 8 张 / 36MB）" +
+            " / 内置背景源图: ${builtinBackgroundSources.size} 张\n" +
+            "进行中的头像获取: ${inFlightFetches.size} 个 / 渲染中任务: ${CardRenderPool.activeRenders()} 个" +
+            "（渲染线程上限 ${CardRenderPool.MAX_THREADS}）"
     }
 
     /**

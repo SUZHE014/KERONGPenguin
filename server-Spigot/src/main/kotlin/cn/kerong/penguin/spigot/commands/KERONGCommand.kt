@@ -10,10 +10,14 @@ import org.bukkit.command.TabExecutor
 import java.util.Locale
 
 /**
- * /kerong 主命令（短别名 /hb）：reload / info / panel / chs / help。
+ * /kerong 主命令（短别名 /hb）：reload / info / panel / chs / mem / help。
  *
  * 1.6.2 新增 chs 子命令：机器人重连超时挂起或断线期间，手动重置重连计数
  * 并立即重新尝试连接（等价于 30 分钟退避结束后的自动重试，任何时候可用）。
+ *
+ * 1.6.6.2 覆盖版新增 mem 子命令：内存诊断（JVM 堆存活 / 已提交 / 上限 +
+ * 插件各级缓存条目），用于排查「面板显示内存高」类问题——已提交堆是
+ * JVM 预留量而非插件实际存活占用。
  */
 class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
 
@@ -37,6 +41,15 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
                 // 1.6.2：手动重连（重连超时挂起 / 断线期间随时可用）
                 val result = cn.kerong.bot.ReconnectManager.manualReconnect()
                 sender.sendMessage("${ChatColor.GREEN}$result")
+                return true
+            }
+            "mem" -> {
+                // 1.6.6.2 覆盖版：内存诊断（JVM 堆存活/已提交/上限 + 插件各级缓存条目）
+                sender.sendMessage("${ChatColor.GOLD}===== KERONGPenguin 内存诊断 =====")
+                for (line in cn.kerong.penguin.spigot.render.InfoCardAssets.cacheStats().split('\n')) {
+                    sender.sendMessage("${ChatColor.GRAY}$line")
+                }
+                sender.sendMessage("${ChatColor.YELLOW}提示: ${ChatColor.WHITE}已提交堆是 JVM 预留量，渲染高峰后扩张、空闲释放时回落（render.idle-gc-hint 控制归还）；若此处存活堆很小而面板内存很高，多查其他插件 / JVM 参数（-Xmx 与 GC 行为）")
                 return true
             }
         }
@@ -78,9 +91,10 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
         sender.sendMessage("${ChatColor.YELLOW}/$label info${ChatColor.WHITE} - 查看适配器信息")
         sender.sendMessage("${ChatColor.YELLOW}/$label panel${ChatColor.WHITE} - 重新同步 QQ 快捷指令面板")
         sender.sendMessage("${ChatColor.YELLOW}/$label chs${ChatColor.WHITE} - 立即重试连接 QQ 机器人（断线 / 重连超时后用）")
+        sender.sendMessage("${ChatColor.YELLOW}/$label mem${ChatColor.WHITE} - 查看插件内存与缓存诊断（JVM 堆 + 各级缓存）")
     }
 
     companion object {
-        private val SUBCOMMANDS = listOf("reload", "info", "panel", "chs", "help")
+        private val SUBCOMMANDS = listOf("reload", "info", "panel", "chs", "mem", "help")
     }
 }

@@ -380,6 +380,119 @@ public class Test1662 {
             check("DiskAvatar / FetchedFace / LocalSkinRef 内部类在位", false, String.valueOf(t));
         }
 
+        // ---------- 9. 1.6.6.2 覆盖版（日志刷屏 / 启动内存风暴 / 诊断） ----------
+        // 9.1 获取方式日志：文件日志 + 会话内按玩家去重
+        Field loggedField = assets.getDeclaredField("loggedAvatarSources");
+        loggedField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<String, String> loggedSources = (Map<String, String>) loggedField.get(assetsInst);
+        loggedSources.clear();
+        Method logSource = null;
+        for (Method m : assets.getDeclaredMethods()) {
+            if (m.getName().equals("logAvatarSource")) logSource = m;
+        }
+        check("logAvatarSource 方法存在", logSource != null, "-");
+        logSource.setAccessible(true);
+        Object probeReq = reqCtor.newInstance(null, "DedupProbe", null, null);
+        logSource.invoke(assetsInst, probeReq, "方式A");
+        logSource.invoke(assetsInst, probeReq, "方式A");
+        check("获取方式日志会话去重（同方式第二次不新增）",
+                loggedSources.size() == 1 && "方式A".equals(loggedSources.get("name:dedupprobe")),
+                "map=" + loggedSources);
+        logSource.invoke(assetsInst, probeReq, "方式B");
+        check("获取方式日志换线路更新记录（线路切换可观测）",
+                "方式B".equals(loggedSources.get("name:dedupprobe")),
+                "map=" + loggedSources);
+        // 日志方法体必须引用 PluginFileLog（文件日志）而不是 log_info（控制台）
+        try (InputStream is = assets.getResourceAsStream("/cn/kerong/penguin/spigot/render/InfoCardAssets.class")) {
+            byte[] blob = is.readAllBytes();
+            String blobText = new String(blob, java.nio.charset.StandardCharsets.UTF_8);
+            check("获取方式日志走文件日志（常量池引用 PluginFileLog）",
+                    blobText.contains("PluginFileLog"), "-");
+            check("日志去重容量上限常量在位（LOGGED_SOURCES_MAX）",
+                    blobText.contains("LOGGED_SOURCES_MAX"), "-");
+        }
+
+        // 9.2 头像获取 single-flight（并发去重：等待者共享执行者结果）
+        Class<?> latchClass = Class.forName("cn.kerong.penguin.spigot.render.InfoCardAssets$FetchLatch");
+        Constructor<?> latchCtor = latchClass.getDeclaredConstructor();
+        latchCtor.setAccessible(true);
+        Field inFlightField = assets.getDeclaredField("inFlightFetches");
+        inFlightField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> inFlight = (Map<String, Object>) inFlightField.get(assetsInst);
+        inFlight.clear();
+        Object latch = latchCtor.newInstance();
+        Field imageField = latchClass.getDeclaredField("image");
+        imageField.setAccessible(true);
+        java.util.concurrent.CountDownLatch done;
+        {
+            Field doneField = latchClass.getDeclaredField("done");
+            doneField.setAccessible(true);
+            done = (java.util.concurrent.CountDownLatch) doneField.get(latch);
+        }
+        inFlight.put("name:waiterprobe", latch);
+        Object waiterReq = reqCtor.newInstance(null, "WaiterProbe", null, null);
+        final Method fetchFinal = fetch;
+        java.util.concurrent.atomic.AtomicReference<Object> waiterResult = new java.util.concurrent.atomic.AtomicReference<>("未返回");
+        Thread waiter = new Thread(() -> {
+            try {
+                waiterResult.set(fetchFinal.invoke(assetsInst, waiterReq));
+            } catch (Throwable t) {
+                waiterResult.set("异常:" + t);
+            }
+        }, "smoke-waiter");
+        waiter.start();
+        Thread.sleep(400);
+        check("等待者阻塞等待执行者（未完成前不返回）", waiter.isAlive(), "-");
+        BufferedImage sharedFace = new BufferedImage(216, 216, BufferedImage.TYPE_INT_ARGB);
+        imageField.set(latch, sharedFace);
+        done.countDown();
+        waiter.join(3000);
+        check("等待者取到执行者结果（同一图像实例，零重复网络获取）",
+                waiterResult.get() == sharedFace, "result=" + waiterResult.get());
+        check("等待者不改写去重表（仍持有测试门闩）", inFlight.get("name:waiterprobe") == latch, "-");
+        inFlight.remove("name:waiterprobe");
+
+        // 9.3 执行者路径收尾清理（finally 移除门闩，防止去重表泄漏）
+        // 空名请求：全链路零网络请求（与第 6 节同一不变量）
+        inFlight.clear();
+        missCache.clear();
+        Object execReq = reqCtor.newInstance(null, "", null, null);
+        Object execResult = fetch.invoke(assetsInst, execReq);
+        check("执行者路径正常完成（空请求零网络，失败返回 null）",
+                execResult == null, String.valueOf(execResult));
+        check("执行者收尾移除门闩（去重表无残留）",
+                !inFlight.containsKey("name:"), "inFlight=" + inFlight.keySet());
+
+        // 9.4 空闲 GC 提示配置（idleGcHint 默认开）
+        Object gcHint = null;
+        for (Method m : settings.getDeclaredMethods()) {
+            if (m.getName().equals("idleGcHint")) gcHint = m.invoke(settingsInst);
+        }
+        check("idleGcHint 默认 true（无插件实例时按默认）",
+                Boolean.TRUE.equals(gcHint), String.valueOf(gcHint));
+
+        // 9.5 缓存诊断快照（/kerong mem 输出源）
+        Method statsMethod = null;
+        for (Method m : assets.getDeclaredMethods()) {
+            if (m.getName().equals("cacheStats")) statsMethod = m;
+        }
+        check("cacheStats 方法存在", statsMethod != null, "-");
+        if (statsMethod != null) {
+            statsMethod.setAccessible(true);
+            String stats = String.valueOf(statsMethod.invoke(assetsInst));
+            check("cacheStats 输出 JVM 堆与缓存条目",
+                    stats.contains("JVM 堆") && stats.contains("头像内存缓存")
+                            && stats.contains("进行中的头像获取"), stats);
+        }
+
+        // 9.6 clearCaches 清空去重表（停机重置，防止长会话陈旧记录）
+        loggedSources.put("name:stale", "旧方式");
+        clearCaches.invoke(assetsInst);
+        check("clearCaches 清空获取方式去重表与并发获取表",
+                loggedSources.isEmpty() && inFlight.isEmpty(), "-");
+
         System.out.println("\n===== 冒烟结果：" + passed + "/" + (passed + failed) + " 通过，" + failed + " 失败 =====");
         System.exit(failed == 0 ? 0 : 1);
     }

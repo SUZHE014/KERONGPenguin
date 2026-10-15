@@ -367,6 +367,8 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "render.avatar-fetch-priority" to "local",
             // 1.6.6.2：渲染空闲内存释放阈值（分钟；默认 5，支持小数，0 = 关闭）
             "render.idle-release-minutes" to 5,
+            // 1.6.6.2 覆盖版：空闲释放后向 JVM 发 GC 提示归还内存（默认 true）
+            "render.idle-gc-hint" to true,
             // 1.6.0 新增：图片渲染命令的用户冷却秒数（旧版硬编码 5 秒；0 = 关闭）
             "render.command-cooldown-seconds" to 5,
             // 1.5.7：全部图片渲染的内置背景开关（默认 true = 随 JAR 分发的深灰底图，
