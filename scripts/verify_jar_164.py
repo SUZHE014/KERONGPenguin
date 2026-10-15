@@ -110,6 +110,47 @@ def verify_common(z: zipfile.ZipFile, label: str) -> None:
         "ConflictWatch", "replyMarkdown", "replyWithImgBytes",
     ], f"{label}：QClient 冲突检测挂钩保持（1.6.3 基线）")
 
+    # ---- 7. 双服务器同绑保护重做（1.6.4 第二批：保留重试） ----
+    check_absent(z, "cn/huohuas001/bot/WssDiagnostics.class", [
+        "仅存活", "则多为网络抖动",
+    ], f"{label}：WssDiagnostics 单次短命提示已删除（仅阈值判定输出）")
+    check_all(z, "cn/huohuas001/bot/WssDiagnostics.class", [
+        "连接冲突证据记录", "trackAuthRejected",
+    ], f"{label}：WssDiagnostics 冲突证据文件短记录（新版）")
+    check_absent(z, "cn/huohuas001/bot/ReconnectManager.class", [
+        "已断开本服机器人连接并停止自动重连",
+    ], f"{label}：确凿冲突不再断开连接/停止重试")
+    check_all(z, "cn/huohuas001/bot/ReconnectManager.class", [
+        "连接与自动重试照常继续",
+    ], f"{label}：确凿冲突保留重试（参考 HuHoBot 永不放弃）")
+
+    # ---- 8. PlayerTitle 称号适配（1.6.4） ----
+    check_all(z, "cn/huohuas001/huhobotPenguin/spigot/stats/QueryInfoService.class", [
+        "playerTitle_use", "resolvePlayerTitleTitle",
+    ], f"{label}：PlayerTitle 称号来源（PAPI 变量 + 回退链方法）")
+
+    # ---- 9. PlayTimeManager 在线时长同步（1.6.4） ----
+    if "cn/huohuas001/huhobotPenguin/spigot/stats/PlayTimeSync.class" in names:
+        ok(f"{label}：PlayTimeSync 类存在")
+    else:
+        bad(f"{label}：PlayTimeSync 缺失")
+    check_all(z, "cn/huohuas001/huhobotPenguin/spigot/stats/PlayTimeSync.class", [
+        "PlayTimeManager", "PTM_playtime_s_", "playtime ",
+    ], f"{label}：PlayTimeSync 同步链（检测 + 秒数读取 + 命令修正）")
+    check_all(z, "cn/huohuas001/huhobotPenguin/spigot/stats/PlayerStatsManager.class", [
+        "PlayTimeSync",
+    ], f"{label}：PlayerStatsManager 挂载 PlayTimeSync（退出/初始化/停机）")
+
+    # ---- 10. 头像获取修复（1.6.4：Mojang 冷却 + Crafatar 回退） ----
+    check_all(z, "cn/huohuas001/huhobotPenguin/spigot/render/InfoCardAssets.class", [
+        "crafatar.com", "mojangInCooldown", "markMojangUnreachable", "fetchCrafatarAvatar",
+    ], f"{label}：头像 Crafatar CDN 回退 + Mojang 网络全局冷却")
+
+    # ---- 11. logQuiet 兑底走 BotShared（1.6.4：消除 [STDOUT] 裸格式） ----
+    check_all(z, "cn/huohuas001/huhobotPenguin/spigot/qqbind/QqBindManager$Companion.class", [
+        "BotShared",
+    ], f"{label}：logQuiet 兑底改走 BotShared 插件实例")
+
     # ---- 6. 基线：死代码不复活 ----
     dead_classes = [
         "cn/huohuas001/bot/tools/CollectionUtils.class",
@@ -167,6 +208,11 @@ with zipfile.ZipFile(SPIGOT) as z:
         "disallow", "kickPlayer", "generateCode", "formatKickMessage",
     ], "Spigot：拒入与踢出调用绑定码渲染")
     # Kotlin 内部类名验证（enforceJoinBinding / hasServerPlayerData 编译为私有方法即可）
+
+    # 12. onDisable zip closed 修复（1.6.4 第二批）
+    check_all(z, "cn/huohuas001/huhobotPenguin/spigot/HuHoBotSpigot.class", [
+        "getInstance",
+    ], "Spigot：onEnable 预热 CommandOutputAppender（停机 zip closed 修复）")
     verify_common(z, "Spigot")
 
 print("================================================================")

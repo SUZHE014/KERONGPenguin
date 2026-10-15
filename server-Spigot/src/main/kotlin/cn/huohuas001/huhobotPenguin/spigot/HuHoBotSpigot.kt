@@ -68,11 +68,25 @@ class HuHoBotSpigot : JavaPlugin(), HuHoBot {
         // 注册统计记录器（/查信息 数据源）
         PlayerStatsManager.initialize()
 
+        // 1.6.4：类预热（停机 zip closed 修复）
+        // Paper/Purpur 停机阶段会提前关闭插件 jar 的 ZipFile 句柄，此时若
+        // onDisable 里首次触发某个类的加载（旧版 CommandOutputAppender 的
+        // 伴生对象在从未执行过命令输出捕获时不会被加载），
+        // PluginClassLoader.findClass 将抛「zip file closed → Error occurred
+        // while disabling」。启用阶段强制加载一次并挂载命令输出 Appender，
+        // onDisable 的 removeInstance 不再触发任何类加载。
+        try {
+            CommandOutputAppender.getInstance()
+        } catch (_: Throwable) {
+        }
+
         logCommandExecutor()
         log_info("HuHoBot Penguin 已加载")
     }
 
     override fun onDisable() {
+        // 1.6.4：每一步都独立捕获——停机阶段任何一步失败（含历史遗留的
+        // 「zip file closed」类加载错误）都不应中断后续清理与服务器关服。
         // 保存统计数据
         try {
             PlayerStatsManager.shutdown()
@@ -83,8 +97,14 @@ class HuHoBotSpigot : JavaPlugin(), HuHoBot {
             InfoCardAssets.clearCaches()
         } catch (_: Throwable) {
         }
-        shutdownRuntime()
-        CommandOutputAppender.Companion.removeInstance()
+        try {
+            shutdownRuntime()
+        } catch (_: Throwable) {
+        }
+        try {
+            CommandOutputAppender.Companion.removeInstance()
+        } catch (_: Throwable) {
+        }
     }
 
     override fun reloadPluginConfig() {

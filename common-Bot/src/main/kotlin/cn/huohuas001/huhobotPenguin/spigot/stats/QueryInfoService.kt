@@ -405,8 +405,9 @@ object QueryInfoService {
             false
         }
         val deluxeTagsOn = Bukkit.getPluginManager().getPlugin("DeluxeTags")?.isEnabled == true
+        val playerTitleOn = Bukkit.getPluginManager().getPlugin("PlayerTitle")?.isEnabled == true
         val pointsOn = Bukkit.getPluginManager().getPlugin("PlayerPoints")?.isEnabled == true
-        DependencyStatus(vault = economyRegistered, title = deluxeTagsOn || vaultOn, points = pointsOn)
+        DependencyStatus(vault = economyRegistered, title = deluxeTagsOn || playerTitleOn || vaultOn, points = pointsOn)
     } catch (_: Throwable) {
         DependencyStatus(vault = false, title = false, points = false)
     }
@@ -450,8 +451,9 @@ object QueryInfoService {
     /**
      * 解析玩家称号（返回值 + 检测来源说明）：
      * 1. DeluxeTags（三层兼容：新版实例 API → 老版静态 API → PlaceholderAPI 占位符）；
-     * 2. Vault Chat 前缀（无 DeluxeTags 或无标签时，清理颜色码的纯文本）；
-     * 3. 均无 → “暂无”。
+     * 2. PlayerTitle（1.6.4 新增，需 PlaceholderAPI，解析 %playerTitle_use%）；
+     * 3. Vault Chat 前缀（无 DeluxeTags/PlayerTitle 或无标签时，清理颜色码的纯文本）；
+     * 4. 均无 → “暂无”。
      *
      * 1.5.3.1：移除“主权限组”回退——玩家没有称号时会退回显示权限组名
      * （如 default/member 等英文串），现在无称号一律显示“暂无”。
@@ -459,8 +461,9 @@ object QueryInfoService {
     private fun resolveTitle(playerName: String, playerUuid: UUID?, onlinePlayer: Player?): TitleResult {
         return try {
             resolveDeluxeTagsTitle(playerUuid, onlinePlayer)
+                ?: resolvePlayerTitleTitle(playerUuid)
                 ?: resolveVaultTitle(playerName, playerUuid)
-                ?: TitleResult("暂无", "未检测到（DeluxeTags/Vault 均无结果）")
+                ?: TitleResult("暂无", "未检测到（DeluxeTags/PlayerTitle/Vault 均无结果）")
         } catch (_: Throwable) {
             TitleResult("暂无", "称号检测异常")
         }
@@ -692,6 +695,58 @@ object QueryInfoService {
         if (withPlayer != null) return withPlayer
         return try {
             findMethod(tagObject, "getDisplayTag", 0)?.invoke(tagObject) as? String
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    // ---------- PlayerTitle 适配（1.6.4） ----------
+
+    /**
+     * PlayerTitle 插件称号（1.6.4 新增，modrinth.com/plugin/playertitle）。
+     *
+     * 官方注册的 PlaceholderAPI 变量：
+     * - %playerTitle_use% —— 玩家当前佩戴/展示的称号名称（含颜色码）；
+     * - %playerTitle_description% —— 称号描述（备用）。
+     * 实现与 DeluxeTags 的 PAPI 兼容路径同模式（反射 setPlaceholders +
+     * 插件自身类加载器）；无 PlaceholderAPI 或玩家未佩戴称号时返回 null，
+     * 称号链继续向后回退（Vault 前缀）。
+     * 占位符未解析（插件装了但变量未注册）时剔除后为空，同样视为无称号。
+     */
+    private fun resolvePlayerTitleTitle(playerUuid: UUID?): TitleResult? {
+        if (playerUuid == null) return null
+        val playerTitle = try {
+            Bukkit.getPluginManager().getPlugin("PlayerTitle")
+        } catch (_: Throwable) {
+            null
+        } ?: return null
+        try {
+            if (!playerTitle.isEnabled) return null
+        } catch (_: Throwable) {
+            return null
+        }
+        val papi = try {
+            Bukkit.getPluginManager().getPlugin("PlaceholderAPI")
+        } catch (_: Throwable) {
+            null
+        } ?: return null
+        try {
+            if (!papi.isEnabled) return null
+        } catch (_: Throwable) {
+            return null
+        }
+        return try {
+            // 用 PAPI 插件自己的类加载器加载（跨插件类不可见，与 DeluxeTags 同模式）
+            val papiClass = Class.forName("me.clip.placeholderapi.PlaceholderAPI", false, papi.javaClass.classLoader)
+            val method = papiClass.methods.firstOrNull {
+                it.name == "setPlaceholders" && it.parameterCount == 2 &&
+                    OfflinePlayer::class.java == it.parameterTypes[0] && String::class.java == it.parameterTypes[1]
+            } ?: return null
+            val offlinePlayer = Bukkit.getOfflinePlayer(playerUuid)
+            val resolved = method.invoke(null, offlinePlayer, "%playerTitle_use%") as? String ?: return null
+            // 剔除未解析占位符；保留颜色码原文（卡片按颜色码彩色渲染）；空白视为无称号
+            val cleaned = resolved.replace(UNRESOLVED_PLACEHOLDER, "").trim()
+            if (cleaned.isEmpty()) null else TitleResult(cleaned, "PlayerTitle(PlaceholderAPI)")
         } catch (_: Throwable) {
             null
         }

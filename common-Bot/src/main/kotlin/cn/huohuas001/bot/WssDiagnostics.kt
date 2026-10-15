@@ -140,23 +140,13 @@ object WssDiagnostics : WebSocketListener {
     /**
      * 1.6.3：互踢证据统一入口。
      *
-     * 1.6.2 只统计「鉴权成功后存活 <90 秒被关闭」的短命会话；实测双服务器
-     * 场景还存在另一种形态——第二台服务器发起的连接在**鉴权完成前**就被
-     * 平台关闭（Identify/Resume 被拒），此时 readyAt 恒为 0，旧版只把它当
-     * 普通失败重连，永不触发互踢判定，第二台服务器控制台因此只有
-     * 「第 N 次（1/5）重试连接…」和一条没有原因的「重连超时」——
-     * 这正是「两台服务器同时绑同一机器人却毫无冲突提示」的另一半根因。
-     *
-     * 现在：凭据自检（[QqTokenHealth.lastCheckOk]）已通过时，鉴权期被关
-     * 的连接同样计入互踢证据窗口（凭据有效却连不上，指向网关拒绝本连接，
-     * 而非凭据问题）；凭据自检失败则不计（那是凭据问题，另有明确提示）。
+     * 1.6.4：证据累计改为**完全静默**——用户反馈旧版每次短命关闭都输出的
+     * 「本服务器连接鉴权成功后仅存活 3 秒即被平台关闭…」ERROR 提示太嘆人
+     * （网络抖动也会触发），现仅在文件里留一行短记录（不上控制台），
+     * 达到阈值判定成立时才醒目输出一次原因；计数与判定逻辑不变。
      */
     private fun trackAuthRejected() {
-        recordConflictEvidence(
-            hint = "本服务器连接在鉴权完成前即被平台关闭（AppID 凭据自检已通过，" +
-                "凭据本身可用）。若 bot.app-id 没有填在另一台服务器上，则多为网关/网络问题；" +
-                "若填了，QQ 同一机器人只允许一条稳定连接，本服大概率是被抢占的后来者"
-        ) { count ->
+        recordConflictEvidence("鉴权前被关") { count ->
             "已检测到机器人连接疑似被另一台服务器抢占：凭据有效但连接连续 $count 次" +
                 "在鉴权完成前被平台关闭（同 AppID 多连接冲突特征之一）。" +
                 "原因：极可能已有另一台服务器绑定了同一个机器人（bot.app-id 重复）"
@@ -170,27 +160,27 @@ object WssDiagnostics : WebSocketListener {
      * 是同 AppID 多连接互踢的典型特征：两台服务器填同一个机器人凭据时会轮流
      * 把对方踢下线，谁也连不稳。
      *
-     * 1.6.2 行为变更：判定成立后**不再停机**——改为经 [ReconnectManager]
-     * 醒目输出原因（「已有另一台服务器绑定了同一个机器人」），连接继续走
-     * 统一的重试体系（每轮 5 次、最多 3 轮自动重试，期间可用 /hb chs 手动重试），
-     * 服务器本体与插件其余功能不受影响。
-     * 单次短命关闭即输出醒目提示（error 级，修复旧版启动期无任何明确提示的问题：
-     * 网络抖动也可能偶发一次，但提示里已说明如何排查，不再静默）。
+     * 1.6.2 行为：判定成立后**不再停机**，经 [ReconnectManager] 醒目输出原因
+     * 一次，连接继续走统一重试体系（每轮 5 次、最多 3 轮自动重试，期间可用
+     * /hb chs 手动重试），服务器本体与插件其余功能不受影响。
+     * 1.6.4：单次短命关闭不再输出控制台提示（仅文件短记录一行，见
+     * [recordConflictEvidence]）。
      */
     private fun trackShortSession(aliveMs: Long) {
-        recordConflictEvidence(
-            hint = "本服务器连接鉴权成功后仅存活 ${aliveMs / 1000} 秒即被平台关闭。" +
-                "若 bot.app-id 也填在了另一台服务器上，QQ 同一机器人只允许一条连接，会互相抢占轮流掉线；" +
-                "若确认未重复配置，则多为网络抖动，SDK 将自动重连（重连过程见「第 N 次（1/5）」提示）"
-        ) { count ->
+        recordConflictEvidence("短命会话 ${aliveMs / 1000} 秒") { count ->
             "已检测到机器人连接被另一台服务器抢占：连接鉴权成功后连续 " +
                 "$count 次在数秒内被平台关闭（同 AppID 多连接互踢特征）。" +
                 "原因：已有另一台服务器绑定了同一个机器人（bot.app-id 重复）"
         }
     }
 
-    /** 互踢证据计数（窗口内累计达到阈值即判定冲突，只判定一次）。 */
-    private fun recordConflictEvidence(hint: String, reasonBuilder: (Int) -> String) {
+    /**
+     * 互踢证据计数（窗口内累计达到阈值即判定冲突，只判定一次）。
+     *
+     * 1.6.4：单次证据仅写一行文件留档（不刷控制台，网络抖动不再产生嘆人提示）；
+     * 达到阈值才交 [QClient.stopForConflict] 醒目提示一次。
+     */
+    private fun recordConflictEvidence(evidence: String, reasonBuilder: (Int) -> String) {
         val now = System.currentTimeMillis()
         if (firstShortCloseAt == 0L || now - firstShortCloseAt > CONFLICT_WINDOW_MS) {
             // 重新开窗：窗口外的零星证据不计入
@@ -198,9 +188,7 @@ object WssDiagnostics : WebSocketListener {
             shortSessionCount = 0
         }
         shortSessionCount++
-        PluginFileLog.errorAndKeep(
-            "[WSS] $hint（第 $shortSessionCount/$CONFLICT_SHORT_SESSIONS 次）"
-        )
+        PluginFileLog.write("[WSS] 连接冲突证据记录（$evidence，第 $shortSessionCount/$CONFLICT_SHORT_SESSIONS 次）")
         if (shortSessionCount < CONFLICT_SHORT_SESSIONS) {
             return
         }

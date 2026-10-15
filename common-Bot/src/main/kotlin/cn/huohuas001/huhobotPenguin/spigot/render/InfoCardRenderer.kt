@@ -533,6 +533,33 @@ object InfoCardAssets {
     /** 名字反查负缓存（404 = 名字无正版账号）的有效期（1.6.2：从永久改为 30 分钟）。 */
     private const val NEGATIVE_UUID_TTL = 30 * 60_000L
 
+    /**
+     * 1.6.4：Mojang 官方接口网络级失败后的全局冷却（5 分钟）。
+     *
+     * 「大部分玩家头像获取失败」根因：服务器网络访问 sessionserver.mojang.com /
+     * api.mojang.com 不稳定（中国大陆线路大面积超时/阻断）时，旧版每个玩家都要
+     * 先等 5 秒超时才能失败，在线列表 8 秒预热预算全部耗在等超时上——结果
+     * 大部分玩家头像取不到。现在任一次网络级失败（超时/IO 异常/429/5xx）
+     * 会开启全局冷却：冷却期内所有玩家直接跳过 Mojang 官方链路（走 Crafatar
+     * CDN 回退或直接失败），不再逐个等超时。
+     */
+    private const val MOJANG_NETWORK_COOLDOWN_MS = 5 * 60_000L
+
+    /** 最近一次 Mojang 官方接口网络级失败时间戳（0 = 无记录）。 */
+    @Volatile
+    private var mojangNetworkFailureAt = 0L
+
+    /** Mojang 官方接口是否处于网络冷却期（冷却内跳过官方链路）。 */
+    private fun mojangInCooldown(): Boolean {
+        val at = mojangNetworkFailureAt
+        return at > 0L && System.currentTimeMillis() - at < MOJANG_NETWORK_COOLDOWN_MS
+    }
+
+    /** 记录一次 Mojang 官方接口网络级失败（开启全局冷却）。 */
+    private fun markMojangUnreachable() {
+        mojangNetworkFailureAt = System.currentTimeMillis()
+    }
+
     /** 输出头像尺寸（渲染前再缩到展示尺寸）。 */
     private const val FACE_SIZE = 216
 
@@ -630,11 +657,11 @@ object InfoCardAssets {
         val missed = missCache[key]
         if (missed != null && now - missed.createdAt < MISS_TTL) return null
 
-        // 3. 解析皮肤贴图（URL 列表，逐个尝试）
+        // 3. 解析皮肤贴图（URL 列表，逐个尝试；官方链路失败后回退 Crafatar CDN）
         val skinUrl = resolveSkinTexture(request)
         val face: BufferedImage? = skinUrl?.let { url ->
             downloadSkin(url)?.let { skin -> cropFace(skin, FACE_SIZE) }
-        }
+        } ?: fetchCrafatarAvatar(request.uuid)
 
         if (face != null) {
             avatarCache[key] = CacheEntry(face, now)
@@ -655,6 +682,7 @@ object InfoCardAssets {
         backgroundCache.clear()
         builtinBackgroundSources.clear()
         builtinBackgroundResolvedPaths.clear()
+        mojangNetworkFailureAt = 0L
     }
 
 
@@ -690,6 +718,10 @@ object InfoCardAssets {
      * 会跳过它们，第 4 步又因「相同即跳过」被挡——两层全挡 = 头像永远失败；
      * 现在只要名字反查到正版 UUID 就查询会话服务器（传入 UUID 是 v4 且
      * 第 3 步已查过的除外，避免重复请求）。
+     *
+     * 1.6.4：Mojang 官方链路（第 3 / 4 步）在网络冷却期（见
+     * [MOJANG_NETWORK_COOLDOWN_MS]）内整体跳过，避免每个玩家都等一次
+     * 5 秒超时；官方链路失败由 [fetchCrafatarAvatar] 的 CDN 回退兑底。
      */
     private fun resolveSkinTexture(request: AvatarRequest): String? {
         // 1. 在线玩家 Profile（最准确，含皮肤插件修改）
@@ -704,6 +736,9 @@ object InfoCardAssets {
                 extractNbtSkinUrl(datFile)?.let { return it }
             }
         }
+
+        // 官方链路网络冷却期内不再逐玩家等超时（1.6.4）
+        if (mojangInCooldown()) return null
 
         // 3. 正版 UUID（v4 快路径）：会话服务器查询（未知 UUID 返回 204，可检测失败）。
         //    非 v4 的老账号正版 UUID 走第 4 步名字反查后同样能查到
@@ -844,13 +879,27 @@ object InfoCardAssets {
         }
     }
 
-    /** 会话服务器查询贴图 URL（未知 UUID 返回 204 → null）。 */
+    /**
+     * 会话服务器查询贴图 URL。
+     *
+     * 1.6.4：超时 5 秒→3 秒（更快释放预热预算），并区分失败类型：
+     * - 204 / 404：确定性无数据（该 UUID 无皮肤记录），不触发冷却；
+     * - 429 / 5xx / 网络异常（超时/连接失败）：网络级失败，开启全局冷却
+     *   （[markMojangUnreachable]，5 分钟内后续玩家不再访问官方链路，
+     *   避免在线列表预热预算全部耗在逐玩家等超时上）。
+     */
     private fun sessionServerSkinUrl(uuid: UUID): String? {
         return try {
-            val body = httpGet(
-                "https://sessionserver.mojang.com/session/minecraft/profile/${uuid.toString().replace("-", "")}",
-                5000,
-            ) ?: return null
+            val url =
+                "https://sessionserver.mojang.com/session/minecraft/profile/${uuid.toString().replace("-", "")}"
+            val (code, body) = httpGetWithStatus(url, 3000)
+            when {
+                code == 204 || code == 404 -> return null
+                code != 200 || body == null -> {
+                    markMojangUnreachable()
+                    return null
+                }
+            }
             val json = JSON.parseObject(String(body, Charsets.UTF_8)) ?: return null
             val properties = json.getJSONArray("properties") ?: return null
             for (i in 0 until properties.size) {
@@ -862,6 +911,7 @@ object InfoCardAssets {
             }
             null
         } catch (_: Throwable) {
+            markMojangUnreachable()
             null
         }
     }
@@ -911,7 +961,10 @@ object InfoCardAssets {
                     null
                 }
                 else -> {
-                    // 429 限流 / 5xx / 网络异常（-1）：不写负缓存，下次查询自动重试
+                    // 429 限流 / 5xx / 网络异常（-1）：不写负缓存，下次查询自动重试；
+                    // 1.6.4：同时开启 Mojang 官方链路全局冷却（5 分钟），
+                    // 后续玩家不再逐个等超时（见 [MOJANG_NETWORK_COOLDOWN_MS]）
+                    markMojangUnreachable()
                     null
                 }
             }
@@ -927,6 +980,49 @@ object InfoCardAssets {
         )
     } catch (_: Throwable) {
         null
+    }
+
+    /**
+     * Crafatar CDN 头像回退（1.6.4 新增，官方皮肤链路失败后的兜底数据源）。
+     *
+     * `https://crafatar.com/avatars/<uuid>?size=216&overlay` 直接返回该玩家
+     * 的头部头像 PNG（含帽子层，与 cropFace 的裁剪结果同观感），Cloudflare
+     * CDN 分发，中国大陆可达性显著好于 sessionserver.mojang.com。
+     *
+     * - 仅对 v4 UUID 有效（Crafatar 只收录正版账号；404 = 该 UUID 无皮肤，
+     *   可检测、与「网络失败」区分开）；
+     * - 请求尺寸即 [FACE_SIZE]（Crafatar 支持 1-512），命中时无需二次缩放；
+     * - 404 / 网络失败 / 解码失败一律返回 null（渲染占位块，不缓存为失败
+     *   之外的任何错误状态）；
+     * - 离线 UUID（非 v4）玩家无皮肤数据时依然诚实返回 null（占位块），
+     *   不做「人人史蒂夫」的假回退（0.1.5.2 设计决策保持不变）。
+     */
+    private fun fetchCrafatarAvatar(uuid: UUID?): BufferedImage? {
+        if (uuid == null || uuid.version() != 4) return null
+        return try {
+            val bytes = httpGet("https://crafatar.com/avatars/$uuid?size=$FACE_SIZE&overlay", 4000) ?: return null
+            val image = ImageIO.read(ByteArrayInputStream(bytes)) ?: return null
+            when {
+                image.width <= 0 || image.height <= 0 -> null
+                image.width == FACE_SIZE -> image
+                else -> scaleNearest(image, FACE_SIZE)
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /** 最近邻缩放（保持头像像素风，与 cropFace 的放大方式一致）。 */
+    private fun scaleNearest(source: BufferedImage, size: Int): BufferedImage {
+        val result = BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
+        val g = result.createGraphics()
+        try {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR)
+            g.drawImage(source, 0, 0, size, size, null)
+        } finally {
+            g.dispose()
+        }
+        return result
     }
 
     /** 下载皮肤贴图 PNG（64×64 / 64×32 / 高清皮肤）。 */

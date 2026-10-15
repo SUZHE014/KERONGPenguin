@@ -133,15 +133,20 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
          * 1.6.1：控制台行不再拼接 [yyyy-MM-dd HH:mm:ss] 时间戳——服务端控制台
          * 本身已按行输出时间，插件再拼一份会出现「[KERONGPenguin] [时间]」重复；
          * 日志文件行保留时间戳（文件没有行级时间信息，需要它定位）。
+         * 1.6.4：instance 未就绪（构造期/静态初始化早期）时不再退到 println——
+         * 绕过日志器的输出会以裸 [STDOUT/] 格式出现在控制台（与插件日志格式
+         * 割裂）；改从 BotShared 拿插件实例走标准 logger（NeoForge 为
+         * JUL→SLF4J 桥接的标准前缀），仅完全无插件实例时才 println 兑底。
          */
         @JvmStatic
         fun logQuiet(message: String) {
             val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())
             val prefix = if (message.startsWith("[")) "" else "[QQ绑定] "
             try {
-                val manager = instance
-                if (manager?.plugin != null) {
-                    manager.plugin.logger.info(prefix + message)
+                val pluginRef = instance?.plugin
+                    ?: (cn.huohuas001.bot.provider.BotShared.instance as? JavaPlugin)
+                if (pluginRef != null) {
+                    pluginRef.logger.info(prefix + message)
                 } else {
                     println(prefix + message)
                 }

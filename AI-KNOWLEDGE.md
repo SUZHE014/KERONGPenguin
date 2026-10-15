@@ -1,7 +1,8 @@
 # KERONGPenguin AI 交接知识库
 
 > **本文档的用途**：把本文件丢给一个对项目一无所知的 AI，它能立刻了解当前情况并接手工作。
-> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-14（v1.6.4 发版时）。
+> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-15（v1.6.4 第二批改动完成时）。
+> 自包含版本（发给本地无任何东西的 AI）见官网 `AI-KNOWLEDGE.txt`，含从零开始的环境重建与凭据获取说明。
 
 ### 1.1 受限网络环境重建（2026-10-14 实战，环境重置后可用）
 
@@ -10,8 +11,8 @@
 - `common-Bot/libs/deps.jar` 不在 git：从官网下载 Spigot 分发 JAR，剔除 `cn/huohuas001/**`、`Markdown/`、`backgrounds/`、`fonts/`、`plugin.yml`、`config.yml` 后重建（脚本思路见 `/home/z/my-project/scripts/rebuild_deps_jar.py`）；
 - NeoForge libs：`scripts/build_neoforge_libs.py` 的镜像变体（BMCLAPI：`piston-meta/piston-data/libraries.minecraft.net/maven.neoforged.net/maven.minecraftforge.net` → `https://bmclapi2.bangbang93.com[+路径]`，maven 前缀多一级 `/maven`，libraries 前缀 `/libraries`）；ART 重映射耗时 5-10 分钟、内存 2G 够用；
 - Gradle 发行版：腾讯镜像 `https://mirrors.cloud.tencent.com/gradle/gradle-8.14.5-bin.zip` 预置到 `~/.gradle/wrapper/dists/gradle-8.14.5-bin/<wrapper 期望哈希>/`（哈希不是 md5，先跑一次 wrapper 看它建的目录名）；
-- JDK：华为镜像 `https://mirrors.huaweicloud.com/openjdk/21.0.2/openjdk-21.0.2_linux-x64_bin.tar.gz` + `~/.gradle/gradle.properties` 设 `org.gradle.java.installations.paths` 与 `auto-download=false`（foojay 会走 GitHub releases 被墙）；
-- Maven Central/PaperMC/Spigot/插件门户均直连可用；pip 用阿里云镜像。
+- JDK 21（含 javac 的完整 JDK，系统 JRE 不够）：清华 TUNA Adoptium 镜像 `https://mirrors.tuna.tsinghua.edu.cn/Adoptium/21/jdk/x64/linux/OpenJDK21U-jdk_x64_linux_hotspot_21.0.12.1_1.tar.gz`（华为 openjdk 目录已无包）；`~/.gradle/gradle.properties` 设 `org.gradle.java.installations.paths=/home/z/jdk21` 与 `auto-download=false`（foojay 会走 GitHub releases 被墙）；另需 `settings.gradle.kts` 若解析 foojay 失败可移除该插件（本地 JDK 已就位不需要自动下载）；
+- Maven Central/PaperMC/Spigot/插件门户均直连可用（本次实测 2026-10-15）；pip 用阿里云镜像。
 
 ---
 
@@ -19,7 +20,7 @@
 
 KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项目：玩家在 QQ 群里查数据/签到/聊天，插件在服务器内渲染统计卡片图片并回发。Kotlin 多模块：`common-Bot`（全部业务核心）+ `server-Spigot`（Bukkit 插件版，支持 Spigot/Paper/Folia/混合端）+ `server-NeoForge`（NeoForge 1.21.1 模组版，复用 common-Bot 全部源码 + Spigot 的 manager 源码）。
 
-**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.3）。当前版本 **1.6.3**。
+**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.4）。当前版本 **1.6.4**（含两批改动：拦截策略/彩色日志 + 双连接保护重做/插件适配/头像修复）。
 
 ---
 
@@ -61,7 +62,8 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 | 消息模板 | `spigot/qqbind/MessageTemplates.kt` + 资源 `Markdown/*.md`（68 个） | 全部文本回复走模板：首次启动释放到数据目录 `Markdown/`，用户可改；`messages` 配置段映射模板 id→文件名。发文本用 sendDirect（带@）/sendPlain |
 | 绑定/解绑/黑名单 | `spigot/qqbind/QqBindManager.kt`（单例）+ `events/commands/BindCommands.kt` | 玩家进服未绑定发 5 位绑定码（可配置踢出拦截），群里 `/绑定 <码>` 或纯数字 4-12 位自动绑定；`/重新绑定`、`/黑名单`、`/解除黑名单` |
 | 签到 | `events/commands/CheckInCommands.kt` | 每日一次（网络北京时间，见 PlayerStatsManager.beijingToday），经 Vault 发金币，无经济插件走记账模式（离线暂存上线补发） |
-| 查信息统计卡 | `events/commands/PublicCommands.kt` → `spigot/stats/QueryInfoService.kt` → `spigot/render/CardRenderPool.kt` + `InfoCardRenderer.kt` | CPU 异步渲染 PNG（CardRenderPool 线程池，核数一半 1~4），9 项统计，依赖缺失自适应（Vault 金币/DeluxeTags 称号/PlayerPoints 点券），头像 Mojang API（429 不写负缓存、404 写 30 分钟、非 v4 UUID 也查） |
+| 查信息统计卡 | `events/commands/PublicCommands.kt` → `spigot/stats/QueryInfoService.kt` → `spigot/render/CardRenderPool.kt` + `InfoCardRenderer.kt` | CPU 异步渲染 PNG（CardRenderPool 线程池，核数一半 1~4），9 项统计，依赖缺失自适应（Vault 金币 / DeluxeTags **或 PlayerTitle**（1.6.4，PAPI %playerTitle_use%） / PlayerPoints 点券），头像四级链 + **Crafatar CDN 回退与 Mojang 网络全局冷却**（1.6.4，详见 3.5） |
+| 在线时长同步 | `spigot/stats/PlayTimeSync.kt`（1.6.4 新增） | 检测到 PlayTimeManager + PlaceholderAPI 时，把本插件统计的总在线时长与 PTM 差值对齐（读 `%PTM_playtime_s_<名>%` 秒数 → 控制台 `/playtime <名> add|remove <差值>s`）；玩家退出时 + 每 30 分钟周期兑底；阈值 300s/冷却 10 分钟防抖；未装则整体不启用 |
 | 查在线/在线排行榜/财富榜 | `PublicCommands.kt` + `LeaderboardCommands.kt` + `CoinsLeaderboardCommands.kt` + `render/OnlineListRenderer.kt`/`LeaderboardRenderer.kt` | 图片分段发送（每页 15 人）、命令冷却 `render.command-cooldown-seconds`、内置背景图（backgrounds/，img/ 可自定义随机） |
 | /查在线 markdown | `markdown.queryOnline` → online.md | 关图片走模板文本 |
 | /motd | `PublicCommands.motd`（无参=本服状态 server-status 模板）→ **带参转发 `MotdCommands`**（minebbs API，motd-* 模板） | 1.6.3 修复了转发缺失导致 MotdCommands 永不可达 |
@@ -111,14 +113,14 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 - **/hb chs**：手动重连（重置全部计数→QClient.resumeConnection；socket 不可达时回退完整重启）。Spigot：HuHoBotCommand+plugin.yml；NeoForge：NeoForgeCommands 双 literal。
 - 看门狗/兜底重连在挂起期间凭 `ReconnectManager.isSuspended()` 停连。
 
-### 3.3 双服务器同绑一个机器人（1.6.3 的核心修复，务必理解）
+### 3.3 双服务器同绑一个机器人（1.6.3 检测，1.6.4 处置重做，务必理解）
 
 QQ 同一 AppID 的第二条连接**不总是被立刻踢**。三种实测形态：
 1. **互踢**（轮流掉线）：短命会话（READY 后 <90 秒被关）连续 3 次/10 分钟 → WssDiagnostics 判定 → 醒目提示后继续重试体系（不停机）。
 2. **鉴权期被拒**（第二台 Identify/Resume 被关，readyAt=0）：凭据自检 lastCheckOk==true 时计入互踢证据（凭据有效却连不上=网关拒本连接）→ 同上判定。
 3. **双连接共存**（1.6.3 新发现）：两台同时在线同时处理同一条消息。被动回复去重键=(msg_id, msg_seq)，两台序号都从 1 起→后发的被 40054005「消息被去重」拒收；图片渲染慢必输——**这是 1.6.0/1.6.1「回复图片消息失败」的真正根因**（当时误判为网关重投递）。
 
-**消息级实锤检测 ConflictWatch**（`bot/ConflictWatch.kt`）：ReplySeqGuard 保证本进程序号不重复→被 40054005 拒收的唯一解释=另一个客户端抢先回复同一条消息。10 分钟内 3 次→判定成立→`ReconnectManager.onDedupConflictConfirmed`：醒目输出原因+处理方法（关闭其一或换机器人，/hb chs 恢复）→ **断开本服机器人+停止自动重连**（不走 30 分钟轮次：配置错误重试无意义）。钩子挂点：QClient 四个回复方法的 catch+ret 分支、MessageTemplates、GroupMsgSender。
+**消息级实锤检测 ConflictWatch**（`bot/ConflictWatch.kt`）：ReplySeqGuard 保证本进程序号不重复→被 40054005 拒收的唯一解释=另一个客户端抢先回复同一条消息。10 分钟内 3 次→判定成立→`ReconnectManager.onDedupConflictConfirmed`：醒目输出一次原因+处理方法（关闭其一或换机器人）。**1.6.4 处置（参考 HuHoBot 主客户端「连接层永不放弃重试」的做法）：不再断开连接、不再停止自动重连**，连接与统一重试体系（每轮 5 次×3 轮 + /hb chs）照常运转；管理员处理后连接自然稳定。钩子挂点：QClient 四个回复方法的 catch+ret 分支、MessageTemplates、GroupMsgSender。WssDiagnostics 的互踢证据（短命会话/鉴权期被关）1.6.4 起也改为**仅文件短记录**（不再每次输出嘆人的控制台 ERROR，判定成立才醒目提示一次）。
 
 **ReplySeqGuard（1.6.2，保留）**：GroupMessageHandler 入口按 msg_id 分配回复序号基数（第 1 次=1，第 N 次重投递=1+(N-1)×100000），防网关弱网/会话恢复重投递到**本服**时的序号重复；同时使 40054005 成为双服冲突的可靠信号。
 
@@ -126,9 +128,11 @@ QQ 同一 AppID 的第二条连接**不总是被立刻踢**。三种实测形态
 
 `bot/UpdateChecker.kt`：启动后异步 8 秒 GET `https://kerong.xin/penguin/version.json`，逐段数字比较版本；有新版→控制台输出带 § 颜色码的版本号/下载页/最多 6 行简要日志（1.6.4：版本号绿色加粗、链接蓝色、条目灰白分级）；失败→控制台一句话，细节进日志。`update-check.enabled` 可关。**每次发版必须更新服务器上的 version.json**。§ 颜色码处理：Spigot 系控制台直接渲染；NeoForge 适配器 `log_info/log_warning/log_error` 输出前统一过 `PluginFileLog.stripColorCodes`（log4j 不渲染 §，否则乱码）；文件日志始终剥离。共享代码可以放心在控制台文案里用 § 颜色码。
 
-### 3.5 渲染管线
+### 3.5 渲染管线与头像获取（1.6.4 头像修复）
 
 CPU 渲染（CardRenderPool 共享线程池）、结果缓存、头像 LRU+字节预算、背景图内置+随机 LRU、长图封顶 1600px、子采样解码防 OOM。图片发送：`replyWithImgBytes`（base64 上传），读超时（SDK OkHttp 10 秒 < QQ 富媒体普遍 10 秒+应答）**不算失败**（图片大概率已投递，1.6.1）；ret 2022021x=已受理算成功。
+
+**头像链路**（`InfoCardRenderer.kt` 的 InfoCardAssets）：在线 Profile → playerdata NBT → Mojang 会话服务器（v4）→ 名字反查 →（均失败时 1.6.4 新增）**Crafatar CDN 回退**（`https://crafatar.com/avatars/<uuid>?size=216&overlay`，仅 v4 UUID，404 可检测）。**1.6.4 关键修复：Mojang 官方接口网络级失败（超时/IO/429/5xx）开启 5 分钟全局冷却**——「大部分玩家头像获取失败」的根因是服务器到 Mojang 的线路不稳，旧版每个玩家都先等 5 秒超时才能失败，在线列表 8 秒预热预算全部耗尽；冷却期内直接跳过官方链路（走 Crafatar 或诚实失败），不再逐玩家等超时。会话服务器超时也从 5 秒降到 3 秒。离线服无皮肤数据的玩家仍诚实画占位块（不做「人人史蒂夫」假回退）。
 
 ### 3.6 配置系统
 
@@ -194,17 +198,19 @@ CPU 渲染（CardRenderPool 共享线程池）、结果缓存、头像 LRU+字�
 | 控制台双时间戳 | 服务端已按行输出时间，插件别再拼 [yyyy-MM-dd HH:mm:ss] |
 | 40054005 ≠ 单一原因 | 单服=网关重投递（ReplySeqGuard 已防）；双服=另一台抢先回复（ConflictWatch 实锤）。修图片发送问题先确认是不是双服务器同绑 |
 | 图片读超时≠失败 | QQ 富媒体应答普遍 10 秒+ > SDK OkHttp readTimeout 10 秒，读超时按 WARNING 不提示失败 |
-| Mojang 429 限流 | 名字反查限流/网络异常不写负缓存（写永久负缓存=头像永远失败，1.6.2 修）；404 才写且 30 分钟有效 |
+| Mojang 429 限流/网络不可达 | 名字反查限流/网络异常不写负缓存（1.6.2 修）；1.6.4 网络级失败另开 5 分钟全局冷却（避免逐玩家等超时）；404 才写且 30 分钟有效 |
+| 停机 zip closed | Paper/Purpur 停机阶段会提前关插件 jar 的 ZipFile，onDisable 首次类加载报错；onEnable 预热 CommandOutputAppender.getInstance()（1.6.4 修），onDisable 每步独立 try-catch |
 | 指令重载配置 | 已移除该概念：改配置一律重启（配置头注释+教程+文档三处一致） |
 | Kloping 线程池 | 关服后 50+ 非守护线程不退出 → SptCompat 清扫 + 5 秒 halt(0) 兜底 |
 | 死代码教训 | 1.6.3 审计删除 21 项零引用声明+剔除 1.3MB 未用库；新死代码判定要查**三个模块+脚本+资源+反射**（@Commands/@SubscribeEvent/@EventReceiver 反射入口不算死） |
 
 ---
 
-## 7. 当前已知状态（2026-10-14，v1.6.4）
+## 7. 当前已知状态（2026-10-15，v1.6.4 第二批完成）
 
-- 双端 1.6.4 代码完成、构建打包门禁冒烟全部通过；发版流程：git commit→push、上传 JAR/源码包、官网三文件同步（见第 5 节清单）。
-- 1.6.4 改动：QQ 绑定拦截策略双端重做（老玩家进服前拦截/新玩家建档后踢出，NeoForge 配置阶段闸门 BindLoginGate）、更新检查更新日志彩色输出（NeoForge 自动剥 §）。
-- 1.6.3 已发版完成（双服同绑实锤检测 ConflictWatch、JUL→SLF4J 桥、死代码瘦身）。
-- 待观察：ConflictWatch 在真实双服环境的触发情况（用户此前用 NeoForge+Spigot 各一台绑同一机器人复现过）；BindLoginGate 在真实未绑定老玩家连接下的提示显示效果。
-- 官网历史下载目前保留：1.5.6.1 ~ 1.6.3 共 9 版 ×2 JAR；再旧版本已按用户要求删除（保留策略如需调整问用户）。
+- 双端 1.6.4 全部完成（构建/门禁 82 项/冒烟 13 项通过）：
+  - 第一批：QQ 绑定拦截策略双端重做（老玩家进服前拦截/新玩家建档后踢出，NeoForge 配置阶段闸门 BindLoginGate）、更新检查更新日志彩色输出（NeoForge 自动剥 §）；
+  - 第二批（2026-10-15）：停机 zip closed 修复（onEnable 类预热）；双服同绑保护重做（确凿冲突不再断开不停重试，参考 HuHoBot；单次短命提示删除仅文件短记录）；PlayerTitle 称号适配（PAPI %playerTitle_use%，来源链 DeluxeTags→PlayerTitle→Vault）；PlayTimeManager 在线时长同步（PlayTimeSync 差值对齐）；头像修复（Mojang 网络全局冷却 + Crafatar CDN 回退 + 会话服务器 3 秒超时）；logQuiet 兑底改走 BotShared（消除 [STDOUT] 裸格式）。
+- 1.6.3 已发版完成；1.6.2 及更早历史版本详见 git log 与官网更新日志。
+- 待观察：PlayTimeSync 在真实 PTM 环境的修正效果（需同时装 PlayTimeManager + PlaceholderAPI）；头像 Crafatar 回退在中国大陆的可达性；BindLoginGate 在真实未绑定老玩家连接下的提示显示效果。
+- 官网历史下载：1.6.4 起只保留 1.6.0+ 版本（更旧已按用户要求删除）。
