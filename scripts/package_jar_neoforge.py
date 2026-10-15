@@ -28,7 +28,7 @@
      自动模块导出全部包，与整合包中其他模块同包即 ResolutionException（实测复现：
      KFF 的 kotlin.stdlib 模块 → "export package kotlin.jvm"）。重定位范围：
      kotlin / kotlinx / okhttp3 / okio / fastjson / snakeyaml / bouncycastle /
-     jsoup / java_websocket / jetbrains / intellij 注解 → cn.huohuas001.shaded.*；
+     jsoup / java_websocket / jetbrains / intellij 注解 → cn.kerong.shaded.*；
      不重定位 io.github.kloping（组件扫描按原始包名枚举 jar 条目，改写会断）与
      quartz / c3p0 / HikariCP 等服务端基础设施库（模组生态不携带，quartz 配置键
      字符串重写有断连风险）。同包资源（okhttp publicsuffix 等）保持原位——非类
@@ -61,13 +61,14 @@ RELOCATE_PREFIXES = (
     "org/yaml/", "org/bouncycastle/", "org/jsoup/", "org/java_websocket/",
     "org/jetbrains/", "org/intellij/",
 )
-RELOCATE_TARGET = "cn/huohuas001/shaded"
+RELOCATE_TARGET = "cn/kerong/shaded"
 
 MC_VERSION = "1.21.1"
 MOD_ID = "kerongpenguin"
 
-# base JAR 中需要剔除的内容（全部由新编译产物或模组资源提供）
-EXCLUDE_PREFIXES = ("cn/huohuas001/", "fonts/", "Markdown/", "backgrounds/")
+# base JAR 中需要剔除的内容（全部由新编译产物或模组资源提供）。
+# cn/huohuas001/ 兼容旧版 base JAR：旧包名字节码一并剔除，防止新旧双份。
+EXCLUDE_PREFIXES = ("cn/kerong/", "cn/huohuas001/", "fonts/", "Markdown/", "backgrounds/")
 EXCLUDE_EXACT = {
     "plugin.yml",
     "config.yml",

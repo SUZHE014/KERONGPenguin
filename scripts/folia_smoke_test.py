@@ -85,7 +85,7 @@ def verify(scene: str, log: str):
     check(f"{tag} 插件被服务器加载（folia-supported 声明生效）",
           re.search(r"Loading( server plugin)? KERONGPenguin v", log) is not None)
     check(f"{tag} 插件启用成功", "Enabling KERONGPenguin" in log)
-    check(f"{tag} onEnable 完成（HuHoBot Penguin 已加载）", "HuHoBot Penguin 已加载" in log)
+    check(f"{tag} onEnable 完成（KERONGPenguin 已加载）", "KERONGPenguin 已加载" in log)
     check(f"{tag} 服务器完整启动（Done）", re.search(r"Done \([\d.]+s\)", log) is not None)
     check(f"{tag} /hb help 命令响应", "===== /hb 命令帮助 =====" in log)
     check(f"{tag} /qq help 命令响应", "/qq help" in log and "查看此帮助" in log)

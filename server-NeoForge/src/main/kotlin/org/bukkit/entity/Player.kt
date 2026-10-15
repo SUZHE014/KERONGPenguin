@@ -60,12 +60,12 @@ class NeoPlayer(internal val handle: ServerPlayer) : Player {
 
     override fun sendMessage(message: String) {
         handle.sendSystemMessage(
-            cn.huohuas001.huhobotPenguin.neoforge.LegacyText.toComponent(message)
+            cn.kerong.penguin.neoforge.LegacyText.toComponent(message)
         )
     }
 
     override fun kickPlayer(reason: String) {
-        handle.connection.disconnect(cn.huohuas001.huhobotPenguin.neoforge.LegacyText.toComponent(reason))
+        handle.connection.disconnect(cn.kerong.penguin.neoforge.LegacyText.toComponent(reason))
     }
 
     override fun getStatistic(statistic: Statistic): Int = try {

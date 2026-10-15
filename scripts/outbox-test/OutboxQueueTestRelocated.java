@@ -1,5 +1,5 @@
-import cn.huohuas001.bot.OutboxQueue;
-import cn.huohuas001.shaded.kotlin.jvm.functions.Function0;
+import cn.kerong.bot.OutboxQueue;
+import cn.kerong.shaded.kotlin.jvm.functions.Function0;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -10,7 +10,7 @@ import java.util.concurrent.CountDownLatch;
  *
  * 与 scripts/outbox-test/OutboxQueueTest.java 同一用例集，区别：
  * 从**实际分发的 NeoForge 模组 JAR** 中加载重定位后的 OutboxQueue
- * （Function0 / Unit 等 kotlin 类型为 cn.huohuas001.shaded.* 命名空间），
+ * （Function0 / Unit 等 kotlin 类型为 cn.kerong.shaded.* 命名空间），
  * 在独立 JVM 里验证发布产物内异步发送队列的真实语义：
  *  1. submit() 入队即返回（不随任务耗时阻塞调用线程）；
  *  2. 单线程 FIFO：任务按提交顺序串行执行；
@@ -31,10 +31,10 @@ public class OutboxQueueTestRelocated {
     static CountDownLatch latch;
     static int failures = 0;
 
-    static Function0<cn.huohuas001.shaded.kotlin.Unit> task(String id, long sleepMs, boolean boom) {
-        return new Function0<cn.huohuas001.shaded.kotlin.Unit>() {
+    static Function0<cn.kerong.shaded.kotlin.Unit> task(String id, long sleepMs, boolean boom) {
+        return new Function0<cn.kerong.shaded.kotlin.Unit>() {
             @Override
-            public cn.huohuas001.shaded.kotlin.Unit invoke() {
+            public cn.kerong.shaded.kotlin.Unit invoke() {
                 try {
                     if (workerThreadName == null) {
                         Thread t = Thread.currentThread();
@@ -47,7 +47,7 @@ public class OutboxQueueTestRelocated {
                         order.add(id);
                         times.add(System.currentTimeMillis());
                     }
-                    return cn.huohuas001.shaded.kotlin.Unit.INSTANCE;
+                    return cn.kerong.shaded.kotlin.Unit.INSTANCE;
                 } finally {
                     latch.countDown();
                 }
@@ -88,11 +88,11 @@ public class OutboxQueueTestRelocated {
 
         // 6：shutdown 尽力清空（先入队一个慢任务再关）
         CountDownLatch drainLatch = new CountDownLatch(1);
-        OutboxQueue.INSTANCE.submit(new Function0<cn.huohuas001.shaded.kotlin.Unit>() {
-            @Override public cn.huohuas001.shaded.kotlin.Unit invoke() {
+        OutboxQueue.INSTANCE.submit(new Function0<cn.kerong.shaded.kotlin.Unit>() {
+            @Override public cn.kerong.shaded.kotlin.Unit invoke() {
                 try { Thread.sleep(300); } catch (InterruptedException ignored) {}
                 drainLatch.countDown();
-                return cn.huohuas001.shaded.kotlin.Unit.INSTANCE;
+                return cn.kerong.shaded.kotlin.Unit.INSTANCE;
             }
         });
         long ts = System.currentTimeMillis();

@@ -4,7 +4,7 @@
 
 1. [引入 SDK](#1-引入-sdk)
 2. [QClient API](#2-qclient-api)
-3. [HuHoBotSpigot 主类 API](#3-huhobotspigot-主类-api)
+3. [KERONGSpigot 主类 API](#3-kerongspigot-主类-api)
 4. [NicknameManager 昵称管理](#4-nicknamemanager-昵称管理)
 5. [BindingRepository 绑定仓库](#5-bindingrepository-绑定仓库)
 6. [BindingInfo 绑定信息](#6-bindinginfo-绑定信息)
@@ -35,17 +35,17 @@ depend:
   - KERONGPenguin
 ```
 
-> ⚠️ **注意**：魔改版插件名为 `KERONGPenguin`（非 `HuHoBotPenguin`），`depend` 需使用 `KERONGPenguin`。
+> ⚠️ **注意**：魔改版插件名为 `KERONGPenguin`（非 `KERONGPenguin`），`depend` 需使用 `KERONGPenguin`。
 
 ### 获取主插件实例
 
 ```java
-import cn.huohuas001.huhobotPenguin.spigot.HuHoBotSpigot;
+import cn.kerong.penguin.spigot.KERONGSpigot;
 import org.bukkit.plugin.Plugin;
 
 Plugin raw = getServer().getPluginManager().getPlugin("KERONGPenguin");
-if (raw instanceof HuHoBotSpigot) {
-    HuHoBotSpigot bot = (HuHoBotSpigot) raw;
+if (raw instanceof KERONGSpigot) {
+    KERONGSpigot bot = (KERONGSpigot) raw;
 }
 ```
 
@@ -53,7 +53,7 @@ if (raw instanceof HuHoBotSpigot) {
 
 ## 2. QClient API
 
-`cn.huohuas001.bot.QClient`，通过 `QClient.INSTANCE` 访问。
+`cn.kerong.bot.QClient`，通过 `QClient.INSTANCE` 访问。
 
 | 方法 | 签名 | 说明 |
 |------|------|------|
@@ -82,9 +82,9 @@ QClient.INSTANCE.sendMarkdownToGroup(groupOpenId, "# 标题", null);
 
 ---
 
-## 3. HuHoBotSpigot 主类 API
+## 3. KERONGSpigot 主类 API
 
-`cn.huohuas001.huhobotPenguin.spigot.HuHoBotSpigot`，实现 `HuHoBot` 接口。
+`cn.kerong.penguin.spigot.KERONGSpigot`，实现 `KERONG` 接口。
 
 ### 消息发送
 
@@ -150,8 +150,8 @@ QClient.INSTANCE.sendMarkdownToGroup(groupOpenId, "# 标题", null);
 
 ```java
 Plugin raw = getServer().getPluginManager().getPlugin("KERONGPenguin");
-if (raw instanceof HuHoBotSpigot) {
-    HuHoBotSpigot bot = (HuHoBotSpigot) raw;
+if (raw instanceof KERONGSpigot) {
+    KERONGSpigot bot = (KERONGSpigot) raw;
     // 广播消息
     bot.broadcastMessage("通知内容");
     // 格式化消息
@@ -167,7 +167,7 @@ if (raw instanceof HuHoBotSpigot) {
 
 > ✅ **已同步**（1.0.3.8 起）
 
-`cn.huohuas001.bot.NicknameManager`，通过 `NicknameManager.INSTANCE` 访问。
+`cn.kerong.bot.NicknameManager`，通过 `NicknameManager.INSTANCE` 访问。
 
 管理 QQ 群昵称 ↔ OpenId 的映射，用于 `sendAtToGroups` 解析艾特目标。
 
@@ -184,7 +184,7 @@ if (raw instanceof HuHoBotSpigot) {
 | `size()` | `int` | 获取映射数量 |
 
 ```java
-import cn.huohuas001.bot.NicknameManager;
+import cn.kerong.bot.NicknameManager;
 
 // 添加昵称映射
 NicknameManager.INSTANCE.put("张三", "openId_xxx");
@@ -205,7 +205,7 @@ for (kotlin.Pair<String, String> pair : NicknameManager.INSTANCE.matchByPrefix("
 
 > ✅ **已同步**（1.0.3.8 起）
 
-`cn.huohuas001.bot.state.BindingRepository`
+`cn.kerong.bot.state.BindingRepository`
 
 管理群级 QQ 绑定关系（按 groupOpenId 分组）。每个绑定记录是 `BindingInfo`。
 
@@ -221,8 +221,8 @@ for (kotlin.Pair<String, String> pair : NicknameManager.INSTANCE.matchByPrefix("
 | `replaceAll(bindings)` | `void` | 替换全部绑定数据 |
 
 ```java
-import cn.huohuas001.bot.state.BindingRepository;
-import cn.huohuas001.bot.datapack.BindingInfo;
+import cn.kerong.bot.state.BindingRepository;
+import cn.kerong.bot.datapack.BindingInfo;
 
 BindingRepository repo = new BindingRepository(() -> kotlin.Unit.INSTANCE);
 
@@ -250,7 +250,7 @@ Map<String, BindingInfo> all = repo.allInGroup(groupOpenId);
 
 > ✅ **已同步**（1.0.3.8 起）
 
-`cn.huohuas001.bot.datapack.BindingInfo`
+`cn.kerong.bot.datapack.BindingInfo`
 
 不可变数据类，存储单个绑定记录。
 
@@ -294,7 +294,7 @@ BindingInfo copy = info.copy("Alex", "nickname", "default");
 
 | 命令 | 说明 | 同步状态 |
 |------|------|------|
-| `/kerong reload` | 重载配置（别名 /huhobot、/hb） | ✅ 可用 |
+| `/kerong reload` | 重载配置（别名 /hb） | ✅ 可用 |
 | `/kerong info` | 查看适配器信息 | ✅ 可用 |
 | `/kerong panel` | 重新同步 QQ 快捷指令面板 | ✅ 可用 |
 | `/at <昵称> <消息>` | 向 QQ 群发送艾特消息 | ⚠️ 尚未同步（依赖 QClient.sendAtToGroups） |
@@ -308,13 +308,13 @@ BindingInfo copy = info.copy("Alex", "nickname", "default");
 ### 包路径
 
 ```
-cn.huohuas001.huhobotPenguin.spigot.api.KERONGPenguinAPI
+cn.kerong.penguin.spigot.api.KERONGPenguinAPI
 ```
 
 ### 获取实例
 
 ```java
-import cn.huohuas001.huhobotPenguin.spigot.api.KERONGPenguinAPI;
+import cn.kerong.penguin.spigot.api.KERONGPenguinAPI;
 
 KERONGPenguinAPI api = KERONGPenguinAPI.getInstance();
 ```
@@ -346,7 +346,7 @@ KERONGPenguinAPI api = KERONGPenguinAPI.getInstance();
 ### 使用示例
 
 ```java
-import cn.huohuas001.huhobotPenguin.spigot.api.KERONGPenguinAPI;
+import cn.kerong.penguin.spigot.api.KERONGPenguinAPI;
 
 public class MyAddon extends JavaPlugin {
     @Override

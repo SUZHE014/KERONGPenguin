@@ -1,14 +1,14 @@
 # KERONGPenguin AI 交接知识库
 
 > **本文档的用途**：把本文件丢给一个对项目一无所知的 AI，它能立刻了解当前情况并接手工作。
-> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-15（v1.6.5 发版完成）。
+> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-15（v1.6.6 发版完成）。
 > 自包含版本（发给本地无任何东西的 AI）见官网 `AI-KNOWLEDGE.txt`，含从零开始的环境重建与凭据获取说明。
 
 ### 1.1 受限网络环境重建（2026-10-14 实战，环境重置后可用）
 
 本地环境丢失时按此重建（GitHub/Maven 官方源不通，走镜像）：
 - 克隆：`git clone https://gh-proxy.com/https://github.com/SUZHE014/KERONGPenguin.git`；
-- `common-Bot/libs/deps.jar` 不在 git：从官网下载 Spigot 分发 JAR，剔除 `cn/huohuas001/**`、`Markdown/`、`backgrounds/`、`fonts/`、`plugin.yml`、`config.yml` 后重建（脚本思路见 `/home/z/my-project/scripts/rebuild_deps_jar.py`）；
+- `common-Bot/libs/deps.jar` 不在 git：从官网下载 Spigot 分发 JAR，剔除 `cn/kerong/**`、`Markdown/`、`backgrounds/`、`fonts/`、`plugin.yml`、`config.yml` 后重建（脚本思路见 `/home/z/my-project/scripts/rebuild_deps_jar.py`）；
 - NeoForge libs：`scripts/build_neoforge_libs.py` 的镜像变体（BMCLAPI：`piston-meta/piston-data/libraries.minecraft.net/maven.neoforged.net/maven.minecraftforge.net` → `https://bmclapi2.bangbang93.com[+路径]`，maven 前缀多一级 `/maven`，libraries 前缀 `/libraries`）；ART 重映射耗时 5-10 分钟、内存 2G 够用；
 - Gradle 发行版：腾讯镜像 `https://mirrors.cloud.tencent.com/gradle/gradle-8.14.5-bin.zip` 预置到 `~/.gradle/wrapper/dists/gradle-8.14.5-bin/<wrapper 期望哈希>/`（哈希不是 md5，先跑一次 wrapper 看它建的目录名）；
 - JDK 21（含 javac 的完整 JDK，系统 JRE 不够）：清华 TUNA Adoptium 镜像 `https://mirrors.tuna.tsinghua.edu.cn/Adoptium/21/jdk/x64/linux/OpenJDK21U-jdk_x64_linux_hotspot_21.0.12.1_1.tar.gz`（华为 openjdk 目录已无包）；`~/.gradle/gradle.properties` 设 `org.gradle.java.installations.paths=/home/z/jdk21` 与 `auto-download=false`（foojay 会走 GitHub releases 被墙）；另需 `settings.gradle.kts` 若解析 foojay 失败可移除该插件（本地 JDK 已就位不需要自动下载）；
@@ -20,7 +20,7 @@
 
 KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项目：玩家在 QQ 群里查数据/签到/聊天，插件在服务器内渲染统计卡片图片并回发。Kotlin 多模块：`common-Bot`（全部业务核心）+ `server-Spigot`（Bukkit 插件版，支持 Spigot/Paper/Folia/混合端）+ `server-NeoForge`（NeoForge 1.21.1 模组版，复用 common-Bot 全部源码 + Spigot 的 manager 源码）。
 
-**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.5）。当前版本 **1.6.5**（品牌统一去 HuHoBot 化 / 重连成功提示修复 / 渲染内存与性能 / OpenId 反查隐私 / 配置注释精简）。
+**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.6）。当前版本 **1.6.6**（控制台真彩色 / 头像多备用线路与落盘缓存 / PlaceholderAPI 依赖检测 / 内部标识与包结构统一：包名 cn.kerong.bot 与 cn.kerong.penguin，主类 KERONGSpigot / KERONGNeoForge）。
 
 ---
 
@@ -43,7 +43,7 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 - fat JAR 必须保留**目录条目**（目录 entry），否则 SDK 组件扫描 NPE、机器人启动失败（0.1.5.1/0.1.5.4 的坑）；
 - 打包脚本以**上一版可分发 JAR 为底座**（依赖字节码来自底座，新编译产物覆盖插件类），运行前需要把上一版 JAR 下载到本地（服务器 `/wwwroot/penguin/downloads/` 有）；
 - **NeoForge 打包的底座必须用 Spigot 版 JAR**（不能用 NeoForge 版自己当底座，会把已重定位的依赖再处理一遍导致类丢失，产物体积骤降=坏的）；
-- NeoForge 版会做包重定位（kotlin/okhttp3/com.alibaba 等 → `cn.huohuas001.shaded`）+ 剔除 org/slf4j、com/google/gson（平台自带，split package 崩溃源）+ 剔除未使用库（c3p0/HikariCP/terracotta/webui/schema，1.6.3 起）；
+- NeoForge 版会做包重定位（kotlin/okhttp3/com.alibaba 等 → `cn.kerong.shaded`）+ 剔除 org/slf4j、com/google/gson（平台自带，split package 崩溃源）+ 剔除未使用库（c3p0/HikariCP/terracotta/webui/schema，1.6.3 起）；
 - `server-NeoForge/libs/`（编译期真实构件：mojmap minecraft、NeoForge、FML、bus、brigadier、authlib、deps.jar）不入 git，新环境先跑 `python3 scripts/build_neoforge_libs.py` 重建；
 - Gradle 构建：`./gradlew :common-Bot:jar :server-Spigot:jar` 与 `./gradlew :server-NeoForge:jar`。
 
@@ -57,7 +57,7 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 
 | 功能 | 实现 | 说明 |
 |---|---|---|
-| 命令分发 | `cn/huohuas001/bot/events/GroupMessageHandler.kt` | 群消息入口：ReplySeqGuard 基数分配 → 纯数字自动绑定 → 命令分发（首个匹配短路）→ @机器人 AI → 全量转发。命令用 `@Commands("名")` 注解，多触发名写 `@Commands("财富榜","金币榜")` |
+| 命令分发 | `cn/kerong/bot/events/GroupMessageHandler.kt` | 群消息入口：ReplySeqGuard 基数分配 → 纯数字自动绑定 → 命令分发（首个匹配短路）→ @机器人 AI → 全量转发。命令用 `@Commands("名")` 注解，多触发名写 `@Commands("财富榜","金币榜")` |
 | 命令开关/别名 | `spigot/manager/ConfigManager.kt`（COMMAND_ALIASES 映射） | 别名与主命令共用 `commands.<主名>` 开关；改命令名时：注解双名 + 别名映射 + 快捷菜单按钮 + config.yml 键迁移 + help.md + 教程同步 |
 | 消息模板 | `spigot/qqbind/MessageTemplates.kt` + 资源 `Markdown/*.md`（68 个） | 全部文本回复走模板：首次启动释放到数据目录 `Markdown/`，用户可改；`messages` 配置段映射模板 id→文件名。发文本用 sendDirect（带@）/sendPlain |
 | 绑定/解绑/黑名单 | `spigot/qqbind/QqBindManager.kt`（单例）+ `events/commands/BindCommands.kt` | 玩家进服未绑定发 5 位绑定码（可配置踢出拦截），群里 `/绑定 <码>` 或纯数字 4-12 位自动绑定；`/重新绑定`、`/黑名单`、`/解除黑名单` |
@@ -68,7 +68,7 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 | /查在线 markdown | `markdown.queryOnline` → online.md | 关图片走模板文本 |
 | /motd | `PublicCommands.motd`（无参=本服状态 server-status 模板）→ **带参转发 `MotdCommands`**（minebbs API，motd-* 模板） | 1.6.3 修复了转发缺失导致 MotdCommands 永不可达 |
 | AI 对话 | `spigot/qqbind/AiChat.kt` + `QClient.replyMarkdownWithReference` | @机器人触发；引用回复（MessageReference 协议）失败三级回退：引用→普通被动→纯文本；全局一份上下文 |
-| 快捷面板 | `cn/huohuas001/bot/MenuManager.kt` | QQ 官方面板 API，PUT 原地更新防丢面板，按钮 name≤14/desc≤30 单位预校验，40030009 重试 3 次；未装 Vault 隐藏财富榜按钮 |
+| 快捷面板 | `cn/kerong/bot/MenuManager.kt` | QQ 官方面板 API，PUT 原地更新防丢面板，按钮 name≤14/desc≤30 单位预校验，40030009 重试 3 次；未装 Vault 隐藏财富榜按钮 |
 | 管理命令 | `events/commands/AdministrationCommands.kt`（/执行 /管理员执行 /全量 /发信息 /黑名单…）+ `state/CommandRepositories.kt`（群级持久化） | 管理员判定：群主/群管理员（admin.mode=qq）或 OpenId 名单 |
 | 查询 OpenID | `PublicCommands`（/查询open ID[ <OpenId>]）+ `spigot/qqbind/OpenIdDirectory.kt` | OpenId↔QQ 昵称/绑定玩家 反查，懒加载 + 脏标记落盘；**1.6.5：反查结果的 OpenId 行仅管理员可见**（{openidPart} 变量 + CommandSupport.isAdmin 静默判定，旧默认模板经 MessageTemplates.DEFAULT_CONTENT_UPGRADES 自动升级） |
 
@@ -102,15 +102,15 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 - QqBindManager 构造期（instance 未赋值）日志直接走 `plugin.logger`，不走 logQuiet 的 println 兜底（1.6.3 修复 [STDOUT/] 格式问题）。
 - `logQuiet`（控制台+文件）/`logVerbose`（仅文件）：QQ 绑定业务日志。文件超 1GB 轮转。
 - 控制台行**不要**再拼时间戳（服务端已按行输出时间，1.6.1 修复重复时间戳）。
-- SDK 日志经 `HuHoBot.initializeRuntime` 的 LogSink 接管（错误→log_error，其余仅文件）。
+- SDK 日志经 `KERONG.initializeRuntime` 的 LogSink 接管（错误→log_error，其余仅文件）。
 
 ### 3.2 连接生命周期与重连（1.6.2 体系，1.6.3 增强）
 
-启动链：`HuHoBot.initializeRuntime` → `QClient.launchClient`（Starter(kloping SDK)，anyCloseReconnect=true，挂 `WssDiagnostics` 钩子）→ 凭据自检 `QqTokenHealth.check`（异步，结果存 `lastCheckOk`）。
+启动链：`KERONG.initializeRuntime` → `QClient.launchClient`（Starter(kloping SDK)，anyCloseReconnect=true，挂 `WssDiagnostics` 钩子）→ 凭据自检 `QqTokenHealth.check`（异步，结果存 `lastCheckOk`）。
 
 - **WssDiagnostics**（`bot/WssDiagnostics.kt`）：纯观察者钩子（**必须返回 true**，返回 false 会掐断 SDK 协议链——1.5.3 的 1006 死循环教训）。职责：协议帧落盘（Hello/READY/RESUMED/Identify/关闭/错误堆栈，业务帧仅计数）、心跳自愈（代发+假死检测）、鉴权 60 秒超时主动重连（90 秒限频）、看门狗（10 秒，MIN_PRIORITY）。
 - **ReconnectManager**（`bot/ReconnectManager.kt`）：重连编排。每次连接打开=1 次尝试 →「第 N 次（1/5）重试连接…」；连续 5 次失败→「重连超时」挂起（anyCloseReconnect=false+断开 socket），30 分钟后自动下一轮（新一轮清零计数），最多 3 轮，之后只能 /kerong chs。过程提示 `bot.reconnect-notify: false` 可关，**失败后的恢复指引不可关**。**1.6.5 成功提示双路**：鉴权完成（READY/RESUMED）即宣告「重连成功（第 N/5 次尝试）」——旧版要等存活满 90 秒，会话在 90 秒内被再次踢线就永远等不到（「部分重连成功没有提示」的根因）；互踢抖动（上一条会话短命）时保持沉默等 90 秒健康判定兑底，防成功/失败提示来回刷屏；首次连接（无关闭历史）不宣告。健康（≥90 秒）时仍清零全部计数。
-- **/kerong chs**（1.6.5 前主命令 /huhobot，别名 /hb、/huhobot 均保留）：手动重连（重置全部计数→QClient.resumeConnection；socket 不可达时回退完整重启）。Spigot：HuHoBotCommand+plugin.yml（命令名 kerong，aliases [hb, huhobot]，权限 kerong.command）；NeoForge：NeoForgeCommands 三 literal（kerong/hb/huhobot）。
+- **/kerong chs**（短别名 /hb）：手动重连（重置全部计数→QClient.resumeConnection；socket 不可达时回退完整重启）。Spigot：KERONGCommand+plugin.yml（命令名 kerong，aliases [hb]，权限 kerong.command）；NeoForge：NeoForgeCommands 双 literal（kerong/hb）。
 - 看门狗/兜底重连在挂起期间凭 `ReconnectManager.isSuspended()` 停连。
 
 ### 3.3 双服务器同绑一个机器人（1.6.3 检测，1.6.4 处置重做，务必理解）
@@ -132,7 +132,7 @@ QQ 同一 AppID 的第二条连接**不总是被立刻踢**。三种实测形态
 
 CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结果缓存、头像 LRU+字节预算、背景图内置+随机 LRU、长图封顶 1600px、子采样解码防 OOM。图片发送：`replyWithImgBytes`（base64 上传），读超时（SDK OkHttp 10 秒 < QQ 富媒体普遍 10 秒+应答）**不算失败**（图片大概率已投递，1.6.1）；ret 2022021x=已受理算成功。**1.6.5 内存策略**：移除渲染后 System.gc() 提示（Full GC 停顿伤 tick，render.gc-after-render 配置已废除并由升级器清理），改为确定性 flush——单次画布（各 render() 末尾）、中间图（皮肤贴图/缩放/cover）、缓存淘汰与 clearCaches 均在失去引用前 flush，剩余堆内存交给常规新生代 GC。
 
-**头像链路**（`InfoCardRenderer.kt` 的 InfoCardAssets）：在线 Profile → playerdata NBT → Mojang 会话服务器（v4）→ 名字反查 →（均失败时 1.6.4 新增）**Crafatar CDN 回退**（`https://crafatar.com/avatars/<uuid>?size=216&overlay`，仅 v4 UUID，404 可检测）。**1.6.4 关键修复：Mojang 官方接口网络级失败（超时/IO/429/5xx）开启 5 分钟全局冷却**——「大部分玩家头像获取失败」的根因是服务器到 Mojang 的线路不稳，旧版每个玩家都先等 5 秒超时才能失败，在线列表 8 秒预热预算全部耗尽；冷却期内直接跳过官方链路（走 Crafatar 或诚实失败），不再逐玩家等超时。会话服务器超时也从 5 秒降到 3 秒。离线服无皮肤数据的玩家仍诚实画占位块（不做「人人史蒂夫」假回退）。
+**头像链路**（`InfoCardRenderer.kt` 的 InfoCardAssets）：内存缓存（10 分钟）→ **磁盘缓存**（1.6.6 新增，plugins/KERONGPenguin/cache/avatars/，24 小时，512 文件上限，命中回填内存，重启后免重复请求）→ 在线 Profile → playerdata NBT → Mojang 会话服务器（v4）→ 名字反查 →（均失败时）**外部多线路回退**（1.6.6：MC-Heads → Minotar → Crafatar 按实测速度排序；基岩玩家（Floodgate UUID：msb 全 0 + lsb 高 16 位 0x0009，低 48 位为 xuid）走 MC-Heads xuid 线路 `https://mc-heads.net/avatar/xuid:<xuid>/216`；名字线路 MC-Heads → Minotar；生产实测 2026-10：MC-Heads 0.4s / Minotar 0.5s / Crafatar 5.8s，LittleSkin 与 mc-api.io 不可达弃用）。**1.6.4 关键修复：Mojang 官方接口网络级失败（超时/IO/429/5xx）开启 5 分钟全局冷却**——「大部分玩家头像获取失败」的根因是服务器到 Mojang 的线路不稳，旧版每个玩家都先等 5 秒超时才能失败，在线列表 8 秒预热预算全部耗尽；冷却期内直接跳过官方链路（走 Crafatar 或诚实失败），不再逐玩家等超时。会话服务器超时也从 5 秒降到 3 秒。离线服无皮肤数据的玩家仍诚实画占位块（不做「人人史蒂夫」假回退）。
 
 ### 3.6 配置系统
 
@@ -169,7 +169,7 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
 
 ## 5. 发版完整清单（做完所有工作后要进行的操作）
 
-1. **版本号五处**：根 `build.gradle.kts`、`server-Spigot/src/main/resources/plugin.yml`、`server-NeoForge/build.gradle.kts`、`server-NeoForge/src/main/resources/META-INF/neoforge.mods.toml`、`HuHoBotNeoForge.kt` 的 `MOD_VERSION`（+README 当前版本行）。
+1. **版本号五处**：根 `build.gradle.kts`、`server-Spigot/src/main/resources/plugin.yml`、`server-NeoForge/build.gradle.kts`、`server-NeoForge/src/main/resources/META-INF/neoforge.mods.toml`、`KERONGNeoForge.kt` 的 `MOD_VERSION`（+README 当前版本行）。
 2. **构建**：`./gradlew :common-Bot:jar :server-Spigot:jar` → `python3 scripts/package_jar.py <上一版Spigot JAR路径>`；`./gradlew :server-NeoForge:jar` → `python3 scripts/package_jar_neoforge.py <本版Spigot JAR路径>`（**NF 底座用 Spigot 版**）。
 3. **门禁+冒烟**：新写 `scripts/verify_jar_<版>.py`（断言本轮改动点+基线）跑过；新写 `scripts/smoke<版>/Test<版>.java`（javac/java 用 `~/.gradle/jdks/eclipse_adoptium-21-amd64-linux.2/bin/`，类路径=NF 分发 JAR+common-Bot/libs/deps.jar）跑过。历史门禁路径写死版本号，旧版 JAR 不在本地属正常。
 4. **README**：新增本版更新日志段，删到只剩最近三版。
@@ -206,11 +206,15 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
 
 ---
 
-## 7. 当前已知状态（2026-10-15，v1.6.5 发版完成）
+## 7. 当前已知状态（2026-10-15，v1.6.6 发版完成）
 
-- 双端 1.6.5 全部完成（构建/门禁 82 项/冒烟 17 项通过）：
-  - 启动消息「HuHoBot Penguin 已加载」→「KERONG Penguin 已加载」；
-  - 品牌统一：主命令 /huhobot→/kerong（plugin.yml+双端命令注册，旧名与 /hb 均为别名）；内部协议 huhobot run|adminrun→kerong（解析端兼容旧前缀）；审核环境变量 HUHOBOT_AUDIT_*→KERONG_AUDIT_*（旧名兑底）；状态文件头/BotShared 错误文案/mods.toml 描述等全部 KERONG 化。**类名与包名（HuHoBotSpigot 等标识符）刻意保留**（改类名会破坏 KERONGPenguinAPI 第三方兼容，且非用户可见）；
+- 双端 1.6.6 全部完成（构建 / 门禁 / 冒烟通过）：
+  - 控制台真彩色：ConsoleColors（§→ANSI 转义 + TerminalConsoleAppender 能力探测），双端 log_* 输出前转换（不支持 ANSI 的输出自动退化纯文本，文件日志始终剥离）；
+  - 头像：外部多线路回退（MC-Heads/Minotar/Crafatar + Floodgate xuid 基岩线路）+ 磁盘缓存（cache/avatars，24h）；
+  - PapiDependencyCheck：无 PlaceholderAPI 时启动后 12 秒与查询时各提示一次（金币 Vault 直连与 DeluxeTags 称号不受影响的说明写进提示）；
+  - 内部标识与包结构统一：包结构统一为 cn.kerong.*（bot / penguin），主类 KERONGSpigot / KERONGNeoForge / KERONG 接口，旧长名命令别名与旧协议前缀兼容层已删除；
+  - 1.6.5 历史项：启动消息「KERONG Penguin 已加载」；
+  - 品牌统一：主命令 /kerong（短别名 /hb）；内部协议 kerong run|adminrun；审核环境变量 KERONG_AUDIT_*；状态文件头/BotShared 错误文案/mods.toml 描述等全部 KERONG 化；
   - 重连成功提示修复（READY 即宣告 + 互踢防抖 + 退避新一轮清零计数）；
   - 渲染：移除 System.gc()（Full GC 停顿伤 tick），全链路确定性 flush；render.gc-after-render 配置废除（升级器自动清理）；
   - OpenId 反查管理员可见（含旧默认模板自动升级机制 DEFAULT_CONTENT_UPGRADES）；

@@ -74,16 +74,31 @@ server-NeoForge/ # NeoForge 1.21.1 平台适配（org.bukkit 兼容层 + @Mod �
 
 ## 版本
 
-当前版本：**1.6.5**（Spigot 插件版 / NeoForge 1.21.1 模组版同步更新，双线同版本号）
+当前版本：**1.6.6**（Spigot 插件版 / NeoForge 1.21.1 模组版同步更新，双线同版本号）
 
-> 1.6.5：品牌与体验打磨——控制台/内部命令全面去 HuHoBot 化，重连成功提示、
-> 渲染内存释放与 OpenId 反查隐私控制。
+> 1.6.6：控制台真彩色输出、头像多备用线路（含基岩玩家）与落盘缓存、
+> PlaceholderAPI 依赖检测、内部标识与包结构统一整理。
+
+### v1.6.6 更新日志（控制台真彩色 / 头像多线路 / 依赖检测）
+
+- **修复：更新检查控制台真彩色** —— 旧版彩色文案直出 § 颜色符号
+  （控制台不渲染），现统一转 ANSI 转义：双端（Spigot 系 / NeoForge）
+  控制台均输出真实彩色；输出重定向到文件时自动退化为纯文本；
+  插件自身日志文件始终剥离颜色码。
+- **新增：头像多备用线路与落盘缓存** —— 官方皮肤链路失败后的回退
+  链扩为 MC-Heads → Minotar → Crafatar（按实测速度排序，任一成功即用）；
+  基岩玩家（Floodgate）新增 Xbox xuid 线路首次可获取头像；头像结果
+  落盘（cache/avatars/，24 小时），重启后不再重复请求外部接口。
+- **新增：PlaceholderAPI 依赖检测** —— 未检测到 PlaceholderAPI 时，
+  启动后与查询时各提示一次受影响功能（PlayerTitle 称号 /
+  PlayTimeManager 时长同步），并说明金币与 DeluxeTags 称号不受影响。
+- **整理：内部代码标识与包结构统一** —— 主命令 /kerong（别名 /hb）；
+  内部协议前缀统一 kerong。
 
 ### v1.6.5 更新日志（品牌统一 / 重连与渲染体验优化）
 
-- **修复：启动消息误印** —— 控制台「HuHoBot Penguin 已加载」修正为
-  「KERONG Penguin 已加载」；内部代码与命令的品牌字样同步统一
-  （主命令 /huhobot 更名 /kerong，旧名与 /hb 保留为别名不受影响）。
+- **修复：启动消息误印** —— 控制台「KERONG Penguin 已加载」修正为
+  「KERONG Penguin 已加载」；主命令 /kerong（短别名 /hb）。
 - **修复：部分重连成功没有提示** —— 旧版要等会话存活满 90 秒才宣告
   「重连成功」，90 秒内被网关再次踢线时永远等不到；现在鉴权完成
   （READY/RESUMED）即提示（互踢抖动场景仍等 90 秒健康判定，防刷屏），
@@ -143,7 +158,7 @@ server-NeoForge/ # NeoForge 1.21.1 平台适配（org.bukkit 兼容层 + @Mod �
   lastCheckOk）通过时，鉴权期被关也计入互踢证据窗口：凭据有效却
   连不上 = 网关拒绝本连接，指向同 AppID 被另一台服务器占用。
 - **修复：模组版控制台出现原始格式日志**（`Oct 13, 2026 11:41:13 PM
-  cn.huohuas001…ConfigManager reload / INFO: …`，无 [KERONGPenguin/]
+  cn.kerong…ConfigManager reload / INFO: …`，无 [KERONGPenguin/]
   前缀）—— 兼容层 JavaPlugin.logger 原为裸 java.util.logging，NeoForge
   无 JUL 桥接。现挂 JUL→SLF4J 转发 Handler（幂等、父级输出关闭），
   共享源码（ConfigManager / QqBindManager）输出与 Spigot 版同为标准
@@ -186,7 +201,7 @@ server-NeoForge/ # NeoForge 1.21.1 平台适配（org.bukkit 兼容层 + @Mod �
   5 次 × 3 轮重试体系，服务器本体与插件其余功能不受影响；单次短命
   连接即输出醒目提示（修复旧版第二台服务器启动时控制台毫无明确
   提示的问题）。
-- **新增：/hb chs 手动重连命令**（Spigot /kerong chs 与 /hb chs 均可，1.6.5 前主命令为 /huhobot）——
+- **新增：/hb chs 手动重连命令**（Spigot /kerong chs 与 /hb chs 均可）——
   重连超时挂起或断线期间随时使用：重置重连计数并立即恢复连接
   （等价于 30 分钟退避结束后的自动重试）。
 - **新增：更新检查（update-check.enabled，默认开启）** —— 插件启动后

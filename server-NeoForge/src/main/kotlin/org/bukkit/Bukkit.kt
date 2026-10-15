@@ -3,7 +3,7 @@ package org.bukkit
 import net.minecraft.server.MinecraftServer
 import org.bukkit.entity.NeoPlayer
 import org.bukkit.entity.Player
-import cn.huohuas001.huhobotPenguin.neoforge.NeoServerRef
+import cn.kerong.penguin.neoforge.NeoServerRef
 
 /**
  * org.bukkit 兼容层（NeoForge 1.21.1 适配）。

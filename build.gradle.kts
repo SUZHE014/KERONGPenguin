@@ -3,6 +3,6 @@ plugins {
 }
 
 allprojects {
-    group = "cn.huohuas001"
-    version = "1.6.5"
+    group = "cn.kerong"
+    version = "1.6.6"
 }

@@ -23,7 +23,7 @@ class OfflinePlayerImpl private constructor(
     companion object {
         fun byUuid(uuid: UUID): OfflinePlayerImpl = OfflinePlayerImpl(
             try {
-                cn.huohuas001.huhobotPenguin.neoforge.NeoServerRef.server
+                cn.kerong.penguin.neoforge.NeoServerRef.server
                     ?.profileCache?.get(uuid)?.orElse(null)
             } catch (_: Throwable) {
                 null
@@ -32,7 +32,7 @@ class OfflinePlayerImpl private constructor(
 
         fun byName(name: String): OfflinePlayerImpl = OfflinePlayerImpl(
             try {
-                cn.huohuas001.huhobotPenguin.neoforge.NeoServerRef.server
+                cn.kerong.penguin.neoforge.NeoServerRef.server
                     ?.profileCache?.get(name)?.orElse(null)
             } catch (_: Throwable) {
                 null

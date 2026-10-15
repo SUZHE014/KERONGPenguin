@@ -27,7 +27,7 @@ sourceSets {
         // 共用源码：common-Bot 全部 + server-Spigot 的 manager 目录（ConfigManager，
         // 1.5.4 起参数放宽为 JavaPlugin，经兼容层复用）
         kotlin.srcDir(rootProject.file("common-Bot/src/main/kotlin"))
-        kotlin.srcDir(rootProject.file("server-Spigot/src/main/kotlin/cn/huohuas001/huhobotPenguin/spigot/manager"))
+        kotlin.srcDir(rootProject.file("server-Spigot/src/main/kotlin/cn/kerong/penguin/spigot/manager"))
     }
 }
 

@@ -45,7 +45,7 @@ abstract class JavaPlugin : Plugin {
      * 兼容层的 logger 供共享源码（ConfigManager / QqBindManager 等）调用
      * （它们按 Bukkit 习惯调用 JUL 的 info / warning）。旧版直接返回裸
      * JUL Logger，而 NeoForge 环境没有任何 JUL 桥接，控制台会打出
-     * 「Oct 13, 2026 11:41:13 PM cn.huohuas001…ConfigManager reload / INFO: …」
+     * 「Oct 13, 2026 11:41:13 PM cn.kerong…ConfigManager reload / INFO: …」
      * 这种原始格式——无 [KERONGPenguin/] 前缀、与服务器时间戳重复、
      * 也绕过了日志级别体系。
      *

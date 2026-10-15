@@ -26,8 +26,9 @@ COMMON_JAR = os.path.join(REPO, "common-Bot", "build", "libs", "common-Bot.jar")
 SPIGOT_JAR = os.path.join(REPO, "server-Spigot", "build", "libs", "server-Spigot.jar")
 DEFAULT_OUT_DIR = os.path.join(REPO, "build", "dist")
 
-# base JAR 中需要剔除的插件自身内容（全部由新编译产物提供）
-EXCLUDE_PREFIXES = ("cn/huohuas001/", "fonts/", "Markdown/", "backgrounds/")
+# base JAR 中需要剔除的插件自身内容（全部由新编译产物提供）。
+# cn/huohuas001/ 兼容旧版 base JAR：旧包名字节码一并剔除，防止新旧双份。
+EXCLUDE_PREFIXES = ("cn/kerong/", "cn/huohuas001/", "fonts/", "Markdown/", "backgrounds/")
 EXCLUDE_EXACT = {
     "plugin.yml",
     "config.yml",

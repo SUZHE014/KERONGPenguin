@@ -31,7 +31,7 @@ import java.util.zip.ZipOutputStream;
  * （KFF 的 kotlin.stdlib，经 Sinytra Connector 载入）时，双方都导出 kotlin.* 包，
  * 模块解析直接 ResolutionException（实测复现：export package kotlin.jvm）。
  *
- * 方案：把可与其他模组/平台撞包的第三方库整体重定位到 cn/huohuas001/shaded/ 前缀下：
+ * 方案：把可与其他模组/平台撞包的第三方库整体重定位到 cn/kerong/shaded/ 前缀下：
  *   - 类条目路径、目录条目路径同步重写；
  *   - 全部 .class 字节码经 ASM ClassRemapper 重写（常量池内所有类引用/描述符/签名）；
  *   - 方法体内 LDC 字符串常量（Class.forName 目标等）按斜杠/点号两种形态重写；
@@ -42,7 +42,7 @@ import java.util.zip.ZipOutputStream;
  *     基础设施库，模组生态极少携带，且 quartz 配置键字符串重写有断连风险）。
  *
  * 用法：java RelocateTool <in.jar> <out.jar> <targetPrefix> <srcPrefix1,srcPrefix2,...>
- *   例：java RelocateTool merged.jar out.jar cn/huohuas001/shaded/ kotlin/,okhttp3/,okio/
+ *   例：java RelocateTool merged.jar out.jar cn/kerong/shaded/ kotlin/,okhttp3/,okio/
  */
 public class RelocateTool {
 

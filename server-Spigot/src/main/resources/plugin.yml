@@ -1,6 +1,6 @@
 name: KERONGPenguin
-version: '1.6.5'
-main: cn.huohuas001.huhobotPenguin.spigot.HuHoBotSpigot
+version: '1.6.6'
+main: cn.kerong.penguin.spigot.KERONGSpigot
 api-version: '1.18'
 # 1.5.7.3：声明支持 Folia 多线程区域化核心——调度全部经 FoliaCompat 桥接
 # （全局区域/异步/实体三类调度器），实体状态操作走实体调度器；
@@ -13,11 +13,11 @@ description: KERONG Penguin - QQ bot integration with QQ binding, check-in and p
 author: KERONG
 
 commands:
-  # 1.6.5：主命令由 /huhobot 更名 /kerong；旧命令名与 /hb 保留为别名（老服务器习惯不受影响）
+  # 主命令 /kerong（短别名 /hb）；reload / info / panel / chs / help
   kerong:
     description: KERONG Penguin control command
     usage: "/kerong reload|info|panel|chs|help"
-    aliases: [hb, huhobot]
+    aliases: [hb]
     permission: kerong.command
   qq:
     description: QQ binding management command
