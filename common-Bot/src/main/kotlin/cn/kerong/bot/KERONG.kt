@@ -82,9 +82,15 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
         // 避免含消息内容的 Info / Debug 日志（如事件分发、WSS 帧）泄露到控制台。
         // 0.1.5.4：错误级别同步写入日志文件；普通级别改走 PluginFileLog
         // （同一份 qq-bind-日期.log，不再依赖 QqBindManager 实例初始化时序）。
+        // 1.6.6.3：SDK 断线重连路径的三条固定「ERROR」提示（kloping SDK 在
+        // delayIdentifyConnect / 未归类关闭码时按 error 级别输出）在重连风暴
+        // 期间会逐次刷屏控制台且语义误导（如 code 1000 正常踢线也报
+        // 「websocket closed with code 1011,server internal exception」）——
+        // 这三条改走仅文件；真正的协议异常仍由 WssDiagnostics.onError /
+        // ReconnectManager 汇总后在控制台醒目输出，其余未知 SDK 错误保留控制台。
         LoggerImpl.setLogSink(object : LoggerImpl.LogSink {
             override fun log(message: String, level: Int) {
-                if (level == -1) {
+                if (level == -1 && !isSdkReconnectNoise(message)) {
                     // 0.1.5.5：log_error 已双写（控制台 + 文件），直接委托避免重复写文件
                     log_error("[Bot] $message")
                 } else {
@@ -122,7 +128,9 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
         }, "qq-update-check").apply { isDaemon = true }.start()
     }
 
-    /** 停止运行时：断开 QQ 客户端。 */
+    /**
+     * 停止运行时：断开 QQ 客户端。
+     */
     fun shutdownRuntime() {
         try {
             QClient.shutdown()
@@ -216,6 +224,22 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
     /** 本地正则过滤 + 敏感词审核。 */
     fun auditText(text: String): String =
         SensitiveFilter.filter(filterText(text), auditBaseUrl(), auditApiKey(), auditModel(), sensitiveWords())
+
+    /**
+     * 判断 SDK 消息是否为断线重连路径的固定噪声（1.6.6.3）。
+     *
+     * kloping SDK 在连接关闭重试时会按 error 级别输出以下三条固定文案，
+     * 与真实错误无关（连接最终会自动恢复）：
+     * - 「暂未处理的异常code(%s)」——SDK 对未归类关闭码（如 QQ 网关正常踢线 1000）的兜底输出；
+     * - 「websocket closed with code 1011,server internal exception」——任何延迟重连
+     *   （含 -1 / 1001 / 1011 / 未归类码）都输出这条，并不代表服务端 1011；
+     * - 「reconnect in 3 seconds」——重连倒计时提示。
+     */
+    private fun isSdkReconnectNoise(message: String): Boolean {
+        return message.startsWith("暂未处理的异常code") ||
+            message == "websocket closed with code 1011,server internal exception" ||
+            message == "reconnect in 3 seconds"
+    }
 
     /** 内置 Markdown 模板资源映射。 */
     companion object {

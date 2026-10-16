@@ -35,6 +35,16 @@ import org.java_websocket.handshake.ServerHandshake
  * - 鉴权失败快速恢复：收到 Hello 后 60 秒仍未 READY/RESUMED 主动重连重新鉴权
  *   （90 秒限频，防止重连风暴）。
  *
+ * ## 1.6.6.3：日志降噪与双服检测移除
+ *
+ * - 连接关闭帧（`[WSS] 连接关闭：code=…`）、op 9 会话无效、op 7 要求重连等
+ *   **协议细节一律只写插件日志文件**，不再进控制台——重连风暴期间控制台
+ *   每轮要刷 8~10 条 WARN，实际有价值的信息（第几次重试 / 成功 / 超时）已由
+ *   [ReconnectManager] 汇总输出；完整帧对话仍可在文件里追溯；
+ * - 移除 1.6.1 起的「同 AppID 多连接互踢检测」（短命会话 / 鉴权期被关的证据
+ *   计数）：平台网关抖动导致的重连风暴会把它误判成「另一台服务器绑定了同一
+ *   个机器人」（实测单服务器连接时也触发），误导管理员排查方向。
+ *
  * ## 性能设计（极低占用）
  *
  * - 业务事件帧（op 0 非 READY）：**不做 JSON 解析、不落盘**，仅做一次内存计数；
@@ -94,35 +104,12 @@ object WssDiagnostics : WebSocketListener {
     @Volatile
     private var stopped = false
 
-    // ---------- 1.6.1：同 AppID 多连接互踢检测 ----------
-
-    /** 判定为「短命会话」的阈值：READY 后存活不足该毫秒数即被平台关闭。 */
-    private const val SHORT_SESSION_MS = 90_000L
-
-    /** 连续短命会话达到该次数判定为多连接互踢冲突。 */
-    private const val CONFLICT_SHORT_SESSIONS = 3
-
-    /** 短命会话窗口：首次短命关闭到触发判定的最大间隔（毫秒）。 */
-    private const val CONFLICT_WINDOW_MS = 600_000L
-
-    /** 连续短命会话计数（出现一次存活≥阈值的会话即清零）。 */
-    @Volatile
-    private var shortSessionCount = 0
-
-    /** 本次窗口内首次短命关闭的时间戳。 */
-    @Volatile
-    private var firstShortCloseAt = 0L
-
-    /** 已触发冲突停机（防止重复判定）。 */
-    @Volatile
-    private var conflictStopped = false
+    /** 会话「健康存活」阈值（毫秒）：READY 后存活达到即视为一次成功恢复。 */
+    private const val HEALTHY_MS = 90_000L
 
     /** 启动诊断看门狗（幂等）。 */
     fun start() {
         stopped = false
-        shortSessionCount = 0
-        firstShortCloseAt = 0L
-        conflictStopped = false
         if (watchdogThread?.isAlive == true) return
         val thread = Thread({
             runWatchdog()
@@ -135,66 +122,6 @@ object WssDiagnostics : WebSocketListener {
             "[WSS诊断] 钩子已挂载（观察者模式，放行 SDK 处理）：协议帧落盘 / 错误堆栈落盘 / " +
                 "心跳自愈（代发 + 假死检测）/ 鉴权失败快速重连已启用；业务事件仅计数不落盘"
         )
-    }
-
-    /**
-     * 1.6.3：互踢证据统一入口。
-     *
-     * 1.6.4：证据累计改为**完全静默**——用户反馈旧版每次短命关闭都输出的
-     * 「本服务器连接鉴权成功后仅存活 3 秒即被平台关闭…」ERROR 提示太嘆人
-     * （网络抖动也会触发），现仅在文件里留一行短记录（不上控制台），
-     * 达到阈值判定成立时才醒目输出一次原因；计数与判定逻辑不变。
-     */
-    private fun trackAuthRejected() {
-        recordConflictEvidence("鉴权前被关") { count ->
-            "已检测到机器人连接疑似被另一台服务器抢占：凭据有效但连接连续 $count 次" +
-                "在鉴权完成前被平台关闭（同 AppID 多连接冲突特征之一）。" +
-                "原因：极可能已有另一台服务器绑定了同一个机器人（bot.app-id 重复）"
-        }
-    }
-
-    /**
-     * 1.6.1：短命会话计数与互踢判定。
-     *
-     * 「鉴权成功后存活不足 90 秒即被平台关闭」连续出现 3 次（且都在 10 分钟内）
-     * 是同 AppID 多连接互踢的典型特征：两台服务器填同一个机器人凭据时会轮流
-     * 把对方踢下线，谁也连不稳。
-     *
-     * 1.6.2 行为：判定成立后**不再停机**，经 [ReconnectManager] 醒目输出原因
-     * 一次，连接继续走统一重试体系（每轮 5 次、最多 3 轮自动重试，期间可用
-     * /hb chs 手动重试），服务器本体与插件其余功能不受影响。
-     * 1.6.4：单次短命关闭不再输出控制台提示（仅文件短记录一行，见
-     * [recordConflictEvidence]）。
-     */
-    private fun trackShortSession(aliveMs: Long) {
-        recordConflictEvidence("短命会话 ${aliveMs / 1000} 秒") { count ->
-            "已检测到机器人连接被另一台服务器抢占：连接鉴权成功后连续 " +
-                "$count 次在数秒内被平台关闭（同 AppID 多连接互踢特征）。" +
-                "原因：已有另一台服务器绑定了同一个机器人（bot.app-id 重复）"
-        }
-    }
-
-    /**
-     * 互踢证据计数（窗口内累计达到阈值即判定冲突，只判定一次）。
-     *
-     * 1.6.4：单次证据仅写一行文件留档（不刷控制台，网络抖动不再产生嘆人提示）；
-     * 达到阈值才交 [QClient.stopForConflict] 醒目提示一次。
-     */
-    private fun recordConflictEvidence(evidence: String, reasonBuilder: (Int) -> String) {
-        val now = System.currentTimeMillis()
-        if (firstShortCloseAt == 0L || now - firstShortCloseAt > CONFLICT_WINDOW_MS) {
-            // 重新开窗：窗口外的零星证据不计入
-            firstShortCloseAt = now
-            shortSessionCount = 0
-        }
-        shortSessionCount++
-        PluginFileLog.write("[WSS] 连接冲突证据记录（$evidence，第 $shortSessionCount/$CONFLICT_SHORT_SESSIONS 次）")
-        if (shortSessionCount < CONFLICT_SHORT_SESSIONS) {
-            return
-        }
-        if (conflictStopped) return
-        conflictStopped = true
-        QClient.stopForConflict(reasonBuilder(shortSessionCount))
     }
 
     /** 停止看门狗（插件停机）。 */
@@ -231,8 +158,9 @@ object WssDiagnostics : WebSocketListener {
             when (quickOp(msg)) {
                 10 -> onHello(msg)
                 0 -> onDispatch(msg)
-                7 -> PluginFileLog.warnAndKeep("[WSS] <- 平台要求重连(op 7 Reconnect)，SDK 将自动处理")
-                9 -> PluginFileLog.warnAndKeep(
+                // 1.6.6.3：op 7 / op 9 属重连过程的协议细节，仅写文件不刷控制台
+                7 -> PluginFileLog.write("[WSS] <- 平台要求重连(op 7 Reconnect)，SDK 将自动处理")
+                9 -> PluginFileLog.write(
                     "[WSS] <- 会话无效(op 9 Invalid Session d=${JSON.parseObject(msg)?.get("d")}），平台要求重新鉴权"
                 )
                 11 -> {
@@ -312,36 +240,20 @@ object WssDiagnostics : WebSocketListener {
             1000 -> "平台正常关闭（网关定期踢线），SDK 将在 3 秒后自动重连"
             else -> "SDK 将按 anyCloseReconnect 策略在 3 秒后自动重连"
         }
-        PluginFileLog.warnAndKeep(
+        // 1.6.6.3：关闭帧细节只写文件（重连风暴防刷屏）；
+        // 汇总性的「第 N 次重试 / 成功 / 超时」由 ReconnectManager 在控制台输出
+        PluginFileLog.write(
             "[WSS] 连接关闭：code=$code 原因=${reason ?: "无"} 由${if (remote) "平台" else "本端"}发起（$hint）" +
                 " [本次连接累计：事件 $eventCount 帧 / 心跳应答 $ackCount 次${if (fallbackHeartbeatCount > 0) " / 插件代发心跳 $fallbackHeartbeatCount 次" else ""}]"
         )
-        // 1.6.1：同 AppID 多连接互踢检测（在 readyAt 清零前先取本次会话存活时长）
-        // 1.6.2：会话存活同时交重连编排计数（健康会话重置重试计数并宣告重连成功）
+        // 1.6.2：会话存活交重连编排计数（健康会话重置重试计数并宣告重连成功）
+        // 1.6.6.3：移除互踢证据计数（网关抖动会误判成双服抢占，不再做连接层冲突推断）
         val sessionReadyAt = readyAt
         if (sessionReadyAt > 0) {
             val aliveMs = System.currentTimeMillis() - sessionReadyAt
-            if (aliveMs < SHORT_SESSION_MS) {
-                trackShortSession(aliveMs)
-                ReconnectManager.onClosedAfter(aliveMs, healthy = false)
-            } else {
-                // 出现一次健康长会话：清零（QQ 网关正常踢线间隔远长于阈值）
-                shortSessionCount = 0
-                firstShortCloseAt = 0L
-                ReconnectManager.onClosedAfter(aliveMs, healthy = true)
-            }
+            ReconnectManager.onClosedAfter(aliveMs, healthy = aliveMs >= HEALTHY_MS)
         } else {
-            // 未能完成鉴权即被关闭：一次失败的重连尝试；
-            // 1.6.3：凭据自检已通过时，鉴权期被关的连接计入互踢证据窗口
-            // （凭据有效却连不上 = 网关拒绝本连接，同 AppID 被另一台服务器占用的特征）
-            val tokenOk = try {
-                QqTokenHealth.lastCheckOk == true
-            } catch (_: Throwable) {
-                false
-            }
-            if (tokenOk) {
-                trackAuthRejected()
-            }
+            // 未能完成鉴权即被关闭：一次失败的重连尝试
             ReconnectManager.onClosedAfter(0L, healthy = false)
         }
         // 会话随连接失效，READY 需要重新等待
@@ -443,8 +355,7 @@ object WssDiagnostics : WebSocketListener {
      * 主动重连（90 秒限频共用，防重连风暴）。
      *
      * 1.6.2：重连超时挂起期间（ReconnectManager 已关闭 SDK 自动重连，
-     * 等待 30 分钟退避或 /hb chs）看门狗不再兑底重连；
-     * 互踢冲突不再阻断看门狗（1.6.2 起冲突不停机，重试体系继续）。
+     * 等待 30 分钟退避或 /hb chs）看门狗不再兑底重连。
      */
     private fun forcedReconnect(socket: WebSocketClient, message: String) {
         if (ReconnectManager.isSuspended()) return
@@ -526,18 +437,8 @@ object WssDiagnostics : WebSocketListener {
  */
 object QqTokenHealth {
 
-    /**
-     * 最近一次自检结果（1.6.3 新增）：true = 凭据有效，false = 凭据无效，
-     * null = 自检未完成或无法访问接口。供 [WssDiagnostics] 鉴别「鉴权期被关」
-     * 的连接是凭据问题还是同 AppID 被另一台服务器占用。
-     */
-    @Volatile
-    var lastCheckOk: Boolean? = null
-        private set
-
     /** 执行自检并返回结果描述（调用方负责落盘，token 只返回前 8 位避免泄露）。 */
     fun check(appid: String, secret: String): String {
-        lastCheckOk = null
         var connection: java.net.HttpURLConnection? = null
         return try {
             val body = JSONObject()
@@ -561,8 +462,6 @@ object QqTokenHealth {
                 } catch (_: Throwable) {
                     null
                 }
-                // 1.6.3：记录自检结果（供 WssDiagnostics 鉴别鉴权期被关的连接成因）
-                lastCheckOk = !token.isNullOrEmpty()
                 if (!token.isNullOrEmpty()) {
                     "[鉴权自检] AppID 凭据有效（token 获取成功：${token.take(8)}****，接口返回 200）。" +
                         "若机器人仍无法鉴权，请查看日志中的 [WSS] 帧对话与错误堆栈定位协议层问题"
@@ -570,8 +469,6 @@ object QqTokenHealth {
                     "[鉴权自检] 接口返回 200 但响应缺少 access_token：${response.take(200)}"
                 }
             } else {
-                // 1.6.3：记录自检结果（false = 凭据无效，不计入互踢证据）
-                lastCheckOk = false
                 "[鉴权自检] AppID 凭据可能无效（接口 HTTP $code）：${response.take(200)}。" +
                     "请到 QQ 开放平台核对 AppID 与 Secret；凭据无效时机器人会持续陷入鉴权失败重连循环"
             }

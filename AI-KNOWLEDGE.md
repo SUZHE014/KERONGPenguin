@@ -1,7 +1,7 @@
 # KERONGPenguin AI 交接知识库
 
 > **本文档的用途**：把本文件丢给一个对项目一无所知的 AI，它能立刻了解当前情况并接手工作。
-> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-16（v1.6.6.2 发版完成）。
+> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-16（v1.6.6.3 发版完成）。
 > 自包含版本（发给本地无任何东西的 AI）见官网 `AI-KNOWLEDGE.txt`，含从零开始的环境重建与凭据获取说明。
 
 ### 1.1 受限网络环境重建（2026-10-14 实战，环境重置后可用）
@@ -20,7 +20,7 @@
 
 KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项目：玩家在 QQ 群里查数据/签到/聊天，插件在服务器内渲染统计卡片图片并回发。Kotlin 多模块：`common-Bot`（全部业务核心）+ `server-Spigot`（Bukkit 插件版，支持 Spigot/Paper/Folia/混合端）+ `server-NeoForge`（NeoForge 1.21.1 模组版，复用 common-Bot 全部源码 + Spigot 的 manager 源码）。
 
-**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.6.2）。当前版本 **1.6.6.2**（同日覆盖版：修复获取方式日志刷控制台（改文件+会话去重）、修复启动期内存飙升不回落（并发获取单飞 + render.idle-gc-hint 空闲 GC 归还 + /kerong mem 诊断）、图片渲染设计来源署名 issue #1 / 初版：修复清除缓存后极少玩家头像获取失败（网络抖动型失败不写冷却）+ 内存缓存 128 条 + 超 10KB 大头像只走磁盘缓存 + 渲染空闲内存释放（render.idle-release-minutes，默认 5）+ 磁盘缓存强关后启动即清 + 头像获取方式写日志（文件）/ 1.6.6.1 覆盖版：头像本地优先可配置、磁盘缓存 3 小时可配置、MinePic 线路、渲染内存再优化、删 WebUI、删 PlayTimeManager 时长同步 / 1.6.6：控制台真彩色、头像多线路与落盘、PlaceholderAPI 依赖检测，包名 cn.kerong.bot 与 cn.kerong.penguin，主类 KERONGSpigot / KERONGNeoForge）。
+**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.6.3）。当前版本 **1.6.6.3**（重连风暴降噪：WSS 协议帧与 SDK 三条固定重连噪声改仅文件日志、重连控制台只报里程碑、移除会误报的双服同绑检测（ConflictWatch 整体删除）、修复重连计数「第 6/5 次」越界、GC 归还内存提示改文件日志与配置注释标卡顿代价 / 1.6.6.2：缓存分层 + 空闲释放 + 失败分类 + 单飞 + idle-gc-hint + /kerong mem / 1.6.6.1 覆盖版：头像本地优先、删 WebUI、删 PlayTimeManager / 1.6.6：控制台真彩色、头像多线路，包名 cn.kerong.bot 与 cn.kerong.penguin，主类 KERONGSpigot / KERONGNeoForge）。
 
 ---
 
@@ -102,27 +102,24 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 - QqBindManager 构造期（instance 未赋值）日志直接走 `plugin.logger`，不走 logQuiet 的 println 兜底（1.6.3 修复 [STDOUT/] 格式问题）。
 - `logQuiet`（控制台+文件）/`logVerbose`（仅文件）：QQ 绑定业务日志。文件超 1GB 轮转。
 - 控制台行**不要**再拼时间戳（服务端已按行输出时间，1.6.1 修复重复时间戳）。
-- SDK 日志经 `KERONG.initializeRuntime` 的 LogSink 接管（错误→log_error，其余仅文件）。
+- SDK 日志经 `KERONG.initializeRuntime` 的 LogSink 接管（错误→log_error，其余仅文件；**1.6.6.3：SDK 重连路径三条固定噪声（暂未处理的异常code / websocket closed with code 1011… / reconnect in 3 seconds）也改仅文件**——kloping SDK 在 delayIdentifyConnect 与未归类关闭码时按 error 级别输出，重连风暴期间逐次刷屏且语义误导，见 `KERONG.isSdkReconnectNoise`）。
 
-### 3.2 连接生命周期与重连（1.6.2 体系，1.6.3 增强）
+### 3.2 连接生命周期与重连（1.6.2 体系，1.6.3 增强，1.6.6.3 风暴降噪）
 
-启动链：`KERONG.initializeRuntime` → `QClient.launchClient`（Starter(kloping SDK)，anyCloseReconnect=true，挂 `WssDiagnostics` 钩子）→ 凭据自检 `QqTokenHealth.check`（异步，结果存 `lastCheckOk`）。
+启动链：`KERONG.initializeRuntime` → `QClient.launchClient`（Starter(kloping SDK)，anyCloseReconnect=true，挂 `WssDiagnostics` 钩子）→ 凭据自检 `QqTokenHealth.check`（异步，结果文本落盘）。
 
-- **WssDiagnostics**（`bot/WssDiagnostics.kt`）：纯观察者钩子（**必须返回 true**，返回 false 会掐断 SDK 协议链——1.5.3 的 1006 死循环教训）。职责：协议帧落盘（Hello/READY/RESUMED/Identify/关闭/错误堆栈，业务帧仅计数）、心跳自愈（代发+假死检测）、鉴权 60 秒超时主动重连（90 秒限频）、看门狗（10 秒，MIN_PRIORITY）。
-- **ReconnectManager**（`bot/ReconnectManager.kt`）：重连编排。每次连接打开=1 次尝试 →「第 N 次（1/5）重试连接…」；连续 5 次失败→「重连超时」挂起（anyCloseReconnect=false+断开 socket），30 分钟后自动下一轮（新一轮清零计数），最多 3 轮，之后只能 /kerong chs。过程提示 `bot.reconnect-notify: false` 可关，**失败后的恢复指引不可关**。**1.6.5 成功提示双路**：鉴权完成（READY/RESUMED）即宣告「重连成功（第 N/5 次尝试）」——旧版要等存活满 90 秒，会话在 90 秒内被再次踢线就永远等不到（「部分重连成功没有提示」的根因）；互踢抖动（上一条会话短命）时保持沉默等 90 秒健康判定兑底，防成功/失败提示来回刷屏；首次连接（无关闭历史）不宣告。健康（≥90 秒）时仍清零全部计数。
+- **WssDiagnostics**（`bot/WssDiagnostics.kt`）：纯观察者钩子（**必须返回 true**，返回 false 会掐断 SDK 协议链——1.5.3 的 1006 死循环教训）。职责：协议帧落盘（Hello/READY/RESUMED/Identify/关闭/错误堆栈，业务帧仅计数）、心跳自愈（代发+假死检测）、鉴权 60 秒超时主动重连（90 秒限频）、看门狗（10 秒，MIN_PRIORITY）。**1.6.6.3 防刷屏**：关闭帧 / op9 会话无效 / op7 要求重连改 `PluginFileLog.write` 仅文件（旧版每次 WARN 上控制台，重连风暴一轮 8~10 条）；看门狗主动重连与心跳兜底仍控制台 WARN（有排查价值且 90 秒限频）。
+- **ReconnectManager**（`bot/ReconnectManager.kt`）：重连编排。每次连接打开=1 次尝试；**1.6.6.3 控制台只报里程碑**：本轮第 1 次（受 bot.reconnect-notify 控制）、最后一次、重连成功、重连超时（不可关），中间次数仅文件；连续 5 次失败→「重连超时」挂起（anyCloseReconnect=false+断开 socket），30 分钟后自动下一轮（新一轮清零计数），最多 3 轮，之后只能 /kerong chs。**1.6.6.3 计数越界修复**：挂起后 SDK 已排队的延迟重连（delayIdentifyConnect 3 秒后触发，无法从外部取消）仍会建连——onOpen 检测 attempt≥上限时按新一轮重置计数（旧版显示「第 6/5 次」越界）。**1.6.5 成功提示双路**：鉴权完成（READY/RESUMED）即宣告「重连成功（第 N/5 次尝试）」；短命会话后的 READY 保持沉默等 90 秒健康判定兑底；首次连接（无关闭历史）不宣告。健康（≥90 秒）时仍清零全部计数。
 - **/kerong chs**（短别名 /hb）：手动重连（重置全部计数→QClient.resumeConnection；socket 不可达时回退完整重启）。Spigot：KERONGCommand+plugin.yml（命令名 kerong，aliases [hb]，权限 kerong.command）；NeoForge：NeoForgeCommands 双 literal（kerong/hb）。
 - 看门狗/兜底重连在挂起期间凭 `ReconnectManager.isSuspended()` 停连。
 
-### 3.3 双服务器同绑一个机器人（1.6.3 检测，1.6.4 处置重做，务必理解）
+### 3.3 双服务器同绑一个机器人（1.6.1~1.6.6.2 检测，**1.6.6.3 整体移除**，务必理解）
 
-QQ 同一 AppID 的第二条连接**不总是被立刻踢**。三种实测形态：
-1. **互踢**（轮流掉线）：短命会话（READY 后 <90 秒被关）连续 3 次/10 分钟 → WssDiagnostics 判定 → 醒目提示后继续重试体系（不停机）。
-2. **鉴权期被拒**（第二台 Identify/Resume 被关，readyAt=0）：凭据自检 lastCheckOk==true 时计入互踢证据（凭据有效却连不上=网关拒本连接）→ 同上判定。
-3. **双连接共存**（1.6.3 新发现）：两台同时在线同时处理同一条消息。被动回复去重键=(msg_id, msg_seq)，两台序号都从 1 起→后发的被 40054005「消息被去重」拒收；图片渲染慢必输——**这是 1.6.0/1.6.1「回复图片消息失败」的真正根因**（当时误判为网关重投递）。
+**1.6.6.3 决策：双服同绑检测已全部移除（ConflictWatch 类删除、WssDiagnostics 证据计数删除、QClient.stopForConflict 删除、回复路径接入点删除）**。原因：平台网关抖动（会话无效 op 9 / create session error 4903 / 网关定期踢线 1000）引起的重连风暴会触发「短命会话连续 3 次」判定，向管理员误报「已有另一台服务器绑定了同一个机器人」——实测单服务器连接时也必然误报，误导排查方向。移除后重连风暴按本来面目（网络 / 平台问题）记录与重试。
 
-**消息级实锤检测 ConflictWatch**（`bot/ConflictWatch.kt`）：ReplySeqGuard 保证本进程序号不重复→被 40054005 拒收的唯一解释=另一个客户端抢先回复同一条消息。10 分钟内 3 次→判定成立→`ReconnectManager.onDedupConflictConfirmed`：醒目输出一次原因+处理方法（关闭其一或换机器人）。**1.6.4 处置（参考上游开源主客户端「连接层永不放弃重试」的做法）：不再断开连接、不再停止自动重连**，连接与统一重试体系（每轮 5 次×3 轮 + /hb chs）照常运转；管理员处理后连接自然稳定。钩子挂点：QClient 四个回复方法的 catch+ret 分支、MessageTemplates、GroupMsgSender。WssDiagnostics 的互踢证据（短命会话/鉴权期被关）1.6.4 起也改为**仅文件短记录**（不再每次输出嘆人的控制台 ERROR，判定成立才醒目提示一次）。
+历史背景（理解 40054005 修复链路仍有价值）：QQ 同一 AppID 的第二条连接**不总是被立刻踢**，两台同时在线时被动回复去重键=(msg_id, msg_seq) 双方都从 1 起→后发的被 40054005 拒收（1.6.0/1.6.1「回复图片消息失败」的根因之一）。
 
-**ReplySeqGuard（1.6.2，保留）**：GroupMessageHandler 入口按 msg_id 分配回复序号基数（第 1 次=1，第 N 次重投递=1+(N-1)×100000），防网关弱网/会话恢复重投递到**本服**时的序号重复；同时使 40054005 成为双服冲突的可靠信号。
+**ReplySeqGuard（1.6.2，保留至今——去重修复本体）**：GroupMessageHandler 入口按 msg_id 分配回复序号基数（第 1 次=1，第 N 次重投递=1+(N-1)×100000），防网关弱网/会话恢复重投递到**本服**时的序号重复。**遇到 40054005 时先想到 ReplySeqGuard（已防住本服重投递）**：若仍被拒收，可能是双服同绑，但不再自动推断——由管理员自行核对是否有多台服务器填了同一凭据。
 
 ### 3.4 更新检查（1.6.2，1.6.4 彩色）
 
@@ -203,7 +200,7 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
 | NF 平台包冲突 | org/slf4j、com/google/gson 必须剔除（split package ResolutionException）；其余依赖必须重定位 |
 | JUL 裸用（NeoForge） | 共享源码 plugin.logger 必须经 JUL→SLF4J 桥（JavaPlugin.kt 已挂）；新共享代码直接用 BotShared.instance.log_* 更稳 |
 | 控制台双时间戳 | 服务端已按行输出时间，插件别再拼 [yyyy-MM-dd HH:mm:ss] |
-| 40054005 ≠ 单一原因 | 单服=网关重投递（ReplySeqGuard 已防）；双服=另一台抢先回复（ConflictWatch 实锤）。修图片发送问题先确认是不是双服务器同绑 |
+| 40054005 ≠ 单一原因 | 单服=网关重投递（ReplySeqGuard 已防）；双服=另一台抢先回复（1.6.6.3 起不再自动检测推断，由管理员自行核对是否多台同凭据）。修图片发送问题先确认是不是双服务器同绑 |
 | 图片读超时≠失败 | QQ 富媒体应答普遍 10 秒+ > SDK OkHttp readTimeout 10 秒，读超时按 WARNING 不提示失败 |
 | Mojang 429 限流/网络不可达 | 名字反查限流/网络异常不写负缓存（1.6.2 修）；1.6.4 网络级失败另开 5 分钟全局冷却（避免逐玩家等超时）；404 才写且 30 分钟有效 |
 | 停机 zip closed | Paper/Purpur 停机阶段会提前关插件 jar 的 ZipFile，onDisable 首次类加载报错；onEnable 预热 CommandOutputAppender.getInstance()（1.6.4 修），onDisable 每步独立 try-catch |
@@ -217,9 +214,15 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
 
 ---
 
-## 7. 当前已知状态（2026-10-16，v1.6.6.2 同日覆盖版发版完成）
+## 7. 当前已知状态（2026-10-16，v1.6.6.3 发版完成）
 
-- 双端 1.6.6.2 覆盖版全部完成（构建 / 门禁 135 项（M1~M15 + N33~N36 新增）/ 冒烟 68 项（第 9 节 14 项新增）/ 官网部署在线验证 / git 推送）：
+- 双端 1.6.6.3 全部完成（构建 / 门禁 105 项（R/C/N/G/Y/V/B/S 十组）/ 官网部署 / git 推送）：
+  - 重连风暴降噪：WSS 关闭帧 / op9 会话无效 / op7 要求重连改 PluginFileLog.write 仅文件；控制台重连提示只报里程碑（本轮第 1 次 / 最后一次 / 成功 / 超时），中间次数仅文件；SDK 三条固定噪声（暂未处理的异常code / websocket closed with code 1011… / reconnect in 3 seconds）在 KERONG LogSink 侧 isSdkReconnectNoise 过滤改仅文件；
+  - 双服同绑检测整体移除：ConflictWatch.kt 文件删除、WssDiagnostics 短命会话/鉴权期被关证据计数删除（QqTokenHealth.lastCheckOk 一并删除，自检本身保留）、QClient.stopForConflict / ReconnectManager.onConflictDetected / onDedupConflictConfirmed 删除、QClient 四处 + MessageTemplates 四处接入点删除；
+  - 重连计数越界修复：挂起后 SDK 已排队的延迟重连建连时 onOpen 检测 attempt≥5 按新一轮重置计数（不再「第 6/5 次」）；
+  - GC 提示文件化：releaseIfIdle 释放动作改 PluginFileLog.write（原文案附 gc-hint 开关状态）；双端 config.yml 的 idle-gc-hint 注释补「每次 GC 会导致 0.05~0.6 秒的卡顿 / 服务器内存充足可关闭此配置」；reconnect-notify 注释同步里程碑新行为；
+  - 官网：依赖与兼容性区改「支持与兼容性」（支持的服务端核心上移到最前、功能依赖改「支持的插件」），下载卡片与更新日志升 1.6.6.3，version.json 同步。
+- 双端 1.6.6.2 覆盖版历史项（构建 / 门禁 135 / 冒烟 68 / 部署 19）：
   - 覆盖版三项：① 修复头像获取方式日志泄漏到控制台（logAvatarSource/logAvatarMiss 改 PluginFileLog 仅文件 + loggedAvatarSources 会话去重：同玩家首次与换线路才记录，上限 2048）；② 修复启动期内存飙升 1.5~2.5GB 不回落（单飞 inFlightFetches + idle-gc-hint 空闲 GC 归还 + /kerong mem 诊断；根因 = 启动期群内集中查询的并发分配风暴让 G1 扩张堆不归还，非缓存泄漏——渲染实测 13MB/次零残留）；③ 图片渲染设计来源署名（issue #1：BaiZhouziYou / 新亭泪 xintinglei.cn，README 设计来源段 + 官网设计来源区 + footer + 三个渲染器文件头）；
   - 修复「极少玩家在清除缓存后头像获取失败」：失败分类（networkTrouble ThreadLocal）——网络抖动型失败（超时 / IO 异常 / 官方冷却期内跳过 / 429 / 5xx）不写 missCache，下次查询立即重试；确定性失败（404 等）才写 60 秒冷却；
   - 头像内存缓存 64 → 128 条 + AVATAR_MEMORY_MAX_BYTES = 10KB 单张门槛（PNG 编码后超 10KB 只走磁盘缓存；encodeAvatarPng + writeDiskAvatar 拆分；磁盘缓存关闭时退回全量内存缓存）；
@@ -250,5 +253,5 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
   - from-game 默认 [游戏] <{name}> {message}（config-version 19 迁移）；
   - 配置注释精简（删更新检查结果说明/版本分隔条/留空[]说明）。
 - 1.6.4 及更早历史详见 git log 与官网更新日志。
-- 待观察：重连成功提示在真实网关踢线场景的节奏（每次踢线都会有一条「第 1/5 重试 + 重连成功」，属预期行为）；OpenId 反查在 admin.mode=manual 下的判定体验。
-- 官网历史下载：1.6.4 起只保留 1.6.0+ 版本（更旧已按用户要求删除）。
+- 待观察：重连里程碑提示在真实网关踢线场景的节奏（每次踢线会有一条「第 1/5 重试 + 重连成功」，属预期行为；挂起后 SDK 迟到重连被计为新一轮第 1 次也属预期）；OpenId 反查在 admin.mode=manual 下的判定体验。
+- 官网历史下载：1.6.4 起只保留 1.6.0+ 版本（更旧已按用户要求删除；1.6.6.3 起历史表删 1.6.1，保持 8 版本）。

@@ -12,33 +12,39 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * 旧版（≤1.6.1）的断线处理：
  * - SDK 自身 anyCloseReconnect 任意关闭码 3 秒后自动重连——重连过程对控制台完全静默，
- *   管理员只看到反复的「[WSS] 连接关闭」帧日志，不知道机器人正在重试、重试了几次、
+ *   管理员只看到反复的连接日志，不知道机器人正在重试、重试了几次、
  *   还会不会继续重试；
- * - 检测到两台服务器绑定同一个机器人（互踢）时直接 [QClient.stopForConflict] 完整停机，
- *   服务器不再响应任何 QQ 消息，只能重启插件恢复。
  *
  * ## 新行为（1.6.2）
  *
- * 1. **重试全程可见**：SDK 每发起一次重连（连接重新打开）都计入本轮第 N 次，
- *    控制台输出「第 N 次（1/5）重试连接…」；连接恢复并健康存活后输出「重连成功」；
+ * 1. **重试里程碑可见**：控制台只在关键节点输出——本轮第 1 次重试、
+ *    最后一次重试、重连成功、重连超时；中间几次的过程提示只写插件日志文件
+ *    （1.6.6.3：网络抖动 / 平台网关异常引起的重连风暴不再刷屏控制台，
+ *    完整过程日志仍在 logs/qq/qq-bind-日期.log 里可追溯）；
  * 2. **每轮最多 5 次**：连续 5 次重连失败（连接打开但未存活到健康阈值又被关闭）
  *    则暂时放弃自动重连，输出「重连超时」提示：可使用指令 /hb chs 立即手动重试，
  *    或等待 30 分钟后自动进行下一轮（最多 3 轮）；
- * 3. **不再直接停机**：同 AppID 多服务器互踢判定成立时只输出醒目原因
- *    （「已有另一台服务器绑定了同一个机器人」），连接继续走同一套 5 次×3 轮重试体系；
- * 4. **防刷屏开关**：`bot.reconnect-notify: false` 可关闭「第 N 次（1/5）重试连接」
- *    的过程提示；但「重连超时 + 可用 /hb chs 手动重连」的失败提示**不可关闭**
- *    （否则管理员不知道机器人已停、怎么恢复）；
- * 5. **手动重试**：/hb chs 重置全部计数并立即恢复连接（也可在 30 分钟退避期间随时使用）。
+ * 3. **手动重试**：/hb chs 重置全部计数并立即恢复连接（也可在 30 分钟退避期间随时使用）。
  *
  * ## 计数模型
  *
  * - 每次 WebSocket 连接打开（[onOpen]）= 一次重试尝试（首次启动连接也计入，
  *   启动失败同样受 5 次上限保护，防止凭据错误时无限刷屏重连）；
- * - 「健康」= READY/RESUMED 鉴权成功且存活 ≥ 90 秒（与互踢检测的短命会话阈值一致；
- *   QQ 网关正常踢线的间隔远长于 90 秒）：健康会话把 attempt / bigRound 全部清零；
+ * - 「健康」= READY/RESUMED 鉴权成功且存活 ≥ 90 秒：健康会话把 attempt / bigRound 全部清零；
  * - 「失败」= 连接未健康存活即被关闭：SDK 将自动发起下一次重连（attempt 继续 +1）；
  * - attempt ≥ 5 时的关闭 → 触发 [giveUpAutoReconnect]（挂起 SDK 自动重连 + 退避）。
+ * - 1.6.6.3：重连超时挂起后，SDK 已排队的延迟重连（无法从外部取消）仍可能
+ *   打开新连接，此时计数已达上限——按新一轮重新计数（避免「第 6/5 次」
+ *   越界显示；该连接若恢复健康会正常宣告成功并解除挂起）。
+ *
+ * ## 1.6.6.3：移除双服同绑检测
+ *
+ * 旧版（1.6.1~1.6.6.2）的「同 AppID 多连接互踢 / 双服务器抢占」检测在
+ * 平台网关抖动（会话无效 op 9、create session error、网关踢线）导致的
+ * 重连风暴中会误判为「另一台服务器绑定了同一个机器人」——实际只有一台
+ * 服务器在连接。误报提示对排查毫无帮助反而误导管理员，故整体移除：
+ * 连接层不再做任何冲突推断，重连风暴按其本来面目（网络 / 平台问题）
+ * 记录与重试。
  *
  * 状态读取集中在 [WssDiagnostics] 的回调与看门狗线程，全部为 volatile /
  * AtomicInteger 写，无锁。
@@ -54,7 +60,7 @@ object ReconnectManager {
     /** 两轮之间的退避时长（30 分钟）。 */
     private const val BIG_BACKOFF_MILLIS = 30L * 60L * 1000L
 
-    /** 会话「健康存活」阈值（毫秒，与互踢检测的短命会话阈值一致）。 */
+    /** 会话「健康存活」阈值（毫秒，READY 后存活达到即视为成功恢复）。 */
     internal const val HEALTHY_SESSION_MS = 90_000L
 
     /** 当前小轮已尝试的重连次数（连接打开即 +1）。 */
@@ -82,17 +88,9 @@ object ReconnectManager {
     @Volatile
     private var hadAnyClose = false
 
-    /** 1.6.5：上一条会话是否短命（短命会话后的 READY 不立即宣告成功，避免互踢场景成功/失败提示来回抖动）。 */
+    /** 1.6.5：上一条会话是否短命（短命会话后的 READY 不立即宣告成功，避免风暴场景成功/失败提示来回抖动）。 */
     @Volatile
     private var lastSessionShort = false
-
-    /** 是否输出过本轮的冲突原因（互踢判定提示只醒目输出一次）。 */
-    @Volatile
-    private var conflictAnnounced = false
-
-    /** 互踢冲突提示（1.6.2：不再停机，仅醒目提示原因后继续重试体系）。 */
-    @Volatile
-    private var conflictReason: String? = null
 
     /** 当前重连尝试次数（第 N 次（1/5））。 */
     fun currentAttempt(): Int = attempt.get()
@@ -108,40 +106,48 @@ object ReconnectManager {
         bigRound.set(0)
         suspended = false
         successAnnounced = false
-        conflictAnnounced = false
-        conflictReason = null
         lastOpenAt = 0L
         hadAnyClose = false
         lastSessionShort = false
-        ConflictWatch.reset()
     }
 
     /**
      * WebSocket 连接打开（SDK 首次连接或自动重连的每一次）。
      *
-     * 计入本轮第 N 次并输出过程提示（`bot.reconnect-notify` 关闭时不输出，
-     * 防刷屏；挂起期间到达属防御路径，照常计数）。
+     * 计入本轮第 N 次；控制台只输出本轮第 1 次与最后一次（中间过程写文件，
+     * 防重连风暴刷屏；`bot.reconnect-notify` 关闭时第 1 次也不输出——
+     * 最后一次与成功/失败提示始终输出）。
+     *
+     * 1.6.6.3：计数已达上限时又开新连接（SDK 已排队的延迟重连无法从外部
+     * 取消，挂起后 3 秒仍会触发一次）——按新一轮重新计数，
+     * 修复「第 6/5 次」越界显示。
      */
     fun onOpen() {
         lastOpenAt = System.currentTimeMillis()
         successAnnounced = false
+        if (attempt.get() >= SMALL_RETRY_MAX) {
+            // 挂起后 SDK 已排队的延迟重连照常建连：视为新一轮开始重新计数
+            attempt.set(0)
+        }
         val n = attempt.incrementAndGet()
-        if (notifyEnabled()) {
-            PluginFileLog.infoAndKeep(
-                "[重连] 第 $n/$SMALL_RETRY_MAX 次重试连接…（连接已打开，等待鉴权）"
-            )
+        if (n == 1) {
+            if (notifyEnabled()) {
+                PluginFileLog.infoAndKeep("[重连] 第 $n/$SMALL_RETRY_MAX 次重试连接…（连接已打开，等待鉴权）")
+            }
+        } else if (n == SMALL_RETRY_MAX) {
+            PluginFileLog.infoAndKeep("[重连] 第 $n/$SMALL_RETRY_MAX 次重试连接…（本轮最后一次自动重连）")
+        } else if (notifyEnabled()) {
+            // 中间过程：仅文件留档，不刷控制台
+            PluginFileLog.write("[重连] 第 $n/$SMALL_RETRY_MAX 次重试连接…（连接已打开，等待鉴权）")
         }
     }
 
     /**
      * READY / RESUMED 到达：本次尝试鉴权成功。
      *
-     * 1.6.5 修复「部分重连成功没有提示」：旧版把「重连成功」的提示推迟到
-     * 会话存活满 90 秒才输出，而 QQ 网关在 90 秒内再次踢线、或连续两次
-     * 断连间隔小于 90 秒时，成功提示永远等不到（机器人实际已恢复收发）。
-     * 现改在鉴权完成（READY/RESUMED）时即宣告成功；仅当上一条会话是
-     * 短命会话（互踢抖动特征）时保持旧版沉默策略，等 90 秒健康判定兜底，
-     * 避免互踢场景下成功/失败提示来回刷屏。
+     * 1.6.5 修复「部分重连成功没有提示」：现改在鉴权完成（READY/RESUMED）时即宣告成功；
+     * 仅当上一条会话是短命会话（风暴抖动特征）时保持旧版沉默策略，等 90 秒健康判定兜底，
+     * 避免风暴场景下成功/失败提示来回刷屏。
      */
     fun onSessionReady() {
         if (hadAnyClose && !lastSessionShort && !successAnnounced && attempt.get() > 0) {
@@ -169,7 +175,6 @@ object ReconnectManager {
         attempt.set(0)
         bigRound.set(0)
         suspended = false
-        conflictReason = null
     }
 
     /**
@@ -198,7 +203,7 @@ object ReconnectManager {
             }
             return false
         }
-        giveUpAutoReconnect(survivedMs)
+        giveUpAutoReconnect()
         return true
     }
 
@@ -206,19 +211,15 @@ object ReconnectManager {
      * 重连超时：挂起 SDK 自动重连，输出不可关闭的恢复指引，
      * 并调度 30 分钟后的下一轮（最多 [BIG_ROUND_MAX] 轮）。
      */
-    private fun giveUpAutoReconnect(survivedMs: Long) {
+    private fun giveUpAutoReconnect() {
         if (suspended) return
         suspended = true
         val myGen = generation.incrementAndGet()
         val nextRound = bigRound.incrementAndGet()
-        val conflict = conflictReason
 
         // —— 不可关闭的失败提示（用户明确要求：重试失败的重连指引不能关） ——
         val builder = StringBuilder()
         builder.append("[重连] QQ 机器人已连续 $SMALL_RETRY_MAX 次重连失败（重连超时），已暂停自动重连。")
-        if (conflict != null) {
-            builder.append("疑似原因：$conflict")
-        }
         builder.append(" 可在服务器内使用指令 /hb chs 立即重新尝试连接。")
         if (nextRound <= BIG_ROUND_MAX) {
             val minutes = BIG_BACKOFF_MILLIS / 60000
@@ -228,7 +229,7 @@ object ReconnectManager {
         }
         PluginFileLog.errorAndKeep(builder.toString())
 
-        // 关闭 SDK 自动重连 + 断开当前 socket（给 QQ 网关降温，也停止无意义的互踢循环）
+        // 关闭 SDK 自动重连 + 断开当前 socket（给 QQ 网关降温）
         suspendConnection()
 
         // 30 分钟退避后自动恢复（最后一轮之后不再恢复，等待 /hb chs）
@@ -240,10 +241,8 @@ object ReconnectManager {
     /**
      * 挂起连接：关闭 SDK 自动重连并断开当前 socket。
      *
-     * 供「重连超时退避」与「确凿冲突处置」两条路径共用：
-     * - anyCloseReconnect=false → SDK 不再自行重连；
-     * - 主动断开 socket → 看门狗/兑底重连均凭 [isSuspended] 停连，
-     *   本服不再与另一台服务器争抢网关与消息。
+     * - anyCloseReconnect=false → SDK 不再自行重连（未归类关闭码）；
+     * - 主动断开 socket → 看门狗/兑底重连均凭 [isSuspended] 停连。
      */
     private fun suspendConnection() {
         try {
@@ -279,51 +278,6 @@ object ReconnectManager {
     }
 
     /**
-     * 互踢冲突判定成立（1.6.2：不再停机）。
-     * 醒目输出原因一次，之后连接走同一套 5 次×3 轮重试体系。
-     */
-    fun onConflictDetected(reason: String) {
-        conflictReason = reason
-        if (conflictAnnounced) return
-        conflictAnnounced = true
-        PluginFileLog.errorAndKeep(
-            "[重连] $reason。本服务器不会停止运行：将继续重试连接（每轮 $SMALL_RETRY_MAX 次、" +
-                "最多 $BIG_ROUND_MAX 轮自动重试，期间可用 /hb chs 手动重试）；" +
-                "两台服务器共用一个机器人会互相抢占轮流掉线，建议为每台服务器配置不同的机器人（bot.app-id / bot.secret）"
-        )
-    }
-
-    /**
-     * 1.6.3：确凿冲突处置（[ConflictWatch] 判定：本服被动回复被 QQ 去重拒收，
-     * 另一台同 AppID 服务器抢先回复了同一条群消息）。
-     *
-     * 1.6.4 行为变更（参考上游开源主客户端「连接层永不放弃重试」的做法）：
-     * **不再断开连接、不再停止自动重连**，与「疑似冲突」
-     * （[onConflictDetected]）一样只醒目提示一次原因与处理方法，
-     * 连接与重试体系（每轮 5 次、最多 3 轮 + /hb chs）照常运转。
-     *
-     * 理由：旧版 1.6.3 会断开本服连接并停止自动重试，但两台服务器共用
-     * 机器人的场景下，任何一台被断开都会让管理员误判插件故障；且两台
-     * 服务器若都继续重连，消息回复双方轮流胜出，至少能各自服务部分
-     * 消息，比彻底停摆更可用。管理员处理配置后连接自然稳定，无需
-     * 人为介入恢复。
-     */
-    fun onDedupConflictConfirmed() {
-        conflictReason =
-            "同一机器人（bot.app-id）已绑定在另一台服务器上，两台服务器同时在回复群消息（本服回复被 QQ 去重拒收）"
-        conflictAnnounced = true
-        PluginFileLog.errorAndKeep(
-            "[冲突] 已确认同一机器人被两台服务器同时使用：本服回复连续被 QQ 按「消息被去重(40054005)」拒收——" +
-                "另一台服务器抢先回复了同一条群消息（本进程回复序号不可能自发重复）。\n" +
-                "[冲突] 两台服务器共用一个机器人会导致双方回复互相挤占、图片与文本随机发送失败。" +
-                "已醒目提示原因，连接与自动重试照常继续（每轮 $SMALL_RETRY_MAX 次、最多 $BIG_ROUND_MAX 轮，" +
-                "期间可用 /hb chs 手动重试），服务器本体与插件其余功能不受影响。\n" +
-                "[冲突] 处理方法：关闭其中一台服务器的机器人（bot.app-id / secret 留空即可），" +
-                "或为每台服务器申请各自的机器人（免费）。"
-        )
-    }
-
-    /**
      * 手动重连（/hb chs）：重置全部计数，立即恢复连接。
      *
      * @return 给命令发送者的结果文本
@@ -336,7 +290,6 @@ object ReconnectManager {
         bigRound.set(0)
         suspended = false
         successAnnounced = false
-        ConflictWatch.reset()
         val launched = QClient.resumeConnection()
         return if (launched) {
             if (wasSuspended) {

@@ -57,8 +57,9 @@ object QClient {
      * 0.1.5.5：断线自动恢复——
      * 1. 开启 SDK 的 anyCloseReconnect（对任意关闭码，含 QQ 网关正常关闭的 1000，
      *    3 秒后自动重新鉴权重连，修复旧版“wss closed with code 1000 后机器人永久掉线”）
-     *    1.6.2：断线重连改由 [ReconnectManager] 统一编排计数——每次重连
-     *    输出「第 N 次（1/5）重试连接…」，连续 5 次失败暂停自动重连
+     *    1.6.2：断线重连改由 [ReconnectManager] 统一编排计数——控制台输出本轮
+     *    第 1 次 / 最后一次 / 成功 / 超时等关键提示（1.6.6.3 起中间过程只写
+     *    文件，重连风暴不再刷屏），连续 5 次失败暂停自动重连
      *    （提示可用 /hb chs 手动重试，30 分钟后自动再试，最多 3 轮）；
      * 2. 新增常驻连接看门狗：连接持续断开超过约 2 分钟（SDK 自身重连卡死时）
      *    由插件兑底触发重连，并写入日志文件。
@@ -345,8 +346,6 @@ object QClient {
             val groupId = event.groupOpenId ?: event.groupId ?: return
             session.bot?.groupBaseV2?.send(groupId, JSON.toJSONString(payload), Channel.SEND_MESSAGE_HEADERS)
         } catch (error: Exception) {
-            // 1.6.3：去重拒收（40054005）是双服务器同绑同一机器人的实锤证据
-            ConflictWatch.onReplyRejected(error)
             currentPlugin.log_error("回复 Markdown 失败: ${error.message}")
         }
     }
@@ -401,8 +400,6 @@ object QClient {
                 "[AI引用] 引用回复未被平台确认（result=${result}），回退普通被动回复"
             )
         } catch (error: Throwable) {
-            // 1.6.3：去重拒收（40054005）是双服务器同绑同一机器人的实锤证据
-            ConflictWatch.onReplyRejected(error)
             QqBindManager.logVerbose(
                 "[AI引用] 引用回复发送失败: ${error.message}，回退普通被动回复"
             )
@@ -482,8 +479,6 @@ object QClient {
         try {
             event.sendMessage(message)
         } catch (error: Exception) {
-            // 1.6.3：去重拒收（40054005）是双服务器同绑同一机器人的实锤证据
-            ConflictWatch.onReplyRejected(error)
             currentPlugin.log_error("回复图片消息失败: ${error.message}")
         }
     }
@@ -526,8 +521,6 @@ object QClient {
                 // null = 平台未回执（旧 SDK 行为）/ 200 = 同步成功 / 2022021x = 已受理（异步下发或审核中）
                 ret == null || ret == 200 || (ret >= 20220210 && ret <= 20220219) -> true
                 else -> {
-                    // 1.6.3：去重拒收（40054005）是双服务器同绑同一机器人的实锤证据
-                    ConflictWatch.onReplyRejectedDetail("code is [$ret] msg=${result.msg ?: "无"}")
                     currentPlugin.log_error("回复图片消息被 QQ 拒收（ret=$ret, msg=${result.msg ?: "无"}）")
                     false
                 }
@@ -541,8 +534,6 @@ object QClient {
                 )
                 true
             } else {
-                // 1.6.3：去重拒收（40054005）是双服务器同绑同一机器人的实锤证据
-                ConflictWatch.onReplyRejected(error)
                 currentPlugin.log_error("回复图片消息失败: ${error.message}")
                 false
             }
@@ -619,24 +610,6 @@ object QClient {
                 false
             }
         }
-    }
-
-    /**
-     * 1.6.1→1.6.2：同 AppID 多连接冲突改为「提示 + 重试体系」，不再直接停机。
-     *
-     * 背景：QQ 开放平台同一机器人（AppID）只允许保持一条 WebSocket 网关连接。
-     * 两台服务器填了同一个机器人的 app-id / secret 时，双方都会自动重连并
-     * 互相把对方踢下线（表现为轮流掉线、消息随机丢失）。
-     *
-     * [WssDiagnostics] 检测到互踢特征后调用本方法：1.6.1 会完整停机（机器人彻底
-     * 不响应，只能重启恢复）；1.6.2 起改由 [ReconnectManager.onConflictDetected]
-     * 醒目输出原因（“已有另一台服务器绑定了同一个机器人”）并继续走统一的
-     * 重试体系（每轮 5 次、最多 3 轮自动重试，期间可用 /hb chs 手动重试），
-     * 服务器本体与插件其余功能不受影响。
-     */
-    internal fun stopForConflict(reason: String) {
-        if (shuttingDown) return
-        ReconnectManager.onConflictDetected(reason)
     }
 
     /** 停止客户端。 */

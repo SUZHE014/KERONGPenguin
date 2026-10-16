@@ -320,8 +320,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "bot.secret" to "",
             "bot.name" to "KERONGPenguin",
             "bot.groups" to emptyList<Any>(),
-            // 1.6.2：断线重连过程提示开关（false = 关闭「第 N 次（1/5）重试连接…」防刷屏；
-            // 重连超时后的 /hb chs 恢复指引不受此开关影响，始终输出）
+            // 1.6.2：断线重连过程提示开关（1.6.6.3 起默认防刷屏：控制台只输出本轮第 1 次 /
+            // 最后一次 / 成功 / 超时里程碑，中间过程写文件；false = 里程碑过程提示也不输出；
+            // 重连成功与重连超时后的 /hb chs 恢复指引不受此开关影响，始终输出）
             "bot.reconnect-notify" to true,
             // 1.6.2：更新检查开关（启动后异步访问官网版本文件，发现新版本时控制台提示
             // 版本号 / 下载页 / 简要日志；检测失败仅一句话提示，细节进日志）

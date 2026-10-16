@@ -1681,9 +1681,13 @@ object InfoCardAssets {
             builtinBackgroundResolvedPaths.clear()
             // 重置计时基准：释放完成后需等下一次渲染完成才重新开始计时
             lastRenderCompletedAt = 0L
-            BotShared.instance?.log_info(
+            // 1.6.6.3：释放动作只写插件日志文件，不上控制台
+            //（GC 提示与释放属于内部例行维护，控制台仅在排查时才有价值，
+            //  完整记录见 logs/qq/qq-bind-日期.log）
+            PluginFileLog.write(
                 "[渲染] 已 ${"%.1f".format(idleMillis / 60_000.0)} 分钟无渲染，释放素材缓存内存" +
-                    "（头像 $avatars 条 / 背景处理结果 $backgrounds 张 / 背景源图 $sources 张，下次渲染自动从磁盘恢复）"
+                    "（头像 $avatars 条 / 背景处理结果 $backgrounds 张 / 背景源图 $sources 张，下次渲染自动从磁盘恢复）" +
+                    "（render.idle-gc-hint=${if (RenderSettings.idleGcHint()) "开" else "关"}，开启时本次已随释放向 JVM 发 GC 提示）"
             )
             // 1.6.6.2 覆盖版：空闲释放后向 JVM 发一次 full GC 提示
             //（render.idle-gc-hint，默认开）。
