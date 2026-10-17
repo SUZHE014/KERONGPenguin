@@ -92,6 +92,25 @@ server-NeoForge/ # NeoForge 1.21.1 平台适配（org.bukkit 兼容层 + @Mod �
 > 重连只报里程碑、SDK 三条固定噪声过滤）、移除会误报的双服同绑
 > 检测、修复重连计数「第 6/5 次」越界。
 
+### v1.6.7 更新日志（新增 /查性能 性能监控卡片 / 查在线默认图片输出）
+
+- **新增：/查性能 群命令** —— 服务器性能监控卡片（渲染图片发送）：
+  TPS（每秒刻数）/ MSPT（每刻耗时）/ 内存占用（JVM 堆已用与上限）/
+  CPU 占用（服务器进程）/ 在线人数，每项带状态分级（流畅 / 偏高 /
+  过载）与进度条，样式延续毛玻璃深色卡片风格（设计来源：BaiZhouziYou
+  / 新亭泪的 EasyBot 图片模板）。默认开启，commands.查性能: false
+  可关闭（快捷菜单按钮同步消失，与其他群命令一致）；单项可经
+  render.performance.show-tps / show-mspt / show-memory / show-cpu /
+  show-online 逐项隐藏（默认全开）；背景与其他渲染共用
+  render.performance.builtin-background（默认内置底图）。原版 Spigot
+  核心无公开 TPS / MSPT API，对应项显示「--」；Paper / Purpur /
+  Folia（Server#getTPS 反射）与 NeoForge（tickTimes 反射）均可正常
+  读取。冷却与其他图片命令共用 render.command-cooldown-seconds。
+- **调整：/查在线 默认改为图片渲染输出** —— motd.use-markdown 默认值
+  改为 false（新装服务器 / 查在线 默认发送毛玻璃卡片 + 真实皮肤头像）；
+  想要简洁文字列表改回 true 即可。旧版本升级后已保存的配置不受影响
+  （fillMissing 只补缺键不覆盖已有值，输出方式保持原样）。
+
 ### v1.6.6.4 更新日志（移除空闲 GC 提示与自动收缩：防全停顿卡顿）
 
 - **移除：空闲 GC 提示（render.idle-gc-hint）与已提交堆自动收缩** ——

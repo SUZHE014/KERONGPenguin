@@ -173,7 +173,32 @@ class PublicCommands : CommandSupport() {
     }
 
     /**
+     * /查性能 —— 服务器性能监控卡片（1.6.7 新增，渲染图片发送）。
+     *
+     * 指标：TPS / MSPT / JVM 堆内存 / 进程 CPU / 在线人数（每项可经
+     * render.performance.show-* 配置关闭显示）；命令总开关 commands.查性能
+     * （默认开，关闭后命令失效、快捷菜单按钮同步消失）。
+     *
+     * 输出方式固定为渲染图片（性能数据不适合文字列表）；冷却与在线列表
+     * 共用 render.command-cooldown-seconds（独立计数）。
+     */
+    @Commands("查性能")
+    fun queryPerformance(plugin: KERONG, event: GroupMessageEvent, params: String) {
+        val qq = try {
+            userId(event)
+        } catch (_: Throwable) {
+            "<unknown>"
+        }
+        val cooldownKey = if (qq.isEmpty() || qq == "<unknown>") "group:${groupId(event)}" else qq
+        cn.kerong.penguin.spigot.stats.PerformanceService.handle(plugin, event, cooldownKey)
+    }
+
+    /**
      * /查在线 —— 查询在线玩家列表：markdown 开启走模板，关闭自动渲染图片（1.5.1）。
+     *
+     * 1.6.7：motd.use-markdown 默认值改为 false —— 新装服务器 / 查在线 默认
+     * 输出渲染图片（毛玻璃卡片 + 真实皮肤头像）；想要简洁文字列表的把
+     * motd.use-markdown 改回 true 即可（旧用户已保存的配置不受影响）。
      *
      * 1.5.7.4：新增别名 /在线（更短的输入变体，与 /查在线 完全同一行为）；
      * 别名不出现在 QQ 快捷指令菜单（菜单仍只展示 /查在线 按钮），

@@ -196,7 +196,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "http://motd.txssb.cn/api/app_img?ip={ip}&port={port}&dark=true&lang=zh-CN",
         ) ?: "",
         plugin.config.getBoolean("motd.post-img", true),
-        plugin.config.getBoolean("motd.use-markdown", true),
+        // 1.6.7：默认改为 false —— /查在线 默认输出渲染图片（毛玻璃卡片 + 真实皮肤头像）；
+        // true = Markdown 文字列表（旧用户已保存的配置不受影响，行为不变）
+        plugin.config.getBoolean("motd.use-markdown", false),
     )
 
     fun filterRegexList(): List<String> = plugin.config.getStringList("filter-regex")
@@ -255,7 +257,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
          * 1.6.0 新增金币榜；1.6.2 更名财富榜）。
          */
         private val COMMAND_NAMES = listOf(
-            "查询open ID", "查信息", "绑定", "重新绑定", "查在线", "在线排行榜", "财富榜", "在线服务器", "发信息",
+            "查询open ID", "查信息", "绑定", "重新绑定", "查在线", "查性能", "在线排行榜", "财富榜", "在线服务器", "发信息",
             "执行命令", "执行", "管理员执行", "全量", "motd", "帮助",
             "AI对话上下文", "清除当前上下文", "黑名单", "解除黑名单", "签到",
         )
@@ -292,6 +294,8 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "info-bind-disabled", "info-closed", "info-not-bound", "info-target-not-bound", "info-render-failed",
             // 查在线
             "online-data-unavailable", "online-render-failed",
+            // 查性能（1.6.7）
+            "performance-render-failed",
             // 在线排行榜
             "leaderboard-no-data", "leaderboard-render-failed",
             // 金币排行榜
@@ -348,7 +352,8 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "motd.api" to "http://motd.txssb.cn/api/app_img?ip={ip}&port={port}&dark=true&lang=zh-CN",
             // 1.5.1：motd.text（文本模板）已移除
             "motd.post-img" to true,
-            "motd.use-markdown" to true,
+            // 1.6.7：默认 false = /查在线 走渲染图片输出（旧用户已保存值不受影响）
+            "motd.use-markdown" to false,
             "filter-regex" to emptyList<Any>(),
             "admin.mode" to "qq",
             "admin.openids" to emptyList<Any>(),
@@ -377,6 +382,13 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 关闭后随机用 img/ 目录图片，img 无可用图片时自动回退内置图）
             "render.info-card-builtin-background" to true,
             "render.online-list-builtin-background" to true,
+            // 1.6.7：查性能卡片（/查性能，命令总开关 commands.查性能）
+            "render.performance.show-tps" to true,
+            "render.performance.show-mspt" to true,
+            "render.performance.show-memory" to true,
+            "render.performance.show-cpu" to true,
+            "render.performance.show-online" to true,
+            "render.performance.builtin-background" to true,
             // 1.5.5：在线排行榜（1.6.0 从 qq-bind.leaderboard 迁至顶层）
             "leaderboard.top" to 15,
             "leaderboard.builtin-background" to true,

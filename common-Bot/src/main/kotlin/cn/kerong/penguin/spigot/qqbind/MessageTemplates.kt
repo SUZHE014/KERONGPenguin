@@ -72,6 +72,7 @@ object MessageTemplates {
         // —— 查在线 ——
         "online-data-unavailable",       // 服务器数据暂不可用
         "online-render-failed",          // 在线列表图片生成失败
+        "performance-render-failed",     // 性能卡片图片生成失败（1.6.7 /查性能）
         // —— 在线排行榜 ——
         "leaderboard-no-data",           // 暂无在线时长数据
         "leaderboard-render-failed",     // 排行榜图片生成失败

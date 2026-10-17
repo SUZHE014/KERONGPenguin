@@ -41,6 +41,16 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
     /** 在线玩家名列表。 */
     val onlineList: List<String>
 
+    /**
+     * 服务器性能快照（1.6.7 新增，/查性能 渲染数据源）。
+     *
+     * 平台各自实现：TPS / MSPT 为核心层指标（原版 Spigot 无公开 API，
+     * 读不到时为 null，卡片对应项显示「--」）；JVM 内存与进程 CPU 为
+     * JVM 级数据双端一致，统一由 [PerformanceSnapshot.capture] 采集；
+     * 服务端整体不可用时返回 null（渲染层提示数据暂不可用）。
+     */
+    fun performanceSnapshot(): PerformanceSnapshot?
+
     /** QQ 机器人日志文件名模板（位于插件数据目录），null 表示不落盘。 */
     fun qqBotLogFilePattern(): String? {
         val configDirectory = configFile?.parentFile ?: return null
@@ -260,4 +270,61 @@ internal class TextExecution(
     override val rawString: String = text
 
     override fun execute(command: String): CompletableFuture<HExecution> = bot.sendCommand(command)
+}
+
+/**
+ * 服务器性能快照（1.6.7 新增，/查性能 卡片数据）。
+ *
+ * - TPS / MSPT 由平台实现采集（Paper / Purpur / Folia / NeoForge 可读，
+ *   原版 Spigot 无公开 API 时为 null，卡片显示「--」）；
+ * - JVM 堆内存与进程 CPU 为 JVM 级数据，双端一致，统一由
+ *   [capture] 伴生工厂采集，平台实现只补核心层指标。
+ */
+data class PerformanceSnapshot(
+    /** 最近 1 分钟平均 TPS（满值 20；核心不支持读取时为 null）。 */
+    val tps: Double?,
+    /** 平均每 tick 耗时（毫秒；核心不支持读取时为 null）。 */
+    val mspt: Double?,
+    /** JVM 堆已用（MB）。 */
+    val usedMemoryMb: Long,
+    /** JVM 堆上限（MB）。 */
+    val maxMemoryMb: Long,
+    /** 本进程 CPU 占用（0.0 ~ 1.0；读取失败时为 null）。 */
+    val cpuLoad: Double?,
+    /** 当前在线人数。 */
+    val onlineCount: Int,
+    /** 服务器人数上限。 */
+    val maxPlayers: Int,
+) {
+    companion object {
+        /**
+         * 统一采集 JVM 内存与进程 CPU（双端一致），平台实现只需补
+         * TPS / MSPT / 在线人数与上限。
+         *
+         * - CPU 用进程级占用（getProcessCpuLoad，即任务管理器里本进程
+         *   的 CPU 列；首次调用 JVM 可能返回 -1 表示暂不可用 → null）；
+         * - 堆内存为 totalMemory - freeMemory（存活 + 待回收的堆占用，
+         *   与面板上 JVM 已提交内存不是一回事，见 /kerong mem）。
+         */
+        @JvmStatic
+        fun capture(
+            tps: Double?,
+            mspt: Double?,
+            onlineCount: Int,
+            maxPlayers: Int,
+        ): PerformanceSnapshot {
+            val runtime = Runtime.getRuntime()
+            val usedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L)
+            val maxMb = runtime.maxMemory() / (1024L * 1024L)
+            val cpu = try {
+                val bean = java.lang.management.ManagementFactory.getPlatformMXBean(
+                    com.sun.management.OperatingSystemMXBean::class.java
+                )
+                bean.processCpuLoad.takeIf { it >= 0.0 }
+            } catch (_: Throwable) {
+                null
+            }
+            return PerformanceSnapshot(tps, mspt, usedMb, maxMb, cpu, onlineCount, maxPlayers)
+        }
+    }
 }

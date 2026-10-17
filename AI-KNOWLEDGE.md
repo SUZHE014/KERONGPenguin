@@ -1,7 +1,7 @@
 # KERONGPenguin AI 交接知识库
 
 > **本文档的用途**：把本文件丢给一个对项目一无所知的 AI，它能立刻了解当前情况并接手工作。
-> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-17（v1.6.6.4 发版完成）。
+> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-17（v1.6.7 发版完成）。
 > 自包含版本（发给本地无任何东西的 AI）见官网 `AI-KNOWLEDGE.txt`，含从零开始的环境重建与凭据获取说明。
 
 ### 1.1 受限网络环境重建（2026-10-14 实战，环境重置后可用）
@@ -20,7 +20,7 @@
 
 KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项目：玩家在 QQ 群里查数据/签到/聊天，插件在服务器内渲染统计卡片图片并回发。Kotlin 多模块：`common-Bot`（全部业务核心）+ `server-Spigot`（Bukkit 插件版，支持 Spigot/Paper/Folia/混合端）+ `server-NeoForge`（NeoForge 1.21.1 模组版，复用 common-Bot 全部源码 + Spigot 的 manager 源码）。
 
-**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.6.4）。当前版本 **1.6.6.4**（移除空闲 GC 提示 render.idle-gc-hint 与已提交堆自动收缩——Full GC 全停顿 0.05~0.6 秒可能落在玩家游玩时刻造成卡顿，内存归还交 JVM 自然节奏，插件只做确定性缓存释放；启动期内存飙升的单飞修复与空闲释放保留 / 1.6.6.3：重连风暴降噪、移除会误报的双服同绑检测（ConflictWatch 删除）、修复重连计数越界 / 1.6.6.2：缓存分层 + 空闲释放 + 失败分类 + 单飞 + /kerong mem / 1.6.6.1 覆盖版：头像本地优先、删 WebUI、删 PlayTimeManager / 1.6.6：控制台真彩色、头像多线路，包名 cn.kerong.bot 与 cn.kerong.penguin，主类 KERONGSpigot / KERONGNeoForge）。
+**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.6.4）。当前版本 **1.6.7**（新增 /查性能 性能监控卡片：TPS/MSPT/内存/CPU/在线 渲染图片，commands.查性能 可关、render.performance.show-* 单项显隐、原版 Spigot 反射不到显示「--」；/查在线 默认改图片输出（motd.use-markdown 默认 false）/ 1.6.6.4：移除空闲 GC 提示 render.idle-gc-hint 与已提交堆自动收缩——Full GC 全停顿 0.05~0.6 秒可能落在玩家游玩时刻造成卡顿，内存归还交 JVM 自然节奏，插件只做确定性缓存释放；启动期内存飙升的单飞修复与空闲释放保留 / 1.6.6.3：重连风暴降噪、移除会误报的双服同绑检测（ConflictWatch 删除）、修复重连计数越界 / 1.6.6.2：缓存分层 + 空闲释放 + 失败分类 + 单飞 + /kerong mem / 1.6.6.1 覆盖版：头像本地优先、删 WebUI、删 PlayTimeManager / 1.6.6：控制台真彩色、头像多线路，包名 cn.kerong.bot 与 cn.kerong.penguin，主类 KERONGSpigot / KERONGNeoForge）。
 
 ---
 
@@ -65,6 +65,7 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 | 查信息统计卡 | `events/commands/PublicCommands.kt` → `spigot/stats/QueryInfoService.kt` → `spigot/render/CardRenderPool.kt` + `InfoCardRenderer.kt` | CPU 异步渲染 PNG（CardRenderPool 线程池，核数一半 1~4），9 项统计，依赖缺失自适应（Vault 金币 / DeluxeTags **或 PlayerTitle**（1.6.4，PAPI %playerTitle_use%） / PlayerPoints 点券），头像多级链 + **外部多线路回退（含 MinePic）与 Mojang 网络全局冷却**（1.6.4~1.6.6.1，详见 3.5） |
 | ~~在线时长同步~~ | 已于 1.6.6.1 覆盖版**删除**（1.6.4 曾引入 `PlayTimeSync.kt`：检测到 PlayTimeManager + PAPI 时差值对齐，因用户要求移除；本插件自身在线时长统计不受影响，PapiDependencyCheck 提示面同步收窄为仅 PlayerTitle） |
 | 查在线/在线排行榜/财富榜 | `PublicCommands.kt` + `LeaderboardCommands.kt` + `CoinsLeaderboardCommands.kt` + `render/OnlineListRenderer.kt`/`LeaderboardRenderer.kt` | 图片分段发送（每页 15 人）、命令冷却 `render.command-cooldown-seconds`、内置背景图（backgrounds/，img/ 可自定义随机） |
+| /查性能（1.6.7） | `PublicCommands.kt` → `spigot/stats/PerformanceService.kt` + `render/PerformanceRenderer.kt` | 性能监控卡片（TPS/MSPT/内存/CPU/在线，状态分级+进度条）；快照走 `KERONG.performanceSnapshot()`（data class PerformanceSnapshot，JVM 内存/CPU 由 capture 统一采集，Spigot 反射 Server#getTPS/getAverageTickTime，NF 反射 getAverageTickTime/tickTimes）；命令开关 commands.查性能（关=菜单按钮消失），单项显隐 render.performance.show-*，背景 render.performance.builtin-background；无结果缓存（数据实时变化），冷却与其他图片命令共用 |
 | /查在线 markdown | `markdown.queryOnline` → online.md | 关图片走模板文本 |
 | /motd | `PublicCommands.motd`（无参=本服状态 server-status 模板）→ **带参转发 `MotdCommands`**（minebbs API，motd-* 模板） | 1.6.3 修复了转发缺失导致 MotdCommands 永不可达 |
 | AI 对话 | `spigot/qqbind/AiChat.kt` + `QClient.replyMarkdownWithReference` | @机器人触发；引用回复（MessageReference 协议）失败三级回退：引用→普通被动→纯文本；全局一份上下文 |
@@ -125,7 +126,7 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 
 `bot/UpdateChecker.kt`：启动后异步 8 秒 GET `https://kerong.xin/penguin/version.json`，逐段数字比较版本；有新版→控制台输出带 § 颜色码的版本号/下载页/最多 6 行简要日志（1.6.4：版本号绿色加粗、链接蓝色、条目灰白分级）；失败→控制台一句话，细节进日志。`update-check.enabled` 可关。**每次发版必须更新服务器上的 version.json**。§ 颜色码处理：Spigot 系控制台直接渲染；NeoForge 适配器 `log_info/log_warning/log_error` 输出前统一过 `PluginFileLog.stripColorCodes`（log4j 不渲染 §，否则乱码）；文件日志始终剥离。共享代码可以放心在控制台文案里用 § 颜色码。
 
-### 3.5 渲染管线与头像获取（1.6.4 头像修复，1.6.5 内存与性能，1.6.6 多线路与落盘，1.6.6.1 覆盖版：本地优先 + 缓存配置化 + MinePic，1.6.6.2：缓存分层 + 空闲释放 + 失败分类 + 获取方式日志，1.6.6.2 覆盖版：日志去重 + 单飞 + /kerong mem，1.6.6.4：移除空闲 GC 提示）
+### 3.5 渲染管线与头像获取（1.6.4 头像修复，1.6.5 内存与性能，1.6.6 多线路与落盘，1.6.6.1 覆盖版：本地优先 + 缓存配置化 + MinePic，1.6.6.2：缓存分层 + 空闲释放 + 失败分类 + 获取方式日志，1.6.6.2 覆盖版：日志去重 + 单飞 + /kerong mem，1.6.6.4：移除空闲 GC 提示，1.6.7：新增性能卡片渲染器 PerformanceRenderer——毛玻璃 2×N 指标卡，与在线列表共用背景/字体，画布 1350 宽高度按可见项数计算，PNG 写出后 flush）
 
 CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结果缓存、背景图内置+随机 LRU、长图封顶 1600px、子采样解码防 OOM。图片发送：`replyWithImgBytes`（base64 上传），读超时（SDK OkHttp 10 秒 < QQ 富媒体普遍 10 秒+应答）**不算失败**（图片大概率已投递，1.6.1）；ret 2022021x=已受理算成功。**1.6.5 内存策略**：确定性 flush（单次画布 / 中间图 / 缓存淘汰 / clearCaches 均在失去引用前 flush，剩余堆内存交给常规新生代 GC，System.gc 与 gc-after-render 已废除）。**1.6.6.1 覆盖版内存再优化**：三渲染器圆角头像零中间图直绘（共享 `InfoCardRenderer.drawRoundedAvatar`）；内置背景处理高度统一封顶 1600px。**1.6.6.2 缓存与内存策略**：①头像内存缓存上限 64→**128 条**，并新增 **AVATAR_MEMORY_MAX_BYTES = 10KB 单张门槛**——PNG 编码后超 10KB 的大头像只写磁盘缓存不进内存（`cacheAndStoreAvatar`：`encodeAvatarPng` 编码一次，磁盘写入与内存门槛共用；磁盘缓存关闭时退回全量内存缓存；磁盘命中 `DiskAvatar` 带文件字节数超门槛不回填）；②**渲染空闲内存释放**：`render.idle-release-minutes`（默认 5，支持小数，0 = 关闭）——CardRenderPool 任务收尾（含异常收尾）刷新 `markRenderCompleted` 时间戳 + `activeRenders` 活跃计数护栏，render-idle-releaser 守护线程每 30 秒检查，距上次渲染完成超阈值且无进行中渲染时 flush + 清空 avatar/background/builtin 三类图像缓存并重置计时，missCache / premiumUuidCache 轻量元数据保留，释放动作写日志；③内存缓存及时清理：sweepDiskCache 每轮开头 `purgeMemoryAvatarCache` 清超 TTL（10 分钟）条目，仅无活跃渲染时执行；④磁盘缓存强制关机后可清：`ensureAvatarSweeper` 双端主类启动即调用（首轮 10 秒后清停服/强关期间过期文件）。
 
@@ -215,8 +216,12 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
 
 ---
 
-## 7. 当前已知状态（2026-10-17，v1.6.6.4 发版完成）
+## 7. 当前已知状态（2026-10-17，v1.6.7 发版完成）
 
+- 双端 1.6.7 全部完成（构建 / 门禁 115 项（P 查性能 19 项 + M 查在线默认图片 + 基线保持）/ 冒烟 26（快照采集、高度公式、PNG 输出宽高、显隐渲染、null 指标降级、命令注册表反射验证、RenderSettings 默认值）/ 官网部署 / git 推送）：
+  - /查性能：PerformanceSnapshot（KERONG 接口 performanceSnapshot()，双端各自实现核心指标反射读取，JVM 内存/CPU 由 companion capture 统一采集 getProcessCpuLoad）+ PerformanceRenderer（2×N 指标卡：TPS/MSPT/内存/CPU/在线，状态分级色 + 进度条，null 显示「--」）+ PerformanceService（CardRenderPool 异步 + 冷却 + 单图发送，不做结果缓存）+ PublicCommands @Commands("查性能") + MenuManager 按钮（commands.查性能 关闭时经既有 commandList 过滤自动消失）+ 模板 performance-render-failed.md（双端资源）+ config render.performance 六键（show-* 五项 + builtin-background）+ help.md 行；
+  - /查在线 默认图片：ConfigManager motd() 与 DEFAULT_VALUES 的 motd.use-markdown 默认 true→false，双端 config.yml 同步（fillMissing 不覆盖旧用户值，已保存配置行为不变）；
+  - 官网：下载卡片 1.6.7 + 历史表 7 版本（删 1.6.3 两行）+ 更新日志 v1.6.7 段 + 设计来源区块移到更新日志之前 + 全站删除「详见 GitHub Issue #1」文字与链接（保留 xintinglei.cn 与作者名署名）+ version.json 三条 + tutorial（查性能配置块与说明 / use-markdown 示例与默认说明 / commands 段查性能行 / 快速上手段落查性能）。
 - 双端 1.6.6.4 全部完成（构建 / 门禁 113 项（R/C/N/Z/G/Y/V/B/S，Z 组为 GC 移除断言）/ 冒烟 68 / 官网部署 / git 推送）：
   - 移除空闲 GC 提示：render.idle-gc-hint 全链路删除（RenderSettings.idleGcHint / releaseIfIdle 的 System.gc 块 / 释放日志的 gc-hint 状态标注 / 双端 config.yml 键与注释 / ConfigManager 默认值→废弃键迁移表自动清除用户旧键）；线上 1.6.6.3 曾短暂部署未提交的 auto-shrink（已提交超存活自动收缩五键），1.6.6.4 JAR 以 git 源重建后 auto-shrink 字节零残留（门禁 Z3 断言）；/kerong mem 提示语改「不代表插件实际占用」不再声称空闲回落；
   - 官网：下载卡片 1.6.6.4 + 历史表 8 版本（删 1.6.2 两行）+ 更新日志 1.6.6.4 段（1.6.6.3 段保留）+ version.json 三条；tutorial.html 以线上 1.6.6.3 版为基线删 auto-shrink / idle-gc-hint 配置块并小白化精简（删渲染 internals 三段长文与全文版本考古字样）。
@@ -258,4 +263,4 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
   - 配置注释精简（删更新检查结果说明/版本分隔条/留空[]说明）。
 - 1.6.4 及更早历史详见 git log 与官网更新日志。
 - 待观察：重连里程碑提示在真实网关踢线场景的节奏（每次踢线会有一条「第 1/5 重试 + 重连成功」，属预期行为；挂起后 SDK 迟到重连被计为新一轮第 1 次也属预期）；OpenId 反查在 admin.mode=manual 下的判定体验。
-- 官网历史下载：1.6.4 起只保留 1.6.0+ 版本（更旧已按用户要求删除；1.6.6.4 发布后保留 7 个版本 1.6.3~1.6.6.4；1.6.2、1.6.1 与 1.6.6.1 已先后下架）。
+- 官网历史下载：1.6.4 起只保留 1.6.0+ 版本（更旧已按用户要求删除；1.6.7 发布后保留 7 个版本 1.6.4~1.6.7；1.6.2、1.6.1、1.6.6.1 与 1.6.3 已先后下架）。

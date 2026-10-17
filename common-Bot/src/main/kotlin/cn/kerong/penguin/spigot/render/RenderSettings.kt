@@ -109,4 +109,42 @@ object RenderSettings {
      *（0.05~0.6 秒）可能落在玩家游玩时刻造成卡顿；内存归还交给 JVM
      * 自然节奏，插件侧只做确定性图像缓存释放（见 [idleReleaseMillis]）。
      */
+
+    /**
+     * 查性能卡片是否使用内置背景图（1.6.7 新增，默认 true）。
+     *
+     * 语义与其他渲染的 builtin-background 一致：true = 内置深灰底图
+     * （随 JAR 分发，与其他卡片共用横版底图），false = 随机取数据目录
+     * img/ 图片（无图自动回退内置）。实时读取（/kerong reload 立即生效）。
+     */
+    fun performanceBuiltinBackground(): Boolean {
+        return try {
+            (BotShared.instance as? JavaPlugin)?.config?.getBoolean(
+                "render.performance.builtin-background",
+                true,
+            ) ?: true
+        } catch (_: Throwable) {
+            true
+        }
+    }
+
+    /**
+     * 查性能卡片的单项显隐（1.6.7 新增）。
+     *
+     * - render.performance.show-tps / show-mspt / show-memory / show-cpu /
+     *   show-online（全部默认 true）：对应指标卡不显示；
+     * - 命令总开关走 commands.查性能（关闭后命令失效、快捷菜单按钮
+     *   同步消失，与其他群命令一致）；
+     * - 实时读取（/kerong reload 后立即生效）。
+     */
+    fun performanceItemEnabled(key: String): Boolean {
+        return try {
+            (BotShared.instance as? JavaPlugin)?.config?.getBoolean(
+                "render.performance.$key",
+                true,
+            ) ?: true
+        } catch (_: Throwable) {
+            true
+        }
+    }
 }

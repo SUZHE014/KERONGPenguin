@@ -231,6 +231,48 @@ class KERONGSpigot : JavaPlugin(), KERONG {
     override val onlineList: List<String>
         get() = server.onlinePlayers.map { it.name }
 
+    /**
+     * 服务器性能快照（1.6.7，/查性能 数据源）。
+     *
+     * - TPS / MSPT 经 Server 反射读取（Paper / Purpur / Folia 提供
+     *   getTPS() / getAverageTickTime()；原版 Spigot 无此 API → null，
+     *   卡片对应项显示「--」）；
+     * - JVM 堆内存与进程 CPU 由 [cn.kerong.bot.PerformanceSnapshot.capture]
+     *   统一采集（双端一致）；
+     * - 读取全部只读数据（TPS 数组 / size / maxPlayers），无实体状态
+     *   操作，不需要切回主线程。
+     */
+    override fun performanceSnapshot(): cn.kerong.bot.PerformanceSnapshot? {
+        return try {
+            val bukkitServer: org.bukkit.Server = Bukkit.getServer()
+            val tps = try {
+                val method = bukkitServer.javaClass.getMethod("getTPS")
+                (method.invoke(bukkitServer) as? DoubleArray)?.firstOrNull()
+            } catch (_: Throwable) {
+                null
+            }
+            val mspt = try {
+                val method = bukkitServer.javaClass.getMethod("getAverageTickTime")
+                (method.invoke(bukkitServer) as? Number)?.toDouble()
+            } catch (_: Throwable) {
+                null
+            }
+            val onlineCount = try {
+                Bukkit.getOnlinePlayers().size
+            } catch (_: Throwable) {
+                0
+            }
+            val maxPlayers = try {
+                bukkitServer.maxPlayers
+            } catch (_: Throwable) {
+                0
+            }
+            cn.kerong.bot.PerformanceSnapshot.capture(tps, mspt, onlineCount, maxPlayers)
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
     override val configFile: File
         get() = configManager.getConfigFile()
 

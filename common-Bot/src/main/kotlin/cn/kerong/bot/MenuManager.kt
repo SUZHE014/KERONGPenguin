@@ -46,7 +46,8 @@ object MenuManager {
      * 玩家自行补参数。
      * 1.6.0 新增金币榜按钮；1.6.2 更名「财富榜」（命令 /金币榜 同步更名，
      * 旧名保留为隐藏别名不出现在菜单）；「在线」为 /查在线 的输入别名，
-     * 按用户要求不出现在快捷菜单。
+     * 按用户要求不出现在快捷菜单；1.6.7 新增「查性能」按钮
+     * （commands.查性能 关闭时同步消失）。
      */
     private data class PanelItem(val name: String, val desc: String)
 
@@ -57,6 +58,7 @@ object MenuManager {
         PanelItem("绑定", "绑定 QQ"),
         PanelItem("重新绑定", "解除 QQ 绑定"),
         PanelItem("查在线", "查询在线玩家"),
+        PanelItem("查性能", "查看服务器性能"),
         PanelItem("在线排行榜", "在线时长排行"),
         PanelItem("财富榜", "金币数量排行"),
         PanelItem("在线服务器", "查看服务器"),
