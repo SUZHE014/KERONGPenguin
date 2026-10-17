@@ -175,9 +175,9 @@ class PublicCommands : CommandSupport() {
     /**
      * /查性能 —— 服务器性能监控卡片（1.6.7 新增，渲染图片发送）。
      *
-     * 指标：TPS / MSPT / JVM 堆内存 / 进程 CPU / 在线人数（每项可经
-     * render.performance.show-* 配置关闭显示）；命令总开关 commands.查性能
-     * （默认开，关闭后命令失效、快捷菜单按钮同步消失）。
+     * 指标：TPS / MSPT / JVM 堆内存 / 进程 CPU（1.6.7.1 起固定四项，
+     * 不再展示在线人数——查在线已有专门卡片；命令总开关
+     * commands.查性能，默认开，关闭后命令失效、快捷菜单按钮同步消失）。
      *
      * 输出方式固定为渲染图片（性能数据不适合文字列表）；冷却与在线列表
      * 共用 render.command-cooldown-seconds（独立计数）。

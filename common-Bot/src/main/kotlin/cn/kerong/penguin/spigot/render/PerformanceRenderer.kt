@@ -19,10 +19,10 @@ import javax.imageio.ImageIO
  * 毛玻璃深色风格（1350 宽，固定版式单页图）：
  * - 顶部标题区：英文眉题 MINECRAFT SERVER + 主标题「服务器性能监控」
  *   + 右侧「更新时间」卡；
- * - 指标卡网格（2 列 × N 行，行数 = 可见指标数）：每卡 = 标签 +
- *   状态胶囊 + 大数值 + 进度条（或「--」表示核心不支持读取）；
- * - 指标显隐由 render.performance.show-* 配置控制（默认全开）：
- *   TPS / MSPT / 内存占用 / CPU 占用 / 在线人数；
+ * - 指标卡网格（2 列 × 2 行，固定四项：TPS / MSPT / 内存 / CPU）：
+ *   每卡 = 标签 + 状态胶囊 + 大数值 + 进度条（或「--」表示核心
+ *   不支持读取）；1.6.7.1 起不再展示在线人数（查在线命令已有专门
+ *   卡片，性能卡专注性能指标），单项显隐配置 show-* 同步移除；
  * - 背景与其他渲染共用 [InfoCardAssets.resolveBackground]
  *   （render.performance.builtin-background，默认内置底图）；
  * - 画布 PNG 写出后立即 flush 释放栅格内存（与其他渲染器一致）。
@@ -54,6 +54,9 @@ object PerformanceRenderer {
     /** 指标卡列数。 */
     private const val COLUMNS = 2
 
+    /** 固定指标卡数（TPS / MSPT / 内存 / CPU，1.6.7.1 起不再有在线卡）。 */
+    private const val CARD_COUNT = 4
+
     /** 底部留白。 */
     private const val BOTTOM_PAD = 40
 
@@ -69,9 +72,6 @@ object PerformanceRenderer {
     private val COLOR_WARN = Color(0xF6, 0xA6, 0x23)
     private val COLOR_BAD = Color(0xF0, 0x54, 0x4F)
 
-    /** 中性色（在线人数卡：无好坏分级）。 */
-    private val COLOR_NEUTRAL = Color(0x17, 0xB8, 0xBE)
-
     /** 渲染入参。 */
     data class PerformanceData(
         /** 服务器名称（标题区展示）。 */
@@ -80,21 +80,11 @@ object PerformanceRenderer {
         val updateTime: String,
         /** 性能快照（数据源）。 */
         val snapshot: cn.kerong.bot.PerformanceSnapshot,
-        /** TPS 卡可见性（render.performance.show-tps）。 */
-        val showTps: Boolean = true,
-        /** MSPT 卡可见性（render.performance.show-mspt）。 */
-        val showMspt: Boolean = true,
-        /** 内存卡可见性（render.performance.show-memory）。 */
-        val showMemory: Boolean = true,
-        /** CPU 卡可见性（render.performance.show-cpu）。 */
-        val showCpu: Boolean = true,
-        /** 在线人数卡可见性（render.performance.show-online）。 */
-        val showOnline: Boolean = true,
         /** 预处理背景（尺寸可与画布不一致，渲染时拉伸铺满）；null 表示无背景。 */
         val background: BufferedImage? = null,
     )
 
-    /** 单个指标卡的绘制模型（由快照 + 显隐配置派生）。 */
+    /** 单个指标卡的绘制模型（由快照派生，固定四项）。 */
     private data class MetricCard(
         val label: String,
         val valueText: String,
@@ -109,20 +99,19 @@ object PerformanceRenderer {
     )
 
     /**
-     * 按可见指标数计算画布高度。
+     * 计算画布高度（固定四项指标：TPS / MSPT / 内存 / CPU）。
      * 必须在取背景（尺寸相关）与渲染前调用，两者共用本结果。
-     * 全部指标都关闭时只渲染标题区（高度仍保底 640，与其他卡片一致）。
      */
-    fun measureHeight(visibleCards: Int): Int {
-        val rows = if (visibleCards <= 0) 0 else (visibleCards + COLUMNS - 1) / COLUMNS
-        val gridHeight = if (rows <= 0) 0 else rows * CARD_HEIGHT + (rows - 1) * CARD_GAP
-        return (MARGIN + HEADER_HEIGHT + HEADER_GAP + gridHeight + BOTTOM_PAD).coerceAtLeast(640)
+    fun measureHeight(): Int {
+        val rows = (CARD_COUNT + COLUMNS - 1) / COLUMNS
+        val gridHeight = rows * CARD_HEIGHT + (rows - 1) * CARD_GAP
+        return MARGIN + HEADER_HEIGHT + HEADER_GAP + gridHeight + BOTTOM_PAD
     }
 
     /** 渲染性能卡片并返回 PNG 字节（单页固定版式）。 */
     fun render(data: PerformanceData): ByteArray {
         val cards = buildCards(data)
-        val height = measureHeight(cards.size)
+        val height = measureHeight()
         val image = BufferedImage(WIDTH, height, BufferedImage.TYPE_INT_RGB)
         val g = image.createGraphics()
         try {
@@ -145,14 +134,20 @@ object PerformanceRenderer {
 
     // ---------- 指标卡派生 ----------
 
-    /** 由快照与显隐配置派生要绘制的指标卡列表（顺序即展示顺序）。 */
+    /** 由快照派生要绘制的指标卡列表（顺序即展示顺序，固定四项）。 */
     private fun buildCards(data: PerformanceData): List<MetricCard> {
         val snapshot = data.snapshot
-        val cards = ArrayList<MetricCard>(5)
+        val cards = ArrayList<MetricCard>(CARD_COUNT)
 
         // TPS：满值 20；≥18.5 流畅 / 15~18.5 轻度负载 / <15 过载
-        if (data.showTps) {
+        run {
             val tps = snapshot.tps
+            val color = when {
+                tps == null -> COLOR_SUB
+                tps >= 18.5 -> COLOR_GOOD
+                tps >= 15.0 -> COLOR_WARN
+                else -> COLOR_BAD
+            }
             cards.add(
                 MetricCard(
                     label = "TPS（每秒刻数）",
@@ -163,27 +158,23 @@ object PerformanceRenderer {
                         tps >= 15.0 -> "轻度负载"
                         else -> "过载"
                     },
-                    statusColor = when {
-                        tps == null -> COLOR_SUB
-                        tps >= 18.5 -> COLOR_GOOD
-                        tps >= 15.0 -> COLOR_WARN
-                        else -> COLOR_BAD
-                    },
+                    statusColor = color,
                     progress = tps?.let { (it / 20.0).coerceIn(0.0, 1.0) },
-                    barColor = when {
-                        tps == null -> COLOR_SUB
-                        tps >= 18.5 -> COLOR_GOOD
-                        tps >= 15.0 -> COLOR_WARN
-                        else -> COLOR_BAD
-                    },
+                    barColor = color,
                     note = "满值 20.0 · 最近 1 分钟平均",
                 )
             )
         }
 
         // MSPT（每刻耗时，毫秒）：<40 流畅 / 40~50 偏高 / ≥50 过载
-        if (data.showMspt) {
+        run {
             val mspt = snapshot.mspt
+            val color = when {
+                mspt == null -> COLOR_SUB
+                mspt < 40.0 -> COLOR_GOOD
+                mspt < 50.0 -> COLOR_WARN
+                else -> COLOR_BAD
+            }
             cards.add(
                 MetricCard(
                     label = "MSPT（每刻耗时）",
@@ -194,31 +185,21 @@ object PerformanceRenderer {
                         mspt < 50.0 -> "偏高"
                         else -> "过载"
                     },
-                    statusColor = when {
-                        mspt == null -> COLOR_SUB
-                        mspt < 40.0 -> COLOR_GOOD
-                        mspt < 50.0 -> COLOR_WARN
-                        else -> COLOR_BAD
-                    },
+                    statusColor = color,
                     // 每刻 100ms 即为严重掉刻，进度条以 100ms 为满
                     progress = mspt?.let { (it / 100.0).coerceIn(0.0, 1.0) },
-                    barColor = when {
-                        mspt == null -> COLOR_SUB
-                        mspt < 40.0 -> COLOR_GOOD
-                        mspt < 50.0 -> COLOR_WARN
-                        else -> COLOR_BAD
-                    },
+                    barColor = color,
                     note = "每刻可用预算 50 ms · 越低越流畅",
                 )
             )
         }
 
         // 内存：JVM 堆已用 / 上限；>90% 接近上限 / >75% 偏高 / 其余正常
-        if (data.showMemory) {
+        run {
             val used = snapshot.usedMemoryMb
             val max = snapshot.maxMemoryMb
             val ratio = if (max > 0) used.toDouble() / max.toDouble() else 0.0
-            val status = when {
+            val color = when {
                 max <= 0 -> COLOR_SUB
                 ratio > 0.90 -> COLOR_BAD
                 ratio > 0.75 -> COLOR_WARN
@@ -234,18 +215,18 @@ object PerformanceRenderer {
                         ratio > 0.75 -> "偏高"
                         else -> "正常"
                     },
-                    statusColor = status,
+                    statusColor = color,
                     progress = ratio.coerceIn(0.0, 1.0),
-                    barColor = status,
+                    barColor = color,
                     note = "已用 ${formatGb(used)} GB · 占 ${String.format("%.0f", ratio * 100)}%",
                 )
             )
         }
 
         // CPU：进程级占用；>90% 过载 / >75% 偏高 / 其余正常
-        if (data.showCpu) {
+        run {
             val cpu = snapshot.cpuLoad
-            val status = when {
+            val color = when {
                 cpu == null -> COLOR_SUB
                 cpu > 0.90 -> COLOR_BAD
                 cpu > 0.75 -> COLOR_WARN
@@ -261,27 +242,10 @@ object PerformanceRenderer {
                         cpu > 0.75 -> "偏高"
                         else -> "正常"
                     },
-                    statusColor = status,
+                    statusColor = color,
                     progress = cpu?.coerceIn(0.0, 1.0),
-                    barColor = status,
+                    barColor = color,
                     note = "服务器进程占用 · 多核按总和归一",
-                )
-            )
-        }
-
-        // 在线人数（中性色，无好坏分级）
-        if (data.showOnline) {
-            val online = snapshot.onlineCount
-            val max = snapshot.maxPlayers
-            cards.add(
-                MetricCard(
-                    label = "在线玩家",
-                    valueText = if (max > 0) "$online / $max" else "$online",
-                    statusText = if (max > 0 && online >= max) "已满员" else "在线",
-                    statusColor = if (max > 0 && online >= max) COLOR_WARN else COLOR_NEUTRAL,
-                    progress = if (max > 0) (online.toDouble() / max.toDouble()).coerceIn(0.0, 1.0) else null,
-                    barColor = COLOR_NEUTRAL,
-                    note = "当前在线 / 服务器上限",
                 )
             )
         }

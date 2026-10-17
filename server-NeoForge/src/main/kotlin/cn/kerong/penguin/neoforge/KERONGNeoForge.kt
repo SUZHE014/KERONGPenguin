@@ -238,11 +238,14 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         get() = NeoServerRef.server?.playerList?.players?.map { it.gameProfile.name } ?: emptyList()
 
     /**
-     * 服务器性能快照（1.6.7，/查性能 数据源）。
+     * 服务器性能快照（1.6.7，/查性能 数据源；1.6.7.1 修复读不到）。
      *
-     * - MSPT 反射读取 MinecraftServer 的 Forge 扩展（getAverageTickTime()
-     *   或 tickTimes 数组平均，纳秒→毫秒）；TPS 由 MSPT 换算（1000/mspt，
-     *   封顶 20，与 Spark 等性能插件算法一致）；
+     * - MSPT 反射读取 MinecraftServer 的 getAverageTickTimeNanos()
+     *   （1.20.5+ Mojang 映射公有方法，纳秒 → 毫秒；1.6.7 错误反射
+     *   不存在的 getAverageTickTime()/tickTimes 导致永远读不到），
+     *   失败时回退 tickTimesNanos / tickTimes 数组平均；
+     * - TPS 由 MSPT 换算（1000/mspt 封顶 20，与 Spark 等性能插件
+     *   算法一致）；
      * - JVM 堆内存与进程 CPU 由 [cn.kerong.bot.PerformanceSnapshot.capture]
      *   统一采集（双端一致）；
      * - 服务器未完成启动（NeoServerRef 为空）返回 null。
@@ -250,29 +253,10 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
     override fun performanceSnapshot(): cn.kerong.bot.PerformanceSnapshot? {
         val server = NeoServerRef.server ?: return null
         return try {
-            val mspt = try {
-                val avg = server.javaClass.methods.firstOrNull { it.name == "getAverageTickTime" }
-                    ?.invoke(server) as? Number
-                avg?.toDouble() ?: run {
-                    val arr = server.javaClass.fields.firstOrNull { it.name == "tickTimes" }
-                        ?.get(server) as? LongArray
-                    arr?.takeIf { it.isNotEmpty() }?.let { it.average() / 1_000_000.0 }
-                }
-            } catch (_: Throwable) {
-                null
-            }
-            val tps = mspt?.takeIf { it > 0.0 }?.let { minOf(20.0, 1000.0 / it) }
-            val onlineCount = try {
-                server.playerList.players.size
-            } catch (_: Throwable) {
-                0
-            }
-            val maxPlayers = try {
-                server.maxPlayers
-            } catch (_: Throwable) {
-                0
-            }
-            cn.kerong.bot.PerformanceSnapshot.capture(tps, mspt, onlineCount, maxPlayers)
+            val mspt = cn.kerong.bot.PerformanceSnapshot.readMspt(server)
+            val tps = cn.kerong.bot.PerformanceSnapshot.readTps(server)
+                ?: cn.kerong.bot.PerformanceSnapshot.tpsFromMspt(mspt)
+            cn.kerong.bot.PerformanceSnapshot.capture(tps, mspt)
         } catch (_: Throwable) {
             null
         }
@@ -359,7 +343,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             .resolve("kerongpenguin").toFile()
 
         /** 模组版本（与 neoforge.mods.toml 一致）。 */
-        private const val MOD_VERSION = "1.6.7"
+        private const val MOD_VERSION = "1.6.7.1"
 
         /** 当前模组实例（命令与事件层访问）。 */
         @Volatile

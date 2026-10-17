@@ -44,10 +44,10 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
     /**
      * 服务器性能快照（1.6.7 新增，/查性能 渲染数据源）。
      *
-     * 平台各自实现：TPS / MSPT 为核心层指标（原版 Spigot 无公开 API，
-     * 读不到时为 null，卡片对应项显示「--」）；JVM 内存与进程 CPU 为
-     * JVM 级数据双端一致，统一由 [PerformanceSnapshot.capture] 采集；
-     * 服务端整体不可用时返回 null（渲染层提示数据暂不可用）。
+     * 平台各自实现：TPS / MSPT 为核心层指标（读不到时为 null，卡片
+     * 对应项显示「--」）；JVM 内存与进程 CPU 为 JVM 级数据双端一致，
+     * 统一由 [PerformanceSnapshot.capture] 采集；服务端整体不可用时
+     * 返回 null（渲染层提示数据暂不可用）。
      */
     fun performanceSnapshot(): PerformanceSnapshot?
 
@@ -275,8 +275,7 @@ internal class TextExecution(
 /**
  * 服务器性能快照（1.6.7 新增，/查性能 卡片数据）。
  *
- * - TPS / MSPT 由平台实现采集（Paper / Purpur / Folia / NeoForge 可读，
- *   原版 Spigot 无公开 API 时为 null，卡片显示「--」）；
+ * - TPS / MSPT 由平台实现采集，读不到时为 null，卡片显示「--」；
  * - JVM 堆内存与进程 CPU 为 JVM 级数据，双端一致，统一由
  *   [capture] 伴生工厂采集，平台实现只补核心层指标。
  */
@@ -291,15 +290,11 @@ data class PerformanceSnapshot(
     val maxMemoryMb: Long,
     /** 本进程 CPU 占用（0.0 ~ 1.0；读取失败时为 null）。 */
     val cpuLoad: Double?,
-    /** 当前在线人数。 */
-    val onlineCount: Int,
-    /** 服务器人数上限。 */
-    val maxPlayers: Int,
 ) {
     companion object {
         /**
          * 统一采集 JVM 内存与进程 CPU（双端一致），平台实现只需补
-         * TPS / MSPT / 在线人数与上限。
+         * TPS / MSPT。
          *
          * - CPU 用进程级占用（getProcessCpuLoad，即任务管理器里本进程
          *   的 CPU 列；首次调用 JVM 可能返回 -1 表示暂不可用 → null）；
@@ -310,8 +305,6 @@ data class PerformanceSnapshot(
         fun capture(
             tps: Double?,
             mspt: Double?,
-            onlineCount: Int,
-            maxPlayers: Int,
         ): PerformanceSnapshot {
             val runtime = Runtime.getRuntime()
             val usedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L)
@@ -324,7 +317,133 @@ data class PerformanceSnapshot(
             } catch (_: Throwable) {
                 null
             }
-            return PerformanceSnapshot(tps, mspt, usedMb, maxMb, cpu, onlineCount, maxPlayers)
+            return PerformanceSnapshot(tps, mspt, usedMb, maxMb, cpu)
+        }
+
+        // ---------- 核心指标分层读取（1.6.7.1：修复 TPS/MSPT 读不到） ----------
+
+        /**
+         * 从服务器对象分层读取 TPS（1 分钟平均）。
+         *
+         * 背景：1.6.7 只反射了 Paper 系 API 的 getTPS()，纯 Spigot
+         * 核心（接口与 CraftServer 均无此方法）与 NeoForge（无 TPS
+         * 字段）永远读不到。本方法按顺序尝试：
+         *
+         * 1. `getTPS()` 方法（Paper / Purpur / Folia 的 Server 接口，
+         *    返回 double[3]：1/5/15 分钟平均）；
+         * 2. `recentTps` 公有字段（Spigot / Paper 内部 MinecraftServer
+         *    的 TPS 追踪数组）；
+         * 3. NMS 跳板：`getServer()` 方法（CraftServer → 内部
+         *    MinecraftServer，各 CraftBukkit 系核心均在）后重试 1、2；
+         *
+         * 全部失败返回 null（调用方可用 [tpsFromMspt] 由 MSPT 换算兜底）。
+         * 全反射逐层 try，任何一层失败不影响后续层。
+         */
+        @JvmStatic
+        fun readTps(serverObj: Any?): Double? {
+            firstTps(invoke(serverObj, "getTPS"))?.let { return it }
+            firstTps(readField(serverObj, "recentTps"))?.let { return it }
+            val core = invoke(serverObj, "getServer")
+            if (core != null && core !== serverObj) {
+                firstTps(invoke(core, "getTPS"))?.let { return it }
+                firstTps(readField(core, "recentTps"))?.let { return it }
+            }
+            return null
+        }
+
+        /**
+         * 从服务器对象分层读取 MSPT（平均每 tick 耗时，毫秒）。
+         *
+         * 背景：1.6.7 在 NeoForge 端反射的 getAverageTickTime()/tickTimes
+         * 在 1.21.1 运行时实为 getAverageTickTimeNanos()/tickTimesNanos
+         *（Mojang 官方映射名），名字全错导致永远读不到。本方法按顺序尝试：
+         *
+         * 1. `getAverageTickTime()` 方法（Paper / Purpur 的 Server 接口，
+         *    返回毫秒 double）；
+         * 2. `getAverageTickTimeNanos()` 方法（1.20.5+ Mojang 映射的
+         *    MinecraftServer 公有方法，NeoForge 1.21.1 走这里，纳秒 → 毫秒）；
+         * 3. `tickTimesNanos` / `tickTimes` 字段（最近 100 tick 耗时数组，
+         *    取平均纳秒 → 毫秒；Spigot 1.20.4 映射名为 tickTimes）；
+         * 4. NMS 跳板：`getServer()` 后重试 1~3（纯 Spigot 走这里）。
+         *
+         * 全部失败返回 null。
+         */
+        @JvmStatic
+        fun readMspt(serverObj: Any?): Double? {
+            readMsptFrom(serverObj)?.let { return it }
+            val core = invoke(serverObj, "getServer")
+            if (core != null && core !== serverObj) {
+                readMsptFrom(core)?.let { return it }
+            }
+            return null
+        }
+
+        /**
+         * MSPT → TPS 换算兜底（与 Spark 等性能插件同款算法）：
+         * TPS = min(20, 1000 / mspt)；mspt 无效（null 或 ≤0）返回 null。
+         * NeoForge 无 TPS 追踪字段、Spigot 偶发字段名对不上时由此兜底，
+         * 只要有 MSPT 就能给出 TPS。
+         */
+        @JvmStatic
+        fun tpsFromMspt(mspt: Double?): Double? {
+            return mspt?.takeIf { it > 0.0 }?.let { minOf(20.0, 1000.0 / it) }
+        }
+
+        /** MSPT 读取链（不含 NMS 跳板，见 [readMspt]）。 */
+        private fun readMsptFrom(obj: Any?): Double? {
+            invoke(obj, "getAverageTickTime")?.let { value ->
+                (value as? Number)?.toDouble()?.takeIf { it > 0.0 }?.let { return it }
+            }
+            invoke(obj, "getAverageTickTimeNanos")?.let { value ->
+                (value as? Number)?.toDouble()?.takeIf { it > 0.0 }?.let { return it / 1_000_000.0 }
+            }
+            return tickTimesAverageMillis(obj)
+        }
+
+        /** tickTimes 数组平均毫秒（映射名差异双兼容：1.20.5+ tickTimesNanos / 旧 tickTimes）。 */
+        private fun tickTimesAverageMillis(obj: Any?): Double? {
+            for (name in arrayOf("tickTimesNanos", "tickTimes")) {
+                val array = readField(obj, name) as? LongArray ?: continue
+                if (array.isEmpty()) continue
+                // 数组首条可能为 0（刚启动时），取平均即可；纳秒 → 毫秒
+                return array.average() / 1_000_000.0
+            }
+            return null
+        }
+
+        /** 取 TPS 数组首元素（1 分钟平均）：兼容 double[] 与装箱 Number 数组。 */
+        private fun firstTps(value: Any?): Double? {
+            return when (value) {
+                is DoubleArray -> value.firstOrNull()
+                is Array<*> -> (value.firstOrNull() as? Number)?.toDouble()
+                else -> null
+            }
+        }
+
+        /** 调用公有方法（找不到 / 调用失败返回 null，不抛出）。 */
+        private fun invoke(obj: Any?, name: String): Any? {
+            if (obj == null) return null
+            return try {
+                obj.javaClass.methods.firstOrNull { it.name == name }?.invoke(obj)
+            } catch (_: Throwable) {
+                null
+            }
+        }
+
+        /** 读字段（先公有 getField，失败再 getDeclaredField + 开放访问；全失败返回 null）。 */
+        private fun readField(obj: Any?, name: String): Any? {
+            if (obj == null) return null
+            return try {
+                obj.javaClass.getField(name).get(obj)
+            } catch (_: Throwable) {
+                try {
+                    val field = obj.javaClass.getDeclaredField(name)
+                    field.isAccessible = true
+                    field.get(obj)
+                } catch (_: Throwable) {
+                    null
+                }
+            }
         }
     }
 }

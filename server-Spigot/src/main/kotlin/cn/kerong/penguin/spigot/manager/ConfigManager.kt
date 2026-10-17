@@ -129,10 +129,15 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 触发的 Full GC 停顿伤 tick，内存释放改为确定性 flush，见 CardRenderPool）
         // 1.6.6.4：移除 render.idle-gc-hint（空闲 GC 提示——Full GC 全停顿
         // 可能落在玩家游玩时刻造成卡顿，内存归还交给 JVM 自然节奏）
+        // 1.6.7.1：移除 render.performance.show-*（查性能卡片指标固定四项
+        // TPS / MSPT / 内存 / CPU，不再提供单项显隐；在线人数卡已删）
         for (removed in listOf(
             "agent", "audit", "whitelist", "query-online", "motd.text", "commands.个人信息",
             "qq-bind.leaderboard.random-background", "ai.context-global", "render.gc-after-render",
             "render.idle-gc-hint",
+            "render.performance.show-tps", "render.performance.show-mspt",
+            "render.performance.show-memory", "render.performance.show-cpu",
+            "render.performance.show-online",
         )) {
             if (config.contains(removed)) {
                 config.set(removed, null)
@@ -382,12 +387,8 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 关闭后随机用 img/ 目录图片，img 无可用图片时自动回退内置图）
             "render.info-card-builtin-background" to true,
             "render.online-list-builtin-background" to true,
-            // 1.6.7：查性能卡片（/查性能，命令总开关 commands.查性能）
-            "render.performance.show-tps" to true,
-            "render.performance.show-mspt" to true,
-            "render.performance.show-memory" to true,
-            "render.performance.show-cpu" to true,
-            "render.performance.show-online" to true,
+            // 1.6.7：查性能卡片（/查性能，命令总开关 commands.查性能）；
+            // 1.6.7.1：指标固定四项（TPS / MSPT / 内存 / CPU），show-* 单项显隐已移除
             "render.performance.builtin-background" to true,
             // 1.5.5：在线排行榜（1.6.0 从 qq-bind.leaderboard 迁至顶层）
             "leaderboard.top" to 15,

@@ -232,42 +232,26 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         get() = server.onlinePlayers.map { it.name }
 
     /**
-     * 服务器性能快照（1.6.7，/查性能 数据源）。
+     * 服务器性能快照（1.6.7，/查性能 数据源；1.6.7.1 修复读不到）。
      *
-     * - TPS / MSPT 经 Server 反射读取（Paper / Purpur / Folia 提供
-     *   getTPS() / getAverageTickTime()；原版 Spigot 无此 API → null，
-     *   卡片对应项显示「--」）；
+     * - TPS / MSPT 经 [cn.kerong.bot.PerformanceSnapshot] 的分层反射
+     *   读取：① Paper / Purpur / Folia 的 Server 接口 getTPS() /
+     *   getAverageTickTime()；② 纯 Spigot 经 CraftServer#getServer()
+     *   跳到内部 MinecraftServer 读 recentTps 与 tickTimes 数组
+     *   （1.20.4 Spigot 映射名）/ tickTimesNanos（1.20.5+ Mojang 名）；
+     *   ③ 仍无 TPS 时由 MSPT 换算（min(20, 1000/mspt)，Spark 同款）；
+     *   全部失败才为 null，卡片显示「--」；
      * - JVM 堆内存与进程 CPU 由 [cn.kerong.bot.PerformanceSnapshot.capture]
      *   统一采集（双端一致）；
-     * - 读取全部只读数据（TPS 数组 / size / maxPlayers），无实体状态
-     *   操作，不需要切回主线程。
+     * - 读取全部只读数据（数组 / 计数），无实体状态操作，不需要切回主线程。
      */
     override fun performanceSnapshot(): cn.kerong.bot.PerformanceSnapshot? {
         return try {
-            val bukkitServer: org.bukkit.Server = Bukkit.getServer()
-            val tps = try {
-                val method = bukkitServer.javaClass.getMethod("getTPS")
-                (method.invoke(bukkitServer) as? DoubleArray)?.firstOrNull()
-            } catch (_: Throwable) {
-                null
-            }
-            val mspt = try {
-                val method = bukkitServer.javaClass.getMethod("getAverageTickTime")
-                (method.invoke(bukkitServer) as? Number)?.toDouble()
-            } catch (_: Throwable) {
-                null
-            }
-            val onlineCount = try {
-                Bukkit.getOnlinePlayers().size
-            } catch (_: Throwable) {
-                0
-            }
-            val maxPlayers = try {
-                bukkitServer.maxPlayers
-            } catch (_: Throwable) {
-                0
-            }
-            cn.kerong.bot.PerformanceSnapshot.capture(tps, mspt, onlineCount, maxPlayers)
+            val api: org.bukkit.Server = Bukkit.getServer()
+            val mspt = cn.kerong.bot.PerformanceSnapshot.readMspt(api)
+            val tps = cn.kerong.bot.PerformanceSnapshot.readTps(api)
+                ?: cn.kerong.bot.PerformanceSnapshot.tpsFromMspt(mspt)
+            cn.kerong.bot.PerformanceSnapshot.capture(tps, mspt)
         } catch (_: Throwable) {
             null
         }

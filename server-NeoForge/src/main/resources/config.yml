@@ -165,14 +165,11 @@ render:
   # 查在线图片是否使用内置背景图（1.5.7 新增，默认 true）
   # 语义同上，与查信息卡片共用横版内置底图
   online-list-builtin-background: true
-  # 查性能卡片显示项（1.6.7 新增，/查性能 命令；全部默认开启，关掉的项不显示）
-  # TPS = 每秒刻数（满值 20）/ MSPT = 每刻耗时毫秒（越低越流畅）
+  # 查性能卡片（1.6.7 新增 /查性能 命令；1.6.7.1 起指标固定四项：
+  # TPS / MSPT / 内存 / CPU，在线人数不再展示——查在线已有专门卡片）
+  # TPS = 每秒刻数（满值 20）/ MSPT = 每刻耗时毫秒（越低越流畅）；
+  # 两项自动兼容各核心，实在读不到时显示「--」
   performance:
-    show-tps: true
-    show-mspt: true
-    show-memory: true
-    show-cpu: true
-    show-online: true
     # 查性能卡片是否使用内置背景图（语义同上，默认 true）
     builtin-background: true
 

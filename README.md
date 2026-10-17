@@ -82,7 +82,13 @@ server-NeoForge/ # NeoForge 1.21.1 平台适配（org.bukkit 兼容层 + @Mod �
 
 ## 版本
 
-当前版本：**1.6.6.4**（Spigot 插件版 / NeoForge 1.21.1 模组版同步更新，双线同版本号）
+当前版本：**1.6.7.1**（Spigot 插件版 / NeoForge 1.21.1 模组版同步更新，双线同版本号）
+
+> 1.6.7.1：修复 /查性能 的 TPS / MSPT 一直读不到（分层兼容读取各核心，
+> 模组版方法名与 NeoForge 1.21.1 实际类不符的根因修复）、查性能卡片
+> 删去在线人数与 show-* 单项显隐配置（旧配置残留键升级自动清除）。
+> 1.6.7：新增 /查性能 性能监控卡片（渲染图片发送），/查在线 默认改
+> 图片渲染输出。
 
 > 1.6.6.4：移除空闲 GC 提示（render.idle-gc-hint）与已提交堆自动收缩
 > （防 Full GC 全停顿卡顿，内存归还交给 JVM 自然节奏），启动期内存
@@ -91,6 +97,35 @@ server-NeoForge/ # NeoForge 1.21.1 平台适配（org.bukkit 兼容层 + @Mod �
 > 1.6.6.3：修复重连风暴期间控制台刷屏（WSS 协议帧细节改文件日志、
 > 重连只报里程碑、SDK 三条固定噪声过滤）、移除会误报的双服同绑
 > 检测、修复重连计数「第 6/5 次」越界。
+
+### v1.6.7.1 更新日志（修复查性能 TPS/MSPT 读不到 / 删在线卡与显隐配置）
+
+- **修复：/查性能 的 TPS / MSPT 一直显示「--」读不到** —— 根因：
+  1.6.7 只反射了 Paper 系 API 的 getTPS() / getAverageTickTime()
+  （纯 Spigot 核心没有这层 API），模组版反射的方法名又与
+  NeoForge 1.21.1 实际类不符（运行时实为 getAverageTick
+  TimeNanos() / tickTimesNanos，Mojang 映射名），导致插件版
+  （纯 Spigot 核心）与模组版的 TPS / MSPT 永远拿不到。现改为
+  PerformanceSnapshot 内建的分层兼容读取：① Paper / Purpur /
+  Folia 的 Server 接口 API 层直接读；② 纯 Spigot 经
+  CraftServer#getServer() 跳到内部 MinecraftServer 读
+  recentTps 与 tickTimes 数组（1.20.4 Spigot 映射名与 1.20.5+
+  Mojang 映射名双兼容）；③ 模组版读 getAverageTickTimeNanos
+  （公有方法）失败再回退 tickTimesNanos / tickTimes 字段平均；
+  ④ 仍读不到 TPS 时由 MSPT 换算（min(20, 1000/mspt)，与 Spark
+  性能插件同款算法）——只要有 MSPT 就能给出 TPS。Spigot /
+  Paper / Purpur / Folia / NeoForge 全系核心都能出数，逐层
+  try 失败不影响后续层。
+- **查性能卡片不再展示在线人数** —— 在线人数查在线命令已有专门
+  卡片，性能卡专注 TPS / MSPT / 内存 / CPU 四项性能指标
+  （2×2 固定四卡版式）；PerformanceSnapshot 删去 onlineCount /
+  maxPlayers 字段。
+- **移除 render.performance.show-* 单项显隐配置** —— 指标固定
+  四项不再可隐藏，配置面精简：RenderSettings 删
+  performanceItemEnabled，ConfigManager 删五个默认键并把
+  show-* 收进废弃键迁移表（升级后旧配置残留自动清除，无需
+  手动改），双端 config.yml 同步；查性能背景配置
+  render.performance.builtin-background 保留。
 
 ### v1.6.7 更新日志（新增 /查性能 性能监控卡片 / 查在线默认图片输出）
 
@@ -246,26 +281,7 @@ server-NeoForge/ # NeoForge 1.21.1 平台适配（org.bukkit 兼容层 + @Mod �
   自身统计的在线时长（查信息卡片 / 在线排行榜）不受影响。
   PlaceholderAPI 依赖检测提示同步收窄为仅 PlayerTitle 称号。
 
-### v1.6.4 更新日志（插件与模组同步发版：绑定拦截策略 / 更新检查彩色日志）
-
-- **改进：QQ 绑定拦截策略重做（双端一致）** —— 未绑定玩家的拦截分两段：
-  **老玩家**（服务器已有其档案，usercache 或 playerdata/<UUID>.dat 存在）
-  在**进入游戏之前**直接拦截——模组版借用原版白名单/封禁的显示路径
-  （配置阶段断开），绑定提示与绑定码直接显示在"无法连接到服务器"
-  界面，不再被加入流程后的"服务器连接失败"文字覆盖（旧版 NeoForge
-  在加入完成后再踢，客户端还在加载世界时提示常被覆盖，玩家看不到
-  绑定码）；插件版同样只在登录事件拦截老玩家。**新玩家**（服务器还没
-  建档案）先放行让其完成进入（服务器创建 UUID 与玩家数据），随后
-  踢出并展示绑定码——新玩家必须先建档，否则绑定后进服无档案。模组
-  版闸门（BindLoginGate，挂 RegisterConfigurationTasksEvent 配置任务）
-  任何环节异常都自动放行，由加入后踢出兜底，功能不缺失。
-- **改进：更新检查的更新日志改为颜色文字** —— 发现新版本时控制台
-  输出带颜色（版本号绿色加粗、下载页链接蓝色、更新条目灰白分级，
-  § 颜色码）；Spigot 系控制台直接渲染彩色，模组版控制台（log4j 不
-  渲染颜色码）自动剥离为纯文本，两边都不会出现乱码字符；日志文件
-  一律剥离颜色码保持纯净。
-
-### v1.6.3 更新日志（插件与模组同步发版：双服同绑实锤检测 / 模组日志格式 / 死代码瘦身）
+### v1.6.6.3 更新日志（重连风暴降噪 / 移除双服误报检测 / 计数越界修复 / GC 提示文件化）
 
 - **修复：两台服务器绑同一个机器人仍能同时运行**（如 NeoForge + Spigot
   各一台填同一 AppID）—— 1.6.2 的互踢检测只覆盖连接层（短命会话互踢

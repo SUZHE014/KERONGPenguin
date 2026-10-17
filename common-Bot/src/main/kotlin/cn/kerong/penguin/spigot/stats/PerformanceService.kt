@@ -12,14 +12,15 @@ import java.util.Date
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * /查性能 命令图片输出服务（1.6.7 新增）。
+ * /查性能 命令图片输出服务（1.6.7 新增，1.6.7.1 调整）。
  *
  * 全流程异步（与 /查在线 一致）：机器人消息线程只做冷却判断
  * （render.command-cooldown-seconds，同一配置共用冷却秒数但独立计数），
  * 其余进入 [CardRenderPool]：
- * 1. 取平台性能快照（[KERONG.performanceSnapshot]：TPS / MSPT / JVM 堆 /
- *    进程 CPU / 在线人数；核心不支持读取的项为 null，卡片显示「--」）；
- * 2. 指标显隐按 render.performance.show-* 配置实时读取；
+ * 1. 取平台性能快照（[KERONG.performanceSnapshot]：TPS / MSPT /
+ *    JVM 堆 / 进程 CPU；核心不支持读取的项为 null，卡片显示「--」）；
+ * 2. 指标固定四项（TPS / MSPT / 内存 / CPU，1.6.7.1 起不再展示
+ *    在线人数，单项显隐配置已移除）；
  * 3. [PerformanceRenderer] 渲染毛玻璃卡片（背景与其他渲染共用
  *    [InfoCardAssets.resolveBackground]，render.performance.builtin-background
  *    默认内置底图）；
@@ -60,16 +61,8 @@ object PerformanceService {
                         return@submit
                     }
 
-                    // 2. 指标显隐（实时读取，/kerong reload 立即生效）
-                    val showTps = RenderSettings.performanceItemEnabled("show-tps")
-                    val showMspt = RenderSettings.performanceItemEnabled("show-mspt")
-                    val showMemory = RenderSettings.performanceItemEnabled("show-memory")
-                    val showCpu = RenderSettings.performanceItemEnabled("show-cpu")
-                    val showOnline = RenderSettings.performanceItemEnabled("show-online")
-
-                    // 3. 背景与渲染（高度按可见指标数计算后取同尺寸背景）
-                    val visibleCount = listOf(showTps, showMspt, showMemory, showCpu, showOnline).count { it }
-                    val height = PerformanceRenderer.measureHeight(visibleCount)
+                    // 2. 固定四项指标（1.6.7.1 起无单项显隐配置）
+                    val height = PerformanceRenderer.measureHeight()
                     val dataDirectory = plugin.configFile?.parentFile
                     val background = InfoCardAssets.resolveBackground(
                         dataDirectory,
@@ -83,11 +76,6 @@ object PerformanceService {
                             serverName = plugin.serverName,
                             updateTime = updateTime,
                             snapshot = snapshot,
-                            showTps = showTps,
-                            showMspt = showMspt,
-                            showMemory = showMemory,
-                            showCpu = showCpu,
-                            showOnline = showOnline,
                             background = background,
                         )
                     )

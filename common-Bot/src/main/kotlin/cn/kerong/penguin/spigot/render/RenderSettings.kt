@@ -116,31 +116,15 @@ object RenderSettings {
      * 语义与其他渲染的 builtin-background 一致：true = 内置深灰底图
      * （随 JAR 分发，与其他卡片共用横版底图），false = 随机取数据目录
      * img/ 图片（无图自动回退内置）。实时读取（/kerong reload 立即生效）。
+     *
+     * 1.6.7.1：指标固定四项（TPS / MSPT / 内存 / CPU），原
+     * render.performance.show-* 单项显隐配置已移除（在线人数卡同步
+     * 移除——查在线命令已有专门卡片）；命令总开关走 commands.查性能。
      */
     fun performanceBuiltinBackground(): Boolean {
         return try {
             (BotShared.instance as? JavaPlugin)?.config?.getBoolean(
                 "render.performance.builtin-background",
-                true,
-            ) ?: true
-        } catch (_: Throwable) {
-            true
-        }
-    }
-
-    /**
-     * 查性能卡片的单项显隐（1.6.7 新增）。
-     *
-     * - render.performance.show-tps / show-mspt / show-memory / show-cpu /
-     *   show-online（全部默认 true）：对应指标卡不显示；
-     * - 命令总开关走 commands.查性能（关闭后命令失效、快捷菜单按钮
-     *   同步消失，与其他群命令一致）；
-     * - 实时读取（/kerong reload 后立即生效）。
-     */
-    fun performanceItemEnabled(key: String): Boolean {
-        return try {
-            (BotShared.instance as? JavaPlugin)?.config?.getBoolean(
-                "render.performance.$key",
                 true,
             ) ?: true
         } catch (_: Throwable) {

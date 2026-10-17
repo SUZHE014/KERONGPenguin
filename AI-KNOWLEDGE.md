@@ -1,7 +1,7 @@
 # KERONGPenguin AI 交接知识库
 
 > **本文档的用途**：把本文件丢给一个对项目一无所知的 AI，它能立刻了解当前情况并接手工作。
-> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-17（v1.6.7 发版完成）。
+> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-18（v1.6.7.1 发版完成）。
 > 自包含版本（发给本地无任何东西的 AI）见官网 `AI-KNOWLEDGE.txt`，含从零开始的环境重建与凭据获取说明。
 
 ### 1.1 受限网络环境重建（2026-10-14 实战，环境重置后可用）
@@ -20,7 +20,7 @@
 
 KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项目：玩家在 QQ 群里查数据/签到/聊天，插件在服务器内渲染统计卡片图片并回发。Kotlin 多模块：`common-Bot`（全部业务核心）+ `server-Spigot`（Bukkit 插件版，支持 Spigot/Paper/Folia/混合端）+ `server-NeoForge`（NeoForge 1.21.1 模组版，复用 common-Bot 全部源码 + Spigot 的 manager 源码）。
 
-**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.6.4）。当前版本 **1.6.7**（新增 /查性能 性能监控卡片：TPS/MSPT/内存/CPU/在线 渲染图片，commands.查性能 可关、render.performance.show-* 单项显隐、原版 Spigot 反射不到显示「--」；/查在线 默认改图片输出（motd.use-markdown 默认 false）/ 1.6.6.4：移除空闲 GC 提示 render.idle-gc-hint 与已提交堆自动收缩——Full GC 全停顿 0.05~0.6 秒可能落在玩家游玩时刻造成卡顿，内存归还交 JVM 自然节奏，插件只做确定性缓存释放；启动期内存飙升的单飞修复与空闲释放保留 / 1.6.6.3：重连风暴降噪、移除会误报的双服同绑检测（ConflictWatch 删除）、修复重连计数越界 / 1.6.6.2：缓存分层 + 空闲释放 + 失败分类 + 单飞 + /kerong mem / 1.6.6.1 覆盖版：头像本地优先、删 WebUI、删 PlayTimeManager / 1.6.6：控制台真彩色、头像多线路，包名 cn.kerong.bot 与 cn.kerong.penguin，主类 KERONGSpigot / KERONGNeoForge）。
+**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.7.1）。当前版本 **1.6.7.1**（修复 /查性能 TPS/MSPT 一直读不到：PerformanceSnapshot 内建分层反射读取器，Paper 系 API → Spigot NMS 跳板 recentTps/tickTimes 双映射名 → NF getAverageTickTimeNanos，仍无 TPS 时由 MSPT 换算；查性能卡固定四项 TPS/MSPT/内存/CPU，删在线人数卡与 render.performance.show-* 显隐配置，旧配置残留键自动清除）/ 1.6.7：新增 /查性能 性能监控卡片与 /查在线 默认图片输出（motd.use-markdown 默认 false）/ 1.6.6.4：移除空闲 GC 提示与已提交堆自动收缩（防 Full GC 卡顿） / 1.6.6.3：重连风暴降噪、移除双服同绑检测、重连计数越界修复 / 1.6.6.2：缓存分层 + 空闲释放 + 失败分类 + 单飞 + /kerong mem / 1.6.6.1 覆盖版：头像本地优先、删 WebUI、删 PlayTimeManager / 1.6.6：控制台真彩色、头像多线路，包名 cn.kerong.bot 与 cn.kerong.penguin，主类 KERONGSpigot / KERONGNeoForge）。
 
 ---
 
@@ -65,7 +65,7 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 | 查信息统计卡 | `events/commands/PublicCommands.kt` → `spigot/stats/QueryInfoService.kt` → `spigot/render/CardRenderPool.kt` + `InfoCardRenderer.kt` | CPU 异步渲染 PNG（CardRenderPool 线程池，核数一半 1~4），9 项统计，依赖缺失自适应（Vault 金币 / DeluxeTags **或 PlayerTitle**（1.6.4，PAPI %playerTitle_use%） / PlayerPoints 点券），头像多级链 + **外部多线路回退（含 MinePic）与 Mojang 网络全局冷却**（1.6.4~1.6.6.1，详见 3.5） |
 | ~~在线时长同步~~ | 已于 1.6.6.1 覆盖版**删除**（1.6.4 曾引入 `PlayTimeSync.kt`：检测到 PlayTimeManager + PAPI 时差值对齐，因用户要求移除；本插件自身在线时长统计不受影响，PapiDependencyCheck 提示面同步收窄为仅 PlayerTitle） |
 | 查在线/在线排行榜/财富榜 | `PublicCommands.kt` + `LeaderboardCommands.kt` + `CoinsLeaderboardCommands.kt` + `render/OnlineListRenderer.kt`/`LeaderboardRenderer.kt` | 图片分段发送（每页 15 人）、命令冷却 `render.command-cooldown-seconds`、内置背景图（backgrounds/，img/ 可自定义随机） |
-| /查性能（1.6.7） | `PublicCommands.kt` → `spigot/stats/PerformanceService.kt` + `render/PerformanceRenderer.kt` | 性能监控卡片（TPS/MSPT/内存/CPU/在线，状态分级+进度条）；快照走 `KERONG.performanceSnapshot()`（data class PerformanceSnapshot，JVM 内存/CPU 由 capture 统一采集，Spigot 反射 Server#getTPS/getAverageTickTime，NF 反射 getAverageTickTime/tickTimes）；命令开关 commands.查性能（关=菜单按钮消失），单项显隐 render.performance.show-*，背景 render.performance.builtin-background；无结果缓存（数据实时变化），冷却与其他图片命令共用 |
+| /查性能（1.6.7） | `PublicCommands.kt` → `spigot/stats/PerformanceService.kt` + `render/PerformanceRenderer.kt` | 性能监控卡片（1.6.7.1 起固定四项 TPS/MSPT/内存/CPU，状态分级+进度条，null 显示「--」）；快照走 `KERONG.performanceSnapshot()`（data class PerformanceSnapshot 2 参 capture，JVM 内存/CPU 由 capture 统一采集；**TPS/MSPT 分层反射读取器内建在 companion**：readTps/readMspt/tpsFromMspt——Paper 系 API getTPS/getAverageTickTime → NMS 跳板 CraftServer#getServer() → recentTps/tickTimes（1.20.4 Spigot 名）/tickTimesNanos（1.20.5+ Mojang 名）→ NF getAverageTickTimeNanos，反射目标名全收编在 common-Bot，双端平台实现只剩薄封装）；命令开关 commands.查性能（关=菜单按钮消失），背景 render.performance.builtin-background（show-* 显隐已删）；无结果缓存，冷却与其他图片命令共用 |
 | /查在线 markdown | `markdown.queryOnline` → online.md | 关图片走模板文本 |
 | /motd | `PublicCommands.motd`（无参=本服状态 server-status 模板）→ **带参转发 `MotdCommands`**（minebbs API，motd-* 模板） | 1.6.3 修复了转发缺失导致 MotdCommands 永不可达 |
 | AI 对话 | `spigot/qqbind/AiChat.kt` + `QClient.replyMarkdownWithReference` | @机器人触发；引用回复（MessageReference 协议）失败三级回退：引用→普通被动→纯文本；全局一份上下文 |
@@ -216,9 +216,16 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
 
 ---
 
-## 7. 当前已知状态（2026-10-17，v1.6.7 发版完成）
+## 7. 当前已知状态（2026-10-18，v1.6.7.1 发版完成）
 
-- 双端 1.6.7 全部完成（构建 / 门禁 115 项（P 查性能 19 项 + M 查在线默认图片 + 基线保持）/ 冒烟 26（快照采集、高度公式、PNG 输出宽高、显隐渲染、null 指标降级、命令注册表反射验证、RenderSettings 默认值）/ 官网部署 / git 推送）：
+- 双端 1.6.7.1 全部完成（构建 / 门禁 132 项（P 组重写：分层读取器与反射目标名断言 / 在线卡与 show-* 负向断言 / 基线保持）/ 冒烟 33（capture 新签名 / 三种核心模拟类的分层读取行为验证：Paper API 层、Spigot getServer 跳板+公有/私有字段、NF getAverageTickTimeNanos / tpsFromMspt 换算 / 固定四项 766 高 / performanceItemEnabled 已删）/ 官网部署 / git 推送）：
+  - 修复 TPS/MSPT 一直读不到：1.6.7 只反射 Paper 系 API（纯 Spigot 无此 API），NF 反射的 getAverageTickTime/tickTimes 与 1.21.1 实际类不符（实为 getAverageTickTimeNanos/tickTimesNanos，Mojang 映射，且字段还是 private）；现在 PerformanceSnapshot companion 内建分层读取器（readTps/readMspt/tpsFromMspt），双端平台实现只剩薄封装；冒烟用假服务器类验证了三层路径行为；
+  - 查性能卡固定四项（TPS/MSPT/内存/CPU，2×2 固定 766 高）：删在线人数卡（查在线已有专门卡片），PerformanceSnapshot 删 onlineCount/maxPlayers，capture 改 2 参；
+  - 删 render.performance.show-* 五键：RenderSettings 删 performanceItemEnabled、ConfigManager 删默认键并收编废弃迁移表（用户旧配置自动清除）、双端 config.yml 同步，render.performance.builtin-background 保留；
+  - 官网：下载卡片 1.6.7.1 + 历史表 7 版本（删 1.6.4）+ 更新日志 v1.6.7.1 段 + version.json 三条 + tutorial 查性能段改固定四项说明；
+  - 踩坑：README 的「当前版本」行在 1.6.7 发版时漏更（停在 1.6.4），本次一并修正——发版时版本号检查除五处外还要扫 README 版本段。
+
+- 双端 1.6.7 历史项（构建 / 门禁 115 项（P 查性能 19 项 + M 查在线默认图片 + 基线保持）/ 冒烟 26 / 官网部署 / git 推送）：
   - /查性能：PerformanceSnapshot（KERONG 接口 performanceSnapshot()，双端各自实现核心指标反射读取，JVM 内存/CPU 由 companion capture 统一采集 getProcessCpuLoad）+ PerformanceRenderer（2×N 指标卡：TPS/MSPT/内存/CPU/在线，状态分级色 + 进度条，null 显示「--」）+ PerformanceService（CardRenderPool 异步 + 冷却 + 单图发送，不做结果缓存）+ PublicCommands @Commands("查性能") + MenuManager 按钮（commands.查性能 关闭时经既有 commandList 过滤自动消失）+ 模板 performance-render-failed.md（双端资源）+ config render.performance 六键（show-* 五项 + builtin-background）+ help.md 行；
   - /查在线 默认图片：ConfigManager motd() 与 DEFAULT_VALUES 的 motd.use-markdown 默认 true→false，双端 config.yml 同步（fillMissing 不覆盖旧用户值，已保存配置行为不变）；
   - 官网：下载卡片 1.6.7 + 历史表 7 版本（删 1.6.3 两行）+ 更新日志 v1.6.7 段 + 设计来源区块移到更新日志之前 + 全站删除「详见 GitHub Issue #1」文字与链接（保留 xintinglei.cn 与作者名署名）+ version.json 三条 + tutorial（查性能配置块与说明 / use-markdown 示例与默认说明 / commands 段查性能行 / 快速上手段落查性能）。
@@ -263,4 +270,4 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
   - 配置注释精简（删更新检查结果说明/版本分隔条/留空[]说明）。
 - 1.6.4 及更早历史详见 git log 与官网更新日志。
 - 待观察：重连里程碑提示在真实网关踢线场景的节奏（每次踢线会有一条「第 1/5 重试 + 重连成功」，属预期行为；挂起后 SDK 迟到重连被计为新一轮第 1 次也属预期）；OpenId 反查在 admin.mode=manual 下的判定体验。
-- 官网历史下载：1.6.4 起只保留 1.6.0+ 版本（更旧已按用户要求删除；1.6.7 发布后保留 7 个版本 1.6.4~1.6.7；1.6.2、1.6.1、1.6.6.1 与 1.6.3 已先后下架）。
+- 官网历史下载：1.6.4 起只保留 1.6.0+ 版本（更旧已按用户要求删除；1.6.7.1 发布后保留 7 个版本 1.6.5~1.6.7.1；1.6.4、1.6.2、1.6.1、1.6.6.1 与 1.6.3 已先后下架）。
