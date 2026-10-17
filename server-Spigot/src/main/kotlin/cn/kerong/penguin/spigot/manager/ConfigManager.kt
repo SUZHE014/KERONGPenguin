@@ -127,9 +127,12 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // AI 上下文自 1.5.3 起即为全局一份记忆，不存在按群/按人切换）
         // 1.6.5：移除 render.gc-after-render（渲染后 GC 提示已废除——System.gc
         // 触发的 Full GC 停顿伤 tick，内存释放改为确定性 flush，见 CardRenderPool）
+        // 1.6.6.4：移除 render.idle-gc-hint（空闲 GC 提示——Full GC 全停顿
+        // 可能落在玩家游玩时刻造成卡顿，内存归还交给 JVM 自然节奏）
         for (removed in listOf(
             "agent", "audit", "whitelist", "query-online", "motd.text", "commands.个人信息",
             "qq-bind.leaderboard.random-background", "ai.context-global", "render.gc-after-render",
+            "render.idle-gc-hint",
         )) {
             if (config.contains(removed)) {
                 config.set(removed, null)
@@ -368,8 +371,6 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "render.avatar-fetch-priority" to "local",
             // 1.6.6.2：渲染空闲内存释放阈值（分钟；默认 5，支持小数，0 = 关闭）
             "render.idle-release-minutes" to 5,
-            // 1.6.6.2 覆盖版：空闲释放后向 JVM 发 GC 提示归还内存（默认 true）
-            "render.idle-gc-hint" to true,
             // 1.6.0 新增：图片渲染命令的用户冷却秒数（旧版硬编码 5 秒；0 = 关闭）
             "render.command-cooldown-seconds" to 5,
             // 1.5.7：全部图片渲染的内置背景开关（默认 true = 随 JAR 分发的深灰底图，

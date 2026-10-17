@@ -1686,32 +1686,14 @@ object InfoCardAssets {
             //  完整记录见 logs/qq/qq-bind-日期.log）
             PluginFileLog.write(
                 "[渲染] 已 ${"%.1f".format(idleMillis / 60_000.0)} 分钟无渲染，释放素材缓存内存" +
-                    "（头像 $avatars 条 / 背景处理结果 $backgrounds 张 / 背景源图 $sources 张，下次渲染自动从磁盘恢复）" +
-                    "（render.idle-gc-hint=${if (RenderSettings.idleGcHint()) "开" else "关"}，开启时本次已随释放向 JVM 发 GC 提示）"
+                    "（头像 $avatars 条 / 背景处理结果 $backgrounds 张 / 背景源图 $sources 张，下次渲染自动从磁盘恢复）"
             )
-            // 1.6.6.2 覆盖版：空闲释放后向 JVM 发一次 full GC 提示
-            //（render.idle-gc-hint，默认开）。
-            //
-            // 修复「服务器启动时安装本插件后内存飙升 1.5~2.5GB 且不回落」：
-            // 启动期 QQ 群集中查询（查在线 / 查信息）会在短时间内产生大量
-            // 渲染与头像获取的临时对象，G1 为承接分配速率把堆扩张到接近
-            // -Xmx 并长期保持（面板显示的内存 = 已提交量，而非实际存活
-            // 数据——本插件的图像缓存全为小容量上限，见 cacheStats）。
-            // 空闲释放把图像缓存清空后，此刻是存活对象最少、full GC 停顿
-            // 最短的时机：借 System.gc 提示触发一次 full GC，G1 会把闲置
-            // 堆区归还操作系统，面板内存曲线随之回落。
-            //
-            // 与 1.6.5 移除的「渲染后每次 System.gc()」的本质区别：
-            // 旧版在渲染高峰后立即触发（大存活集 + 高频 = 反复全停顿
-            // 丢 tick）；本提示只在「已空闲整个空闲周期 + 缓存已清空」的
-            // 最低水位触发，每个空闲周期至多一次，停顿为毫秒级。
-            // render.idle-gc-hint: false 可整体关闭。
-            if (RenderSettings.idleGcHint()) {
-                try {
-                    System.gc()
-                } catch (_: Throwable) {
-                }
-            }
+            // 1.6.6.4：移除空闲后向 JVM 发 GC 提示（原 render.idle-gc-hint），
+            // 线上 1.6.6.3 曾短暂引入「已提交超存活自动收缩」（auto-shrink），
+            // 连同本 GC 提示一并移除——System.gc 触发的 Full GC 全停顿
+            //（0.05~0.6 秒）可能落在玩家正在游玩的时刻（「无渲染」不等于
+            // 服务器空闲），卡顿风险与收益不成比例；堆内存归还交给 JVM
+            // 自然节奏，插件侧只做确定性的图像缓存释放（flush + 清空）。
         } catch (_: Throwable) {
         }
     }
@@ -1720,8 +1702,8 @@ object InfoCardAssets {
      * 缓存与内存诊断快照（1.6.6.2 覆盖版：/kerong mem 子命令输出）。
      *
      * 用于排查「面板内存高」类问题：JVM 已提交堆 ≠ 插件实际占用的
-     * 存活内存（渲染高峰后 G1 扩张的堆需要 full GC / 空闲归还才会
-     * 回落，见 [releaseIfIdle] 的 idle-gc-hint）。
+     * 存活内存（渲染高峰后 G1 扩张的堆按 JVM 自然节奏归还；
+     * 1.6.6.4 起插件不主动触发任何 GC，避免全停顿卡顿）。
      */
     fun cacheStats(): String {
         val runtime = Runtime.getRuntime()
@@ -1734,7 +1716,7 @@ object InfoCardAssets {
             0L
         }
         return "JVM 堆: 存活 ${usedMb}MB / 已提交 ${committedMb}MB / 上限 ${maxMb}MB" +
-            "（已提交为 JVM 预留量，渲染高峰后扩张、空闲释放时回落，不等于插件占用）\n" +
+            "（已提交为 JVM 预留量，渲染高峰后扩张、不代表插件实际占用）\n" +
             "头像内存缓存: ${avatarCache.size} 条（上限 $AVATAR_CACHE_MAX，单张 ≤ ${AVATAR_MEMORY_MAX_BYTES / 1024}KB；" +
             "大头像只走磁盘缓存 cache/avatars/）\n" +
             "失败冷却: ${missCache.size} 条（60 秒 TTL）/ 名字反查缓存: ${premiumUuidCache.size} 条\n" +

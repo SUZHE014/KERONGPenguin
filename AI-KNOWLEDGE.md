@@ -1,7 +1,7 @@
 # KERONGPenguin AI 交接知识库
 
 > **本文档的用途**：把本文件丢给一个对项目一无所知的 AI，它能立刻了解当前情况并接手工作。
-> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-16（v1.6.6.3 发版完成）。
+> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-17（v1.6.6.4 发版完成）。
 > 自包含版本（发给本地无任何东西的 AI）见官网 `AI-KNOWLEDGE.txt`，含从零开始的环境重建与凭据获取说明。
 
 ### 1.1 受限网络环境重建（2026-10-14 实战，环境重置后可用）
@@ -20,7 +20,7 @@
 
 KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项目：玩家在 QQ 群里查数据/签到/聊天，插件在服务器内渲染统计卡片图片并回发。Kotlin 多模块：`common-Bot`（全部业务核心）+ `server-Spigot`（Bukkit 插件版，支持 Spigot/Paper/Folia/混合端）+ `server-NeoForge`（NeoForge 1.21.1 模组版，复用 common-Bot 全部源码 + Spigot 的 manager 源码）。
 
-**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.6.3）。当前版本 **1.6.6.3**（重连风暴降噪：WSS 协议帧与 SDK 三条固定重连噪声改仅文件日志、重连控制台只报里程碑、移除会误报的双服同绑检测（ConflictWatch 整体删除）、修复重连计数「第 6/5 次」越界、GC 归还内存提示改文件日志与配置注释标卡顿代价 / 1.6.6.2：缓存分层 + 空闲释放 + 失败分类 + 单飞 + idle-gc-hint + /kerong mem / 1.6.6.1 覆盖版：头像本地优先、删 WebUI、删 PlayTimeManager / 1.6.6：控制台真彩色、头像多线路，包名 cn.kerong.bot 与 cn.kerong.penguin，主类 KERONGSpigot / KERONGNeoForge）。
+**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.6.4）。当前版本 **1.6.6.4**（移除空闲 GC 提示 render.idle-gc-hint 与已提交堆自动收缩——Full GC 全停顿 0.05~0.6 秒可能落在玩家游玩时刻造成卡顿，内存归还交 JVM 自然节奏，插件只做确定性缓存释放；启动期内存飙升的单飞修复与空闲释放保留 / 1.6.6.3：重连风暴降噪、移除会误报的双服同绑检测（ConflictWatch 删除）、修复重连计数越界 / 1.6.6.2：缓存分层 + 空闲释放 + 失败分类 + 单飞 + /kerong mem / 1.6.6.1 覆盖版：头像本地优先、删 WebUI、删 PlayTimeManager / 1.6.6：控制台真彩色、头像多线路，包名 cn.kerong.bot 与 cn.kerong.penguin，主类 KERONGSpigot / KERONGNeoForge）。
 
 ---
 
@@ -125,7 +125,7 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 
 `bot/UpdateChecker.kt`：启动后异步 8 秒 GET `https://kerong.xin/penguin/version.json`，逐段数字比较版本；有新版→控制台输出带 § 颜色码的版本号/下载页/最多 6 行简要日志（1.6.4：版本号绿色加粗、链接蓝色、条目灰白分级）；失败→控制台一句话，细节进日志。`update-check.enabled` 可关。**每次发版必须更新服务器上的 version.json**。§ 颜色码处理：Spigot 系控制台直接渲染；NeoForge 适配器 `log_info/log_warning/log_error` 输出前统一过 `PluginFileLog.stripColorCodes`（log4j 不渲染 §，否则乱码）；文件日志始终剥离。共享代码可以放心在控制台文案里用 § 颜色码。
 
-### 3.5 渲染管线与头像获取（1.6.4 头像修复，1.6.5 内存与性能，1.6.6 多线路与落盘，1.6.6.1 覆盖版：本地优先 + 缓存配置化 + MinePic，1.6.6.2：缓存分层 + 空闲释放 + 失败分类 + 获取方式日志，1.6.6.2 覆盖版：日志去重 + 单飞 + idle-gc-hint + /kerong mem）
+### 3.5 渲染管线与头像获取（1.6.4 头像修复，1.6.5 内存与性能，1.6.6 多线路与落盘，1.6.6.1 覆盖版：本地优先 + 缓存配置化 + MinePic，1.6.6.2：缓存分层 + 空闲释放 + 失败分类 + 获取方式日志，1.6.6.2 覆盖版：日志去重 + 单飞 + /kerong mem，1.6.6.4：移除空闲 GC 提示）
 
 CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结果缓存、背景图内置+随机 LRU、长图封顶 1600px、子采样解码防 OOM。图片发送：`replyWithImgBytes`（base64 上传），读超时（SDK OkHttp 10 秒 < QQ 富媒体普遍 10 秒+应答）**不算失败**（图片大概率已投递，1.6.1）；ret 2022021x=已受理算成功。**1.6.5 内存策略**：确定性 flush（单次画布 / 中间图 / 缓存淘汰 / clearCaches 均在失去引用前 flush，剩余堆内存交给常规新生代 GC，System.gc 与 gc-after-render 已废除）。**1.6.6.1 覆盖版内存再优化**：三渲染器圆角头像零中间图直绘（共享 `InfoCardRenderer.drawRoundedAvatar`）；内置背景处理高度统一封顶 1600px。**1.6.6.2 缓存与内存策略**：①头像内存缓存上限 64→**128 条**，并新增 **AVATAR_MEMORY_MAX_BYTES = 10KB 单张门槛**——PNG 编码后超 10KB 的大头像只写磁盘缓存不进内存（`cacheAndStoreAvatar`：`encodeAvatarPng` 编码一次，磁盘写入与内存门槛共用；磁盘缓存关闭时退回全量内存缓存；磁盘命中 `DiskAvatar` 带文件字节数超门槛不回填）；②**渲染空闲内存释放**：`render.idle-release-minutes`（默认 5，支持小数，0 = 关闭）——CardRenderPool 任务收尾（含异常收尾）刷新 `markRenderCompleted` 时间戳 + `activeRenders` 活跃计数护栏，render-idle-releaser 守护线程每 30 秒检查，距上次渲染完成超阈值且无进行中渲染时 flush + 清空 avatar/background/builtin 三类图像缓存并重置计时，missCache / premiumUuidCache 轻量元数据保留，释放动作写日志；③内存缓存及时清理：sweepDiskCache 每轮开头 `purgeMemoryAvatarCache` 清超 TTL（10 分钟）条目，仅无活跃渲染时执行；④磁盘缓存强制关机后可清：`ensureAvatarSweeper` 双端主类启动即调用（首轮 10 秒后清停服/强关期间过期文件）。
 
@@ -209,14 +209,18 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
 | 指令重载配置 | 已移除该概念：改配置一律重启（配置头注释+教程+文档三处一致） |
 | Kloping 线程池 | 关服后 50+ 非守护线程不退出 → SptCompat 清扫 + 5 秒 halt(0) 兜底 |
 | 死代码教训 | 1.6.3 审计删除 21 项零引用声明+剔除 1.3MB 未用库；新死代码判定要查**三个模块+脚本+资源+反射**（@Commands/@SubscribeEvent/@EventReceiver 反射入口不算死） |
+| 部署未提交源码 | 1.6.6.3 曾出现线上 JAR 含未提交功能（auto-shrink 五键）而 git 无此代码——会话中断导致。发版纪律：**先 commit 再部署**，任何时点线上 JAR 必须能由 git HEAD 复现；接手时先核对线上 version.json / JAR 与 git log 是否一致再动手（1.6.6.4 实测踩坑） |
 | 打包输出即底座 | package_jar.py 默认输出名与 base JAR 同名（版本号相同时），传参时若 base 路径 == 输出路径边读边写 → BadZipFile。**覆盖重发场景先传 -o 换名再 mv**，或用 download 目录里的原版 JAR 作 base（1.6.6.2 覆盖版实测踩坑） |
-| JVM 已提交≠存活 | 用户报「内存飙升 GB 级」先分清是堆存活（泄漏）还是 G1 已提交量（分配高峰扩张、默认不归还）。插件侧排查工具 /kerong mem（cacheStats）；渲染实测单次 ~13MB 临时分配零残留。修复路径：削减并发分配（单飞）+ 空闲 GC 提示归还（idle-gc-hint） |
+| JVM 已提交≠存活 | 用户报「内存飙升 GB 级」先分清是堆存活（泄漏）还是 G1 已提交量（分配高峰扩张、默认不归还）。插件侧排查工具 /kerong mem（cacheStats）；渲染实测单次 ~13MB 临时分配零残留。修复路径：削减并发分配（单飞，1.6.6.2 起）；**不要用 System.gc 归还堆**（Full GC 全停顿 0.05~0.6 秒可能落在玩家游玩时刻——1.6.6.2 的 idle-gc-hint 与线上 1.6.6.3 短暂存在的 auto-shrink 均已移除） |
 
 ---
 
-## 7. 当前已知状态（2026-10-16，v1.6.6.3 发版完成）
+## 7. 当前已知状态（2026-10-17，v1.6.6.4 发版完成）
 
-- 双端 1.6.6.3 全部完成（构建 / 门禁 105 项（R/C/N/G/Y/V/B/S 十组）/ 官网部署 / git 推送）：
+- 双端 1.6.6.4 全部完成（构建 / 门禁 113 项（R/C/N/Z/G/Y/V/B/S，Z 组为 GC 移除断言）/ 冒烟 68 / 官网部署 / git 推送）：
+  - 移除空闲 GC 提示：render.idle-gc-hint 全链路删除（RenderSettings.idleGcHint / releaseIfIdle 的 System.gc 块 / 释放日志的 gc-hint 状态标注 / 双端 config.yml 键与注释 / ConfigManager 默认值→废弃键迁移表自动清除用户旧键）；线上 1.6.6.3 曾短暂部署未提交的 auto-shrink（已提交超存活自动收缩五键），1.6.6.4 JAR 以 git 源重建后 auto-shrink 字节零残留（门禁 Z3 断言）；/kerong mem 提示语改「不代表插件实际占用」不再声称空闲回落；
+  - 官网：下载卡片 1.6.6.4 + 历史表 8 版本（删 1.6.2 两行）+ 更新日志 1.6.6.4 段（1.6.6.3 段保留）+ version.json 三条；tutorial.html 以线上 1.6.6.3 版为基线删 auto-shrink / idle-gc-hint 配置块并小白化精简（删渲染 internals 三段长文与全文版本考古字样）。
+- 双端 1.6.6.3 历史项（构建 / 门禁 105 项 / 官网部署 / git 推送；注意：线上 1.6.6.3 JAR 曾含未提交的 auto-shrink，已被 1.6.6.4 覆盖）：
   - 重连风暴降噪：WSS 关闭帧 / op9 会话无效 / op7 要求重连改 PluginFileLog.write 仅文件；控制台重连提示只报里程碑（本轮第 1 次 / 最后一次 / 成功 / 超时），中间次数仅文件；SDK 三条固定噪声（暂未处理的异常code / websocket closed with code 1011… / reconnect in 3 seconds）在 KERONG LogSink 侧 isSdkReconnectNoise 过滤改仅文件；
   - 双服同绑检测整体移除：ConflictWatch.kt 文件删除、WssDiagnostics 短命会话/鉴权期被关证据计数删除（QqTokenHealth.lastCheckOk 一并删除，自检本身保留）、QClient.stopForConflict / ReconnectManager.onConflictDetected / onDedupConflictConfirmed 删除、QClient 四处 + MessageTemplates 四处接入点删除；
   - 重连计数越界修复：挂起后 SDK 已排队的延迟重连建连时 onOpen 检测 attempt≥5 按新一轮重置计数（不再「第 6/5 次」）；
@@ -254,4 +258,4 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
   - 配置注释精简（删更新检查结果说明/版本分隔条/留空[]说明）。
 - 1.6.4 及更早历史详见 git log 与官网更新日志。
 - 待观察：重连里程碑提示在真实网关踢线场景的节奏（每次踢线会有一条「第 1/5 重试 + 重连成功」，属预期行为；挂起后 SDK 迟到重连被计为新一轮第 1 次也属预期）；OpenId 反查在 admin.mode=manual 下的判定体验。
-- 官网历史下载：1.6.4 起只保留 1.6.0+ 版本（更旧已按用户要求删除；1.6.6.3 起历史表删 1.6.1，保持 8 版本）。
+- 官网历史下载：1.6.4 起只保留 1.6.0+ 版本（更旧已按用户要求删除；1.6.6.4 发布后保留 7 个版本 1.6.3~1.6.6.4；1.6.2、1.6.1 与 1.6.6.1 已先后下架）。
