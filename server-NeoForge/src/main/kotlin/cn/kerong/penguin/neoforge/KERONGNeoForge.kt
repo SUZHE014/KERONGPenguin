@@ -14,6 +14,7 @@ import cn.kerong.penguin.spigot.manager.ConfigManager
 import cn.kerong.penguin.spigot.render.InfoCardAssets
 import cn.kerong.penguin.spigot.stats.PlayerStatsManager
 import cn.kerong.penguin.spigot.stats.SparkBridge
+import cn.kerong.penguin.spigot.stats.SparkStartupCheck
 import net.minecraft.network.chat.Component
 import net.neoforged.fml.common.Mod
 import net.neoforged.neoforge.common.NeoForge
@@ -91,6 +92,20 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         } catch (_: Throwable) {
         }
         registerBindLoginGate()
+        // 1.6.7.3：spark 接入成功提示（ServerStarted 后全部模组就绪，
+        // 延迟 5 秒等 spark 统计窗口积累首批样本；检测到并读取成功时
+        // 在启动日志输出正向确认）
+        SparkStartupCheck.schedule(SparkStartupCheck.neoforgeDelay()) {
+            try {
+                if (net.neoforged.fml.ModList.get().isLoaded("spark")) {
+                    SparkBridge.read()
+                } else {
+                    null
+                }
+            } catch (_: Throwable) {
+                null
+            }
+        }
         modLogger.info("KERONGPenguin NeoForge 已加载（${pluginVersion} / MC ${serverVersion}）")
     }
 

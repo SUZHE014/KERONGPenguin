@@ -30,6 +30,11 @@ import java.nio.file.StandardCopyOption
  * 5. 合并结果先试解析校验（解析失败 / 版本号不对则放弃重建走旧流程，
  *   用户旧文件不受影响），再原子替换落盘。
  *
+ * 1.6.7.3：[YamlTextMerge.renderEntry] 回填格式对齐模板书写风格（列表与
+ * 字符串统一行内双引号），修复升级重建后用户手写的 groups: ["xxx"] 等
+ * 行内格式被改写成块状裸串、看着像值丢失的问题（配置版本 21 → 22，
+ * 装过 1.6.7.2 覆盖版的用户重启即再次重建拿新格式）。
+ *
  * 触发时机：ConfigManager.initialize() 在 saveDefaultConfig 之前调用；
  * 全新安装（无 config.yml）不触发，由 saveDefaultConfig 原样释放。
  */
@@ -242,6 +247,13 @@ internal object YamlTextMerge {
         width = Int.MAX_VALUE
     }
 
+    /** 行内 flow 风格（1.6.7.3：复杂列表项如 custom-commands 的 Map 单行渲染）。 */
+    private val flowDumperOptions = org.yaml.snakeyaml.DumperOptions().apply {
+        defaultFlowStyle = org.yaml.snakeyaml.DumperOptions.FlowStyle.FLOW
+        isAllowUnicode = true
+        width = Int.MAX_VALUE
+    }
+
     /** 值 → YAML 文本（标量单行；空列表 []；非空列表多行块）。 */
     private fun dump(value: Any?): String {
         return org.yaml.snakeyaml.Yaml(dumperOptions).dump(value)?.trim() ?: "null"
@@ -325,32 +337,44 @@ internal object YamlTextMerge {
     // ---------- 渲染 ----------
 
     /**
-     * 键值 → 行（标量一行；空列表 []；非空列表 = 键行 + 同缩进项行）。
+     * 键值 → 行（标量一行；列表一律行内 flow 单行，与模板书写风格一致）。
      *
      * 1.6.7.2 覆盖版修复：列表按类型分派，不再依赖 dump 结果是否含换行判
      * 分支——单元素列表 dump 出的是单行“- item”（不含换行），旧判式把它
      * 误当标量拼成“key: - item”非法 YAML，单群用户的 bot.groups 回填
-     * 恰好踩中（合并结果解析失败 → 配置重建放弃）。现按 [Collection]
-     * 类型显式分支：空列表写 []，非空列表逐项写块状行；列表项自身 dump
-     * 出多行（如 custom-commands 的映射项）时续行补两空格续行缩进。
+     * 恰好踩中（合并结果解析失败 → 配置重建放弃）。
+     *
+     * 1.6.7.3 再修（用户反馈「配置更新后格式丢失」）：旧版回填列表统一
+     * 输出块状无引号项行（groups 与缩进项分两行写），用户按教程写的
+     * 行内带引号格式 `groups: ["xxx"]` 每次升级就被改写成块状裸串，
+     * 看着像 groups 值丢失、只剩 OpenID 字符串值保留原样。现改为：
+     * - 空列表 → `key: []`；
+     * - 纯标量列表 → 行内 `key: ["A", "B"]`（字符串统一双引号转义，
+     *   数字 / 布尔原样）——与 config.yml 顶部注释及各段示例
+     *   `groups: ["ABC123456XYZ", "DEF789XYZ"]` 完全同风；
+     * - 含 Map 等复杂项（custom-commands 形态）→ snakeyaml flow dump
+     *   单行 `key: [{key: ..., command: ...}]`；
+     * - 字符串标量 → 统一双引号 `key: "value"`（与教程「建议用引号包裹」
+     *   一致；数字 / 布尔原样，避免 5 → "5" 语义漂移）。
+     *
+     * 行内单行对模板两种形态都正确：行内键（hasInlineValue）1 行换 1 行；
+     * 块状键整块删换 1 行（Edit 的 removeLines 已覆盖块体项行）。
      */
     private fun renderEntry(indentStr: String, key: String, value: Any?): List<String> {
         if (value is Collection<*>) {
             if (value.isEmpty()) return listOf("$indentStr$key: []")
-            val itemLines = ArrayList<String>(value.size)
-            for (item in value) {
-                val dumped = dump(item)
-                if (dumped.contains('\n')) {
-                    val parts = dumped.split('\n')
-                    itemLines.add("$indentStr- ${parts.first()}")
-                    for (i in 1 until parts.size) {
-                        itemLines.add("$indentStr  ${parts[i]}")
-                    }
-                } else {
-                    itemLines.add("$indentStr- $dumped")
-                }
+            if (value.all { it == null || it is String || it is Number || it is Boolean }) {
+                val items = value.joinToString(", ") { renderFlowScalar(it) }
+                return listOf("$indentStr$key: [$items]")
             }
-            return listOf("$indentStr$key:") + itemLines
+            // 含 Map 等复杂项（custom-commands 形态）：flow dump 单行
+            val flow = org.yaml.snakeyaml.Yaml(flowDumperOptions).dump(value)?.trim() ?: "[]"
+            return listOf("$indentStr$key: $flow")
+        }
+        when (value) {
+            is String -> return listOf("$indentStr$key: ${doubleQuote(value)}")
+            null -> return listOf("$indentStr$key: null")
+            is Number, is Boolean -> return listOf("$indentStr$key: $value")
         }
         val dumped = dump(value)
         if (!dumped.contains('\n')) {
@@ -358,6 +382,33 @@ internal object YamlTextMerge {
         }
         // 罕见兜底（本插件配置不产生的形态）：多行块值按行加缩进续写
         return listOf("$indentStr$key:") + dumped.split('\n').map { "$indentStr$it" }
+    }
+
+    /** 行内 flow 列表项：字符串双引号转义，数字 / 布尔原样，null 字面量。 */
+    private fun renderFlowScalar(item: Any?): String = when (item) {
+        is String -> doubleQuote(item)
+        null -> "null"
+        else -> item.toString()
+    }
+
+    /**
+     * 字符串 → 双引号 YAML 字面量（与教程「每一项都必须加双引号」同风）。
+     * 转义双引号 / 反斜杠 / 换行 / 制表 / 回车；其余字符（含中文与 § 码）
+     * 原样输出（isAllowUnicode，无需转义）。
+     */
+    private fun doubleQuote(s: String): String {
+        val sb = StringBuilder(s.length + 2).append('"')
+        for (ch in s) {
+            when (ch) {
+                '"' -> sb.append("\\\"")
+                '\\' -> sb.append("\\\\")
+                '\n' -> sb.append("\\n")
+                '\t' -> sb.append("\\t")
+                '\r' -> sb.append("\\r")
+                else -> sb.append(ch)
+            }
+        }
+        return sb.append('"').toString()
     }
 
     /** 块状键的块尾行号（键行后连续的列表项 / 更深子键行）。 */

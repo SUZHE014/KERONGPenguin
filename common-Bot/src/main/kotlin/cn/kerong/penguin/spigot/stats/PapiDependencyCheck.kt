@@ -13,11 +13,15 @@ import java.util.concurrent.ConcurrentHashMap
  * - PlayerTitle 称号（%playerTitle_use%）；
  * - DeluxeTags 的占位符兜底层（%deluxetags_tag%，前三层失败才用到）。
  *
- * 玩家常装了 PlayerTitle 却漏装 PlaceholderAPI，导致
- * 功能静默失效还以为插件坏了。现两级提示（都不刷屏）：
- * - 启动后延迟检测一次（等全部插件 enable 完，避免加载顺序误判）；
- * - 运行中第一次因缺 PlaceholderAPI 导致查询失败时，再提醒一次
- *   （每次会话最多一次，[NOTIFY_KEY] 去重）。
+ * 1.6.7.3 提示策略调整（用户反馈）：仅当检测到 PlayerTitle 等依赖
+ * PlaceholderAPI 的功能插件已安装时才进行检测并提示——没装这些插件
+ * 的服务器与 PAPI 毫无关系，旧版「未装相关插件也温和提示」属于噪音。
+ * 检测到 PlayerTitle 时：
+ * - PlaceholderAPI 已装 → 控制台正向确认「称号依赖就绪」；
+ * - PlaceholderAPI 缺失 → 明确提示功能不生效并给出补救指引。
+ * 运行中第一次因缺 PlaceholderAPI 导致查询失败时仍会再提醒一次
+ * （每次会话最多一次，[NOTIFY_KEY] 去重；该路径只有装了 PlayerTitle
+ * 才可能触发，与新策略天然一致）。
  *
  * 仅 Spigot 系平台有效；NeoForge 端没有 PlaceholderAPI 生态
  * （插件体系本身不同），检测与提示都不触发。
@@ -39,13 +43,19 @@ object PapiDependencyCheck {
     }
 
     /**
+     * 需要 PlaceholderAPI 才能工作的功能插件清单（1.6.7.3：检测到其中任一
+     * 已安装才触发检测与提示；列表可随功能扩展追加）。
+     */
+    private val papiConsumerPlugins = listOf("PlayerTitle")
+
+    /**
      * 启动后延迟检测（Spigot 端 onEnable 挂载，异步延迟 12 秒：
      * 错开启动高峰与更新检查的 8 秒，且确保所有插件已 enable）。
      *
-     * 未安装时按「是否装了 PAPI 依赖插件」输出两档提示：
-     * - 装了 PlayerTitle：功能已装但无法工作，强烈建议补装；
-     * - 没装：温和提示一次（将来装称号类插件前先装 PAPI）。
-     * 金币与 DeluxeTags 称号不受影响这一点在两档提示里都说明，避免误解。
+     * 1.6.7.3：仅当检测到 [papiConsumerPlugins] 里的功能插件已安装时才
+     * 检测并提示——未装相关插件的服务器完全静默（PAPI 与它无关，不提示
+     * 也不扫日志）；检测到 PlayerTitle 时按 PAPI 有无输出就绪确认或缺失
+     * 指引（金币 Vault 直连与 DeluxeTags 称号不受影响在缺失提示中说明）。
      */
     fun scheduleStartupCheck(platform: String) {
         if (platform != "spigot") return
@@ -56,22 +66,17 @@ object PapiDependencyCheck {
                 return@Thread
             }
             try {
+                val consumer = papiConsumerPlugins.firstOrNull { pluginEnabled(it) }
+                if (consumer == null) return@Thread
                 if (isPapiAvailable()) {
-                    PluginFileLog.write("[依赖检测] PlaceholderAPI 已就绪")
+                    PluginFileLog.infoAndKeep("[依赖检测] $consumer 称号依赖就绪（PlaceholderAPI 已启用）")
                     return@Thread
                 }
-                val playerTitle = pluginEnabled("PlayerTitle")
-                val lines = StringBuilder("[依赖检测] 未检测到 PlaceholderAPI 变量插件：")
+                val lines = StringBuilder("[依赖检测] 已安装 $consumer 称号，但缺少 PlaceholderAPI 无法读取（当前不生效）：")
                 lines.append("\n  - 金币（Vault）与 DeluxeTags 称号不依赖它，不受影响；")
-                if (playerTitle) {
-                    lines.append("\n  - 已安装 PlayerTitle 称号，但缺少 PlaceholderAPI 无法读取（当前不生效）；")
-                } else {
-                    lines.append("\n  - 当前未安装需要它的功能插件，暂无影响；")
-                }
-                lines.append("\n  - 如需 PlayerTitle 称号，")
-                lines.append("请安装 PlaceholderAPI 后重启服务器。")
+                lines.append("\n  - 请安装 PlaceholderAPI 后重启服务器，$consumer 称号自动启用。")
                 PluginFileLog.warnAndKeep(lines.toString())
-                PluginFileLog.write("[依赖检测] PlaceholderAPI 缺失提示已输出（启动档）")
+                PluginFileLog.write("[依赖检测] PlaceholderAPI 缺失提示已输出（启动档，检测到 $consumer）")
             } catch (_: Throwable) {
             }
         }, "qq-papi-check").apply { isDaemon = true }.start()

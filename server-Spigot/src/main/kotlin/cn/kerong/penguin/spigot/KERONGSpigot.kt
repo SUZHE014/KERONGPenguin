@@ -22,6 +22,7 @@ import cn.kerong.penguin.spigot.scheduler.FoliaCompat
 import cn.kerong.penguin.spigot.stats.PapiDependencyCheck
 import cn.kerong.penguin.spigot.stats.PlayerStatsManager
 import cn.kerong.penguin.spigot.stats.SparkBridge
+import cn.kerong.penguin.spigot.stats.SparkStartupCheck
 import org.bukkit.Bukkit
 import org.bukkit.command.Command
 import org.bukkit.command.CommandExecutor
@@ -91,9 +92,20 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         }
 
         logCommandExecutor()
-        // 1.6.6：PlaceholderAPI 依赖检测（异步延迟 12 秒，无 PAPI 时提示
-        // 哪些功能受影响、哪些不受影响）
+        // 1.6.6：PlaceholderAPI 依赖检测（异步延迟 12 秒；1.6.7.3 起仅当
+        // 检测到 PlayerTitle 等相关依赖插件时才检测并提示）
         PapiDependencyCheck.scheduleStartupCheck(platform)
+        // 1.6.7.3：spark 接入成功提示（异步延迟 12 秒等 spark 插件 enable，
+        // 检测到并读取成功时在启动日志输出正向确认）
+        SparkStartupCheck.schedule {
+            try {
+                val sparkPlugin = Bukkit.getPluginManager().getPlugin("spark")
+                if (sparkPlugin == null || !sparkPlugin.isEnabled) null
+                else SparkBridge.read(sparkPlugin.javaClass.classLoader)
+            } catch (_: Throwable) {
+                null
+            }
+        }
         log_info("KERONG Penguin 已加载")
     }
 

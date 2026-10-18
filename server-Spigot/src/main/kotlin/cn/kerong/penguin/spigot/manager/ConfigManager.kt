@@ -260,7 +260,11 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
-        private const val CURRENT_CONFIG_VERSION = 21
+
+        // 1.6.7.3：升 22——让 1.6.7.2 覆盖版（v21）用户再次触发配置重建，
+        // 本次重建把列表 / 字符串回填改写为与教程一致的行内双引号格式
+        // （修复「升级后 groups 从 ["xxx"] 被改写成块状裸串、看着像丢值」）
+        private const val CURRENT_CONFIG_VERSION = 22
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -360,7 +364,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
         /** 全部默认配置值（用于补齐缺失键；1.6.7.2：from-group 新默认带 §b 染色）。 */
         private val DEFAULT_VALUES: Map<String, Any> = linkedMapOf(
-            CONFIG_VERSION_PATH to 20,
+            CONFIG_VERSION_PATH to 22,
             "bot.app-id" to "",
             "bot.secret" to "",
             "bot.name" to "KERONGPenguin",
