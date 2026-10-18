@@ -22,12 +22,15 @@ import javax.imageio.ImageIO
  * 样式；新增全局透明度（render.global-opacity，编码前经
  * [GlobalOpacity.apply] 统一应用）。
  *
- * 1.6.7.5：面板彻底改**实色不透明**样式（用户反馈：查性能默认输出的
- * 半透明玻璃面板被误认为「液态玻璃」效果）——所有面板/胶囊/进度槽
- * 不再使用任何 alpha 混合，改实色深板 + 细描边，背景网格透过面板
- * 可见的「玻璃感」完全消除；字体 / 布局 / 指标口径不变。
+ * 1.6.7.5 同日覆盖版：面板透明度与其他卡片**完全统一**（用户反馈：
+ * 实色不透明面板与查信息 / 查在线 / 排行榜的观感不一致）——头部卡 /
+ * 网格容器 / 指标卡 / 状态胶囊 / 进度槽全部改回半透明体系，alpha 取值
+ * 与其他卡片逐一相同（头部卡白 34 / 容器黑 120 / 指标卡白 16 / 胶囊白 30，
+ * 无面板描边）；整卡透明度由全局 render.global-opacity 统一控制（与
+ * 其他卡片同一份配置，[GlobalOpacity.apply] 编码前应用，见
+ * [RenderSettings.globalOpacity]）；字体 / 布局 / 指标口径不变。
  *
- * 实色深板风格（1.6.7.5，1350 宽，固定版式单页图）：
+ * 半透明卡片风格（1.6.7.5 覆盖版，1350 宽，固定版式单页图）：
  * - 顶部标题区：英文眉题 MINECRAFT SERVER + 主标题「服务器性能监控」
  *   + 右侧「更新时间」卡；
  * - 指标卡网格（2 列 × 2 行，固定四项：TPS / MSPT / 内存 / CPU）：
@@ -71,30 +74,27 @@ object PerformanceRenderer {
     /** 底部留白。 */
     private const val BOTTOM_PAD = 40
 
-    // ---------- 配色（1.6.7.5 实色深板系，与其他卡片同源的深色基调） ----------
+    // ---------- 配色（1.6.7.5 覆盖版：半透明面板，alpha 与其他卡片逐一相同） ----------
 
     private val COLOR_EYEBROW = Color(0x8A, 0x9B, 0xAE)
     private val COLOR_LABEL = Color(0x9F, 0xB3, 0xC8)
     private val COLOR_VALUE = Color.WHITE
     private val COLOR_SUB = Color(0x8A, 0x9B, 0xAE)
 
-    /** 实色指标卡底色（不透明深板，无任何玻璃/半透明质感）。 */
-    private val COLOR_CARD = Color(0x15, 0x1A, 0x21)
+    /** 头部「更新时间」卡底色（半透明白，与查在线/排行榜头部卡同款 alpha 34）。 */
+    private val COLOR_HEADER_CARD = Color(0xFF, 0xFF, 0xFF, 34)
 
-    /** 指标卡描边（比底色亮一档，勾勒边界）。 */
-    private val COLOR_CARD_BORDER = Color(0x2C, 0x35, 0x42)
+    /** 指标卡底色（半透明白，与查信息/查在线/排行榜单元格同款 alpha 16）。 */
+    private val COLOR_CARD = Color(0xFF, 0xFF, 0xFF, 16)
 
-    /** 网格容器底色（比卡片深一档，分层）。 */
-    private val COLOR_CONTAINER = Color(0x10, 0x13, 0x19)
+    /** 网格容器底色（半透明黑，与查在线/排行榜网格容器同款 alpha 120）。 */
+    private val COLOR_CONTAINER = Color(0x00, 0x00, 0x00, 120)
 
-    /** 网格容器描边。 */
-    private val COLOR_CONTAINER_BORDER = Color(0x25, 0x2D, 0x39)
+    /** 状态胶囊底色（半透明白，与其他卡片徽标同款 alpha 30；语义色由文字承担）。 */
+    private val COLOR_PILL_BG = Color(0xFF, 0xFF, 0xFF, 30)
 
-    /** 状态胶囊实色底（近黑，文字用状态色）。 */
-    private val COLOR_PILL_BG = Color(0x0D, 0x11, 0x16)
-
-    /** 进度条轨道实色底。 */
-    private val COLOR_BAR_TRACK = Color(0x1E, 0x24, 0x2D)
+    /** 进度条轨道底色（半透明白，与其他卡片胶囊同档 alpha 30；填充用状态色）。 */
+    private val COLOR_BAR_TRACK = Color(0xFF, 0xFF, 0xFF, 30)
 
     /** 状态分级颜色：流畅 / 正常（绿）、轻度负载 / 偏高（黄）、过载 / 接近上限（红）。 */
     private val COLOR_GOOD = Color(0x3E, 0xC9, 0x6B)
@@ -308,10 +308,9 @@ object PerformanceRenderer {
     // ---------- 面板绘制 ----------
 
     /**
-     * 面板底色（1.6.7.5：实色不透明 + 1.5px 描边，无玻璃质感）。
+     * 面板底色（1.6.7.5 覆盖版：半透明圆角面板，无描边，与其他卡片同源）。
      *
-     * @param fill 面板实色底
-     * @param border 面板描边色
+     * @param fill 面板半透明底色（背景经 alpha 混合透出，与其他卡片一致）
      */
     private fun paintPanel(
         g: Graphics2D,
@@ -320,16 +319,10 @@ object PerformanceRenderer {
         w: Float,
         h: Float,
         fill: Color = COLOR_CARD,
-        border: Color = COLOR_CARD_BORDER,
         radius: Float = 18f,
     ) {
         g.color = fill
         g.fill(RoundRectangle2D.Float(x, y, w, h, radius, radius))
-        val oldStroke = g.stroke
-        g.stroke = java.awt.BasicStroke(1.5f)
-        g.color = border
-        g.draw(RoundRectangle2D.Float(x + 0.75f, y + 0.75f, w - 1.5f, h - 1.5f, radius - 0.75f, radius - 0.75f))
-        g.stroke = oldStroke
     }
 
     /** 顶部标题区：眉题 + 主标题 + 右侧更新时间卡。 */
@@ -346,14 +339,14 @@ object PerformanceRenderer {
         g.color = COLOR_VALUE
         g.drawString("服务器性能监控", (MARGIN + 4).toFloat(), (top + 108).toFloat())
 
-        // 右侧更新时间卡（实色面板）
+        // 右侧更新时间卡（半透明白头部卡，与查在线/排行榜头部卡同款）
         val cardWidth = 240
         val cardHeight = HEADER_HEIGHT - 16
         val cardX = WIDTH - MARGIN - cardWidth
         val cardY = top + 8
         paintPanel(
             g, cardX.toFloat(), cardY.toFloat(), cardWidth.toFloat(), cardHeight.toFloat(),
-            COLOR_CARD, COLOR_CARD_BORDER, 20f,
+            COLOR_HEADER_CARD, 20f,
         )
         g.font = InfoCardRenderer.font(24f, false)
         g.color = COLOR_LABEL
@@ -378,12 +371,12 @@ object PerformanceRenderer {
         val rows = (cards.size + COLUMNS - 1) / COLUMNS
         val gridHeight = rows * CARD_HEIGHT + (rows - 1) * CARD_GAP
 
-        // 网格容器（实色深板：整块区域裹一层不透明底，与卡片分色分层）
+        // 网格容器（半透明黑底板：与查在线/排行榜网格容器同款 alpha 120）
         paintPanel(
             g,
             MARGIN.toFloat(), (gridTop - 14).toFloat(),
             contentWidth.toFloat(), (gridHeight + 28).toFloat(),
-            COLOR_CONTAINER, COLOR_CONTAINER_BORDER,
+            COLOR_CONTAINER,
             18f,
         )
 
@@ -407,26 +400,22 @@ object PerformanceRenderer {
         y: Int,
         cardWidth: Int,
     ) {
-        // 卡片底色（实色深板）
-        paintPanel(g, x.toFloat(), y.toFloat(), cardWidth.toFloat(), CARD_HEIGHT.toFloat(), COLOR_CARD, COLOR_CARD_BORDER, 18f)
+        // 卡片底色（半透明白，与其他卡片单元格同款）
+        paintPanel(g, x.toFloat(), y.toFloat(), cardWidth.toFloat(), CARD_HEIGHT.toFloat(), COLOR_CARD, 18f)
 
         // 左上标签
         g.font = InfoCardRenderer.font(24f, false)
         g.color = COLOR_LABEL
         g.drawString(card.label, (x + 32).toFloat(), (y + 52).toFloat())
 
-        // 右上状态胶囊（实色底 + 状态色描边与文字）
+        // 右上状态胶囊（半透明白底 + 状态色文字，与其他卡片徽标同款）
         g.font = InfoCardRenderer.font(22f, true)
         val statusWidth = g.getFontMetrics().stringWidth(card.statusText)
         val pillWidth = statusWidth + 40
         val pillX = x + cardWidth - 32 - pillWidth
         g.color = COLOR_PILL_BG
         g.fill(RoundRectangle2D.Float(pillX.toFloat(), (y + 22).toFloat(), pillWidth.toFloat(), 40f, 20f, 20f))
-        val oldStroke = g.stroke
-        g.stroke = java.awt.BasicStroke(1.5f)
         g.color = card.statusColor
-        g.draw(RoundRectangle2D.Float((pillX + 0.75f), (y + 22.75f), (pillWidth - 1.5f), 38.5f, 19.25f, 19.25f))
-        g.stroke = oldStroke
         g.drawString(card.statusText, (pillX + 20).toFloat(), (y + 50).toFloat())
 
         // 中部大数值（不可读时灰色，其余用白色）
@@ -434,7 +423,7 @@ object PerformanceRenderer {
         g.color = if (card.valueText == "--") COLOR_SUB else COLOR_VALUE
         g.drawString(card.valueText, (x + 32).toFloat(), (y + 148).toFloat())
 
-        // 进度条（底部，实色轨道）
+        // 进度条（底部，半透明轨道 + 状态色填充）
         val barX = x + 32
         val barY = y + 178
         val barWidth = cardWidth - 64

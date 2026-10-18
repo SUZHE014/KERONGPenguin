@@ -4,6 +4,7 @@ import cn.kerong.bot.RecentMessageGate;
 import cn.kerong.bot.tools.PluginFileLog;
 import cn.kerong.bot.tools.QqText;
 import cn.kerong.penguin.spigot.manager.YamlTextMerge;
+import cn.kerong.penguin.spigot.render.GlobalOpacity;
 import cn.kerong.penguin.spigot.render.InfoCardAssets;
 import cn.kerong.penguin.spigot.render.PerformanceRenderer;
 import cn.kerong.penguin.spigot.stats.SparkBridge;
@@ -31,8 +32,9 @@ import java.util.Map;
  *     现含 15 秒静默复测——守护线程后台完成，不抛即通过）
  *  3. AI 聊天艾特判定（1.6.7.5）：GroupAtTracker 记录/查询、
  *     RecentMessageGate msg_id 去重、QqText 行首占位剥离 / 全文剔除
- *  4. 查性能卡片实色面板（1.6.7.5）：渲染后逐像素断言 = 实色常量
- *     （任何 alpha 混合都会偏离常量值）
+ *  4. 查性能卡片半透明面板（1.6.7.5 覆盖版）：面板透明度与其他卡片
+ *     统一——无背景渲染走确定性渐变，用 Java2D 1×1 合成器复现同款
+ *     SrcOver 管线，逐像素断言 = 背景 ⊕ 其他卡片同款 alpha 分层混合
  *  5. YamlTextMerge 行内格式回归（1.6.7.3 保持）+ 512KB 日志轮转（1.6.7.4 保持）
  *  6. 分发 JAR plugin.yml 版本 1.6.7.5 + PerformanceSnapshot capture 回归
  *
@@ -150,31 +152,68 @@ public class Test1675 {
         String r1 = QqText.INSTANCE.removeMentionPlaceholders("你好 <@A1> 再 <@!B2> 见");
         check("3.12 全文剔除所有占位（AI 正文清理）", "你好  再  见".equals(r1), r1);
 
-        // ========== 4. 查性能卡片实色面板（1.6.7.5 核心） ==========
+        // ========== 4. 查性能卡片半透明面板（1.6.7.5 覆盖版核心） ==========
         java.io.File work = Files.createTempDirectory("penguin-smoke-1675").toFile();
         int height = PerformanceRenderer.INSTANCE.measureHeight();
+        // 4.1 内置背景路径回归（背景解析 + 渲染成功）
         BufferedImage bg = InfoCardAssets.INSTANCE.resolveBackground(work,
                 PerformanceRenderer.WIDTH, height, true);
         PerformanceRenderer.PerformanceData data = new PerformanceRenderer.PerformanceData(
                 "冒烟服务器", "22:41",
                 PerformanceSnapshot.capture(19.87, 12.4, 0.234), bg);
-        byte[] png = PerformanceRenderer.INSTANCE.render(data);
+        byte[] pngBg = PerformanceRenderer.INSTANCE.render(data);
+        BufferedImage imgBg = javax.imageio.ImageIO.read(
+                new java.io.ByteArrayInputStream(pngBg));
+        check("4.1 内置背景渲染成功（1350 x " + height + "）",
+                imgBg != null && imgBg.getWidth() == 1350 && imgBg.getHeight() == height);
+        // 4.2 无背景渲染 → 确定性竖向渐变，供逐像素断言
+        PerformanceRenderer.PerformanceData plainData = new PerformanceRenderer.PerformanceData(
+                "冒烟服务器", "22:41",
+                PerformanceSnapshot.capture(19.87, 12.4, 0.234), null);
         BufferedImage img = javax.imageio.ImageIO.read(
-                new java.io.ByteArrayInputStream(png));
-        check("4.1 渲染成功（1350 x " + height + "）",
+                new java.io.ByteArrayInputStream(PerformanceRenderer.INSTANCE.render(plainData)));
+        check("4.2 无背景渲染成功（渐变底，1350 x " + height + "）",
                 img != null && img.getWidth() == 1350 && img.getHeight() == height);
         // 布局常量（与渲染器一致）：MARGIN=40 HEADER=150 GAP=18 CARD=250
         // 网格容器：x∈[40,1310] y∈[194,740]；卡 1：x∈[40,666] y∈[208,458]
         // CPU 卡（第 4 张）：x∈[684,1310] y∈[476,726]；进度条 y∈[654,666] x∈[716,1210]
-        check("4.2 容器面板像素 = 实色 0x101319（无 alpha 混合）",
-                pixelIs(img, 45, 200, 0x10, 0x13, 0x19), hex(img, 45, 200));
-        check("4.3 指标卡内部像素 = 实色 0x151A21（背景完全被遮）",
-                pixelIs(img, 300, 300, 0x15, 0x1A, 0x21), hex(img, 300, 300));
-        // CPU 进度 23.4% → 填充止于 x≈831；x=1150 处应为轨道实色
-        check("4.4 进度轨道像素 = 实色 0x1E242D",
-                pixelIs(img, 1150, 482 + 178, 0x1E, 0x24, 0x2D), hex(img, 1150, 660));
-        check("4.5 画布不含 alpha 通道（TYPE_INT_RGB 输出）",
+        // 头部时间卡：x∈[1070,1310] y∈[48,182]；背景参照点取 x=20（页边距内，
+        // 无任何面板/文字叠加，渐变仅随 y 变化 → 同 y 即同色）
+        int bg200 = img.getRGB(20, 200);
+        int bg300 = img.getRGB(20, 300);
+        int bg660 = img.getRGB(20, 660);
+        int bg170 = img.getRGB(20, 170);
+        check("4.3 容器像素 = 背景 ⊕ 黑 alpha120（与查在线/排行榜容器同款）",
+                rgbClose(img.getRGB(45, 200), over(bg200, 0, 0, 0, 120)),
+                hex(img, 45, 200) + " vs " + rgbHex(over(bg200, 0, 0, 0, 120)));
+        check("4.4 指标卡像素 = 背景 ⊕ 黑120 ⊕ 白16（与其他卡片单元格同款）",
+                rgbClose(img.getRGB(300, 300),
+                        over(over(bg300, 0, 0, 0, 120), 255, 255, 255, 16)),
+                hex(img, 300, 300) + " vs " +
+                        rgbHex(over(over(bg300, 0, 0, 0, 120), 255, 255, 255, 16)));
+        check("4.5 进度轨道像素 = 三层混合 ⊕ 白30（与其他卡片胶囊同档）",
+                rgbClose(img.getRGB(1150, 482 + 178),
+                        over(over(over(bg660, 0, 0, 0, 120), 255, 255, 255, 16), 255, 255, 255, 30)),
+                hex(img, 1150, 660) + " vs " +
+                        rgbHex(over(over(over(bg660, 0, 0, 0, 120), 255, 255, 255, 16), 255, 255, 255, 30)));
+        check("4.6 头部时间卡像素 = 背景 ⊕ 白34（与查在线/排行榜头部卡同款）",
+                rgbClose(img.getRGB(1280, 170), over(bg170, 255, 255, 255, 34)),
+                hex(img, 1280, 170) + " vs " + rgbHex(over(bg170, 255, 255, 255, 34)));
+        check("4.7 默认 global-opacity 1.0 → 画布无 alpha 通道（TYPE_INT_RGB 输出）",
                 !img.getColorModel().hasAlpha());
+        // 4.8 全局透明度机制：纯函数 0.5 → 整图半透明 ARGB（与其他卡片共用同一
+        // GlobalOpacity 编码前应用，即透明度配置对查性能同样全局生效）
+        BufferedImage opIn = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D og = opIn.createGraphics();
+        og.setColor(java.awt.Color.BLACK);
+        og.fillRect(0, 0, 2, 2);
+        og.dispose();
+        BufferedImage opOut = GlobalOpacity.INSTANCE.applyOpacity(opIn, 0.5f);
+        int argb = opOut.getRGB(0, 0);
+        check("4.8 GlobalOpacity.applyOpacity(0.5) → 半透明 ARGB（全局机制共享）",
+                opOut.getColorModel().hasAlpha() && ((argb >>> 24) & 0xFF) >= 120
+                        && ((argb >>> 24) & 0xFF) <= 136,
+                String.format("0x%08X", argb));
 
         // ========== 5. 既有行为回归（1.6.7.3 行内格式 + 1.6.7.4 轮转） ==========
         String template;
@@ -238,6 +277,34 @@ public class Test1675 {
     static boolean pixelIs(BufferedImage img, int x, int y, int r, int g, int b) {
         int rgb = img.getRGB(x, y);
         return ((rgb >> 16) & 0xFF) == r && ((rgb >> 8) & 0xFF) == g && (rgb & 0xFF) == b;
+    }
+
+    /** 1×1 合成画布：用与渲染器同一条 Java2D SrcOver 管线复现分层混合。 */
+    static final BufferedImage PX = new BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB);
+
+    /** dstRGB 上叠一层半透明色（返回混合后像素，与渲染器管线同构）。 */
+    static int over(int dst, int r, int g, int b, int a) {
+        java.awt.Graphics2D pg = PX.createGraphics();
+        try {
+            pg.setColor(new java.awt.Color(dst));
+            pg.fillRect(0, 0, 1, 1);
+            pg.setColor(new java.awt.Color(r, g, b, a));
+            pg.fillRect(0, 0, 1, 1);
+        } finally {
+            pg.dispose();
+        }
+        return PX.getRGB(0, 0);
+    }
+
+    /** 逐通道比较（容差 ±1：两条管线各自的浮点取整差异）。 */
+    static boolean rgbClose(int a, int b) {
+        return Math.abs(((a >> 16) & 0xFF) - ((b >> 16) & 0xFF)) <= 1
+                && Math.abs(((a >> 8) & 0xFF) - ((b >> 8) & 0xFF)) <= 1
+                && Math.abs((a & 0xFF) - (b & 0xFF)) <= 1;
+    }
+
+    static String rgbHex(int rgb) {
+        return String.format("0x%06X", rgb & 0xFFFFFF);
     }
 
     static String hex(BufferedImage img, int x, int y) {

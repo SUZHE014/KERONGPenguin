@@ -7,7 +7,7 @@
   SB. SparkBridge 反射链修复（方法一律从公共 API 接口解析——实现类是包私有，
       旧版对实现类取 Method 抛 IllegalAccessException 全指标被吞）
   GA. AI 聊天艾特判定（GROUP_AT 帧级捕获 + msg_id 去重 + 行首占位剥离）
-  PRS. 查性能卡片实色不透明面板（无任何 alpha 混合）
+  PRS. 查性能卡片半透明面板（覆盖版：与其他卡片同款 alpha 分层，无描边）
 
 覆盖：
   SC4r Spark 提示时机改 ServerLoadEvent 后（1.6.7.4）+ 三态探测 +
@@ -150,15 +150,18 @@ def main():
             check(f"GA10 {label} AI 未开启时消息不再被吞（handleAiChat 返回消费布尔）",
                   b"isAiEnabled" in gmh)
 
-            # ================= PRS. 查性能卡片实色面板（1.6.7.5 核心） =================
+            # ================= PRS. 查性能卡片半透明面板（1.6.7.5 覆盖版核心） =================
             pr_cls = class_blob(zf, "cn/kerong/penguin/spigot/render/PerformanceRenderer")
-            check(f"PRS1 {label} 实色面板常量在位（COLOR_CARD / COLOR_PILL_BG / COLOR_BAR_TRACK）",
-                  b"COLOR_CARD" in pr_cls and b"COLOR_PILL_BG" in pr_cls and
-                  b"COLOR_CONTAINER" in pr_cls and b"COLOR_BAR_TRACK" in pr_cls)
-            check(f"PRS2 {label} 面板描边绘制（BasicStroke）",
-                  b"java/awt/BasicStroke" in pr_cls)
-            check(f"PRS3 {label} 实色渲染无玻璃绘制残片（brighten / LIQUID_GLASS）",
+            check(f"PRS1 {label} 半透明面板常量在位（HEADER_CARD/CARD/CONTAINER/PILL_BG/BAR_TRACK）",
+                  b"COLOR_HEADER_CARD" in pr_cls and b"COLOR_CARD" in pr_cls and
+                  b"COLOR_CONTAINER" in pr_cls and b"COLOR_PILL_BG" in pr_cls and
+                  b"COLOR_BAR_TRACK" in pr_cls)
+            check(f"PRS2 {label} 面板无描边（BasicStroke 反断言）",
+                  b"java/awt/BasicStroke" not in pr_cls)
+            check(f"PRS3 {label} 无玻璃绘制残片（brighten / LIQUID_GLASS）",
                   b"brighten" not in pr_cls and b"LIQUID_GLASS" not in pr_cls)
+            check(f"PRS4 {label} 全局透明度在渲染链（GlobalOpacity 编码前应用）",
+                  b"GlobalOpacity" in pr_cls)
             # ================= SC. spark 接入状态提示（1.6.7.4：时机/门控/失败必提示） =================
             check(f"SC1 {label} SparkStartupCheck 类在位",
                   has(zf, "cn/kerong/penguin/spigot/stats/SparkStartupCheck.class"))
@@ -696,17 +699,24 @@ def main():
           "fun stripLeadingMentionPlaceholders(" in qt_src and
           "fun removeMentionPlaceholders(" in qt_src and
           'Regex("""<@!?[A-Za-z0-9_-]+>""")' in qt_src)
-    check("S45 PerformanceRenderer 源码：实色面板 + 描边（无 alpha 面板）",
-          "private val COLOR_CARD = Color(0x15, 0x1A, 0x21)" in pr_src and
-          "private val COLOR_PILL_BG = Color(0x0D, 0x11, 0x16)" in pr_src and
-          "private val COLOR_BAR_TRACK = Color(0x1E, 0x24, 0x2D)" in pr_src and
-          "java.awt.BasicStroke(1.5f)" in pr_src)
-    check("S45b PerformanceRenderer 源码：半透明玻璃面板已删（无 alpha 混合面板色）",
-          "Color(0xFF, 0xFF, 0xFF, 16)" not in pr_src and
-          "Color(0xFF, 0xFF, 0xFF, 30)" not in pr_src and
-          "Color(0x00, 0x00, 0x00, 120)" not in pr_src)
-    check("S45c PerformanceRenderer 源码：胶囊改实色底 + 状态色描边",
-          "COLOR_PILL_BG" in pr_src and "g.draw(RoundRectangle2D.Float((pillX + 0.75f)" in pr_src)
+    check("S45 PerformanceRenderer 源码：半透明面板与其他卡片同款 alpha（34/16/120/30）",
+          "private val COLOR_HEADER_CARD = Color(0xFF, 0xFF, 0xFF, 34)" in pr_src and
+          "private val COLOR_CARD = Color(0xFF, 0xFF, 0xFF, 16)" in pr_src and
+          "private val COLOR_CONTAINER = Color(0x00, 0x00, 0x00, 120)" in pr_src and
+          "private val COLOR_PILL_BG = Color(0xFF, 0xFF, 0xFF, 30)" in pr_src and
+          "private val COLOR_BAR_TRACK = Color(0xFF, 0xFF, 0xFF, 30)" in pr_src)
+    check("S45b PerformanceRenderer 源码：实色面板与描边已删（覆盖版翻转）",
+          "Color(0x15, 0x1A, 0x21)" not in pr_src and
+          "Color(0x10, 0x13, 0x19)" not in pr_src and
+          "Color(0x0D, 0x11, 0x16)" not in pr_src and
+          "Color(0x1E, 0x24, 0x2D)" not in pr_src and
+          "BasicStroke" not in pr_src and
+          "COLOR_CARD_BORDER" not in pr_src and
+          "COLOR_CONTAINER_BORDER" not in pr_src)
+    check("S45c PerformanceRenderer 源码：胶囊半透明白底 + 状态色文字（无描边）",
+          "COLOR_PILL_BG" in pr_src and
+          "g.draw(RoundRectangle2D.Float((pillX" not in pr_src and
+          "g.color = card.statusColor" in pr_src)
     ssc_src5 = src("common-Bot/src/main/kotlin/cn/kerong/penguin/spigot/stats/SparkStartupCheck.kt")
     check("S46 SparkStartupCheck 源码：失败静默复测一轮",
           "RETRY_AFTER_FAILED_MILLIS = 15_000L" in ssc_src5 and
