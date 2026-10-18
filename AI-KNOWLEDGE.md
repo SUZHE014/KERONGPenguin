@@ -1,7 +1,7 @@
 # KERONGPenguin AI 交接知识库
 
 > **本文档的用途**：把本文件丢给一个对项目一无所知的 AI，它能立刻了解当前情况并接手工作。
-> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-18（v1.6.7.5 同日覆盖版：Spark 反射链修复（装了也读不到）、AI 聊天艾特判定（群消息从未生效）、查性能卡面板透明度与其他卡片统一）。
+> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-18（v1.6.7.6：Folia 自采样刻监视器（MSPT 读不到/忽高忽低）、config.yml 语法错误三级自愈、查性能六项（延迟+在线人数）、spark 探测第四态；同日另发 1.6.7_Cross-posting.1 互转版——本地分支不上传 git，见 §8）。
 > 自包含版本（发给本地无任何东西的 AI）见官网 `AI-KNOWLEDGE.txt`，含从零开始的环境重建与凭据获取说明。
 
 ### 1.1 受限网络环境重建（2026-10-14 实战，环境重置后可用）
@@ -65,7 +65,7 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 | 查信息统计卡 | `events/commands/PublicCommands.kt` → `spigot/stats/QueryInfoService.kt` → `spigot/render/CardRenderPool.kt` + `InfoCardRenderer.kt` | CPU 异步渲染 PNG（CardRenderPool 线程池，核数一半 1~4），9 项统计，依赖缺失自适应（Vault 金币 / DeluxeTags **或 PlayerTitle**（1.6.4，PAPI %playerTitle_use%） / PlayerPoints 点券），头像多级链 + **外部多线路回退（含 MinePic）与 Mojang 网络全局冷却**（1.6.4~1.6.6.1，详见 3.5） |
 | ~~在线时长同步~~ | 已于 1.6.6.1 覆盖版**删除**（1.6.4 曾引入 `PlayTimeSync.kt`：检测到 PlayTimeManager + PAPI 时差值对齐，因用户要求移除；本插件自身在线时长统计不受影响，PapiDependencyCheck 提示面同步收窄为仅 PlayerTitle） |
 | 查在线/在线排行榜/财富榜 | `PublicCommands.kt` + `LeaderboardCommands.kt` + `CoinsLeaderboardCommands.kt` + `render/OnlineListRenderer.kt`/`LeaderboardRenderer.kt` | 图片分段发送（每页 15 人）、命令冷却 `render.command-cooldown-seconds`、内置背景图（backgrounds/，img/ 可自定义随机） |
-| /查性能（1.6.7） | `PublicCommands.kt` → `spigot/stats/PerformanceService.kt` + `render/PerformanceRenderer.kt` | 性能监控卡片（固定四项 TPS/MSPT/内存/CPU，状态分级+进度条，null 显示「--」，**1.6.7.5 覆盖版：半透明面板与其他卡片同款 alpha（头部卡白 34/容器黑 120/指标卡白 16/胶囊白 30，无描边）**）；快照走 `KERONG.performanceSnapshot()`（**1.6.7.2 引入 / 1.6.7.5 修复反射链：装了 spark 时优先 SparkBridge 反射调其公开 API，方法一律从公共接口解析（实现类包私有，从实现类取 Method invoke 抛 IllegalAccessException 全指标被吞——1.6.7.5 前的暗坑）**——SparkProvider.get() 单例→tps().poll(TicksPerSecond.MINUTES_1)/mspt().poll(MillisPerTick.SECONDS_10).mean()/cpuProcess().poll(CpuUsage.MINUTES_1)，Spigot 端 getPlugin("spark") 启用才读、NF 端 ModList.isLoaded；无 spark 单项回退自研分层反射链，capture 新增三参重载接 cpuOverride；**1.6.7.3 新增 / 1.6.7.4 重做：启动接入自检提示 SparkStartupCheck**（挂载时机改服务器启动成功后——Spigot ServerLoadEvent、NF ServerStarted，probe lambda 返回三态 ProbeOutcome：未安装静默 / 已接入且 commands.查性能 开启才 infoAndKeep 正向确认（查询关闭仅文件留档）/ 已装但失败 warnAndKeep 必提示带原因与回退说明））；性能数据缓存 render.performance.cache-seconds（覆盖版默认 60 秒，PerformanceService peekCache/storeCache）；命令开关 commands.查性能，背景 render.performance.builtin-background；**覆盖版：液态玻璃样式已移除**（render.performance.style 入废弃键表自动清理），全局透明度 render.global-opacity（GlobalOpacity.apply 四渲染器统一接入） |
+| /查性能（1.6.7） | `PublicCommands.kt` → `spigot/stats/PerformanceService.kt` + `render/PerformanceRenderer.kt` | 性能监控卡片（**1.6.7.6 起固定六项 TPS/MSPT/内存/CPU/延迟/在线人数（仅人数）**，2×3 网格高 1034，null 显示「--」，**1.6.7.5 覆盖版：半透明面板与其他卡片同款 alpha（头部卡白 34/容器黑 120/指标卡白 16/胶囊白 30，无描边）**）；快照走 `KERONG.performanceSnapshot()`（**1.6.7.2 引入 / 1.6.7.5 修复反射链：装了 spark 时优先 SparkBridge 反射调其公开 API，方法一律从公共接口解析（实现类包私有，从实现类取 Method invoke 抛 IllegalAccessException 全指标被吞——1.6.7.5 前的暗坑）**——SparkProvider.get() 单例→tps().poll(TicksPerSecond.MINUTES_1)/mspt().poll(MillisPerTick.SECONDS_10).mean()/cpuProcess().poll(CpuUsage.MINUTES_1)，Spigot 端 getPlugin("spark") 启用才读、NF 端 ModList.isLoaded；无 spark 单项回退自研分层反射链，capture 新增三参重载接 cpuOverride；**1.6.7.3 新增 / 1.6.7.4 重做：启动接入自检提示 SparkStartupCheck**（挂载时机改服务器启动成功后——Spigot ServerLoadEvent、NF ServerStarted，probe lambda 返回三态 ProbeOutcome：未安装静默 / 已接入且 commands.查性能 开启才 infoAndKeep 正向确认（查询关闭仅文件留档）/ 已装但失败 warnAndKeep 必提示带原因与回退说明））；性能数据缓存 render.performance.cache-seconds（覆盖版默认 60 秒，PerformanceService peekCache/storeCache）；命令开关 commands.查性能，背景 render.performance.builtin-background；**覆盖版：液态玻璃样式已移除**（render.performance.style 入废弃键表自动清理），全局透明度 render.global-opacity（GlobalOpacity.apply 四渲染器统一接入） |
 | /查在线 markdown | `markdown.queryOnline` → online.md | 关图片走模板文本 |
 | /motd | `PublicCommands.motd`（无参=本服状态 server-status 模板）→ **带参转发 `MotdCommands`**（minebbs API，motd-* 模板） | 1.6.3 修复了转发缺失导致 MotdCommands 永不可达 |
 | AI 对话 | `spigot/qqbind/AiChat.kt` + `QClient.replyMarkdownWithReference` | @机器人触发；引用回复（MessageReference 协议）失败三级回退：引用→普通被动→纯文本；全局一份上下文 |
@@ -139,7 +139,9 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
 
 **1.6.4 关键修复：Mojang 官方接口网络级失败（超时/IO/429/5xx）开启 5 分钟全局冷却**——「大部分玩家头像获取失败」的根因是服务器到 Mojang 的线路不稳，旧版每个玩家都先等 5 秒超时才能失败，在线列表 8 秒预热预算全部耗尽；冷却期内直接跳过官方链路（走外部线路或诚实失败），不再逐玩家等超时。会话服务器超时也从 5 秒降到 3 秒。离线服无皮肤数据的玩家仍诚实画占位块（不做「人人史蒂夫」假回退）。
 
-### 3.6 配置系统
+### 3.6 配置系统（1.6.7.6 增语法错误三级自愈：`ConfigBrokenRecovery`）
+
+磁盘 config.yml 写坏（最高频：`key:value` 冒号后漏空格）时：①严格解析（`YamlConfiguration().load(Reader)` 抛出可感知）→ ②缺空格逐行修复（可解析则备份 config.yml.error-<时间戳> 后写回修复版）→ ③修不了的备份原文件 + 从 JAR 释放默认配置继续启动（控制台醒目指引从备份填回自定义设置）——替代旧版「空配置硬跑 → 机器人不启动」死胡同。挂载点：ConfigManager.initialize 与 reload 双处。
 
 `ConfigManager.kt`（共享源码）：DEFAULT_VALUES 全量默认 + `ConfigUpgrader.fillMissing` 补齐缺失键 + `CONFIG_VERSION_PATH` 版本迁移链（**当前 config-version 19**：16→17 render/leaderboard 顶层化，17→18 金币榜→财富榜，18→19 from-game 默认带玩家名 + gc-after-render 废除清理）。修改配置一律重启生效（无热重载指令，教程与注释已如此说明）。
 
@@ -223,103 +225,21 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
 
 ---
 
-## 7. 当前已知状态（2026-10-18，v1.6.7.5 同日覆盖版完成）
+## 7. 当前已知状态（2026-10-18，v1.6.7.6 完成 + Cross-posting 版发布）
 
-- 双端 1.6.7.5 覆盖版全部完成（门禁 **verify_jar_1675 344 项**（在 1674 的 287 项全保持基础上新增 SB 组反射链修复 5 项 / GA 组艾特判定 10 项 / PRS 组半透明面板 4 项（覆盖版重写：常量在位/无描边反断言/无玻璃残片/GlobalOpacity 渲染链）/ S40~S46 源码断言（S45 系翻转为半透明）/ V 组 1.6.7.5）/ 冒烟 **smoke1675 37 项**（1.x 真实形态假 spark：包私有实现+独立 URLClassLoader 端到端（修复前必挂的用例）+ 未装配 null + 全新 loader null；2.x 三态与 schedule 四路径；3.x GroupAtTracker/RecentMessageGate/QqText 剥离 12 项；**4.x 性能卡半透明面板逐像素混合断言（覆盖版重写：无背景确定性渐变 + Java2D 1×1 合成器复现 SrcOver 分层混合，背景⊕黑120/再⊕白16/再⊕白30、头部卡⊕白34，逐通道容差±1；另验证 GlobalOpacity.applyOpacity(0.5)→半透明 ARGB）**；5.x 行内格式与 512KB 轮转回归；6.x JAR 版本 1.6.7.5）/ 官网部署 / git 推送）：
-  - 修复①：SparkBridge 反射链（见 §0；**坑：反射第三方库时绝不对 obj.javaClass 取方法——实现类可能包私有，一律从其公共接口 Class.forName 解析**；冒烟假对象必须模拟真实可见性（包私有实现类），public 假类会漏掉 IllegalAccessException 路径）；
-  - 修复②：AI 聊天艾特判定（见 §0；**群消息 @机器人 的唯一可靠信号是事件类型 GROUP_AT_MESSAGE_CREATE 本身**——content 前缀被平台剥、mentions 不含机器人；WssDiagnostics 帧钩子在 SDK 分发前执行，同帧先记后用天然有序，重连/重投递安全；全量模式（GROUP_MESSAGE_CREATE）content 反而保留 <@openid> 前缀且 mentions 含 bot=true 条目——两种事件形态相反，三通道覆盖）；
-  - 调整③（覆盖版）：查性能卡面板透明度与其他卡片统一（COLOR_HEADER_CARD=白34/COLOR_CONTAINER=黑120/COLOR_CARD=白16/COLOR_PILL_BG=白30/COLOR_BAR_TRACK=白30，无描边；首次发布的实色深板版因与其他卡片观感不一致当日覆盖；GlobalOpacity 逻辑不动，整卡透明度仍由 render.global-opacity 全局控制）；
-  - 版本：1.6.7.5 / config-version 22（无配置键增删，版本不升）。
-以下为 1.6.7.4 历史项（门禁 287 项：SC 组 ServerLoadEvent/三态/门控、LB 组 512KB、CN 组降噪三条、S31~S39、V 组；冒烟 smoke1674 20 项）：
+- 双端 **1.6.7.6** 全部完成（门禁 **verify_jar_1676 62 项** / 冒烟 **smoke1676 26 项**（ConfigBrokenRecovery 三级恢复含用户实测 player-events:true 样例 / TickMonitor 窗口数学 / PerformanceSnapshot 新字段 / fakespark1676 playerPing / 六项卡渲染 1350×1034）/ 官网部署 / git 推送 6917246）：
+  - 修复①：Folia 多线程核心 MSPT 读不到 + 数值忽高忽低——新增 **TickMonitor**（common-Bot stats 包：FoliaCompat.runTimer 每 tick 采样 nanoTime 间隔 → 1200 tick 环形缓冲；MSPT=最近 200 tick 均值、TPS=60 秒窗口换算封顶 20；样本<40 不读、单次间隔>10s 丢弃；Spigot onEnable start/onDisable stop）——Folia 上采样器优先、反射兜底，其他核心反射优先、采样器兜底，spark 窗口均值最优先；CPU 无 spark 时经 PerformanceSnapshot.capture 的 EWMA（0.7/0.3）平滑；
+  - 修复②：装了 spark 还是提示「接入失败」误报——probeSpark 新增第四态 **NoStatsOnThisCore**（spark 已装且启用但统计全 null 且当前为 Folia → 信息级提示「已用内置采样器」；非 Folia 仍按 Failed 警告）；
+  - 修复③：config.yml 语法错误死胡同（`player-events:true`）——**ConfigBrokenRecovery** 三级自愈（见 §3.6）；
+  - 新增④：查性能六项——PerformanceSnapshot 增 `avgPingMillis`/`onlinePlayers`（capture 全参工厂）；延迟链路：spark playerPing（Spark#playerPing→GenericStatistic#poll(PlayerPing.MINUTES_1)→mean）→ Spigot 各玩家 getPing 平均（Folia 经 callSync 全局区域线程，纯 Spigot 无此 API 时 NoSuchMethodError 被捕获仅人数照常）→ NF 各玩家连接 `ServerCommonPacketListenerImpl#latency()`（mojmap 公有方法）；
+  - 版本：1.6.7.6 / config-version 22（无键增删）。
+- **1.6.7_Cross-posting.1 互转版**（同日发布，仅 Spigot 插件版）：本地分支 `cross-posting-1`（worktree /home/z/my-project/cross-posting-git，**不上传 git**——用户明确要求教程不进公开仓库）；基于 1.6.7.6；多群互通（bot.groups 多行最多 20 群、全量转发默认 / 艾特转发 `/多群转发` 命令、cross-posting 段 enabled/full-forward/format、QClient.sendTextToGroupsExcept 经 OutboxQueue、/多群转发 管理员限定）；**无更新检查**（initializeRuntime 的 scheduleUpdateCheck 注释 + config.yml 无 update-check 段）；**教程全部写 config.yml cross-posting 段注释**（官网「其他版本」卡片不放教程）；门禁 verify_crossposting 34 项 / 冒烟 TestCP 9 项；官网底部「其他版本」卡片 + downloads/KERONGPenguin_Spigot-1.6.7_Cross-posting.1.jar；该版本**仅用户要求时更新**。
+- 官网历史下载：1.6.7.6 起保留 1.6.7.5~1.6.7.6（+互转版）；1.6.6.4 已下架。
+- 待观察：TickMonitor 在真实 Folia 上的窗口读数节奏；Cross-posting 版真实多群转发链路（含附件占位）。
 
-- 双端 1.6.7.4 全部完成
+## 8. Cross-posting 互转版（1.6.7_Cross-posting.1，重要工作流）
 
-- 双端 1.6.7.4 全部完成（门禁 **287 项**（在 1673 的 265 项基线上：SC 组改 1.6.7.4 断言（SC4 ServerLoadEvent / SC6 三态类 / SC7 查性能门控 / SC8 失败 warnAndKeep）、LB 组日志 512KB（ROTATE_THRESHOLD_BYTES / resolveRotated / 无 1GB 残留 / logFileOnly）、CN 组控制台降噪（QClient 两文案 + 双端 /绑定 logFileOnly）、S31~S32b 源码断言重写、S36~S39 新增源码断言、V 组 1.6.7.4）/ 冒烟 **20 项**（smoke1674：1.x resolveRotated 五场景（空目录/主满→-1/-1满→-2/-1未满复用/511KB 不轮转）+ 2.x 三态语义与 schedule 四路径不抛 + 3.x SparkBridge 回归 + 4.x 行内格式回归 + 5.x JAR 版本）/ 官网部署 / git 推送）：
-  - 调整①：spark 提示时机与规则（见 §0——用户需求三条全落地：启动成功后/查性能未开启不提示成功/接入失败必提示）；
-  - 调整②：日志单文件 512KB（PluginFileLog 共享 resolveRotated，双写入入口同规则）；
-  - 调整③：启动期三条例行信息控制台降噪（文件留档格式不变）；
-  - 附带修复：**源码包与 git 基线修复**——1.6.7.3 源码包误含已删除的 ConflictWatch.kt（1.6.6.3 已移除该功能，发布 JAR 无此类），导致源码包恢复后无法编译（Unresolved onDedupConflictConfirmed），已删除对齐 JAR；KERONGNeoForge MOD_VERSION 滞留 1.6.7.2（1.6.7.3 漏改，NF 端 modLogger 版本显示来源），本次一并改 1.6.7.4；
-  - 环境重建提示：settings.gradle.kts 的 maven.neoforged.net 仓库已移除（NF 模块全用本地 libs，不需要它且网络不通会拖构建）；Debian 系统 JDK 21 四段版本号 21.0.12.1 不被 Gradle 8.14.5 工具链识别（缺 .jinfo 注册），必须装 TUNA Adoptium Temurin 到 /home/z/jdk21 并在仓库 gradle.properties 设 installations.paths；
-  - 版本：1.6.7.4 / config-version 22（本轮无配置键增删，版本不升）。
-
-以下为 1.6.7.3 历史项（新增 SC 组 spark 启动提示 / PD 组依赖检测收窄含「暂无影响」反断言 / FM 组行内格式 / D1 版本 22 / V 组反断言无 1.6.7.2 残留 / S31~S35 源码断言）/ 冒烟 **58 项**（3.x 全翻转为行内断言 + 3.25~3.31 转义/布尔/混合标量 + 6.x 依赖检测反射与 SparkStartupCheck）+ **E2E 端到端 10 项**（真实 JAR 模板全文 + 1.6.7.2 块状用户磁盘形态 → carry 收集 → merge → 行内格式 + 解析合法）/ 官网部署（**1.6.7.2 从官网删除**：历史表去行、下载链接换 1.6.7.3、线上旧 JAR 删除、更新日志 v1.6.7.2 区块合并重写为 v1.6.7.3）/ git 推送）：
-  - 修复①：YamlTextMerge.renderEntry 行内双引号渲染（用户手写格式 = 回填格式；字符串转义 \" / \\ / \n / \t / \r；数字布尔原样避免 5 → "5" 语义漂移；custom-commands List<Map> flow 单行）；
-  - 修复②（用户主诉）：配置升级后 groups `[""]` 行内格式被改写成块状裸串——config-version 21→22，装过 1.6.7.2 的用户重启重建拿新格式；
-  - 需求①：PapiDependencyCheck 收窄（papiConsumerPlugins = listOf("PlayerTitle") 门控；就绪档从 PluginFileLog.write 文件级改 infoAndKeep 上控制台；删「暂无影响」温和档）；
-  - 需求②：SparkStartupCheck 新增（common-Bot stats 包，schedule(delayMillis, sparkProbe) 平台 lambda 注入；Spigot 12 秒 / NF 5 秒；探测成功才输出）；
-  - 版本：1.6.7.3 / config-version 22（CURRENT_CONFIG_VERSION 与 DEFAULT_VALUES 同步 22）。
-以下为 1.6.7.2 覆盖版历史（已从官网删除，仅留记录）：
-- 双端 1.6.7.2 覆盖版全部完成
-
-- 双端 1.6.7.2 覆盖版全部完成（门禁 227 项（新增 GO 组全局透明度 / LG 组改液态玻璃移除反断言 / F5b+F9 单元素列表修复与可感知校验 / D1 版本 21 / S27h~S27l 源码断言）/ 冒烟 45（原 36 项基础上重写第 3/4 组：YamlTextMerge 新增 3.16~3.21 单元素列表回归 / List<Map> custom-commands 形态 / 空列表；4.x 液态玻璃删除反断言 + GlobalOpacity 纯函数 alpha 抽样 + 缓存默认 60）/ 官网部署 / git 推送）：
-  - **修复单群用户配置自动升级失败**（用户日志 `sequence entries are not allowed here` +「配置重建放弃：合并结果校验未通过」）：根因 YamlTextMerge.renderEntry 用 `dump().contains('\n')` 判多行——snakeyaml dump **单元素列表**是单行 `- item`，被误当标量拼成 `groups: - XXX` 非法 YAML（多元素列表带换行走块状分支恰好正确，空列表 dump `[]` 合法，唯独单元素漏网，冒烟也恰好没测单元素）。修复：renderEntry 按 `value is Collection<*>` 类型分派（空列表 `[]` / 非空列表键行+同缩进项行 / 多行项续行补两空格），列表项自身多行（custom-commands 的 Map 项）也兼容；
-  - loadYaml 改 throws 语义：Bukkit `YamlConfiguration.loadConfiguration(Reader)` 是**吞异常打 ERROR 返回空配置**的容错 API（用户日志那条吓人堆栈正是它打的），解析失败永远走不到调用方 catch；改 `YamlConfiguration().load(reader)` 实例方法（解析失败抛出），NF 兼容层补同名 `load(Reader)`；
-  - 液态玻璃移除：PerformanceStyle 枚举/paintPanel 玻璃分支/brighten/PerformanceData.style/cachedStyle 样式失效链全删，render.performance.style 入 REMOVED_CONFIG_KEYS（用户旧键自动清理）；
-  - 性能数据缓存默认 5 → 60（ConfigFileRebuilder 与 ConfigManager.reload 双路旧默认收敛：值=5 删除/改 60 让新默认生效，自定义值不动）；
-  - 全局透明度 render.global-opacity（默认 1.0）：GlobalOpacity.apply（apply 配置读取 + applyOpacity 纯函数双形态）在四个渲染器（查信息/查在线/查性能/排行榜）PNG 编码前统一 AlphaComposite.SrcOver.derive(opacity) 合成，1.0 原样返回零开销；config-version 20→21（已踩坑用户被坏版降级写号 20 后，本版 20<21 重新触发完整重建）；
-  - 官网：下载卡片标「同日覆盖版」+ 更新日志 v1.6.7.2 段重写（液态玻璃条目换覆盖版四项）+ 设计来源删液态玻璃出处 + tutorial render 段（style 删/global-opacity 加/cache 60）+ 配置自动升级说明补修复提示 + version.json 七条；
-  - 踩坑（入 §6）：NF 打包 base 必须传 **Spigot** 分发 JAR（传 NF JAR 会被 EXCLUDE_PREFIXES 的 cn/kerong/ 前缀把已重定位依赖全部剔掉，产物从 19MB 掉到 6MB）；Edit 工具对长中文注释匹配失败（不可见字符差异），批量改中文注释块用 Python 脚本按行号/正则处理更稳。
-
-- 双端 1.6.7.2 原版历史项（门禁 197 / 冒烟 36 / 官网部署 / git 推送）：
-  - Spark 联动：/查性能 检测到 spark（Spigot 插件 getPlugin 启用 / NF ModList.isLoaded）时优先纯反射调其公开 API（SparkProvider.get 单例；TPS=tps().poll(TicksPerSecond.MINUTES_1)，MSPT=mspt().poll(MillisPerTick.SECONDS_10).mean()，CPU=cpuProcess().poll(CpuUsage.MINUTES_1)；枚举常量用统计实例自身的类加载器跨模块解析）；无 spark 或单项 null 回退 1.6.7.1 自研链；PerformanceSnapshot.capture 新增三参重载（cpuOverride）；
-  - 液态玻璃样式：render.performance.style（vanilla 默认 / liquid-glass），PerformanceRenderer 新增 paintPanel（渐变玻璃卡身+亮边折射+顶部高光带）与 brighten，状态胶囊/进度条带光泽；
-  - 性能数据缓存：render.performance.cache-seconds（默认 5，0=关），PerformanceService peekCache/storeCache（@Volatile+锁，样式切换即失效）；
-  - 配置版本升级重建（修复「版本号更新后配置没更新」）：ConfigManager.initialize 先行 ConfigFileRebuilder.rebuildIfNeeded——磁盘 config-version < JAR 内置时以 JAR 全文为底，历史路径搬家/废弃键清理/旧默认值收敛（from-group [QQ] 与 idle-release 5）后收集自定义值（与 JAR 新默认不同的项+JAR 没有的自定义键），YamlTextMerge 文本级逐行替换/插入（**不经 YAML 序列化，注释全保留**，双端一致——NF 兼容层 save 会丢注释的问题绕开），合并结果先 loadYaml 校验再原子落盘，旧文件备份 config.yml.bak；
-  - 默认值调整：from-group 新默认 `[§bQQ§r] {name}: {message}`（仅染 QQ 字样）、idle-release-minutes 5→15，均只升级仍是旧默认值的配置；
-  - NF 兼容层两处修复：JavaPlugin 新增 getResource（对齐 Bukkit）；YamlConfiguration.load/loadStream 改整树替换（旧 merge 语义会在内存残留已删键）+ 新增 Reader 重载（真 Bukkit 的 loadConfiguration(InputStream) 已删只剩 File/Reader 两重载，双端共用代码必须走 Reader）；
-  - 官网：下载卡片 1.6.7.2 + 历史表 6 版本（删 1.6.6/1.6.5）+ 设计来源区块加模板合集链接 easybot-image-templates + 更新日志 v1.6.7.2 六条 + version.json 六条 + tutorial render 段 style/cache-seconds/idle 15 + from-group 新默认 + 配置自动升级说明段；
-  - 踩坑：paper-api 1.20.4 已删 YamlConfiguration.loadConfiguration(InputStream) 重载（只剩 File/Reader），共享源码用流解析必须走 Reader 并给 NF 兼容层补同名重载；NF 端 snakeyaml 被重定位到 cn.kerong.shaded，冒烟重解析校验要用重定位后的类名。
-
-- 双端 1.6.7.1 全部完成（构建 / 门禁 132 项（P 组重写：分层读取器与反射目标名断言 / 在线卡与 show-* 负向断言 / 基线保持）/ 冒烟 33（capture 新签名 / 三种核心模拟类的分层读取行为验证：Paper API 层、Spigot getServer 跳板+公有/私有字段、NF getAverageTickTimeNanos / tpsFromMspt 换算 / 固定四项 766 高 / performanceItemEnabled 已删）/ 官网部署 / git 推送）：
-  - 修复 TPS/MSPT 一直读不到：1.6.7 只反射 Paper 系 API（纯 Spigot 无此 API），NF 反射的 getAverageTickTime/tickTimes 与 1.21.1 实际类不符（实为 getAverageTickTimeNanos/tickTimesNanos，Mojang 映射，且字段还是 private）；现在 PerformanceSnapshot companion 内建分层读取器（readTps/readMspt/tpsFromMspt），双端平台实现只剩薄封装；冒烟用假服务器类验证了三层路径行为；
-  - 查性能卡固定四项（TPS/MSPT/内存/CPU，2×2 固定 766 高）：删在线人数卡（查在线已有专门卡片），PerformanceSnapshot 删 onlineCount/maxPlayers，capture 改 2 参；
-  - 删 render.performance.show-* 五键：RenderSettings 删 performanceItemEnabled、ConfigManager 删默认键并收编废弃迁移表（用户旧配置自动清除）、双端 config.yml 同步，render.performance.builtin-background 保留；
-  - 官网：下载卡片 1.6.7.1 + 历史表 7 版本（删 1.6.4）+ 更新日志 v1.6.7.1 段 + version.json 三条 + tutorial 查性能段改固定四项说明；
-  - 踩坑：README 的「当前版本」行在 1.6.7 发版时漏更（停在 1.6.4），本次一并修正——发版时版本号检查除五处外还要扫 README 版本段。
-
-- 双端 1.6.7 历史项（构建 / 门禁 115 项（P 查性能 19 项 + M 查在线默认图片 + 基线保持）/ 冒烟 26 / 官网部署 / git 推送）：
-  - /查性能：PerformanceSnapshot（KERONG 接口 performanceSnapshot()，双端各自实现核心指标反射读取，JVM 内存/CPU 由 companion capture 统一采集 getProcessCpuLoad）+ PerformanceRenderer（2×N 指标卡：TPS/MSPT/内存/CPU/在线，状态分级色 + 进度条，null 显示「--」）+ PerformanceService（CardRenderPool 异步 + 冷却 + 单图发送，不做结果缓存）+ PublicCommands @Commands("查性能") + MenuManager 按钮（commands.查性能 关闭时经既有 commandList 过滤自动消失）+ 模板 performance-render-failed.md（双端资源）+ config render.performance 六键（show-* 五项 + builtin-background）+ help.md 行；
-  - /查在线 默认图片：ConfigManager motd() 与 DEFAULT_VALUES 的 motd.use-markdown 默认 true→false，双端 config.yml 同步（fillMissing 不覆盖旧用户值，已保存配置行为不变）；
-  - 官网：下载卡片 1.6.7 + 历史表 7 版本（删 1.6.3 两行）+ 更新日志 v1.6.7 段 + 设计来源区块移到更新日志之前 + 全站删除「详见 GitHub Issue #1」文字与链接（保留 xintinglei.cn 与作者名署名）+ version.json 三条 + tutorial（查性能配置块与说明 / use-markdown 示例与默认说明 / commands 段查性能行 / 快速上手段落查性能）。
-- 双端 1.6.6.4 全部完成（构建 / 门禁 113 项（R/C/N/Z/G/Y/V/B/S，Z 组为 GC 移除断言）/ 冒烟 68 / 官网部署 / git 推送）：
-  - 移除空闲 GC 提示：render.idle-gc-hint 全链路删除（RenderSettings.idleGcHint / releaseIfIdle 的 System.gc 块 / 释放日志的 gc-hint 状态标注 / 双端 config.yml 键与注释 / ConfigManager 默认值→废弃键迁移表自动清除用户旧键）；线上 1.6.6.3 曾短暂部署未提交的 auto-shrink（已提交超存活自动收缩五键），1.6.6.4 JAR 以 git 源重建后 auto-shrink 字节零残留（门禁 Z3 断言）；/kerong mem 提示语改「不代表插件实际占用」不再声称空闲回落；
-  - 官网：下载卡片 1.6.6.4 + 历史表 8 版本（删 1.6.2 两行）+ 更新日志 1.6.6.4 段（1.6.6.3 段保留）+ version.json 三条；tutorial.html 以线上 1.6.6.3 版为基线删 auto-shrink / idle-gc-hint 配置块并小白化精简（删渲染 internals 三段长文与全文版本考古字样）。
-- 双端 1.6.6.3 历史项（构建 / 门禁 105 项 / 官网部署 / git 推送；注意：线上 1.6.6.3 JAR 曾含未提交的 auto-shrink，已被 1.6.6.4 覆盖）：
-  - 重连风暴降噪：WSS 关闭帧 / op9 会话无效 / op7 要求重连改 PluginFileLog.write 仅文件；控制台重连提示只报里程碑（本轮第 1 次 / 最后一次 / 成功 / 超时），中间次数仅文件；SDK 三条固定噪声（暂未处理的异常code / websocket closed with code 1011… / reconnect in 3 seconds）在 KERONG LogSink 侧 isSdkReconnectNoise 过滤改仅文件；
-  - 双服同绑检测整体移除：ConflictWatch.kt 文件删除、WssDiagnostics 短命会话/鉴权期被关证据计数删除（QqTokenHealth.lastCheckOk 一并删除，自检本身保留）、QClient.stopForConflict / ReconnectManager.onConflictDetected / onDedupConflictConfirmed 删除、QClient 四处 + MessageTemplates 四处接入点删除；
-  - 重连计数越界修复：挂起后 SDK 已排队的延迟重连建连时 onOpen 检测 attempt≥5 按新一轮重置计数（不再「第 6/5 次」）；
-  - GC 提示文件化：releaseIfIdle 释放动作改 PluginFileLog.write（原文案附 gc-hint 开关状态）；双端 config.yml 的 idle-gc-hint 注释补「每次 GC 会导致 0.05~0.6 秒的卡顿 / 服务器内存充足可关闭此配置」；reconnect-notify 注释同步里程碑新行为；
-  - 官网：依赖与兼容性区改「支持与兼容性」（支持的服务端核心上移到最前、功能依赖改「支持的插件」），下载卡片与更新日志升 1.6.6.3，version.json 同步。
-- 双端 1.6.6.2 覆盖版历史项（构建 / 门禁 135 / 冒烟 68 / 部署 19）：
-  - 覆盖版三项：① 修复头像获取方式日志泄漏到控制台（logAvatarSource/logAvatarMiss 改 PluginFileLog 仅文件 + loggedAvatarSources 会话去重：同玩家首次与换线路才记录，上限 2048）；② 修复启动期内存飙升 1.5~2.5GB 不回落（单飞 inFlightFetches + idle-gc-hint 空闲 GC 归还 + /kerong mem 诊断；根因 = 启动期群内集中查询的并发分配风暴让 G1 扩张堆不归还，非缓存泄漏——渲染实测 13MB/次零残留）；③ 图片渲染设计来源署名（issue #1：BaiZhouziYou / 新亭泪 xintinglei.cn，README 设计来源段 + 官网设计来源区 + footer + 三个渲染器文件头）；
-  - 修复「极少玩家在清除缓存后头像获取失败」：失败分类（networkTrouble ThreadLocal）——网络抖动型失败（超时 / IO 异常 / 官方冷却期内跳过 / 429 / 5xx）不写 missCache，下次查询立即重试；确定性失败（404 等）才写 60 秒冷却；
-  - 头像内存缓存 64 → 128 条 + AVATAR_MEMORY_MAX_BYTES = 10KB 单张门槛（PNG 编码后超 10KB 只走磁盘缓存；encodeAvatarPng + writeDiskAvatar 拆分；磁盘缓存关闭时退回全量内存缓存）；
-  - 渲染空闲内存释放：`render.idle-release-minutes`（默认 5，支持小数，0 = 关闭，实时读）——CardRenderPool 任务收尾 markRenderCompleted + activeRenders 护栏，render-idle-releaser 守护线程每 30 秒检查，超时且无进行中渲染时 flush + 清空图像缓存（轻量元数据保留），释放写日志；
-  - 内存缓存及时清理：sweepDiskCache 每轮开头 purgeMemoryAvatarCache（清超 10 分钟 TTL 条目，仅无活跃渲染时执行）；
-  - 磁盘缓存强制关机后可清：ensureAvatarSweeper 双端主类启动即调用（不再惰性等首次取头像）；
-  - 头像获取方式写日志：FetchedFace 标签贯穿本地 / 外置链路，每次成功（含磁盘命中）记 `[头像] 玩家名 ← 方式`，失败记一行含 retryable 说明；
-  - 官网：下载卡片 1.6.6.2（删覆盖重发与双端描述四段、新增「支持 MC 的版本请详见下方」指引），历史表 8 版本（1.6.1+，删 1.6.0），更新日志 1.6.6.2 详细段 + 1.6.5/1.6.4 折叠一行版；version.json 五条；tutorial render 段含 idle-release-minutes 与 1.6.6.2 缓存行为说明。
-- 双端 1.6.6.1 覆盖版历史项（构建 / 门禁 / 冒烟通过）：
-  - 头像本地优先：`render.avatar-fetch-priority`（local 默认 / external，无效值按 local，实时读），本地链（Profile + NBT）与外置链（Mojang 官方 + 多线路）按配置先后互为兜底，先试失败自动切换；
-  - 头像磁盘缓存配置化：默认 24 小时 → 3 小时，`render.avatar-cache-hours`（支持小数，0 = 关闭；ConfigManager DEFAULT_VALUES 自动补键，fillMissing 机制无需 config-version 迁移）；过期文件 avatar-cache-sweeper 守护线程每 30 分钟清扫（惰性启动，clearCaches 关闭，可重启）；
-  - MinePic 线路：插在 Minotar 与 Crafatar 之间（v4 与名字线路），实测波动大、未知账号不响应；
-  - Mojang 原生 API 保留（外置方式的官方优先段，外部线路兜底）；
-  - 渲染内存再优化：三渲染器圆角头像零中间图直绘（InfoCardRenderer.drawRoundedAvatar 共享，三处私有 roundImage 全删）；头像内存缓存 128→64；内置背景处理高度统一封顶 1600px；
-  - WebUI 面板删除：common-Bot/bot/web 整目录（WebUiServer/WebUiSchema）、KERONG 接口的 webUiConfigValues/applyWebUiConfigChanges、双端主类覆写与 fastjson 转换辅助全删（面板从未实际启用过）；
-  - PlayTimeManager 时长同步删除：PlayTimeSync.kt 删除、PlayerStatsManager 三处挂载（initialize/shutdown/onQuit）移除、PapiDependencyCheck 提示收窄为仅 PlayerTitle；
-  - 初版（同日早发）内容并入：avatar-cache-hours / MinePic / Mojang 保留 / WebUiSchema 修正（其中 WebUiSchema 已随面板删除，不再存在）。
-- 双端 1.6.6 历史项（构建 / 门禁 / 冒烟通过）：
-  - 控制台真彩色：ConsoleColors（§→ANSI 转义 + TerminalConsoleAppender 能力探测），双端 log_* 输出前转换（不支持 ANSI 的输出自动退化纯文本，文件日志始终剥离）；
-  - 头像：外部多线路回退（MC-Heads/Minotar/Crafatar + Floodgate xuid 基岩线路）+ 磁盘缓存（cache/avatars，1.6.6 时为 24h，1.6.6.1 起默认 3h 可配置）；
-  - PapiDependencyCheck（**1.6.7.3 收窄**）：仅检测到 PlayerTitle（papiConsumerPlugins）时才检测——就绪 infoAndKeep 正向确认 / 缺失给补装指引（金币与 DeluxeTags 不受影响的说明保留）；未装相关插件完全静默；运行档 notifyMissingOnce 保持（天然只在装 PlayerTitle 时触发）；
-  - 内部标识与包结构统一：包结构统一为 cn.kerong.*（bot / penguin），主类 KERONGSpigot / KERONGNeoForge / KERONG 接口，旧长名命令别名与旧协议前缀兼容层已删除；
-  - 1.6.5 历史项：启动消息「KERONG Penguin 已加载」；
-  - 品牌统一：主命令 /kerong（短别名 /hb）；内部协议 kerong run|adminrun；审核环境变量 KERONG_AUDIT_*；状态文件头/BotShared 错误文案/mods.toml 描述等全部 KERONG 化；
-  - 重连成功提示修复（READY 即宣告 + 互踢防抖 + 退避新一轮清零计数）；
-  - 渲染：移除 System.gc()（Full GC 停顿伤 tick），全链路确定性 flush；render.gc-after-render 配置废除（升级器自动清理）；
-  - OpenId 反查管理员可见（含旧默认模板自动升级机制 DEFAULT_CONTENT_UPGRADES）；
-  - from-game 默认 [游戏] <{name}> {message}（config-version 19 迁移）；
-  - 配置注释精简（删更新检查结果说明/版本分隔条/留空[]说明）。
-- 1.6.4 及更早历史详见 git log 与官网更新日志。
-- 待观察：重连里程碑提示在真实网关踢线场景的节奏（每次踢线会有一条「第 1/5 重试 + 重连成功」，属预期行为；挂起后 SDK 迟到重连被计为新一轮第 1 次也属预期）；OpenId 反查在 admin.mode=manual 下的判定体验。
-- 官网历史下载：1.6.4 起只保留 1.6.0+ 版本（更旧已按用户要求删除；1.6.7.1 发布后保留 7 个版本 1.6.5~1.6.7.1；1.6.4、1.6.2、1.6.1、1.6.6.1 与 1.6.3 已先后下架）。
+- **分支**：本地 `cross-posting-1`（git worktree：`/home/z/my-project/cross-posting-git`），基于 1.6.7.6（6917246）。**永远不 push**——用户要求该版教程与源码不进公开仓库；每次更新在 worktree 内开发、本地 commit、构建部署。
+- **与主版差异**（见 cross-posting-1 分支 commit 28e7b1a）：CrossPosting.kt（转发器+命令+会话）、KERONG 接口 crossPostingConfig 契约、QClient.sendTextToGroupsExcept、GroupMessageHandler 挂接、ConfigManager 群 20 截断与 cross-posting 段、无更新检查、config.yml 教程注释。
+- **构建**：worktree 需先复制 gitignore 的编译依赖（common-Bot/libs/deps.jar、server-Spigot/libs/、server-NeoForge/libs/ 从主检出到 worktree）；打包 base 用主版最新 Spigot JAR；输出名用 `-o` 显式指定（package_jar.py 的版本正则只认数字段，会截成 1.6.7）。
+- **更新节奏**：用户要求才更新；更新时把主版新代码 rebase/merge 进分支后重新构建部署。
