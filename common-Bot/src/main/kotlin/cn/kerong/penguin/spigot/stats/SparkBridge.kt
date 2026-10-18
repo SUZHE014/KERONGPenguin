@@ -45,6 +45,10 @@ package cn.kerong.penguin.spigot.stats
  * - CPU：`Spark#cpuProcess()`（必有）→
  *   `DoubleStatistic#poll(CpuUsage.MINUTES_1)`（0.0~1.0，与卡片口径同为
  *   进程级占用，spark 为 1 分钟窗口均值更平稳）；
+ * - 延迟：`Spark#playerPing()`（1.6.7.6 新增）→
+ *   `GenericStatistic#poll(PlayerPing.MINUTES_1)` →
+ *   `DoubleAverageInfo#mean()`（在线玩家平均延迟毫秒，旧版 spark 无此
+ *   方法时安静回退 null）；
  *
  * 类可见性：Spigot 端插件类加载器互查可见（传入 spark 插件的 loader 最稳）；
  * NeoForge 端模组均为自动模块（互相可读），用本类 loader 的
@@ -60,6 +64,9 @@ object SparkBridge {
         val mspt: Double?,
         /** 进程 CPU 占用（0.0~1.0，1 分钟均值）。 */
         val cpu: Double?,
+        /** 在线玩家平均延迟（毫秒；spark playerPing 统计，无人在线为 null，
+         * 1.6.7.6 新增）。 */
+        val ping: Double?,
     )
 
     /** spark 公共 API 接口名（方法从这些接口解析，绝不经实现类）。 */
@@ -87,7 +94,9 @@ object SparkBridge {
             val tps = pollTps(spark, loader)
             val mspt = pollMsptMean(spark, loader)
             val cpu = pollCpu(spark, loader)
-            if (tps == null && mspt == null && cpu == null) null else SparkMetrics(tps, mspt, cpu)
+            val ping = pollPlayerPingMean(spark, loader)
+            if (tps == null && mspt == null && cpu == null && ping == null) null
+            else SparkMetrics(tps, mspt, cpu, ping)
         } catch (_: Throwable) {
             // spark 不存在（NoClassDefFound / ClassNotFound）或未完成加载
             //（IllegalStateException）——一律按「无 spark」回退自研链路
@@ -163,6 +172,34 @@ object SparkBridge {
             val mean = infoInterface.getMethod("mean").invoke(info) ?: return null
             (mean as? Number)?.toDouble()?.takeIf { it.isFinite() && it >= 0.0 }
         } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /**
+     * 玩家平均延迟：Spark#playerPing() → GenericStatistic#poll(PlayerPing
+     * .MINUTES_1) → DoubleAverageInfo#mean()（毫秒；旧版 spark 无该方法/
+     * 无人在线时返回 null）。1.6.7.6 新增。
+     */
+    private fun pollPlayerPingMean(spark: Any, loader: ClassLoader): Double? {
+        return try {
+            val stat = invokeOnInterface(spark, SPARK_INTERFACE, "playerPing", loader) ?: return null
+            val window = resolveEnumConstant(
+                "me.lucko.spark.api.statistic.StatisticWindow\$PlayerPing",
+                listOf("MINUTES_1", "SECONDS_10"),
+                loader,
+            ) ?: return null
+            val statInterface = Class.forName(GENERIC_STATISTIC, true, loader)
+            val poll = statInterface.methods.firstOrNull {
+                it.name == "poll" && it.parameterCount == 1 &&
+                    it.parameterTypes[0].isAssignableFrom(window.javaClass)
+            } ?: return null
+            val info = poll.invoke(stat, window) ?: return null
+            val infoInterface = Class.forName(DOUBLE_AVERAGE_INFO, true, loader)
+            val mean = infoInterface.getMethod("mean").invoke(info) ?: return null
+            (mean as? Number)?.toDouble()?.takeIf { it.isFinite() && it >= 0.0 }
+        } catch (_: Throwable) {
+            // 旧版 spark 无 playerPing()：安静回退（平台实现自行读 Player.getPing）
             null
         }
     }

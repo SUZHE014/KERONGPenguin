@@ -33,7 +33,7 @@ import javax.imageio.ImageIO
  * 半透明卡片风格（1.6.7.5 覆盖版，1350 宽，固定版式单页图）：
  * - 顶部标题区：英文眉题 MINECRAFT SERVER + 主标题「服务器性能监控」
  *   + 右侧「更新时间」卡；
- * - 指标卡网格（2 列 × 2 行，固定四项：TPS / MSPT / 内存 / CPU）：
+ * - 指标卡网格（2 列 × 3 行，固定六项：TPS / MSPT / 内存 / CPU / 延迟 / 在线人数）：
  *   每卡 = 标签 + 状态胶囊 + 大数值 + 进度条（或「--」表示核心
  *   不支持读取）；1.6.7.1 起不再展示在线人数（查在线命令已有专门
  *   卡片，性能卡专注性能指标），单项显隐配置 show-* 同步移除；
@@ -68,8 +68,8 @@ object PerformanceRenderer {
     /** 指标卡列数。 */
     private const val COLUMNS = 2
 
-    /** 固定指标卡数（TPS / MSPT / 内存 / CPU，1.6.7.1 起不再有在线卡）。 */
-    private const val CARD_COUNT = 4
+    /** 固定指标卡数（TPS / MSPT / 内存 / CPU / 延迟 / 在线人数，1.6.7.6 起六项）。 */
+    private const val CARD_COUNT = 6
 
     /** 底部留白。 */
     private const val BOTTOM_PAD = 40
@@ -113,7 +113,7 @@ object PerformanceRenderer {
         val background: BufferedImage? = null,
     )
 
-    /** 单个指标卡的绘制模型（由快照派生，固定四项）。 */
+    /** 单个指标卡的绘制模型（由快照派生，固定六项）。 */
     private data class MetricCard(
         val label: String,
         val valueText: String,
@@ -128,7 +128,7 @@ object PerformanceRenderer {
     )
 
     /**
-     * 计算画布高度（固定四项指标：TPS / MSPT / 内存 / CPU）。
+     * 计算画布高度（固定六项指标：TPS / MSPT / 内存 / CPU / 延迟 / 在线人数）。
      * 必须在取背景（尺寸相关）与渲染前调用，两者共用本结果。
      */
     fun measureHeight(): Int {
@@ -164,7 +164,7 @@ object PerformanceRenderer {
 
     // ---------- 指标卡派生 ----------
 
-    /** 由快照派生要绘制的指标卡列表（顺序即展示顺序，固定四项）。 */
+    /** 由快照派生要绘制的指标卡列表（顺序即展示顺序，固定六项）。 */
     private fun buildCards(data: PerformanceData): List<MetricCard> {
         val snapshot = data.snapshot
         val cards = ArrayList<MetricCard>(CARD_COUNT)
@@ -276,6 +276,61 @@ object PerformanceRenderer {
                     progress = cpu?.coerceIn(0.0, 1.0),
                     barColor = color,
                     note = "服务器进程占用 · 多核按总和归一",
+                )
+            )
+        }
+
+        // 延迟（在线玩家平均 Ping，毫秒；1.6.7.6 新增）：
+        // <80 流畅 / 80~150 偏高 / >=150 高；无人在线为 null（显示「--」）
+        run {
+            val ping = snapshot.avgPingMillis
+            val color = when {
+                ping == null -> COLOR_SUB
+                ping < 80.0 -> COLOR_GOOD
+                ping < 150.0 -> COLOR_WARN
+                else -> COLOR_BAD
+            }
+            cards.add(
+                MetricCard(
+                    label = "延迟（玩家平均）",
+                    valueText = ping?.let { "${String.format("%.0f", it)} ms" } ?: "--",
+                    statusText = when {
+                        ping == null -> "暂无玩家"
+                        ping < 80.0 -> "流畅"
+                        ping < 150.0 -> "偏高"
+                        else -> "高"
+                    },
+                    statusColor = color,
+                    // 进度条以 300 ms 为满（超过即视为严重延迟）
+                    progress = ping?.let { (it / 300.0).coerceIn(0.0, 1.0) },
+                    barColor = color,
+                    note = "全部在线玩家网络延迟平均 · 毫秒",
+                )
+            )
+        }
+
+        // 在线玩家（仅人数展示，1.6.7.6 新增：名单详情用 /查在线 命令）
+        run {
+            val online = snapshot.onlinePlayers
+            val color = when {
+                online == null -> COLOR_SUB
+                online > 0 -> COLOR_GOOD
+                else -> COLOR_SUB
+            }
+            cards.add(
+                MetricCard(
+                    label = "在线玩家（人数）",
+                    valueText = online?.toString() ?: "--",
+                    statusText = when {
+                        online == null -> "暂不可读"
+                        online > 0 -> "在线中"
+                        else -> "空服"
+                    },
+                    statusColor = color,
+                    // 人数卡不画进度条（无满值语义）
+                    progress = null,
+                    barColor = color,
+                    note = "仅展示人数 · 玩家名单用 /查在线 查看",
                 )
             )
         }

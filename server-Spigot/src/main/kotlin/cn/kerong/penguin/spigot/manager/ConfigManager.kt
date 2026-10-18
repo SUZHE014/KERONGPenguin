@@ -28,6 +28,13 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
     /** 初始化：版本升级时先以 JAR 新版重建，再释放默认配置并装载。 */
     fun initialize() {
+        // 1.6.7.6：先恢复损坏的配置文件（语法错误 → 轻量修复或备份重建默认，
+        // 修复旧版「解析失败 → 空配置 → 机器人不启动」的死胡同，
+        // 见 ConfigBrokenRecovery KDoc）
+        try {
+            ConfigBrokenRecovery.recoverIfBroken(plugin)
+        } catch (_: Throwable) {
+        }
         // 1.6.7.2：磁盘 config-version 低于 JAR 内置时，以 JAR 新版
         // config.yml（注释完整）为底重建用户文件（保留自定义值，旧文件
         // 备份 config.yml.bak）——修复旧版只追加裸键、注释与结构永不更新的
@@ -42,8 +49,14 @@ class ConfigManager(private val plugin: JavaPlugin) {
         reload()
     }
 
-    /** 重新加载配置（含格式错误保护与缺失键补齐）。 */
+    /** 重新加载配置（含损坏自动恢复、格式错误保护与缺失键补齐）。 */
     fun reload() {
+        // 1.6.7.6：运行期重载同样先做损坏恢复（/kerong reload 时改坏的文件
+        // 也能自动救回，不再「跳过保存」空配置硬跑）
+        try {
+            ConfigBrokenRecovery.recoverIfBroken(plugin)
+        } catch (_: Throwable) {
+        }
         try {
             plugin.reloadConfig()
         } catch (t: Throwable) {

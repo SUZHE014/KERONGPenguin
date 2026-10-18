@@ -23,6 +23,7 @@ import cn.kerong.penguin.spigot.stats.PapiDependencyCheck
 import cn.kerong.penguin.spigot.stats.PlayerStatsManager
 import cn.kerong.penguin.spigot.stats.SparkBridge
 import cn.kerong.penguin.spigot.stats.SparkStartupCheck
+import cn.kerong.penguin.spigot.stats.TickMonitor
 import org.bukkit.Bukkit
 import org.bukkit.command.Command
 import org.bukkit.command.CommandExecutor
@@ -95,6 +96,14 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         } catch (_: Throwable) {
         }
 
+        // 1.6.7.6：自采样刻监视器（每 tick 一次轻量采样）——Folia 多线程核心
+        // 上反射链读不到 / 读到的全局区域值忽高忽低，自采样窗口均值是
+        // MSPT / TPS 的稳定数据源（非 Folia 核心作反射链的兑底）
+        try {
+            TickMonitor.start(this)
+        } catch (_: Throwable) {
+        }
+
         logCommandExecutor()
         // 1.6.6：PlaceholderAPI 依赖检测（异步延迟 12 秒；1.6.7.3 起仅当
         // 检测到 PlayerTitle 等相关依赖插件时才检测并提示）
@@ -118,9 +127,14 @@ class KERONGSpigot : JavaPlugin(), KERONG {
     }
 
     /**
-     * spark 可用性探测（1.6.7.4 三态）：查插件表返回未安装 / 已接入 / 已装但失败。
+     * spark 可用性探测（1.6.7.4 三态 + 1.6.7.6 第四态）：查插件表返回
+     * 未安装 / 已接入 / 已装但失败 / 当前核心无统计。
      * 本插件名 KERONGPenguin 按字母序先于 spark 加载，onEnable 时 spark 多半
      * 尚未 enable，故仅在 ServerLoadEvent 之后调用。
+     *
+     * 1.6.7.6：新增 NoStatsOnThisCore——spark 已装且启用但其统计读不到且
+     * 当前是 Folia 多线程核心时，不再按「接入失败」警告（那正是用户反馈的
+     * 「装了 spark 还是提示没接入」误报）：内置采样器已兜底，降为信息级。
      */
     private fun probeSpark(): SparkStartupCheck.ProbeOutcome = try {
         val sparkPlugin = Bukkit.getPluginManager().getPlugin("spark")
@@ -130,10 +144,12 @@ class KERONGSpigot : JavaPlugin(), KERONG {
                 SparkStartupCheck.ProbeOutcome.Failed("spark 插件未启用")
             else -> {
                 val metrics = SparkBridge.read(sparkPlugin.javaClass.classLoader)
-                if (metrics == null) {
-                    SparkStartupCheck.ProbeOutcome.Failed("各指标均暂不可读")
-                } else {
-                    SparkStartupCheck.ProbeOutcome.Installed(metrics)
+                when {
+                    metrics != null -> SparkStartupCheck.ProbeOutcome.Installed(metrics)
+                    FoliaCompat.isFolia -> SparkStartupCheck.ProbeOutcome.NoStatsOnThisCore(
+                        "Folia 多线程核心区域化 ticking，spark 统计暂不可读"
+                    )
+                    else -> SparkStartupCheck.ProbeOutcome.Failed("各指标均暂不可读")
                 }
             }
         }
@@ -147,6 +163,11 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         // 保存统计数据
         try {
             PlayerStatsManager.shutdown()
+        } catch (_: Throwable) {
+        }
+        // 1.6.7.6：停止自采样刻监视器（清空窗口防下次启动残留）
+        try {
+            TickMonitor.stop()
         } catch (_: Throwable) {
         }
         // 释放卡片图片缓存（头像 / 背景占用的堆内存）
@@ -277,46 +298,119 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         get() = server.onlinePlayers.map { it.name }
 
     /**
-     * 服务器性能快照（1.6.7，/查性能 数据源；1.6.7.1 修复读不到）。
+     * 服务器性能快照（1.6.7，/查性能 数据源；1.6.7.1 修复读不到；1.6.7.6 重排队列）。
      *
-     * - TPS / MSPT 经 [cn.kerong.bot.PerformanceSnapshot] 的分层反射
-     *   读取：① Paper / Purpur / Folia 的 Server 接口 getTPS() /
-     *   getAverageTickTime()；② 纯 Spigot 经 CraftServer#getServer()
-     *   跳到内部 MinecraftServer 读 recentTps 与 tickTimes 数组
-     *   （1.20.4 Spigot 映射名）/ tickTimesNanos（1.20.5+ Mojang 名）；
-     *   ③ 仍无 TPS 时由 MSPT 换算（min(20, 1000/mspt)，Spark 同款）；
-     *   全部失败才为 null，卡片显示「--」；
-     * - JVM 堆内存与进程 CPU 由 [cn.kerong.bot.PerformanceSnapshot.capture]
-     *   统一采集（双端一致）；
-     * - 读取全部只读数据（数组 / 计数），无实体状态操作，不需要切回主线程。
+     * 采集优先级（逐项独立，单项读不到回退下一层）：
+     * 1. spark（装了且可读时）：TPS / MSPT / CPU / 延迟——spark 的窗口均值
+     *    天然稳定；
+     * 2. Folia 多线程核心：优先自采样器 [TickMonitor]（10 秒窗口均值）——
+     *    Paper 系 API 在 Folia 上量的是「全局区域线程」耗时，波动极大
+     *    （「数值忽高忽低」根因）且部分版本不再维护（「MSPT 读不到」根因），
+     *    反射链降为兜底；
+     * 3. 其他核心：反射链优先（Paper / Purpur 的 Server API、Spigot 的
+     *    NMS 跳板，见 [cn.kerong.bot.PerformanceSnapshot] 分层读取器），
+     *    自采样器兜底；
+     * 4. 延迟：spark → 平台玩家 getPing 平均；在线人数：平台玩家表。
+     *
+     * 读取全部只读数据，无实体状态写操作；Folia 上玩家统计经全局区域线程
+     * 采样（[FoliaCompat.callSync]）。
      */
     override fun performanceSnapshot(): cn.kerong.bot.PerformanceSnapshot? {
-        // 1.6.7.2：装了 spark 插件时优先直接调用 spark 取数（对核心无感，
-        // 数据最稳）；spark 读不到的项逐项回退自研反射链
+        val api: org.bukkit.Server = Bukkit.getServer()
+        val folia = try {
+            FoliaCompat.isFolia
+        } catch (_: Throwable) {
+            false
+        }
+
+        // 1. spark 优先（可用项直接采用；读不到的项回退后续链路）
+        var sparkTps: Double? = null
+        var sparkMspt: Double? = null
+        var sparkCpu: Double? = null
+        var sparkPing: Double? = null
         try {
             val sparkPlugin = Bukkit.getPluginManager().getPlugin("spark")
             if (sparkPlugin != null && sparkPlugin.isEnabled) {
                 val metrics = SparkBridge.read(sparkPlugin.javaClass.classLoader)
                 if (metrics != null) {
-                    val api: org.bukkit.Server = Bukkit.getServer()
-                    val mspt = metrics.mspt ?: cn.kerong.bot.PerformanceSnapshot.readMspt(api)
-                    val tps = metrics.tps
-                        ?: cn.kerong.bot.PerformanceSnapshot.readTps(api)
-                        ?: cn.kerong.bot.PerformanceSnapshot.tpsFromMspt(mspt)
-                    return cn.kerong.bot.PerformanceSnapshot.capture(tps, mspt, metrics.cpu)
+                    sparkTps = metrics.tps
+                    sparkMspt = metrics.mspt
+                    sparkCpu = metrics.cpu
+                    sparkPing = metrics.ping
                 }
             }
         } catch (_: Throwable) {
             // spark 检测失败不影响后续回退链路
         }
+
+        // 2. MSPT：Folia 优先自采样（稳定），其余核心反射优先、自采样兜底
+        val mspt = sparkMspt
+            ?: if (folia) {
+                TickMonitor.sampledMspt()
+                    ?: cn.kerong.bot.PerformanceSnapshot.readMspt(api)
+            } else {
+                cn.kerong.bot.PerformanceSnapshot.readMspt(api)
+                    ?: TickMonitor.sampledMspt()
+            }
+
+        // 3. TPS：spark → (Folia: 自采样) → 反射 → MSPT 换算兜底
+        val tps = sparkTps
+            ?: (if (folia) TickMonitor.sampledTps() else null)
+            ?: cn.kerong.bot.PerformanceSnapshot.readTps(api)
+            ?: cn.kerong.bot.PerformanceSnapshot.tpsFromMspt(mspt)
+
+        // 4. 延迟与在线人数（Folia 上玩家表读数经全局区域线程采样）
+        val playerStats = readPlayerStats(folia)
+        val ping = sparkPing ?: playerStats?.second
+
         return try {
-            val api: org.bukkit.Server = Bukkit.getServer()
-            val mspt = cn.kerong.bot.PerformanceSnapshot.readMspt(api)
-            val tps = cn.kerong.bot.PerformanceSnapshot.readTps(api)
-                ?: cn.kerong.bot.PerformanceSnapshot.tpsFromMspt(mspt)
-            cn.kerong.bot.PerformanceSnapshot.capture(tps, mspt)
+            cn.kerong.bot.PerformanceSnapshot.capture(tps, mspt, sparkCpu, ping, playerStats?.first)
         } catch (_: Throwable) {
             null
+        }
+    }
+
+    /**
+     * 在线人数与平均延迟（毫秒）采样（1.6.7.6 新增）。
+     *
+     * - Folia：玩家集合访问经全局区域线程（[FoliaCompat.callSync]，超时 3 秒
+     *   返回 null）；
+     * - 其他核心：直接读（与 /查在线 同级安全性）；
+     * - getPing 为 Paper 系 API（纯 Spigot 无此方法 → NoSuchMethodError 被
+     *   捕获，人数照常返回、延迟为 null）；无人在线延迟为 null。
+     */
+    private fun readPlayerStats(folia: Boolean): Pair<Int, Double?>? {
+        val direct: () -> Pair<Int, Double?>? = {
+            try {
+                val players = Bukkit.getOnlinePlayers()
+                val count = players.size
+                var pingSum = 0.0
+                var pingCount = 0
+                for (player in players) {
+                    val ping = try {
+                        player.ping
+                    } catch (_: Throwable) {
+                        -1
+                    }
+                    if (ping > 0) {
+                        pingSum += ping
+                        pingCount++
+                    }
+                }
+                val avg = if (pingCount > 0) pingSum / pingCount else null
+                count to avg
+            } catch (_: Throwable) {
+                null
+            }
+        }
+        return if (folia) {
+            try {
+                FoliaCompat.callSync(this, 3L, direct)
+            } catch (_: Throwable) {
+                null
+            }
+        } else {
+            direct()
         }
     }
 

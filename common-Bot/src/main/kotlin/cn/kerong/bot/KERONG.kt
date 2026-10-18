@@ -281,7 +281,9 @@ internal class TextExecution(
  *
  * - TPS / MSPT 由平台实现采集，读不到时为 null，卡片显示「--」；
  * - JVM 堆内存与进程 CPU 为 JVM 级数据，双端一致，统一由
- *   [capture] 伴生工厂采集，平台实现只补核心层指标。
+ *   [capture] 伴生工厂采集，平台实现只补核心层指标；
+ * - 1.6.7.6 新增：[avgPingMillis]（在线玩家平均延迟，毫秒；无人在线 / 核心
+ *   不支持时为 null）与 [onlinePlayers]（在线人数，仅人数展示；读不到为 null）。
  */
 data class PerformanceSnapshot(
     /** 最近 1 分钟平均 TPS（满值 20；核心不支持读取时为 null）。 */
@@ -294,14 +296,31 @@ data class PerformanceSnapshot(
     val maxMemoryMb: Long,
     /** 本进程 CPU 占用（0.0 ~ 1.0；读取失败时为 null）。 */
     val cpuLoad: Double?,
+    /** 在线玩家平均延迟（毫秒；无人在线 / 不支持读取时为 null，1.6.7.6 新增）。 */
+    val avgPingMillis: Double?,
+    /** 当前在线玩家数（仅人数展示；读不到为 null，1.6.7.6 新增）。 */
+    val onlinePlayers: Int?,
 ) {
     companion object {
+        /**
+         * 进程 CPU 指数平滑值（1.6.7.6 新增，解决「数值忽高忽低」）。
+         *
+         * getProcessCpuLoad 是**瞬时采样**（两次查询相隔 60 秒，每次抓的是
+         * 那一刻的占用，高峰 / 空闲时刻抓到天差地别的值——多线程核心下
+         * 线程多、波动更大）。这里跨查询保留一份 EWMA 平滑值
+         * （0.7 旧值 + 0.3 新采样，有效时间常数约 3 次查询），
+         * 与 spark 的 1 分钟均值口径趋同；spark 提供的均值不经此平滑。
+         */
+        @Volatile
+        private var smoothedCpu: Double? = null
+
         /**
          * 统一采集 JVM 内存与进程 CPU（双端一致），平台实现只需补
          * TPS / MSPT。
          *
          * - CPU 用进程级占用（getProcessCpuLoad，即任务管理器里本进程
-         *   的 CPU 列；首次调用 JVM 可能返回 -1 表示暂不可用 → null）；
+         *   的 CPU 列；首次调用 JVM 可能返回 -1 表示暂不可用 → null；
+         *   1.6.7.6 起无 spark 覆盖时经 EWMA 平滑，见 [smoothedCpu]）；
          * - 堆内存为 totalMemory - freeMemory（存活 + 待回收的堆占用，
          *   与面板上 JVM 已提交内存不是一回事，见 /kerong mem）。
          */
@@ -321,19 +340,47 @@ data class PerformanceSnapshot(
             tps: Double?,
             mspt: Double?,
             cpuOverride: Double?,
+        ): PerformanceSnapshot = capture(tps, mspt, cpuOverride, null, null)
+
+        /**
+         * 1.6.7.6：全参工厂——平台补齐延迟与在线人数（无人在线 / 读不到传 null）。
+         */
+        @JvmStatic
+        fun capture(
+            tps: Double?,
+            mspt: Double?,
+            cpuOverride: Double?,
+            avgPingMillis: Double?,
+            onlinePlayers: Int?,
         ): PerformanceSnapshot {
             val runtime = Runtime.getRuntime()
             val usedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L)
             val maxMb = runtime.maxMemory() / (1024L * 1024L)
-            val cpu = cpuOverride ?: try {
-                val bean = java.lang.management.ManagementFactory.getPlatformMXBean(
-                    com.sun.management.OperatingSystemMXBean::class.java
-                )
-                bean.processCpuLoad.takeIf { it >= 0.0 }
-            } catch (_: Throwable) {
-                null
+            val cpu: Double?
+            if (cpuOverride != null) {
+                // spark 的 1 分钟均值本就是窗口均值，直接采用（并刷新平滑基准）
+                cpu = cpuOverride
+                smoothedCpu = cpuOverride
+            } else {
+                val instant = try {
+                    val bean = java.lang.management.ManagementFactory.getPlatformMXBean(
+                        com.sun.management.OperatingSystemMXBean::class.java
+                    )
+                    bean.processCpuLoad.takeIf { it >= 0.0 }
+                } catch (_: Throwable) {
+                    null
+                }
+                // EWMA 平滑（首次直接采用采样值）
+                cpu = when {
+                    instant == null -> smoothedCpu // 采样失败时沿用上次平滑值
+                    else -> {
+                        val next = smoothedCpu?.let { 0.7 * it + 0.3 * instant } ?: instant
+                        smoothedCpu = next
+                        next
+                    }
+                }
             }
-            return PerformanceSnapshot(tps, mspt, usedMb, maxMb, cpu)
+            return PerformanceSnapshot(tps, mspt, usedMb, maxMb, cpu, avgPingMillis, onlinePlayers)
         }
 
         // ---------- 核心指标分层读取（1.6.7.1：修复 TPS/MSPT 读不到） ----------

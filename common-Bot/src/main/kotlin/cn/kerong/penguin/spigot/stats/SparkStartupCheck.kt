@@ -42,7 +42,7 @@ object SparkStartupCheck {
 
     /**
      * spark 探测三态结果（1.6.7.4：区分「未安装」与「已安装但接入失败」，
-     * 前者静默、后者必须提示）。
+     * 前者静默、后者必须提示；1.6.7.6 新增第四态 NoStatsOnThisCore）。
      */
     sealed class ProbeOutcome {
         /** spark 未安装（Spigot 插件表 / NeoForge ModList 均查无）→ 完全静默。 */
@@ -53,6 +53,15 @@ object SparkStartupCheck {
 
         /** spark 已安装但接入失败（未启用 / 指标读不到 / 探测异常，携带原因）。 */
         class Failed(val reason: String) : ProbeOutcome()
+
+        /**
+         * spark 已安装且已启用，但其统计在当前核心下整体不可读（1.6.7.6 新增：
+         * Folia 区域化多线程核心下 spark 的 tps/mspt 等统计可能返回空，
+         * 不属于接入故障——插件已改用内置采样器 [TickMonitor]，数据照常可用；
+         * 按信息级提示一次，不再当作「接入失败」警告，避免「装了 spark
+         * 却提示接入失败/未安装」的误报误导排查）。
+         */
+        class NoStatsOnThisCore(val note: String) : ProbeOutcome()
     }
 
     /**
@@ -107,6 +116,14 @@ object SparkStartupCheck {
                             "[性能数据] 检测到 spark 但接入失败（${outcome.reason}），/查性能 将回退内置反射链读取，功能不受影响"
                         )
                     }
+                    is ProbeOutcome.NoStatsOnThisCore -> {
+                        // 1.6.7.6：spark 已装但当前核心无统计（如 Folia）——不是接入
+                        // 故障，/查性能 已用内置采样器正常取数；信息级提示一次，
+                        // 不再按接入失败警告（用户反馈「装了还是提示没接入」）
+                        PluginFileLog.infoAndKeep(
+                            "[性能数据] 已安装 spark，但其统计在当前核心暂不可读（${outcome.note}）；/查性能 将使用内置采样器读取，数据正常可用"
+                        )
+                    }
                 }
             } catch (_: Throwable) {
                 // 自检失败不影响任何功能（查询时照常走探测 + 回退链）
@@ -124,10 +141,11 @@ object SparkStartupCheck {
         true
     }
 
-    /** 指标可读项清单（TPS / MSPT / CPU）。 */
+    /** 指标可读项清单（TPS / MSPT / CPU / 延迟）。 */
     private fun readableList(metrics: SparkBridge.SparkMetrics): String = buildString {
         if (metrics.tps != null) append("TPS")
         if (metrics.mspt != null) append(if (isEmpty()) "MSPT" else " / MSPT")
         if (metrics.cpu != null) append(if (isEmpty()) "CPU" else " / CPU")
+        if (metrics.ping != null) append(if (isEmpty()) "延迟" else " / 延迟")
     }.ifEmpty { "指标" }
 }
