@@ -125,11 +125,13 @@ object QClient {
             }
 
             session.registerListenerHost(groupMessageHandler)
-            PluginFileLog.infoAndKeep("群消息监听已注册（命令系统就绪）")
+            // 1.6.7.4：注册完成属常规例行信息，仅写文件留档不刷控制台（用户需求）
+            PluginFileLog.write("群消息监听已注册（命令系统就绪）")
             session.APPLICATION.logger.setLogLevel(1)
             session.APPLICATION.logger.setOutFile(logFilePattern)
             if (logFilePattern != null) {
-                PluginFileLog.infoAndKeep("QQ 机器人 SDK 日志将写入文件")
+                // 1.6.7.4：SDK 日志去向说明仅写文件留档不刷控制台（用户需求）
+                PluginFileLog.write("QQ 机器人 SDK 日志将写入文件")
             }
             PluginFileLog.infoAndKeep("正在同步群快捷菜单…")
             MenuManager.syncGroupPanels(session, currentPlugin.groupOpenIdList())

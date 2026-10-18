@@ -32,12 +32,45 @@ object PluginFileLog {
     /** 剥离 § 颜色码（1.6.4 公开：NeoForge 控制台不渲染颜色码，输出前需剥离）。 */
     fun stripColorCodes(message: String): String = COLOR_CODE.replace(message, "")
 
-    /** 当前日志文件（按天分文件；目录与 QqBindManager 详细日志保持一致）。 */
+    /**
+     * 单个日志文件大小上限（1.6.7.4：由 1GB 收紧为 512KB——按天 + 超限
+     * 轮转双维度控制单文件体积，用户需求；超限后写入 <基名>-N.log）。
+     */
+    const val ROTATE_THRESHOLD_BYTES: Long = 512L * 1024
+
+    /**
+     * 解析应写入的日志文件：优先 <基名>.log；已存在且超 [ROTATE_THRESHOLD_BYTES]
+     * 时顺次找第一个不满的 <基名>-N.log（N 从 1 起）。
+     *
+     * 本文件与 QqBindManager 的详细日志写的是同一批文件
+     * （logs/qq/qq-bind-<日期>[-N].log），两处写入入口共用同一轮转实现，
+     * 确保无论从哪个入口写都遵守同一大小上限与命名规则。
+     */
+    fun resolveRotated(folder: File, baseName: String): File {
+        var file = File(folder, "$baseName.log")
+        if (file.exists() && file.length() >= ROTATE_THRESHOLD_BYTES) {
+            var index = 1
+            while (true) {
+                val candidate = File(folder, "$baseName-$index.log")
+                if (!candidate.exists() || candidate.length() < ROTATE_THRESHOLD_BYTES) {
+                    file = candidate
+                    break
+                }
+                index++
+            }
+        }
+        return file
+    }
+
+    /**
+     * 当前日志文件（按天分文件；单文件超 512KB 轮转到 -N 后缀；目录与
+     * QqBindManager 详细日志保持一致，轮转共用 [resolveRotated]）。
+     */
     private fun currentFile(): File? {
         return try {
             val folder = plugin.configFile?.parentFile?.resolve("logs/qq") ?: return null
             if (!folder.exists() && !folder.mkdirs()) return null
-            File(folder, "qq-bind-${SimpleDateFormat("yyyy-MM-dd").format(Date())}.log")
+            resolveRotated(folder, "qq-bind-${SimpleDateFormat("yyyy-MM-dd").format(Date())}")
         } catch (_: Throwable) {
             null
         }

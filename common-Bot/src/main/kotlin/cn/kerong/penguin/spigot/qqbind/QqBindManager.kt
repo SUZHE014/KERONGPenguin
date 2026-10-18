@@ -1,5 +1,6 @@
 package cn.kerong.penguin.spigot.qqbind
 
+import cn.kerong.bot.tools.PluginFileLog
 import cn.kerong.penguin.spigot.scheduler.FoliaCompat
 import org.bukkit.Bukkit
 import org.bukkit.ChatColor
@@ -160,6 +161,24 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             }
         }
 
+        /**
+         * 静默日志（仅文件，1.6.7.4 新增）。
+         *
+         * 与 [logQuiet] 文件段完全同格式（[时间戳] [前缀]内容），仅不进控制台——
+         * 用于注册完成、例行状态等只需留档、不该刷控制台的例行信息
+         * （用户需求：如「/绑定 命令已注册」等启动期常规行不再上控制台）。
+         */
+        @JvmStatic
+        fun logFileOnly(message: String) {
+            try {
+                val file = getLogFile() ?: return
+                val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())
+                val prefix = if (message.startsWith("[")) "" else "[QQ绑定] "
+                PrintWriter(FileWriter(file, true)).use { it.println("[$timestamp] $prefix$message") }
+            } catch (_: Throwable) {
+            }
+        }
+
         /** 详细日志（仅文件）。 */
         @JvmStatic
         fun logVerbose(message: String) {
@@ -172,27 +191,16 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             }
         }
 
-        /** 当前日志文件（超 1GB 自动轮转）。 */
+        /**
+         * 当前日志文件（单文件超 512KB 自动轮转到 <基名>-N.log，1.6.7.4：
+         * 上限由 1GB 收紧为 512KB；轮转策略与 PluginFileLog 共用同一实现）。
+         */
         private fun getLogFile(): File? = try {
             val manager = instance ?: return null
             val folder = manager.logFile.parentFile ?: return null
             if (!folder.exists()) folder.mkdirs()
-            val date = SimpleDateFormat("yyyy-MM-dd").format(Date())
-            val base = "qq-bind-$date"
-            var file = File(folder, "$base.log")
-            val rotateThreshold = 0x40000000L // 1GB
-            if (file.exists() && file.length() >= rotateThreshold) {
-                var index = 1
-                while (true) {
-                    val candidate = File(folder, "$base-$index.log")
-                    if (!candidate.exists() || candidate.length() < rotateThreshold) {
-                        file = candidate
-                        break
-                    }
-                    index++
-                }
-            }
-            file
+            val base = "qq-bind-${SimpleDateFormat("yyyy-MM-dd").format(Date())}"
+            PluginFileLog.resolveRotated(folder, base)
         } catch (_: Throwable) {
             null
         }

@@ -13,7 +13,6 @@ pluginManagement {
         mavenCentral()
         maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin/") }
         // 1.5.4：ModDevGradle 插件（server-NeoForge 模块，NeoForge 1.21.1）
-        maven { url = uri("https://maven.neoforged.net/releases") }
     }
 }
 

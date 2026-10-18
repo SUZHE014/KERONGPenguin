@@ -92,18 +92,25 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         } catch (_: Throwable) {
         }
         registerBindLoginGate()
-        // 1.6.7.3：spark 接入成功提示（ServerStarted 后全部模组就绪，
-        // 延迟 5 秒等 spark 统计窗口积累首批样本；检测到并读取成功时
-        // 在启动日志输出正向确认）
+        // 1.6.7.3：spark 接入状态提示；1.6.7.4 三态探测（ServerStarted 即
+        // 服务器启动成功，延迟 5 秒等 spark 统计窗口积累首批样本；成功提示
+        // 受 commands.查性能 开关门控、接入失败无论开关必提示、未安装静默）
         SparkStartupCheck.schedule(SparkStartupCheck.neoforgeDelay()) {
             try {
                 if (net.neoforged.fml.ModList.get().isLoaded("spark")) {
-                    SparkBridge.read()
+                    val metrics = SparkBridge.read()
+                    if (metrics == null) {
+                        SparkStartupCheck.ProbeOutcome.Failed("各指标均暂不可读")
+                    } else {
+                        SparkStartupCheck.ProbeOutcome.Installed(metrics)
+                    }
                 } else {
-                    null
+                    SparkStartupCheck.ProbeOutcome.NotInstalled
                 }
-            } catch (_: Throwable) {
-                null
+            } catch (t: Throwable) {
+                SparkStartupCheck.ProbeOutcome.Failed(
+                    t.message?.takeIf { it.isNotEmpty() } ?: t.toString()
+                )
             }
         }
         modLogger.info("KERONGPenguin NeoForge 已加载（${pluginVersion} / MC ${serverVersion}）")
@@ -375,7 +382,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             .resolve("kerongpenguin").toFile()
 
         /** 模组版本（与 neoforge.mods.toml 一致）。 */
-        private const val MOD_VERSION = "1.6.7.2"
+        private const val MOD_VERSION = "1.6.7.4"
 
         /** 当前模组实例（命令与事件层访问）。 */
         @Volatile

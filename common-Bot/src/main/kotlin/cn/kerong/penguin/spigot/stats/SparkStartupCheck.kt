@@ -1,44 +1,64 @@
 package cn.kerong.penguin.spigot.stats
 
+import cn.kerong.bot.provider.plugin
 import cn.kerong.bot.tools.PluginFileLog
 
 /**
- * spark 接入状态启动提示（1.6.7.3 新增）。
+ * spark 接入状态提示（1.6.7.3 新增，1.6.7.4 调整提示规则）。
  *
  * /查性能 自 1.6.7.2 起检测到 spark（Spigot 端为插件、NeoForge 端为模组）
- * 时优先经其公开 API 取 TPS / MSPT / CPU——但此前接入与否只在真正查询时
- * 才能感知，用户无法在启动日志里确认 spark 桥是否生效（尤其 NeoForge 端
- * spark 是模组，装没装、桥通没通全靠猜）。
+ * 时优先经其公开 API 取 TPS / MSPT / CPU——但接入与否此前只在真正查询时
+ * 才能感知。
  *
- * 现在（用户需求）：服务器启动过程中，检测到 spark 并成功读取到指标时
- * 输出一条正向确认；未安装 / 未就绪 / 读取失败一律静默（回退自研反射链
- * 属正常降级，不制造噪音）。
+ * 1.6.7.4 提示规则（用户需求）：
+ * - **时机**：服务器**启动成功之后**再检测提示（Spigot 端挂 ServerLoadEvent
+ *   ——全部插件 enable 完毕；NeoForge 端本就挂 ServerStartedEvent），
+ *   不再在启动过程中抢跑；
+ * - **成功提示**：仅当「/查性能 命令开关（commands.查性能）开启」且 spark
+ *   接入成功时输出正向确认——查性能都关了，spark 通不通用户不关心，
+ *   不提示（文件仍留一条自检记录备查）；
+ * - **失败提示**：检测到 spark 已安装但接入失败（插件未启用 / 指标读不到 /
+ *   探测异常）时**无论查性能开关与否都要提示**（warning 级）——用户装了
+ *   spark 却接不上是问题信号，静默会让用户误以为已生效；
+ * - **未安装**：spark 都没装属正常降级（回退自研反射链），完全静默。
  *
- * 实现：异步延迟线程（守护线程，一次即出）：
- * - Spigot 端 12 秒（与 PapiDependencyCheck 同款错峰节奏——本插件名
- *   KERONGPenguin 按字母序先于 spark 加载，onEnable 时 spark 多半尚未
- *   enable，必须等全部插件加载完再探测）；
- * - NeoForge 端 5 秒（挂载点已是 ServerStartedEvent，全部模组就绪，
- *   只需留几秒让 spark 的统计窗口积累出首批样本）。
+ * 实现：平台在「服务器启动成功」事件后调用 [schedule]，异步延迟线程
+ * （守护线程，一次即出）执行探测：
+ * - Spigot 端 ServerLoadEvent 后 5 秒（事件即「全部插件加载完成」，
+ *   只需留几秒让 spark 统计窗口积累首批样本）；
+ * - NeoForge 端 ServerStartedEvent 后 5 秒（全部模组就绪，同上）。
  *
- * spark 可用性探测由平台适配层以 lambda 注入（Spigot 查插件表并传
- * spark 插件的类加载器；NeoForge 查 ModList 并用本类加载器），本类
- * 只负责延迟调度、读取与提示，双端共用零平台依赖。
+ * spark 可用性探测由平台适配层以 lambda 注入（返回 [ProbeOutcome]
+ * 三态：未安装 / 已接入（含指标）/ 已安装但接入失败（含原因）），本类
+ * 只负责延迟调度、判定与提示，双端共用零平台依赖。
  */
 object SparkStartupCheck {
 
-    /** 延迟毫秒（错开启动高峰；两端各自的默认值见 KDoc）。 */
-    private const val SPIGOT_DELAY_MILLIS = 12_000L
-    private const val NEOFORGE_DELAY_MILLIS = 5_000L
+    /** 服务器启动成功事件后的延迟毫秒（留几秒让 spark 统计窗口积累首批样本）。 */
+    private const val AFTER_SERVER_STARTED_MILLIS = 5_000L
 
     /**
-     * 调度启动提示（一次；spark 探测成功才输出）。
-     *
-     * @param delayMillis 延迟毫秒（默认 Spigot 节奏 12 秒）
-     * @param sparkProbe 延迟到期后执行的探测：返回非 null = spark 已接入
-     *   且至少一项指标可读；null = 未安装 / 未就绪 / 读取失败（静默）
+     * spark 探测三态结果（1.6.7.4：区分「未安装」与「已安装但接入失败」，
+     * 前者静默、后者必须提示）。
      */
-    fun schedule(delayMillis: Long = SPIGOT_DELAY_MILLIS, sparkProbe: () -> SparkBridge.SparkMetrics?) {
+    sealed class ProbeOutcome {
+        /** spark 未安装（Spigot 插件表 / NeoForge ModList 均查无）→ 完全静默。 */
+        object NotInstalled : ProbeOutcome()
+
+        /** spark 已接入且至少一项指标可读（携带 [SparkBridge.SparkMetrics]）。 */
+        class Installed(val metrics: SparkBridge.SparkMetrics) : ProbeOutcome()
+
+        /** spark 已安装但接入失败（未启用 / 指标读不到 / 探测异常，携带原因）。 */
+        class Failed(val reason: String) : ProbeOutcome()
+    }
+
+    /**
+     * 调度启动自检（一次）。
+     *
+     * @param delayMillis 延迟毫秒（默认「服务器启动成功后 5 秒」节奏）
+     * @param sparkProbe 延迟到期后执行的探测：返回 [ProbeOutcome] 三态
+     */
+    fun schedule(delayMillis: Long = AFTER_SERVER_STARTED_MILLIS, sparkProbe: () -> ProbeOutcome) {
         Thread({
             try {
                 Thread.sleep(delayMillis)
@@ -46,22 +66,53 @@ object SparkStartupCheck {
                 return@Thread
             }
             try {
-                val metrics = sparkProbe() ?: return@Thread
-                val readable = buildString {
-                    if (metrics.tps != null) append("TPS")
-                    if (metrics.mspt != null) append(if (isEmpty()) "MSPT" else " / MSPT")
-                    if (metrics.cpu != null) append(if (isEmpty()) "CPU" else " / CPU")
-                }.ifEmpty { "指标" }
-                PluginFileLog.infoAndKeep(
-                    "[性能数据] 已接入 spark（$readable 读取优先走 spark，对服务端核心无感，数据更稳）"
-                )
-                PluginFileLog.write("[性能数据] spark 接入自检通过（启动档，可读项：$readable）")
+                when (val outcome = sparkProbe()) {
+                    is ProbeOutcome.NotInstalled -> {
+                        // 未安装属正常降级：文件留一条备查，控制台静默
+                        PluginFileLog.write("[性能数据] 未检测到 spark，/查性能 使用内置反射链读取")
+                    }
+                    is ProbeOutcome.Installed -> {
+                        val readable = readableList(outcome.metrics)
+                        if (isPerformanceCommandEnabled()) {
+                            PluginFileLog.infoAndKeep(
+                                "[性能数据] 已接入 spark（$readable 读取优先走 spark，对服务端核心无感，数据更稳）"
+                            )
+                            PluginFileLog.write("[性能数据] spark 接入自检通过（可读项：$readable）")
+                        } else {
+                            // 查性能关闭：成功与否不影响任何功能，不刷控制台
+                            PluginFileLog.write(
+                                "[性能数据] spark 接入自检通过（可读项：$readable），但 commands.查性能 已关闭，成功不另作提示"
+                            )
+                        }
+                    }
+                    is ProbeOutcome.Failed -> {
+                        // 用户需求：接入失败必须提示（与查性能开关无关——装了 spark 却
+                        // 接不上是问题信号），warning 级醒目但说明影响面消除恐慌
+                        PluginFileLog.warnAndKeep(
+                            "[性能数据] 检测到 spark 但接入失败（${outcome.reason}），/查性能 将回退内置反射链读取，功能不受影响"
+                        )
+                    }
+                }
             } catch (_: Throwable) {
                 // 自检失败不影响任何功能（查询时照常走探测 + 回退链）
             }
         }, "qq-spark-check").apply { isDaemon = true }.start()
     }
 
-    /** NeoForge 端延迟节奏（ServerStarted 后 5 秒）。 */
-    fun neoforgeDelay(): Long = NEOFORGE_DELAY_MILLIS
+    /** NeoForge 端延迟节奏（ServerStarted 后 5 秒；1.6.7.4 与 Spigot 统一）。 */
+    fun neoforgeDelay(): Long = AFTER_SERVER_STARTED_MILLIS
+
+    /** /查性能 命令总开关（commands.查性能，默认 true；读不到按开启处理）。 */
+    private fun isPerformanceCommandEnabled(): Boolean = try {
+        plugin.commandList()["查性能"] != false
+    } catch (_: Throwable) {
+        true
+    }
+
+    /** 指标可读项清单（TPS / MSPT / CPU）。 */
+    private fun readableList(metrics: SparkBridge.SparkMetrics): String = buildString {
+        if (metrics.tps != null) append("TPS")
+        if (metrics.mspt != null) append(if (isEmpty()) "MSPT" else " / MSPT")
+        if (metrics.cpu != null) append(if (isEmpty()) "CPU" else " / CPU")
+    }.ifEmpty { "指标" }
 }

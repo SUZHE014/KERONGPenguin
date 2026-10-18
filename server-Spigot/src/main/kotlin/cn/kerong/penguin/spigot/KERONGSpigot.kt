@@ -30,6 +30,10 @@ import org.bukkit.command.CommandMap
 import org.bukkit.command.CommandSender
 import org.bukkit.command.PluginCommand
 import org.bukkit.command.TabCompleter
+import org.bukkit.event.EventHandler
+import org.bukkit.event.EventPriority
+import org.bukkit.event.Listener
+import org.bukkit.event.server.ServerLoadEvent
 import org.bukkit.plugin.java.JavaPlugin
 import java.io.File
 import java.util.Locale
@@ -95,18 +99,46 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         // 1.6.6：PlaceholderAPI 依赖检测（异步延迟 12 秒；1.6.7.3 起仅当
         // 检测到 PlayerTitle 等相关依赖插件时才检测并提示）
         PapiDependencyCheck.scheduleStartupCheck(platform)
-        // 1.6.7.3：spark 接入成功提示（异步延迟 12 秒等 spark 插件 enable，
-        // 检测到并读取成功时在启动日志输出正向确认）
-        SparkStartupCheck.schedule {
-            try {
-                val sparkPlugin = Bukkit.getPluginManager().getPlugin("spark")
-                if (sparkPlugin == null || !sparkPlugin.isEnabled) null
-                else SparkBridge.read(sparkPlugin.javaClass.classLoader)
-            } catch (_: Throwable) {
-                null
-            }
+        // 1.6.7.4：spark 接入状态提示改到「服务器启动成功之后」
+        // （ServerLoadEvent——全部插件 enable 完毕，spark 插件已就位）；
+        // 成功提示受 commands.查性能 开关门控，接入失败无论开关必提示，
+        // 未安装静默（规则见 SparkStartupCheck KDoc）
+        try {
+            Bukkit.getPluginManager().registerEvents(object : Listener {
+                @EventHandler(priority = EventPriority.MONITOR)
+                fun onServerLoad(@Suppress("UNUSED_PARAMETER") event: ServerLoadEvent) {
+                    SparkStartupCheck.schedule { probeSpark() }
+                }
+            }, this)
+        } catch (_: Throwable) {
+            // ServerLoadEvent 不可用的极端核心：退回 onEnable 后 12 秒旧节奏
+            SparkStartupCheck.schedule(12_000L) { probeSpark() }
         }
         log_info("KERONG Penguin 已加载")
+    }
+
+    /**
+     * spark 可用性探测（1.6.7.4 三态）：查插件表返回未安装 / 已接入 / 已装但失败。
+     * 本插件名 KERONGPenguin 按字母序先于 spark 加载，onEnable 时 spark 多半
+     * 尚未 enable，故仅在 ServerLoadEvent 之后调用。
+     */
+    private fun probeSpark(): SparkStartupCheck.ProbeOutcome = try {
+        val sparkPlugin = Bukkit.getPluginManager().getPlugin("spark")
+        when {
+            sparkPlugin == null -> SparkStartupCheck.ProbeOutcome.NotInstalled
+            !sparkPlugin.isEnabled ->
+                SparkStartupCheck.ProbeOutcome.Failed("spark 插件未启用")
+            else -> {
+                val metrics = SparkBridge.read(sparkPlugin.javaClass.classLoader)
+                if (metrics == null) {
+                    SparkStartupCheck.ProbeOutcome.Failed("各指标均暂不可读")
+                } else {
+                    SparkStartupCheck.ProbeOutcome.Installed(metrics)
+                }
+            }
+        }
+    } catch (t: Throwable) {
+        SparkStartupCheck.ProbeOutcome.Failed(t.message?.takeIf { it.isNotEmpty() } ?: t.toString())
     }
 
     override fun onDisable() {

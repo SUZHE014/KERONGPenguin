@@ -65,7 +65,8 @@ class NeoForgeEvents(private val plugin: KERONGNeoForge) {
         try {
             QClient.registerCommand(cn.kerong.bot.events.commands.BindCommands())
             bindRegistered = true
-            QqBindManager.logQuiet("/绑定 命令已注册 (第 $bindRetries 次尝试)")
+            // 1.6.7.4：注册例行信息仅写文件留档，不再刷控制台（用户需求）
+            QqBindManager.logFileOnly("/绑定 命令已注册 (第 $bindRetries 次尝试)")
         } catch (_: Throwable) {
             // 客户端尚未启动：稍后重试
             plugin.submitLater(40L) { tryRegisterBind() }

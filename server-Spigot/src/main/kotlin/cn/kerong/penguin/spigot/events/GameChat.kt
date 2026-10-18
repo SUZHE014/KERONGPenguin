@@ -153,7 +153,8 @@ class GameChat : Listener {
         try {
             QClient.registerCommand(BindCommands())
             bindRegistered = true
-            QqBindManager.logQuiet("/绑定 命令已注册 (第 $retryCount 次尝试)")
+            // 1.6.7.4：注册例行信息仅写文件留档，不再刷控制台（用户需求）
+            QqBindManager.logFileOnly("/绑定 命令已注册 (第 $retryCount 次尝试)")
         } catch (_: Throwable) {
         }
     }
