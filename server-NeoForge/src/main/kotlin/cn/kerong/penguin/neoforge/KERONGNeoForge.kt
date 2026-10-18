@@ -13,6 +13,7 @@ import cn.kerong.bot.tools.PluginFileLog
 import cn.kerong.penguin.spigot.manager.ConfigManager
 import cn.kerong.penguin.spigot.render.InfoCardAssets
 import cn.kerong.penguin.spigot.stats.PlayerStatsManager
+import cn.kerong.penguin.spigot.stats.SparkBridge
 import net.minecraft.network.chat.Component
 import net.neoforged.fml.common.Mod
 import net.neoforged.neoforge.common.NeoForge
@@ -252,6 +253,22 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
      */
     override fun performanceSnapshot(): cn.kerong.bot.PerformanceSnapshot? {
         val server = NeoServerRef.server ?: return null
+        // 1.6.7.2：装了 spark 模组时优先直接调用 spark 取数（NeoForge 无
+        // TPS 追踪字段，spark 是最稳的来源）；spark 读不到的项逐项回退
+        try {
+            if (net.neoforged.fml.ModList.get().isLoaded("spark")) {
+                val metrics = SparkBridge.read()
+                if (metrics != null) {
+                    val mspt = metrics.mspt ?: cn.kerong.bot.PerformanceSnapshot.readMspt(server)
+                    val tps = metrics.tps
+                        ?: cn.kerong.bot.PerformanceSnapshot.readTps(server)
+                        ?: cn.kerong.bot.PerformanceSnapshot.tpsFromMspt(mspt)
+                    return cn.kerong.bot.PerformanceSnapshot.capture(tps, mspt, metrics.cpu)
+                }
+            }
+        } catch (_: Throwable) {
+            // spark 检测失败不影响后续回退链路
+        }
         return try {
             val mspt = cn.kerong.bot.PerformanceSnapshot.readMspt(server)
             val tps = cn.kerong.bot.PerformanceSnapshot.readTps(server)
@@ -343,7 +360,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             .resolve("kerongpenguin").toFile()
 
         /** 模组版本（与 neoforge.mods.toml 一致）。 */
-        private const val MOD_VERSION = "1.6.7.1"
+        private const val MOD_VERSION = "1.6.7.2"
 
         /** 当前模组实例（命令与事件层访问）。 */
         @Volatile

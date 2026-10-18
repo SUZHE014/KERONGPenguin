@@ -48,6 +48,10 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
      * 对应项显示「--」）；JVM 内存与进程 CPU 为 JVM 级数据双端一致，
      * 统一由 [PerformanceSnapshot.capture] 采集；服务端整体不可用时
      * 返回 null（渲染层提示数据暂不可用）。
+     *
+     * 1.6.7.2：平台实现检测到 spark（Spigot 插件 / NeoForge 模组）时
+     * 优先经 [cn.kerong.penguin.spigot.stats.SparkBridge] 直接取 spark
+     * 的 TPS / MSPT / CPU，spark 缺失或单项读不到再回退自研反射链。
      */
     fun performanceSnapshot(): PerformanceSnapshot?
 
@@ -305,11 +309,23 @@ data class PerformanceSnapshot(
         fun capture(
             tps: Double?,
             mspt: Double?,
+        ): PerformanceSnapshot = capture(tps, mspt, null)
+
+        /**
+         * 1.6.7.2：CPU 可由调用方覆盖（检测到 spark 时直接用 spark 的
+         * 进程 CPU 1 分钟均值，口径同为 0.0~1.0；cpuOverride 为 null 时
+         * 仍走 getProcessCpuLoad 即时值）。
+         */
+        @JvmStatic
+        fun capture(
+            tps: Double?,
+            mspt: Double?,
+            cpuOverride: Double?,
         ): PerformanceSnapshot {
             val runtime = Runtime.getRuntime()
             val usedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L)
             val maxMb = runtime.maxMemory() / (1024L * 1024L)
-            val cpu = try {
+            val cpu = cpuOverride ?: try {
                 val bean = java.lang.management.ManagementFactory.getPlatformMXBean(
                     com.sun.management.OperatingSystemMXBean::class.java
                 )

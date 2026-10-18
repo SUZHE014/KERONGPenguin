@@ -21,6 +21,7 @@ import cn.kerong.penguin.spigot.render.InfoCardAssets
 import cn.kerong.penguin.spigot.scheduler.FoliaCompat
 import cn.kerong.penguin.spigot.stats.PapiDependencyCheck
 import cn.kerong.penguin.spigot.stats.PlayerStatsManager
+import cn.kerong.penguin.spigot.stats.SparkBridge
 import org.bukkit.Bukkit
 import org.bukkit.command.Command
 import org.bukkit.command.CommandExecutor
@@ -246,6 +247,24 @@ class KERONGSpigot : JavaPlugin(), KERONG {
      * - 读取全部只读数据（数组 / 计数），无实体状态操作，不需要切回主线程。
      */
     override fun performanceSnapshot(): cn.kerong.bot.PerformanceSnapshot? {
+        // 1.6.7.2：装了 spark 插件时优先直接调用 spark 取数（对核心无感，
+        // 数据最稳）；spark 读不到的项逐项回退自研反射链
+        try {
+            val sparkPlugin = Bukkit.getPluginManager().getPlugin("spark")
+            if (sparkPlugin != null && sparkPlugin.isEnabled) {
+                val metrics = SparkBridge.read(sparkPlugin.javaClass.classLoader)
+                if (metrics != null) {
+                    val api: org.bukkit.Server = Bukkit.getServer()
+                    val mspt = metrics.mspt ?: cn.kerong.bot.PerformanceSnapshot.readMspt(api)
+                    val tps = metrics.tps
+                        ?: cn.kerong.bot.PerformanceSnapshot.readTps(api)
+                        ?: cn.kerong.bot.PerformanceSnapshot.tpsFromMspt(mspt)
+                    return cn.kerong.bot.PerformanceSnapshot.capture(tps, mspt, metrics.cpu)
+                }
+            }
+        } catch (_: Throwable) {
+            // spark 检测失败不影响后续回退链路
+        }
         return try {
             val api: org.bukkit.Server = Bukkit.getServer()
             val mspt = cn.kerong.bot.PerformanceSnapshot.readMspt(api)

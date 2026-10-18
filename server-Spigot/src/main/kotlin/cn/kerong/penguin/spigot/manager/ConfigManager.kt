@@ -26,8 +26,18 @@ class ConfigManager(private val plugin: JavaPlugin) {
     /** 配置文件路径。 */
     fun getConfigFile(): File = File(plugin.dataFolder, "config.yml")
 
-    /** 初始化：释放默认配置并装载。 */
+    /** 初始化：版本升级时先以 JAR 新版重建，再释放默认配置并装载。 */
     fun initialize() {
+        // 1.6.7.2：磁盘 config-version 低于 JAR 内置时，以 JAR 新版
+        // config.yml（注释完整）为底重建用户文件（保留自定义值，旧文件
+        // 备份 config.yml.bak）——修复旧版只追加裸键、注释与结构永不更新的
+        // 问题；全新安装不触发，由下方 saveDefaultConfig 原样释放
+        ConfigFileRebuilder.rebuildIfNeeded(
+            plugin,
+            CURRENT_CONFIG_VERSION,
+            LEGACY_PATH_MOVES,
+            REMOVED_CONFIG_KEYS,
+        )
         plugin.saveDefaultConfig()
         reload()
     }
@@ -94,16 +104,8 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 1.6.0：渲染与排行榜配置移出 qq-bind 段（查在线 / 排行榜不依赖 QQ 绑定）：
         // 路径平移 + 保留用户已改值 + 清掉迁空的旧子段
         if (oldVersion in 1 until 17) {
-            val moves = listOf(
-                "qq-bind.render.gc-after-render" to "render.gc-after-render",
-                "qq-bind.render.result-cache-seconds" to "render.result-cache-seconds",
-                "qq-bind.render.info-card-builtin-background" to "render.info-card-builtin-background",
-                "qq-bind.render.online-list-builtin-background" to "render.online-list-builtin-background",
-                "qq-bind.leaderboard.top" to "leaderboard.top",
-                "qq-bind.leaderboard.builtin-background" to "leaderboard.builtin-background",
-            )
             var movedAny = false
-            for ((old, new) in moves) {
+            for ((old, new) in LEGACY_PATH_MOVES) {
                 if (config.isSet(old)) {
                     config.set(new, config.get(old))
                     config.set(old, null)
@@ -131,14 +133,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 可能落在玩家游玩时刻造成卡顿，内存归还交给 JVM 自然节奏）
         // 1.6.7.1：移除 render.performance.show-*（查性能卡片指标固定四项
         // TPS / MSPT / 内存 / CPU，不再提供单项显隐；在线人数卡已删）
-        for (removed in listOf(
-            "agent", "audit", "whitelist", "query-online", "motd.text", "commands.个人信息",
-            "qq-bind.leaderboard.random-background", "ai.context-global", "render.gc-after-render",
-            "render.idle-gc-hint",
-            "render.performance.show-tps", "render.performance.show-mspt",
-            "render.performance.show-memory", "render.performance.show-cpu",
-            "render.performance.show-online",
-        )) {
+        for (removed in REMOVED_CONFIG_KEYS) {
             if (config.contains(removed)) {
                 config.set(removed, null)
                 changed = true
@@ -168,7 +163,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
     fun chatFormat(): ChatFormat = ChatFormat(
         plugin.config.getString("chat-format.from-game", "[游戏] <{name}> {message}") ?: "[游戏] <{name}> {message}",
-        plugin.config.getString("chat-format.from-group", "[QQ] {name}: {message}") ?: "[QQ] {name}: {message}",
+        plugin.config.getString("chat-format.from-group", "[§bQQ§r] {name}: {message}") ?: "[§bQQ§r] {name}: {message}",
         plugin.config.getBoolean("chat-format.post-chat", true),
         plugin.config.getString("chat-format.start-with", "") ?: "",
     )
@@ -255,7 +250,32 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
-        private const val CURRENT_CONFIG_VERSION = 19
+        private const val CURRENT_CONFIG_VERSION = 20
+
+        /**
+         * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
+         * 配置重建器与下方 reload 迁移逻辑共用同一张表）。
+         */
+        internal val LEGACY_PATH_MOVES = listOf(
+            "qq-bind.render.gc-after-render" to "render.gc-after-render",
+            "qq-bind.render.result-cache-seconds" to "render.result-cache-seconds",
+            "qq-bind.render.info-card-builtin-background" to "render.info-card-builtin-background",
+            "qq-bind.render.online-list-builtin-background" to "render.online-list-builtin-background",
+            "qq-bind.leaderboard.top" to "leaderboard.top",
+            "qq-bind.leaderboard.builtin-background" to "leaderboard.builtin-background",
+        )
+
+        /**
+         * 历史废弃键清单（配置重建器回填时跳过；与 reload 里清理列表一致）。
+         */
+        internal val REMOVED_CONFIG_KEYS = listOf(
+            "agent", "audit", "whitelist", "query-online", "motd.text", "commands.个人信息",
+            "qq-bind.leaderboard.random-background", "ai.context-global", "render.gc-after-render",
+            "render.idle-gc-hint",
+            "render.performance.show-tps", "render.performance.show-mspt",
+            "render.performance.show-memory", "render.performance.show-cpu",
+            "render.performance.show-online",
+        )
 
         /**
          * 支持开关的群命令名单（1.5.2：查信息更名对应个人信息卡片命令，新增 查询open ID；
@@ -325,9 +345,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "motd-usage", "motd-query-failed", "motd-offline", "motd-error", "motd-status",
         )
 
-        /** 全部默认配置值（用于补齐缺失键）。 */
+        /** 全部默认配置值（用于补齐缺失键；1.6.7.2：from-group 新默认带 §b 染色）。 */
         private val DEFAULT_VALUES: Map<String, Any> = linkedMapOf(
-            CONFIG_VERSION_PATH to 8,
+            CONFIG_VERSION_PATH to 20,
             "bot.app-id" to "",
             "bot.secret" to "",
             "bot.name" to "KERONGPenguin",
@@ -341,7 +361,8 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "update-check.enabled" to true,
             "serverName" to "KERONGPenguin",
             "chat-format.from-game" to "[游戏] <{name}> {message}",
-            "chat-format.from-group" to "[QQ] {name}: {message}",
+            // 1.6.7.2：新默认仅染 QQ 字样（§b 青色），§r 重置后再接玩家名
+            "chat-format.from-group" to "[§bQQ§r] {name}: {message}",
             "chat-format.post-chat" to true,
             "chat-format.start-with" to "#",
             "player-events.join.enabled" to true,
@@ -379,8 +400,8 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 1.6.6.1 覆盖版：头像获取优先方式（local = 本地优先取不到自动切外置，
             // external = 外置优先全部失败再试本地）
             "render.avatar-fetch-priority" to "local",
-            // 1.6.6.2：渲染空闲内存释放阈值（分钟；默认 5，支持小数，0 = 关闭）
-            "render.idle-release-minutes" to 5,
+            // 1.6.6.2：渲染空闲内存释放阈值（分钟；1.6.7.2 默认 5 → 15，支持小数，0 = 关闭）
+            "render.idle-release-minutes" to 15,
             // 1.6.0 新增：图片渲染命令的用户冷却秒数（旧版硬编码 5 秒；0 = 关闭）
             "render.command-cooldown-seconds" to 5,
             // 1.5.7：全部图片渲染的内置背景开关（默认 true = 随 JAR 分发的深灰底图，
@@ -390,6 +411,10 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 1.6.7：查性能卡片（/查性能，命令总开关 commands.查性能）；
             // 1.6.7.1：指标固定四项（TPS / MSPT / 内存 / CPU），show-* 单项显隐已移除
             "render.performance.builtin-background" to true,
+            // 1.6.7.2：渲染样式（vanilla 原版毛玻璃深色 = 默认 / liquid-glass 液态玻璃）
+            "render.performance.style" to "vanilla",
+            // 1.6.7.2：性能数据缓存秒数（0 = 关闭；对应「渲染过慢」推荐的缓存）
+            "render.performance.cache-seconds" to 5,
             // 1.5.5：在线排行榜（1.6.0 从 qq-bind.leaderboard 迁至顶层）
             "leaderboard.top" to 15,
             "leaderboard.builtin-background" to true,

@@ -19,11 +19,20 @@ object RenderSettings {
     /** 头像磁盘缓存默认有效期（小时，1.6.6.1 新增配置化）。 */
     const val DEFAULT_AVATAR_CACHE_HOURS = 3.0
 
-    /** 渲染空闲内存释放默认阈值（分钟，1.6.6.2 新增配置化）。 */
-    const val DEFAULT_IDLE_RELEASE_MINUTES = 5.0
+    /** 渲染空闲内存释放默认阈值（分钟，1.6.6.2 新增；1.6.7.2 默认 5 → 15）。 */
+    const val DEFAULT_IDLE_RELEASE_MINUTES = 15.0
+
+    /** 查性能卡片样式默认值（1.6.7.2 新增，默认原版）。 */
+    const val DEFAULT_PERFORMANCE_STYLE = "vanilla"
+
+    /** 性能数据缓存默认秒数（1.6.7.2 新增，对应「渲染过慢」推荐的性能数据缓存）。 */
+    const val DEFAULT_PERFORMANCE_CACHE_SECONDS = 5
 
     /** 头像获取优先方式（1.6.6.1 覆盖版新增配置）。 */
     enum class AvatarFetchPriority { LOCAL, EXTERNAL }
+
+    /** 查性能卡片渲染样式（1.6.7.2 新增，参考 EasyBot 液态玻璃模板的样式切换）。 */
+    enum class PerformanceStyle { VANILLA, LIQUID_GLASS }
 
     /** 图片渲染命令的用户冷却（毫秒；0 = 无冷却）。 */
     fun commandCooldownMillis(): Long {
@@ -83,11 +92,11 @@ object RenderSettings {
     /**
      * 渲染空闲内存释放阈值（毫秒，1.6.6.2 新增）。
      *
-     * - render.idle-release-minutes（默认 5）：一次渲染完成后指定分钟内
-     *   没有下一次渲染时，自动释放头像 / 背景等图像素材缓存占用的内存
-     *   （flush + 清空；磁盘头像缓存与轻量元数据缓存保留，下次渲染
-     *   从磁盘 / 外部接口秒级恢复）；
-     * - 默认 5；支持小数（如 2.5 = 2 分半）；0 = 关闭空闲释放；
+     * - render.idle-release-minutes（1.6.7.2 默认由 5 调整为 15）：一次
+     *   渲染完成后指定分钟内没有下一次渲染时，自动释放头像 / 背景等
+     *   图像素材缓存占用的内存（flush + 清空；磁盘头像缓存与轻量元
+     *   数据缓存保留，下次渲染从磁盘 / 外部接口秒级恢复）；
+     * - 支持小数（如 2.5 = 2 分半）；0 = 关闭空闲释放；
      * - 负数按默认处理；实时读取（/kerong reload 后立即生效）。
      */
     fun idleReleaseMillis(): Long {
@@ -130,5 +139,54 @@ object RenderSettings {
         } catch (_: Throwable) {
             true
         }
+    }
+
+    /**
+     * 查性能卡片渲染样式（1.6.7.2 新增，默认原版）。
+     *
+     * - render.performance.style：
+     *   - vanilla（默认）：原版毛玻璃深色（与其他卡片同源的经典样式）；
+     *   - liquid-glass：液态玻璃（更亮更通透的玻璃质感：亮边折射 +
+     *     顶部高光 + 光泽进度条，参考 EasyBot 液态玻璃模板）；
+     * - 液态玻璃多层高光渐变的渲染耗时会略高于原版，注重生成速度用
+     *   原版并配合 [performanceCacheMillis] 缓存；
+     * - 值不区分大小写，未识别的值一律按 vanilla；实时读取
+     *   （/kerong reload 后立即生效）。
+     */
+    fun performanceStyle(): PerformanceStyle {
+        val value = try {
+            (BotShared.instance as? JavaPlugin)?.config?.getString("render.performance.style", DEFAULT_PERFORMANCE_STYLE)
+                ?: DEFAULT_PERFORMANCE_STYLE
+        } catch (_: Throwable) {
+            DEFAULT_PERFORMANCE_STYLE
+        }
+        return if (value.trim().equals("liquid-glass", ignoreCase = true)) {
+            PerformanceStyle.LIQUID_GLASS
+        } else {
+            PerformanceStyle.VANILLA
+        }
+    }
+
+    /**
+     * 性能数据缓存时长（毫秒，1.6.7.2 新增）。
+     *
+     * - render.performance.cache-seconds（默认 5）：缓存时间内的重复
+     *   /查性能 查询直接复用上一张卡片（多人同时查 / 冷却结束立刻再查
+     *   时秒回，不重复取数与渲染——对应 EasyBot 模板「渲染过慢」一节
+     *   推荐开启的性能数据缓存）；
+     * - 0 = 关闭缓存（每次都实时取数渲染）；负数按默认；
+     * - 实时读取（/kerong reload 后立即生效）。
+     */
+    fun performanceCacheMillis(): Long {
+        val seconds = try {
+            (BotShared.instance as? JavaPlugin)?.config?.getInt(
+                "render.performance.cache-seconds",
+                DEFAULT_PERFORMANCE_CACHE_SECONDS,
+            ) ?: DEFAULT_PERFORMANCE_CACHE_SECONDS
+        } catch (_: Throwable) {
+            DEFAULT_PERFORMANCE_CACHE_SECONDS
+        }
+        if (seconds < 0) return DEFAULT_PERFORMANCE_CACHE_SECONDS * 1000L
+        return seconds * 1000L
     }
 }

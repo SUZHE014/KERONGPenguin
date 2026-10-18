@@ -120,6 +120,19 @@ abstract class JavaPlugin : Plugin {
         resource.use { input -> target.outputStream().use { output -> input.copyTo(output) } }
     }
 
+    /**
+     * 读取模组 JAR 内资源（1.6.7.2 新增，对齐 Bukkit JavaPlugin#getResource；
+     * 配置版本重建器用它取 JAR 内置 config.yml 全文）。
+     */
+    fun getResource(name: String): InputStream? {
+        val normalized = if (name.startsWith("/")) name.substring(1) else name
+        return try {
+            javaClass.classLoader.getResourceAsStream(normalized)
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
     /** 从磁盘重载配置。 */
     fun reloadConfig() {
         (config as org.bukkit.configuration.file.YamlConfiguration).load(File(dataFolder, "config.yml"))

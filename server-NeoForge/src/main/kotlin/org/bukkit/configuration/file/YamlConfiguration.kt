@@ -14,7 +14,10 @@ import java.util.LinkedHashMap
  * - 保存输出嵌套 YAML（与真实 Bukkit 写出的文件互读兼容；
  *   QqBindManager 的原子写 / 迁移链路直接复用）；
  * - 配置文件带注释时，经本层重存会丢失注释（snakeyaml 不解析注释行；
- *   首次安装走 saveDefaultConfig 原样复制，无注释损失）。
+ *   首次安装走 saveDefaultConfig 原样复制，无注释损失；版本升级经
+ *   ConfigFileRebuilder 文本级重建，同样不经本层重存）；
+ * - load 为整树替换（1.6.7.2：旧为 merge 语义，文件里删掉的键会在内存
+ *   残留，与 Bukkit reloadConfig 语义不一致）。
  */
 open class YamlConfiguration : FileConfiguration() {
 
@@ -34,21 +37,36 @@ open class YamlConfiguration : FileConfiguration() {
         } catch (_: Throwable) {
             YamlConfiguration()
         }
+
+        /** 装载字符流（1.6.7.2：对齐 Bukkit 的 Reader 重载，配置重建器用）。 */
+        @JvmStatic
+        fun loadConfiguration(reader: java.io.Reader): YamlConfiguration = try {
+            YamlConfiguration().apply {
+                val loaded = org.yaml.snakeyaml.Yaml().load<MutableMap<String, Any?>>(reader)
+                val rootMap = root as MutableMap<String, Any?>
+                rootMap.clear()
+                rootMap.putAll(loaded ?: emptyMap())
+            }
+        } catch (_: Throwable) {
+            YamlConfiguration()
+        }
     }
 
-    /** 从文件装载。 */
+    /** 从文件装载（整树替换：旧内容清空后并入文件内容）。 */
     fun load(file: File) {
         if (!file.isFile) return
         val loaded = org.yaml.snakeyaml.Yaml().load<MutableMap<String, Any?>>(file.inputStream())
-        @Suppress("UNCHECKED_CAST")
-        (root as MutableMap<String, Any?>).putAll(loaded ?: emptyMap())
+        val rootMap = root as MutableMap<String, Any?>
+        rootMap.clear()
+        rootMap.putAll(loaded ?: emptyMap())
     }
 
-    /** 从流装载。 */
+    /** 从流装载（整树替换）。 */
     fun loadStream(stream: InputStream) {
         val loaded = org.yaml.snakeyaml.Yaml().load<MutableMap<String, Any?>>(stream)
-        @Suppress("UNCHECKED_CAST")
-        (root as MutableMap<String, Any?>).putAll(loaded ?: emptyMap())
+        val rootMap = root as MutableMap<String, Any?>
+        rootMap.clear()
+        rootMap.putAll(loaded ?: emptyMap())
     }
 
     /** 保存到文件。 */

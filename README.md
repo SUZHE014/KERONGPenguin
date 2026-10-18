@@ -6,10 +6,14 @@ Minecraft QQ 机器人插件，通过 QQ 官方机器人 API 实现 QQ 群与服
 
 ## 设计来源
 
-- **图片渲染界面设计参考：BaiZhouziYou / 新亭泪**（设计来源：https://xintinglei.cn/）
+- **图片渲染界面设计参考：BaiZhouziYou / 新亭泪**（设计来源：
+  https://xintinglei.cn/，模板合集：
+  https://github.com/BaizhouziYou/easybot-image-templates/）
   —— /查信息卡片、/查在线列表、排行榜的毛玻璃深色风格，早期版本参照
   该作者发布在 EasyBot 资源市场的图片模板复刻（见
   [issue #1](https://github.com/SUZHE014/KERONGPenguin/issues/1)）；
+  /查性能卡片的液态玻璃样式（1.6.7.2）参考其
+  EasybotServerPerformanceTemplate-WebGL 模板的液态玻璃主题；
   其后的分页、背景、头像渲染等为本项目的独立改进。
 
 ## 功能
@@ -97,6 +101,42 @@ server-NeoForge/ # NeoForge 1.21.1 平台适配（org.bukkit 兼容层 + @Mod �
 > 1.6.6.3：修复重连风暴期间控制台刷屏（WSS 协议帧细节改文件日志、
 > 重连只报里程碑、SDK 三条固定噪声过滤）、移除会误报的双服同绑
 > 检测、修复重连计数「第 6/5 次」越界。
+
+### v1.6.7.2 更新日志（Spark 联动 / 液态玻璃样式 / 性能数据缓存 / 配置升级重建）
+
+- **新增：/查性能 检测到 Spark（插件 / 模组）时直接调用 Spark** ——
+  服务器装了 [spark](https://spark.lucko.me/)（Spigot 端插件 / NeoForge
+  端模组）时优先经其公开 API（反射调用，无编译依赖）读取 TPS（1 分钟
+  平均）/ MSPT（10 秒均值）/ 进程 CPU（1 分钟均值）——Spark 对各核心
+  的采集最稳（尤其 NeoForge 无 TPS 字段、纯 Spigot 无公开 API 的场合），
+  装了就借它的数；没装、未加载或单项读不到时回退 1.6.7.1 的自研分层
+  反射链，行为不变。
+- **新增：查性能卡片液态玻璃样式切换（render.performance.style，默认
+  原版）** —— 参考设计来源模板合集里 EasyBot 服务器性能模板的 WebGL
+  液态玻璃主题：vanilla（默认）= 原版毛玻璃深色；liquid-glass =
+  液态玻璃（更亮更通透的玻璃质感：亮边折射 + 顶部高光 + 光泽进度条，
+  Java2D 拟物实现）；改完 /kerong reload 立即生效。
+- **新增：性能数据缓存（render.performance.cache-seconds，默认 5 秒）**
+  —— 对应该模板「关于渲染过慢问题」一节推荐开启的性能数据缓存：
+  缓存窗口内的重复 /查性能 查询直接复用上一张卡片（多人同时查 /
+  冷却结束立刻再查时秒回，不重复取数渲染）；0 = 关闭。
+- **修复：插件升级后配置文件不更新**（配置版本号升了但磁盘
+  config.yml 一直是旧样貌）—— 旧机制只把新增键以裸值追加在段尾
+  （无注释），JAR 内新版 config.yml 的注释、段落结构、默认值调整
+  永远到不了用户文件（模组端的 YAML 兼容层重存还会丢全部注释）。
+  现 ConfigFileRebuilder 在磁盘 config-version 低于 JAR 内置时以
+  新版 config.yml 全文（注释完整）为底重建：用户自定义值逐项回填
+  （仍等于旧默认的项自动采用新默认），旧文件先备份 config.yml.bak，
+  合并结果先试解析校验失败即放弃（旧文件不受影响）；自定义键
+  （如 markdown.* 自定义模板）原样保留。
+- **调整：两项默认值** —— ① chat-format.from-group 新默认
+  `[§bQQ§r] {name}: {message}`（仅染 QQ 字样青色，§r 重置后接玩家名；
+  仍是旧默认值的配置升级时自动换新默认，自定义过的不动）；②
+  render.idle-release-minutes 默认 5 → 15 分钟（渲染空闲内存释放更
+  安静；同样仅旧默认值自动升级）。
+- **修复：模组端重载配置残留旧键**（内部）—— 兼容层
+  YamlConfiguration.load 由 merge 语义改为整树替换（对齐 Bukkit
+  reloadConfig），文件里删掉的键不再在内存残留。
 
 ### v1.6.7.1 更新日志（修复查性能 TPS/MSPT 读不到 / 删在线卡与显隐配置）
 
