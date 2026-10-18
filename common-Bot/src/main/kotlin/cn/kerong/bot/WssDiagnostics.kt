@@ -206,6 +206,19 @@ object WssDiagnostics : WebSocketListener {
         } else {
             // 业务事件：内存计数（volatile 写，单次纳秒级），不解析不落盘
             eventCount++
+            // 1.6.7.5：捕获群 @机器人 事件的消息 ID（GROUP_AT_MESSAGE_CREATE
+            // 的 content 已被平台去除 @前缀、mentions 也不含机器人自身，
+            // 事件类型是 AI 对话判定的唯一可靠信号——见 GroupAtTracker）。
+            // 本钩子先于 SDK 事件分发执行，标记必然先于消息处理写入；
+            // 仅 @ 消息才解析 JSON，普通消息零开销。
+            if (type == "GROUP_AT_MESSAGE_CREATE") {
+                try {
+                    val messageId = JSON.parseObject(msg)?.getJSONObject("d")?.getString("id")
+                    GroupAtTracker.recordAtBot(messageId)
+                } catch (_: Throwable) {
+                    // 捕获失败不影响诊断与 SDK 处理
+                }
+            }
         }
     }
 

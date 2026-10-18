@@ -36,3 +36,5 @@ scripts/folia-smoke-work/
 scripts/base-jar/
 scripts/smoke162/*.class
 gradle.properties
+scripts/smoke1675/out/
+scripts/render-test/out/

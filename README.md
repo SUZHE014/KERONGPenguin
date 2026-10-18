@@ -12,8 +12,9 @@ Minecraft QQ 机器人插件，通过 QQ 官方机器人 API 实现 QQ 群与服
   —— /查信息卡片、/查在线列表、排行榜的毛玻璃深色风格，早期版本参照
   该作者发布在 EasyBot 资源市场的图片模板复刻（见
   [issue #1](https://github.com/SUZHE014/KERONGPenguin/issues/1)）；
-  /查性能卡片的液态玻璃样式（1.6.7.2）参考其
-  EasybotServerPerformanceTemplate-WebGL 模板的液态玻璃主题；
+  /查性能卡片的液态玻璃样式（1.6.7.2 引入、1.6.7.2 覆盖版移除）参考其
+  EasybotServerPerformanceTemplate-WebGL 模板的液态玻璃主题，1.6.7.5 起
+  查性能卡固定实色不透明深板；
   其后的分页、背景、头像渲染等为本项目的独立改进。
 
 ## 功能
@@ -86,8 +87,12 @@ server-NeoForge/ # NeoForge 1.21.1 平台适配（org.bukkit 兼容层 + @Mod �
 
 ## 版本
 
-当前版本：**1.6.7.4**（Spigot 插件版 / NeoForge 1.21.1 模组版同步更新，双线同版本号）
+当前版本：**1.6.7.5**（Spigot 插件版 / NeoForge 1.21.1 模组版同步更新，双线同版本号）
 
+> 1.6.7.5：修复装了 spark 也全指标读不到（反射方法改从公共 API 接口
+> 解析，实现类包私有不再阻断）；修复群里 @机器人 从未被判定为 AI
+> 对话（改帧级捕获 GROUP_AT 事件判定 + msg_id 去重 + @+命令 前缀
+> 剥离）；/查性能 卡片面板改实色不透明深板（彻底去除玻璃质感）。
 > 1.6.7.4：spark 接入提示改到服务器启动成功之后（仅 /查性能 开启时提示
 > 成功，接入失败必提示）；插件文件日志单文件上限收挅为 512KB；启动期
 > 三条例行信息不再刷控制台（文件照常留档）。
@@ -102,6 +107,50 @@ server-NeoForge/ # NeoForge 1.21.1 平台适配（org.bukkit 兼容层 + @Mod �
 > 1.6.6.3：修复重连风暴期间控制台刷屏（WSS 协议帧细节改文件日志、
 > 重连只报里程碑、SDK 三条固定噪声过滤）、移除会误报的双服同绑
 > 检测、修复重连计数「第 6/5 次」越界。
+
+### v1.6.7.5 更新日志（Spark 反射链修复 / AI 聊天艾特判定 / 性能卡实色化）
+
+> 1.6.7.5（3 项修复）：修复**安装了 spark 也检测不到**——反射方法此前从
+> 实现类解析，而 spark 实现类全部包私有，`Method.invoke` 抛
+> IllegalAccessException 被逐项吞掉导致全指标读不到，现一律从公共 API
+> 接口解析；修复**群里 @机器人 发消息从未被判定为 AI 对话**——QQ 群
+> 消息的 content 已被平台去除 @机器人 前缀、mentions 也不含机器人自身，
+> 旧文本门槛永远不成立，现改帧级捕获 GROUP_AT 事件判定（附 msg_id
+> 去重与 @+命令 的前缀剥离）；/查性能 卡片面板改**实色不透明深板**，
+> 彻底去除玻璃质感（此前半透明面板被反馈为「液态玻璃效果」）。
+
+- **修复：spark 接入全指标读不到（1.6.7.2 ~ 1.6.7.4 均受影响）** ——
+  spark 的 `SparkImpl` 与各统计实现类均为包私有，旧版用
+  `obj.javaClass.methods` 找 `tps()` / `poll(...)` 等方法反射调用，
+  对非公共 declaring class 触发 IllegalAccessException，被逐项容错
+  吞掉后 TPS / MSPT / CPU 全为 null——启动自检报「检测到 spark 但
+  接入失败（各指标均暂不可读）」、/查性能 数据也从未走过 spark。
+  现方法一律从 spark 公共 API 接口（`Spark` / `DoubleStatistic` /
+  `GenericStatistic` / `DoubleAverageInfo`）解析再 invoke，与实现类
+  可见性无关；已对真实 spark 1.10.187 字节码逐项核实签名（含
+  `Statistic#name()/getWindows()`、`poll(W)` 擦除为 `poll(Enum)`、
+  `SparkProvider.get()` 未加载抛 IllegalStateException），并以
+  「真实形态假 spark + 包私有实现 + 独立类加载器」端到端冒烟复现
+  修复前失败 / 修复后通过。启动自检接入失败时新增一轮 15 秒静默
+  复测再定性（统计窗口启动初期可能未积累首批样本）。
+- **修复：AI 聊天 @机器人 不触发（群消息从未生效）** —— QQ 官方协议：
+  GROUP_AT_MESSAGE_CREATE 的 content **已自动去除 @机器人前缀**、
+  mentions 列表**不含机器人自身**，旧的「content 含 `<@`」判定对群
+  消息永远不成立（频道消息才有效），@机器人 的消息全部被当作普通
+  聊天转发。现 WssDiagnostics 在 WebSocket 帧层捕获
+  GROUP_AT_MESSAGE_CREATE 的消息 ID（GroupAtTracker，帧钩子先于
+  SDK 事件分发执行），群消息入口三通道判定（帧标记 / mentions
+  bot=true / `<@` 文本）。附带两项加固：**msg_id 级去重**（全量模式
+  下同一条 @ 消息可能以两种事件先后到达、QQ 网关弱网会重投递——
+  同一条消息只处理一次，杜绝重复回复 / 重复转发）；**行首 @ 占位
+  剥离**（全量模式 content 原样保留 `<@openid>` 前缀导致
+  `@机器人 /命令` 匹配不到命令，剥离后命令正常响应）；AI 功能未
+  开启时 @ 消息不再被吞、落到全量转发；AI 正文残留占位片段一并剔除。
+- **调整：/查性能 卡片实色化** —— 指标卡 / 网格容器 / 状态胶囊 /
+  进度轨道全部改为**实色不透明深板 + 细描边**（不再有任何 alpha
+  混合），背景网格透过面板可见的玻璃质感完全消除，深色背景上的
+  数据对比度更强；字体 / 布局 / 指标口径与其他配置均不变（全局
+  透明度 render.global-opacity 仍按需生效）。
 
 ### v1.6.7.4 更新日志（Spark 提示时机与规则 / 日志瘦身）
 

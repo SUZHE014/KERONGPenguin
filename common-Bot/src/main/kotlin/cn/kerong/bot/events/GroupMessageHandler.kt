@@ -1,7 +1,9 @@
 package cn.kerong.bot.events
 
+import cn.kerong.bot.GroupAtTracker
 import cn.kerong.bot.KERONG
 import cn.kerong.bot.QClient
+import cn.kerong.bot.RecentMessageGate
 import cn.kerong.bot.ReplySeqGuard
 import cn.kerong.bot.events.commands.AdministrationCommands
 import cn.kerong.bot.events.commands.BaseCommand
@@ -66,7 +68,16 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         } catch (_: Throwable) {
         }
         val groupId: String? = event.groupOpenId ?: event.groupId
-        val content = event.rawMessage?.content ?: return
+        val rawContent = event.rawMessage?.content ?: return
+        // 1.6.7.5：msg_id 级去重——全量模式下同一条 @ 消息可能先后以
+        // GROUP_MESSAGE_CREATE（带 <@> 前缀）与 GROUP_AT_MESSAGE_CREATE
+        //（前缀已剥）两种事件到达；QQ 官方也提示弱网/会话恢复时会重投递
+        // 同一 msg_id。不去重会导致同一条消息被回复/转发两次。
+        // id 为空的异常事件不去重直接放行。
+        if (!RecentMessageGate.tryAcquire(event.rawMessage?.id)) return
+        // 1.6.7.5：剥离行首 @ 占位片段（全量模式 content 原样保留 <@openid>
+        // 前缀，导致 /命令 前缀匹配失败——先剥再进命令分发；无片段零开销）
+        val content = QqText.stripLeadingMentionPlaceholders(rawContent)
 
         // 1.5.3：记录群成员昵称（OpenId → 群昵称目录，供 /查询OpenID 反查展示），
         // 失败不影响消息处理（仅内存写入，持久化异步）
@@ -88,12 +99,18 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         // 1. 依次尝试命令分发
         if (dispatchCommand(event)) return
 
-        // 2. @机器人触发 AI 对话（非 / 开头）
-        if (content.contains("<@") && !content.trim().startsWith("/")) {
-            if (isMentionedBot(event)) {
-                handleAiChat(event, content, groupId)
+        // 2. @机器人触发 AI 对话（非 / 开头）。
+        //    1.6.7.5 根因修复：QQ 群消息的 content 已被平台去除 @机器人前缀、
+        //    mentions 数组也不含机器人自身（官方文档明确「不含@机器人自身」），
+        //    旧的「content 含 <@」门槛对群消息永远不成立（频道消息才有效）——
+        //    群里 @机器人 发消息从未被判定为 AI 对话。现改为三通道判定
+        //    （GROUP_AT 事件标记 / mentions 的 bot=true / <@文本），见
+        //    [isMentionedBot]；AI 功能未开启时不再吞消息，落到全量转发
+        if (!content.trim().startsWith("/") && isMentionedBot(event)) {
+            if (handleAiChat(event, content, groupId)) {
                 return
             }
+            // AI 功能未开启 → 落到下方全量转发（旧版 @ 消息凭空消失）
         }
 
         // 3. 全量消息转发到游戏
@@ -162,8 +179,21 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         return false
     }
 
-    /** 判断消息是否 @ 了机器人。 */
+    /**
+     * 判断消息是否 @ 了机器人。
+     *
+     * 1.6.7.5 三通道（按可靠性排序）：
+     * 1. **GROUP_AT_MESSAGE_CREATE 事件标记**：[GroupAtTracker] 在 WSS 帧层
+     *    捕获（事件类型是唯一可靠信号——该事件的 content 已被平台剥掉
+     *    @前缀、mentions 不含机器人）；
+     * 2. mentions 数组含机器人：全量模式（GROUP_MESSAGE_CREATE）下 @机器人
+     *    时 mentions 会带 bot=true 条目（官方文档：群消息全量模式
+     *    mentions 为「@的用户列表」，含机器人自身）；
+     * 3. 文本里的 <@ 片段匹配机器人 id（频道消息形态，保留兼容）。
+     */
     private fun isMentionedBot(event: GroupMessageEvent): Boolean {
+        // 通道一：GROUP_AT 事件标记（1.6.7.5 新增，群消息主判定）
+        if (GroupAtTracker.isAtBot(event.rawMessage?.id)) return true
         var botSelfId: String? = null
         try {
             val starter = QClient.starter
@@ -203,36 +233,43 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         return false
     }
 
-    /** 处理 @机器人 的 AI 对话。 */
-    private fun handleAiChat(event: GroupMessageEvent, content: String, groupId: String?) {
+    /**
+     * 处理 @机器人 的 AI 对话。
+     *
+     * @return true = 消息已消费（AI 已回复或已给出提示）；false = AI 功能
+     *   未开启，消息继续走全量转发（1.6.7.5：旧版直接吞掉，@ 消息凭空消失）
+     */
+    private fun handleAiChat(event: GroupMessageEvent, content: String, groupId: String?): Boolean {
         try {
             val manager = try {
                 QqBindManager.getInstance()
             } catch (_: Throwable) {
-                return
+                return false
             }
-            if (!manager.isAiEnabled) return
+            if (!manager.isAiEnabled) return false
 
-            // 去除 @ 片段后取正文；1.5.4：净化 QQ 表情标签（旧实现把
-            // <faceType=...,ext="base64"> 原样送给 AI，AI 收到一段乱码）
-            var text = QqText.sanitize(content)
+            // 1.5.4：净化 QQ 表情标签（旧实现把 <faceType=...,ext="base64">
+            // 原样送给 AI，AI 收到一段乱码）；正文中间 @ 其他人的
+            // <@openid> 占位片段同样剥离（行首的机器人占位已在入口剥过）
+            var body = QqText.sanitize(content.trim())
             val mentions: Array<User>? = event.rawMessage?.mentions
             if (mentions != null) {
                 for (member in mentions) {
                     val memberId = member.id ?: continue
-                    text = text.replace("<@!$memberId>", "")
+                    body = body.replace("<@!$memberId>", "")
                         .replace("<@$memberId>", "")
                         .replace("<$memberId>", "")
                         .replace(memberId, "")
                 }
             }
-            text = text.trim()
-            if (text.isEmpty()) {
+            // 兜底剔除正文里剩余的任何 <@…> 占位片段（不在 mentions 列表中的形态）
+            body = QqText.removeMentionPlaceholders(body).trim()
+            if (body.isEmpty()) {
                 MessageTemplates.sendPlain(event, "ai-chat-empty")
-                return
+                return true
             }
             val userId = safeUserId(event)
-            val reply = AiChat.chat(text, manager, groupId, userId)
+            val reply = AiChat.chat(body, manager, groupId, userId)
             val aiContent = "${manager.qqAiOutputPrefix} $reply"
             // 0.1.5.2：AI 对话日志仅写入文件，不再上控制台（隐私泄露修复）
             QqBindManager.logVerbose("[AI对话] 回复内容长度=${aiContent.length} 准备发送")
@@ -243,8 +280,10 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
             } catch (replyError: Throwable) {
                 QqBindManager.logVerbose("[AI对话] 引用回复发送失败: ${replyError.message}")
             }
+            return true
         } catch (t: Throwable) {
             MessageTemplates.sendPlain(event, "ai-chat-error", mapOf("error" to (t.message ?: t.toString())))
+            return true
         }
     }
 

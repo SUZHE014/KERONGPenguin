@@ -37,6 +37,9 @@ object SparkStartupCheck {
     /** 服务器启动成功事件后的延迟毫秒（留几秒让 spark 统计窗口积累首批样本）。 */
     private const val AFTER_SERVER_STARTED_MILLIS = 5_000L
 
+    /** 接入失败后的复测毫秒（1.6.7.5：spark 统计窗口尚未积累样本时首轮可能暂不可读）。 */
+    private const val RETRY_AFTER_FAILED_MILLIS = 15_000L
+
     /**
      * spark 探测三态结果（1.6.7.4：区分「未安装」与「已安装但接入失败」，
      * 前者静默、后者必须提示）。
@@ -66,7 +69,19 @@ object SparkStartupCheck {
                 return@Thread
             }
             try {
-                when (val outcome = sparkProbe()) {
+                var outcome = sparkProbe()
+                // 1.6.7.5：接入失败先静默复测一轮再定性——spark 统计窗口在
+                // 启动初期可能尚未积累首批样本（反射链已修复的前提下，
+                // 偶发首轮读不到通常只是窗口未热），避免误报接入失败
+                if (outcome is ProbeOutcome.Failed) {
+                    try {
+                        Thread.sleep(RETRY_AFTER_FAILED_MILLIS)
+                    } catch (_: InterruptedException) {
+                        return@Thread
+                    }
+                    outcome = sparkProbe()
+                }
+                when (outcome) {
                     is ProbeOutcome.NotInstalled -> {
                         // 未安装属正常降级：文件留一条备查，控制台静默
                         PluginFileLog.write("[性能数据] 未检测到 spark，/查性能 使用内置反射链读取")

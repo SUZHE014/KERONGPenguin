@@ -45,6 +45,39 @@ object QqText {
     private const val QUOTE_MAX_LENGTH = 50
 
     /**
+     * 行首 @ 占位片段（1.6.7.5 新增）。
+     *
+     * QQ 群消息全量模式（GROUP_MESSAGE_CREATE）的 content 会**原样保留**
+     * 行首的 `<@openid>` 占位片段（群格式；频道为 `<@!id>`）——用户
+     * @机器人 再输命令时 content 形如 `<@BOTID> /查性能`，直接拿去做命令
+     * 前缀匹配永远失败（看似「@了没反应」）。剥离后再进命令分发。
+     * 只剥行首（可能多个连续片段），正文中间的 @ 其他人的占位不受影响。
+     */
+    private val LEADING_MENTION_PLACEHOLDER = Regex("""^(?:\s*<@!?[A-Za-z0-9_-]+>)+\s*""")
+
+    /**
+     * 剥离行首 @ 占位片段（1.6.7.5）。
+     * 无行首片段时原样返回同一实例（零开销快速路径——正则先做廉价
+     * contains 预检）。
+     */
+    fun stripLeadingMentionPlaceholders(text: String): String {
+        if (!text.contains("<@")) return text
+        return LEADING_MENTION_PLACEHOLDER.replace(text, "")
+    }
+
+    /** 任意位置的 @ 占位片段（AI 对话正文清理用，1.6.7.5）。 */
+    private val ANY_MENTION_PLACEHOLDER = Regex("""<@!?[A-Za-z0-9_-]+>""")
+
+    /**
+     * 剔除全文所有 @ 占位片段（1.6.7.5）：送给 AI 的正文不应残留
+     * `<@openid>` / `<@!id>` 标签（对模型是乱码 token）。
+     */
+    fun removeMentionPlaceholders(text: String): String {
+        if (!text.contains("<@")) return text
+        return ANY_MENTION_PLACEHOLDER.replace(text, "")
+    }
+
+    /**
      * 净化消息文本：表情标签解码 / 剔除，引用残留标记剔除。
      * 不含标签时原样返回（零开销快速路径）。
      */
