@@ -1,5 +1,6 @@
 import cn.kerong.bot.PerformanceSnapshot;
 import cn.kerong.penguin.spigot.manager.YamlTextMerge;
+import cn.kerong.penguin.spigot.render.GlobalOpacity;
 import cn.kerong.penguin.spigot.render.PerformanceRenderer;
 import cn.kerong.penguin.spigot.render.RenderSettings;
 import cn.kerong.penguin.spigot.stats.SparkBridge;
@@ -15,28 +16,29 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.lang.reflect.Field;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 1.6.7.2 冒烟：Spark 联动 / 液态玻璃样式 / 性能数据缓存链路 / 配置文本合并（零网络请求）。
+ * 1.6.7.2 覆盖版冒烟：配置重建列表修复 / 液态玻璃移除 / 缓存默认 60 / 全局透明度（零网络请求）。
  *
  * 覆盖：
  *  1. PerformanceSnapshot.capture 三参重载（cpuOverride 覆盖 / null 回退即时值）
- *  2. SparkBridge 反射桥（1.6.7.2 核心新增）：
- *     - spark 未装载（SparkProvider.get 抛 IllegalStateException）→ null
- *     - 假 spark 全指标 → TPS（MINUTES_1）/ MSPT（SECONDS_10 均值）/ CPU（MINUTES_1）逐项读出
- *     - 部分指标 null（tps 缺失）→ 其余项照常、单项 null 不拖累
- *     - 全部 null → read 返回 null
- *  3. YamlTextMerge 文本级合并（配置版本重建核心算法）：
- *     - 标量替换 / 特殊字符（§b 染色串）引号 / 空列表→块状列表
- *     - 自定义键插入到对应段尾（保缩进）
- *     - 注释与段落结构原样保留
+ *  2. SparkBridge 反射桥（未装载 null / 全指标 / 部分缺失 / 全 null / 注销恢复）
+ *  3. YamlTextMerge 文本级合并：
+ *     - 标量替换 / §b 特殊字符引号 / 多元素列表块状 / 自定义键段尾插入 / 注释保留
+ *     - 覆盖版回归：单元素列表替换为块状（用户单群 bot.groups 踩坑场景）、
+ *       不再产出「groups: - xxx」非法行、单元素自定义键插入、List<Map>
+ *       （custom-commands 形态）回填、空列表 []
  *     - 合并结果经 snakeyaml 重新解析校验语义正确
- *     - 空覆盖 → 原文返回
- *  4. 液态玻璃渲染：LIQUID_GLASS 出图（766 高 / PNG 魔数）且与 VANILLA 字节不同
- *  5. RenderSettings.PerformanceStyle 枚举在位
- *  6. PublicCommands 命令注册表保持含「查性能」
+ *  4. 渲染与全局透明度（覆盖版）：
+ *     - PerformanceStyle 枚举已删除（液态玻璃移除）；PerformanceData 无 style 参数
+ *     - 原版出图 PNG 魔数与高度 766
+ *     - GlobalOpacity.applyOpacity：1.0 原实例零开销 / 0.5 半透明（PNG alpha 抽样）/
+ *       尺寸保持；RenderSettings.globalOpacity() 默认 1.0（BotShared 未初始化）
+ *     - 性能数据缓存默认 60 秒（DEFAULT_PERFORMANCE_CACHE_SECONDS / millis）
+ *  5. PublicCommands 命令注册表保持含「查性能」
  */
 public class Test1672 {
 
@@ -68,7 +70,7 @@ public class Test1672 {
 
     public static class FakeMsptStat implements GenericStatistic<DoubleAverageInfo, StatisticWindow.MillisPerTick> {
         @Override public DoubleAverageInfo poll(StatisticWindow.MillisPerTick window) { return new FakeMsptInfo(); }
-        @Override public DoubleAverageInfo[] poll() { return new FakeMsptInfo[0]; }
+        @Override public DoubleAverageInfo[] poll() { return new DoubleAverageInfo[0]; }
     }
 
     /** 全指标假 spark。 */
@@ -134,7 +136,7 @@ public class Test1672 {
         // ---- 3. YamlTextMerge 文本级合并（配置版本重建核心算法） ----
         String template = String.join("\n",
                 "# 配置文件版本号（插件自动维护）",
-                "config-version: 20",
+                "config-version: 21",
                 "",
                 "# 服务器名",
                 "serverName: KERONGPenguin",
@@ -148,11 +150,14 @@ public class Test1672 {
                 "  app-id: \"\"",
                 "  groups: []",
                 "",
+                "custom-commands: []",
+                "",
                 "markdown:",
                 "  # 查在线模板",
                 "  queryOnline: online.md",
                 "",
                 "render:",
+                "  global-opacity: 1.0",
                 "  command-cooldown-seconds: 5",
                 "");
 
@@ -173,7 +178,7 @@ public class Test1672 {
         check("3.6 数值替换（cooldown 30）", merged.contains("command-cooldown-seconds: 30"));
         check("3.7 未动键保持（queryOnline: online.md）", merged.contains("queryOnline: online.md"));
         check("3.8 段落结构保持（render: 段头仍在）", merged.contains("\nrender:\n"));
-        check("3.9 版本号未被覆盖", merged.contains("config-version: 20"));
+        check("3.9 版本号未被覆盖", merged.contains("config-version: 21"));
 
         Object parsed = new cn.kerong.shaded.org.yaml.snakeyaml.Yaml().load(merged);
         @SuppressWarnings("unchecked")
@@ -196,27 +201,122 @@ public class Test1672 {
         String untouched = YamlTextMerge.INSTANCE.merge(template, new LinkedHashMap<String, Object>());
         check("3.15 空覆盖 → 原文返回", untouched.equals(template));
 
-        // ---- 4. 液态玻璃渲染 ----
-        check("4.1 PerformanceStyle 枚举在位（VANILLA / LIQUID_GLASS）",
-                RenderSettings.PerformanceStyle.VANILLA != null && RenderSettings.PerformanceStyle.LIQUID_GLASS != null);
+        // ---- 3.16~3.21 覆盖版回归：列表渲染修复（单群用户 bot.groups 踩坑场景） ----
+        Map<String, Object> single = new LinkedHashMap<>();
+        single.put("bot.groups", Collections.singletonList("2532FC1C7629849FCE6491F3B72A06D2"));
+        String singleMerged = YamlTextMerge.INSTANCE.merge(template, single);
+        check("3.16 单元素列表 → 块状（键行 + 项行）",
+                singleMerged.contains("groups:\n  - 2532FC1C7629849FCE6491F3B72A06D2"));
+        boolean noBadLine = true;
+        for (String line : singleMerged.split("\n", -1)) {
+            if (line.trim().startsWith("groups:") && line.matches("^\\s*groups:\\s*-.*")) {
+                noBadLine = false;
+                break;
+            }
+        }
+        check("3.17 单元素列表不再产出非法行内列表（groups: - xxx）", noBadLine);
+        Object singleParsed = new cn.kerong.shaded.org.yaml.snakeyaml.Yaml().load(singleMerged);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> singleBot = (Map<String, Object>) ((Map<String, Object>) singleParsed).get("bot");
+        check("3.18 单元素列表语义正确（完整 OpenId 保留）",
+                singleBot != null && Collections.singletonList("2532FC1C7629849FCE6491F3B72A06D2").equals(singleBot.get("groups")));
+
+        // 自定义键（模板没有）+ 单元素列表 → 插入后合法
+        Map<String, Object> insertSingle = new LinkedHashMap<>();
+        insertSingle.put("admin.openids", Collections.singletonList("ADMINOPENID123"));
+        String insertMerged = YamlTextMerge.INSTANCE.merge(template, insertSingle);
+        Object insertParsed = new cn.kerong.shaded.org.yaml.snakeyaml.Yaml().load(insertMerged);
+        boolean insertOk = false;
+        if (insertParsed instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> admin = (Map<String, Object>) ((Map<String, Object>) insertParsed).get("admin");
+            insertOk = admin != null && Collections.singletonList("ADMINOPENID123").equals(admin.get("openids"));
+        }
+        check("3.19 模板外自定义键 + 单元素列表插入合法且语义正确", insertOk);
+
+        // List<Map>（custom-commands 形态）回填 → 合法可解析
+        Map<String, Object> cmdMap = new LinkedHashMap<>();
+        cmdMap.put("key", "重启");
+        cmdMap.put("command", "restart");
+        cmdMap.put("permission", 2);
+        Map<String, Object> listMap = new LinkedHashMap<>();
+        listMap.put("custom-commands", Collections.singletonList(cmdMap));
+        String cmdMerged = YamlTextMerge.INSTANCE.merge(template, listMap);
+        Object cmdParsed = new cn.kerong.shaded.org.yaml.snakeyaml.Yaml().load(cmdMerged);
+        boolean cmdOk = false;
+        if (cmdParsed instanceof Map) {
+            Object list = ((Map<String, Object>) cmdParsed).get("custom-commands");
+            if (list instanceof java.util.List && ((java.util.List<?>) list).size() == 1) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> first = (Map<String, Object>) ((java.util.List<?>) list).get(0);
+                cmdOk = "重启".equals(first.get("key")) && "restart".equals(first.get("command"))
+                        && Integer.valueOf(2).equals(first.get("permission"));
+            }
+        }
+        check("3.20 List<Map>（custom-commands 形态）回填合法且语义正确", cmdOk);
+
+        // 空列表 override → 行内 []
+        Map<String, Object> empty = new LinkedHashMap<>();
+        empty.put("bot.groups", Collections.emptyList());
+        String emptyMerged = YamlTextMerge.INSTANCE.merge(template, empty);
+        boolean emptyOk = false;
+        Object emptyParsed = new cn.kerong.shaded.org.yaml.snakeyaml.Yaml().load(emptyMerged);
+        if (emptyParsed instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> emptyBot = (Map<String, Object>) ((Map<String, Object>) emptyParsed).get("bot");
+            emptyOk = emptyBot != null && java.util.Collections.emptyList().equals(emptyBot.get("groups"));
+        }
+        check("3.21 空列表回填语义正确（[]）", emptyOk && emptyMerged.contains("groups: []"));
+
+        // ---- 4. 渲染与全局透明度（覆盖版） ----
+        boolean styleGone;
+        try {
+            Class.forName("cn.kerong.penguin.spigot.render.RenderSettings$PerformanceStyle");
+            styleGone = false;
+        } catch (ClassNotFoundException expected) {
+            styleGone = true;
+        }
+        check("4.1 PerformanceStyle 枚举已删除（液态玻璃移除）", styleGone);
         int height = PerformanceRenderer.INSTANCE.measureHeight();
         check("4.2 固定四项高度 766 保持", height == 766);
         PerformanceSnapshot snap = PerformanceSnapshot.capture(19.8, 12.5, 0.3);
         byte[] vanillaPng = PerformanceRenderer.INSTANCE.render(new PerformanceRenderer.PerformanceData(
-                "冒烟测试服", "23:59", snap, null, RenderSettings.PerformanceStyle.VANILLA));
-        byte[] liquidPng = PerformanceRenderer.INSTANCE.render(new PerformanceRenderer.PerformanceData(
-                "冒烟测试服", "23:59", snap, null, RenderSettings.PerformanceStyle.LIQUID_GLASS));
-        check("4.3 原版样式出图（PNG 魔数）",
+                "冒烟测试服", "23:59", snap, null));
+        check("4.3 原版样式出图（PNG 魔数，无 style 入参）",
                 vanillaPng.length > 10000 && (vanillaPng[0] & 0xFF) == 0x89 && vanillaPng[1] == 'P');
-        check("4.4 液态玻璃出图（PNG 魔数）",
-                liquidPng.length > 10000 && (liquidPng[0] & 0xFF) == 0x89 && liquidPng[1] == 'P');
-        BufferedImage liquidImg = ImageIO.read(new ByteArrayInputStream(liquidPng));
-        check("4.5 液态玻璃尺寸（1350 × 766）",
-                liquidImg.getWidth() == 1350 && liquidImg.getHeight() == 766);
-        check("4.6 两样式产出不同（液态玻璃确实换了画法）", !Arrays.equals(vanillaPng, liquidPng));
-        java.io.File sample = new java.io.File("/home/z/my-project/penguin-git/scripts/smoke1672/performance-liquid-glass.png");
-        java.nio.file.Files.write(sample.toPath(), liquidPng);
-        check("4.7 液态玻璃样图落盘（人工复核用）", sample.isFile() && sample.length() == liquidPng.length);
+
+        // GlobalOpacity.applyOpacity 纯函数
+        BufferedImage plain = new BufferedImage(40, 40, BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D pg = plain.createGraphics();
+        pg.setColor(java.awt.Color.WHITE);
+        pg.fillRect(0, 0, 40, 40);
+        pg.dispose();
+        BufferedImage identity = GlobalOpacity.INSTANCE.applyOpacity(plain, 1.0f);
+        check("4.4 透明度 1.0 → 原实例原样返回（零开销）", identity == plain);
+        BufferedImage half = GlobalOpacity.INSTANCE.applyOpacity(plain, 0.5f);
+        check("4.5 透明度 0.5 → 新 ARGB 画布（尺寸保持）",
+                half != plain && half.getWidth() == 40 && half.getHeight() == 40
+                        && half.getType() == BufferedImage.TYPE_INT_ARGB);
+        java.io.ByteArrayOutputStream halfOut = new java.io.ByteArrayOutputStream();
+        ImageIO.write(half, "png", halfOut);
+        BufferedImage halfBack = ImageIO.read(new ByteArrayInputStream(halfOut.toByteArray()));
+        boolean alphaOk = halfBack != null && halfBack.getWidth() == 40;
+        if (alphaOk) {
+            int[][] samples = {{0, 0}, {39, 0}, {0, 39}, {39, 39}, {20, 20}};
+            for (int[] s : samples) {
+                int a = (halfBack.getRGB(s[0], s[1]) >>> 24) & 0xFF;
+                if (a < 120 || a > 135) { alphaOk = false; break; }
+            }
+        }
+        check("4.6 透明度 0.5 → PNG 整体 alpha≈128（抽样五点）", alphaOk);
+        BufferedImage clamped = GlobalOpacity.INSTANCE.applyOpacity(plain, 5.0f);
+        check("4.7 透明度超界（5.0）按 1.0 处理（原样返回）", clamped == plain);
+        check("4.8 RenderSettings.globalOpacity() 默认 1.0（配置未初始化）",
+                Math.abs(RenderSettings.INSTANCE.globalOpacity() - 1.0f) < 1e-6);
+        check("4.9 性能数据缓存默认 60 秒（覆盖版 5 → 60）",
+                RenderSettings.DEFAULT_PERFORMANCE_CACHE_SECONDS == 60);
+        check("4.10 performanceCacheMillis() 默认 60000ms",
+                RenderSettings.INSTANCE.performanceCacheMillis() == 60000L);
 
         // ---- 5. 命令注册表保持（查性能） ----
         Object commands = Class.forName("cn.kerong.bot.events.commands.PublicCommands").getDeclaredConstructor().newInstance();

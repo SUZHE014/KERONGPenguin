@@ -120,6 +120,16 @@ class ConfigManager(private val plugin: JavaPlugin) {
                 changed = true
             }
         }
+        // 1.6.7.2 覆盖版：性能数据缓存默认 5 → 60（仍是旧默认 5 的配置升级；
+        // 用户自定义值不动；配置重建器内同款收敛，这里是重建失败兑底路径的
+        // 双保险）
+        if (oldVersion in 1 until 21 &&
+            config.isSet("render.performance.cache-seconds") &&
+            config.getInt("render.performance.cache-seconds", -1) == 5
+        ) {
+            config.set("render.performance.cache-seconds", 60)
+            changed = true
+        }
         // 清理已废弃的配置段
         // 1.5.1：移除 query-online 段（图片输出改为 markdown 关闭时自动启用）与 motd.text（文本模板已删除）
         // 1.5.2：移除 commands.个人信息（该命令已更名为 查信息）
@@ -250,7 +260,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
-        private const val CURRENT_CONFIG_VERSION = 20
+        private const val CURRENT_CONFIG_VERSION = 21
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -267,6 +277,8 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
         /**
          * 历史废弃键清单（配置重建器回填时跳过；与 reload 里清理列表一致）。
+         * 1.6.7.2 覆盖版：新增 render.performance.style（液态玻璃样式已移除，
+         * 卡片固定原版毛玻璃深色；透明度统一走 render.global-opacity）。
          */
         internal val REMOVED_CONFIG_KEYS = listOf(
             "agent", "audit", "whitelist", "query-online", "motd.text", "commands.个人信息",
@@ -275,6 +287,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "render.performance.show-tps", "render.performance.show-mspt",
             "render.performance.show-memory", "render.performance.show-cpu",
             "render.performance.show-online",
+            "render.performance.style",
         )
 
         /**
@@ -411,10 +424,10 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 1.6.7：查性能卡片（/查性能，命令总开关 commands.查性能）；
             // 1.6.7.1：指标固定四项（TPS / MSPT / 内存 / CPU），show-* 单项显隐已移除
             "render.performance.builtin-background" to true,
-            // 1.6.7.2：渲染样式（vanilla 原版毛玻璃深色 = 默认 / liquid-glass 液态玻璃）
-            "render.performance.style" to "vanilla",
-            // 1.6.7.2：性能数据缓存秒数（0 = 关闭；对应「渲染过慢」推荐的缓存）
-            "render.performance.cache-seconds" to 5,
+            // 1.6.7.2 覆盖版：性能数据缓存默认 5 → 60（渲染慢的服推荐保持开启）
+            "render.performance.cache-seconds" to 60,
+            // 1.6.7.2 覆盖版：全局透明度（全部图片卡片编码前统一应用，1.0 = 不透明）
+            "render.global-opacity" to 1.0,
             // 1.5.5：在线排行榜（1.6.0 从 qq-bind.leaderboard 迁至顶层）
             "leaderboard.top" to 15,
             "leaderboard.builtin-background" to true,

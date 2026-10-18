@@ -20,7 +20,7 @@
 
 KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项目：玩家在 QQ 群里查数据/签到/聊天，插件在服务器内渲染统计卡片图片并回发。Kotlin 多模块：`common-Bot`（全部业务核心）+ `server-Spigot`（Bukkit 插件版，支持 Spigot/Paper/Folia/混合端）+ `server-NeoForge`（NeoForge 1.21.1 模组版，复用 common-Bot 全部源码 + Spigot 的 manager 源码）。
 
-**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.7.2）。当前版本 **1.6.7.2**（/查性能 检测到 Spark（插件/模组）时优先经 SparkBridge 纯反射调用其公开 API 取 TPS/MSPT/CPU，单项读不到回退自研链；液态玻璃渲染样式 render.performance.style（默认 vanilla，liquid-glass 参考 EasybotServerPerformanceTemplate-WebGL 模板）；性能数据缓存 render.performance.cache-seconds（默认 5 秒，对应模板「渲染过慢」一节推荐的缓存）；**配置版本升级重建**：磁盘 config-version 低于 JAR 内置时以新版 config.yml 全文为底 ConfigFileRebuilder 文本级合并（YamlTextMerge 逐行替换/插入保注释，自定义值回填、旧默认自动升级、备份 config.yml.bak、先校验后落盘）；from-group 新默认 [§bQQ§r]、idle-release-minutes 默认 5→15）/ 1.6.7.1：修复 /查性能 TPS/MSPT 一直读不到（PerformanceSnapshot 分层反射读取器；固定四项，删 show-*）/ 1.6.7：新增 /查性能 卡片与 /查在线 默认图片输出 / 1.6.6.4：移除空闲 GC 提示 / 1.6.6.3：重连降噪 / 1.6.6.2：缓存分层+空闲释放+单飞+/kerong mem / 1.6.6.1 覆盖版：头像本地优先、删 WebUI / 1.6.6：控制台真彩色、头像多线路，包名 cn.kerong.bot 与 cn.kerong.penguin，主类 KERONGSpigot / KERONGNeoForge）。
+**版本规则**：插件版与模组版同步发版、同一版本号（如 1.6.7.2）。当前版本 **1.6.7.2 同日覆盖版**（/查性能 检测到 Spark（插件/模组）时优先经 SparkBridge 纯反射调用其公开 API 取 TPS/MSPT/CPU，单项读不到回退自研链；性能数据缓存 render.performance.cache-seconds 覆盖版默认 60 秒；**全局透明度 render.global-opacity（默认 1.0）**：GlobalOpacity.apply 在四个渲染器 PNG 编码前统一把整图 alpha 乘系数（1.0 原样零开销，0.5 半透明）；**覆盖版移除液态玻璃**（render.performance.style 入 REMOVED_CONFIG_KEYS 自动清理，卡片固定原版毛玻璃深色）；**配置版本升级重建**：磁盘 config-version 低于 JAR 内置时以新版 config.yml 全文为底 ConfigFileRebuilder 文本级合并（YamlTextMerge 逐行替换/插入保注释，自定义值回填、旧默认自动升级、备份 config.yml.bak、先校验后落盘；**覆盖版修复单元素列表产出非法 YAML**——renderEntry 按类型分派列表为块状项行，loadYaml 改 throws 语义可感知失败）；from-group 新默认 [§bQQ§r]、idle-release-minutes 默认 5→15；config-version 20→21）/ 1.6.7.1：修复 /查性能 TPS/MSPT 一直读不到（PerformanceSnapshot 分层反射读取器；固定四项，删 show-*）/ 1.6.7：新增 /查性能 卡片与 /查在线 默认图片输出 / 1.6.6.4：移除空闲 GC 提示 / 1.6.6.3：重连降噪 / 1.6.6.2：缓存分层+空闲释放+单飞+/kerong mem / 1.6.6.1 覆盖版：头像本地优先、删 WebUI / 1.6.6：控制台真彩色、头像多线路，包名 cn.kerong.bot 与 cn.kerong.penguin，主类 KERONGSpigot / KERONGNeoForge）。
 
 ---
 
@@ -65,7 +65,7 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 | 查信息统计卡 | `events/commands/PublicCommands.kt` → `spigot/stats/QueryInfoService.kt` → `spigot/render/CardRenderPool.kt` + `InfoCardRenderer.kt` | CPU 异步渲染 PNG（CardRenderPool 线程池，核数一半 1~4），9 项统计，依赖缺失自适应（Vault 金币 / DeluxeTags **或 PlayerTitle**（1.6.4，PAPI %playerTitle_use%） / PlayerPoints 点券），头像多级链 + **外部多线路回退（含 MinePic）与 Mojang 网络全局冷却**（1.6.4~1.6.6.1，详见 3.5） |
 | ~~在线时长同步~~ | 已于 1.6.6.1 覆盖版**删除**（1.6.4 曾引入 `PlayTimeSync.kt`：检测到 PlayTimeManager + PAPI 时差值对齐，因用户要求移除；本插件自身在线时长统计不受影响，PapiDependencyCheck 提示面同步收窄为仅 PlayerTitle） |
 | 查在线/在线排行榜/财富榜 | `PublicCommands.kt` + `LeaderboardCommands.kt` + `CoinsLeaderboardCommands.kt` + `render/OnlineListRenderer.kt`/`LeaderboardRenderer.kt` | 图片分段发送（每页 15 人）、命令冷却 `render.command-cooldown-seconds`、内置背景图（backgrounds/，img/ 可自定义随机） |
-| /查性能（1.6.7） | `PublicCommands.kt` → `spigot/stats/PerformanceService.kt` + `render/PerformanceRenderer.kt` | 性能监控卡片（固定四项 TPS/MSPT/内存/CPU，状态分级+进度条，null 显示「--」）；快照走 `KERONG.performanceSnapshot()`（**1.6.7.2：装了 spark 时优先 SparkBridge 纯反射调其公开 API**——SparkProvider.get() 单例→tps().poll(TicksPerSecond.MINUTES_1)/mspt().poll(MillisPerTick.SECONDS_10).mean()/cpuProcess().poll(CpuUsage.MINUTES_1)，Spigot 端 getPlugin("spark") 启用才读、NF 端 ModList.isLoaded；无 spark 单项回退自研分层反射链，capture 新增三参重载接 cpuOverride）；渲染样式 render.performance.style（vanilla 原版/liquid-glass 液态玻璃，paintPanel+亮边折射+顶部高光）；性能数据缓存 render.performance.cache-seconds（默认 5 秒，PerformanceService peekCache/storeCache 样式失效）；命令开关 commands.查性能，背景 render.performance.builtin-background |
+| /查性能（1.6.7） | `PublicCommands.kt` → `spigot/stats/PerformanceService.kt` + `render/PerformanceRenderer.kt` | 性能监控卡片（固定四项 TPS/MSPT/内存/CPU，状态分级+进度条，null 显示「--」，固定原版毛玻璃深色）；快照走 `KERONG.performanceSnapshot()`（**1.6.7.2：装了 spark 时优先 SparkBridge 纯反射调其公开 API**——SparkProvider.get() 单例→tps().poll(TicksPerSecond.MINUTES_1)/mspt().poll(MillisPerTick.SECONDS_10).mean()/cpuProcess().poll(CpuUsage.MINUTES_1)，Spigot 端 getPlugin("spark") 启用才读、NF 端 ModList.isLoaded；无 spark 单项回退自研分层反射链，capture 新增三参重载接 cpuOverride）；性能数据缓存 render.performance.cache-seconds（覆盖版默认 60 秒，PerformanceService peekCache/storeCache）；命令开关 commands.查性能，背景 render.performance.builtin-background；**覆盖版：液态玻璃样式已移除**（render.performance.style 入废弃键表自动清理），全局透明度 render.global-opacity（GlobalOpacity.apply 四渲染器统一接入） |
 | /查在线 markdown | `markdown.queryOnline` → online.md | 关图片走模板文本 |
 | /motd | `PublicCommands.motd`（无参=本服状态 server-status 模板）→ **带参转发 `MotdCommands`**（minebbs API，motd-* 模板） | 1.6.3 修复了转发缺失导致 MotdCommands 永不可达 |
 | AI 对话 | `spigot/qqbind/AiChat.kt` + `QClient.replyMarkdownWithReference` | @机器人触发；引用回复（MessageReference 协议）失败三级回退：引用→普通被动→纯文本；全局一份上下文 |
@@ -215,12 +215,25 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
 | JVM 已提交≠存活 | 用户报「内存飙升 GB 级」先分清是堆存活（泄漏）还是 G1 已提交量（分配高峰扩张、默认不归还）。插件侧排查工具 /kerong mem（cacheStats）；渲染实测单次 ~13MB 临时分配零残留。修复路径：削减并发分配（单飞，1.6.6.2 起）；**不要用 System.gc 归还堆**（Full GC 全停顿 0.05~0.6 秒可能落在玩家游玩时刻——1.6.6.2 的 idle-gc-hint 与线上 1.6.6.3 短暂存在的 auto-shrink 均已移除） |
 | Bukkit YAML 流重载 | paper-api 1.20.4 已删 `YamlConfiguration.loadConfiguration(InputStream)`（只剩 File / Reader 两重载），而 NF 兼容层只有 InputStream 变体——**双端共用源码解析流必须走 Reader 并给兼容层补同名重载**，否则 Spigot 线编译失败（1.6.7.2 实测踩坑） |
 | NF 端 snakeyaml 被重定位 | NF 分发 JAR 里 snakeyaml 在 `cn.kerong.shaded.org.yaml.snakeyaml`（RelocateTool 整体迁移），冒烟/工具对 NF JAR 做 YAML 重解析要用重定位后的类名（1.6.7.2 实测踩坑） |
+| snakeyaml dump 单元素列表是单行 | `Yaml(list).dump()` 多元素列表输出多行（含 `\n`），**单元素列表输出单行 `- item`（无换行）**——用「结果是否含换行」判块状/标量会把单元素列表误当标量（1.6.7.2 用户配置重建 `groups: - XXX` 非法 YAML 根因）；序列化判断分支一律按输入类型（Collection 等）分派，别依赖 dump 输出形态 |
+| Bukkit loadConfiguration(Reader) 吞异常 | `YamlConfiguration.loadConfiguration(Reader/File)` 解析失败只打 ERROR 日志并返回**空配置**（不抛出）——需要「失败可感知」的校验场景必须用实例方法 `yaml.load(reader)`（抛 InvalidConfigurationException）；且空配置的 getInt 默认 0 恰好能兜底误判，别依赖 |
+| NF 打包 base 必须传 Spigot JAR | package_jar_neoforge.py 的 base_jar 参数要传 **Spigot** 分发 JAR（原始包名依赖）；误传 NF JAR 时其依赖已重定位到 cn/kerong/shaded（被 EXCLUDE_PREFIXES 的 `cn/kerong/` 前缀整体剔除），产物从 19MB 掉到 6MB 且缺全部第三方库（1.6.7.2 覆盖版实测） |
+| Edit 工具改长中文注释易匹配失败 | 长中文注释块存在不可见字符差异（全半角/相似码位），Edit/MultiEdit 的 old_str 精确匹配易失败且报错信息不指明差异；批量改中文注释/配置块用 Python 脚本按锚点行+正则处理（幂等设计），单点小片段仍可用 Edit |
 
 ---
 
-## 7. 当前已知状态（2026-10-18，v1.6.7.2 发版完成）
+## 7. 当前已知状态（2026-10-18，v1.6.7.2 同日覆盖版完成）
 
-- 双端 1.6.7.2 全部完成（构建 / 门禁 197 项（SP 组 Spark 联动 / LG 液态玻璃 / K 缓存 / F 配置重建 / D 默认值 + 1.6.7.1 全部基线）/ 冒烟 36（**假 spark API 功能验证**：fakespark 目录伪造 SparkProvider/Spark/窗口枚举/统计接口（签名对齐真实 API），SparkBridge 反射全指标读出 19.7/25.0/0.37、部分缺失单项不拖累、未装载 null / YamlTextMerge 十五项：标量替换、§b 特殊字符引号、空列表→块状、自定义键插段尾、注释保留、snakeyaml 重解析语义校验 / 液态玻璃出图 766 高且与原版字节不同）/ 官网部署 / git 推送）：
+- 双端 1.6.7.2 覆盖版全部完成（门禁 227 项（新增 GO 组全局透明度 / LG 组改液态玻璃移除反断言 / F5b+F9 单元素列表修复与可感知校验 / D1 版本 21 / S27h~S27l 源码断言）/ 冒烟 45（原 36 项基础上重写第 3/4 组：YamlTextMerge 新增 3.16~3.21 单元素列表回归 / List<Map> custom-commands 形态 / 空列表；4.x 液态玻璃删除反断言 + GlobalOpacity 纯函数 alpha 抽样 + 缓存默认 60）/ 官网部署 / git 推送）：
+  - **修复单群用户配置自动升级失败**（用户日志 `sequence entries are not allowed here` +「配置重建放弃：合并结果校验未通过」）：根因 YamlTextMerge.renderEntry 用 `dump().contains('\n')` 判多行——snakeyaml dump **单元素列表**是单行 `- item`，被误当标量拼成 `groups: - XXX` 非法 YAML（多元素列表带换行走块状分支恰好正确，空列表 dump `[]` 合法，唯独单元素漏网，冒烟也恰好没测单元素）。修复：renderEntry 按 `value is Collection<*>` 类型分派（空列表 `[]` / 非空列表键行+同缩进项行 / 多行项续行补两空格），列表项自身多行（custom-commands 的 Map 项）也兼容；
+  - loadYaml 改 throws 语义：Bukkit `YamlConfiguration.loadConfiguration(Reader)` 是**吞异常打 ERROR 返回空配置**的容错 API（用户日志那条吓人堆栈正是它打的），解析失败永远走不到调用方 catch；改 `YamlConfiguration().load(reader)` 实例方法（解析失败抛出），NF 兼容层补同名 `load(Reader)`；
+  - 液态玻璃移除：PerformanceStyle 枚举/paintPanel 玻璃分支/brighten/PerformanceData.style/cachedStyle 样式失效链全删，render.performance.style 入 REMOVED_CONFIG_KEYS（用户旧键自动清理）；
+  - 性能数据缓存默认 5 → 60（ConfigFileRebuilder 与 ConfigManager.reload 双路旧默认收敛：值=5 删除/改 60 让新默认生效，自定义值不动）；
+  - 全局透明度 render.global-opacity（默认 1.0）：GlobalOpacity.apply（apply 配置读取 + applyOpacity 纯函数双形态）在四个渲染器（查信息/查在线/查性能/排行榜）PNG 编码前统一 AlphaComposite.SrcOver.derive(opacity) 合成，1.0 原样返回零开销；config-version 20→21（已踩坑用户被坏版降级写号 20 后，本版 20<21 重新触发完整重建）；
+  - 官网：下载卡片标「同日覆盖版」+ 更新日志 v1.6.7.2 段重写（液态玻璃条目换覆盖版四项）+ 设计来源删液态玻璃出处 + tutorial render 段（style 删/global-opacity 加/cache 60）+ 配置自动升级说明补修复提示 + version.json 七条；
+  - 踩坑（入 §6）：NF 打包 base 必须传 **Spigot** 分发 JAR（传 NF JAR 会被 EXCLUDE_PREFIXES 的 cn/kerong/ 前缀把已重定位依赖全部剔掉，产物从 19MB 掉到 6MB）；Edit 工具对长中文注释匹配失败（不可见字符差异），批量改中文注释块用 Python 脚本按行号/正则处理更稳。
+
+- 双端 1.6.7.2 原版历史项（门禁 197 / 冒烟 36 / 官网部署 / git 推送）：
   - Spark 联动：/查性能 检测到 spark（Spigot 插件 getPlugin 启用 / NF ModList.isLoaded）时优先纯反射调其公开 API（SparkProvider.get 单例；TPS=tps().poll(TicksPerSecond.MINUTES_1)，MSPT=mspt().poll(MillisPerTick.SECONDS_10).mean()，CPU=cpuProcess().poll(CpuUsage.MINUTES_1)；枚举常量用统计实例自身的类加载器跨模块解析）；无 spark 或单项 null 回退 1.6.7.1 自研链；PerformanceSnapshot.capture 新增三参重载（cpuOverride）；
   - 液态玻璃样式：render.performance.style（vanilla 默认 / liquid-glass），PerformanceRenderer 新增 paintPanel（渐变玻璃卡身+亮边折射+顶部高光带）与 brighten，状态胶囊/进度条带光泽；
   - 性能数据缓存：render.performance.cache-seconds（默认 5，0=关），PerformanceService peekCache/storeCache（@Volatile+锁，样式切换即失效）；

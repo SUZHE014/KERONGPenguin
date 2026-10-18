@@ -182,7 +182,8 @@ object OnlineListRenderer {
             g.dispose()
         }
         val output = ByteArrayOutputStream(384 * 1024)
-        ImageIO.write(image, "png", output)
+        // 全局透明度（render.global-opacity，默认 1.0 原样零开销）
+        ImageIO.write(GlobalOpacity.apply(image), "png", output)
         // PNG 已写出，立即释放单次画布的栅格内存（缓存中的背景/头像不受影响）
         image.flush()
         return output.toByteArray()

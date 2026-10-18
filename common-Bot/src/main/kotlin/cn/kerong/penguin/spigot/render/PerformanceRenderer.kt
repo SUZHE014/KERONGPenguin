@@ -17,12 +17,10 @@ import javax.imageio.ImageIO
  * ——性能卡片延续本项目整套毛玻璃深色风格（与查信息 / 查在线 /
  * 排行榜同源），本卡片为本项目的独立实现。
  *
- * 渲染样式（1.6.7.2 新增 render.performance.style，默认原版）：
- * - vanilla：原版毛玻璃深色（经典样式，与其他卡片同源）；
- * - liquid-glass：液态玻璃（参考 EasyBot 服务器性能模板的 WebGL 液态
- *   玻璃主题：更亮更通透的玻璃质感——亮色渐变卡身 + 边缘折射亮框 +
- *   顶部高光带 + 光泽进度条；Java2D 拟物实现，多层高光渐变的渲染
- *   开销略高于原版）。
+ * 1.6.7.2 覆盖版：移除液态玻璃样式分支（render.performance.style 配置
+ * 同步废弃，见 ConfigManager.REMOVED_CONFIG_KEYS），固定原版毛玻璃深色
+ * 样式；新增全局透明度（render.global-opacity，编码前经
+ * [GlobalOpacity.apply] 统一应用）。
  *
  * 毛玻璃深色风格（1350 宽，固定版式单页图）：
  * - 顶部标题区：英文眉题 MINECRAFT SERVER + 主标题「服务器性能监控」
@@ -90,8 +88,6 @@ object PerformanceRenderer {
         val snapshot: cn.kerong.bot.PerformanceSnapshot,
         /** 预处理背景（尺寸可与画布不一致，渲染时拉伸铺满）；null 表示无背景。 */
         val background: BufferedImage? = null,
-        /** 渲染样式（1.6.7.2 新增，默认原版；液态玻璃见 [RenderSettings.PerformanceStyle]）。 */
-        val style: RenderSettings.PerformanceStyle = RenderSettings.PerformanceStyle.VANILLA,
     )
 
     /** 单个指标卡的绘制模型（由快照派生，固定四项）。 */
@@ -130,13 +126,14 @@ object PerformanceRenderer {
             g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
 
             drawBackground(g, data.background, height)
-            drawHeader(g, data.serverName, data.updateTime, data.style)
-            drawMetricGrid(g, cards, data.style)
+            drawHeader(g, data.serverName, data.updateTime)
+            drawMetricGrid(g, cards)
         } finally {
             g.dispose()
         }
         val output = ByteArrayOutputStream(384 * 1024)
-        ImageIO.write(image, "png", output)
+        // 全局透明度（render.global-opacity，默认 1.0 原样零开销）
+        ImageIO.write(GlobalOpacity.apply(image), "png", output)
         // PNG 已写出，立即释放单次画布的栅格内存（缓存中的背景不受影响）
         image.flush()
         return output.toByteArray()
@@ -285,57 +282,16 @@ object PerformanceRenderer {
         }
     }
 
-    // ---------- 液态玻璃样式绘制（1.6.7.2 新增） ----------
+    // ---------- 面板绘制 ----------
 
-    /** 与白色混合提亮（fraction 0~1）。 */
-    private fun brighten(color: Color, fraction: Double): Color {
-        val f = fraction.coerceIn(0.0, 1.0)
-        val r = color.red + ((255 - color.red) * f).toInt()
-        val gg = color.green + ((255 - color.green) * f).toInt()
-        val b = color.blue + ((255 - color.blue) * f).toInt()
-        return Color(r, gg, b)
-    }
-
-    /**
-     * 面板底色：原版 = 平淡半透明白；液态玻璃 = 顶部亮渐变卡身 +
-     * 边缘折射亮框（顶部亮→往下渐隐）+ 顶部高光带。
-     */
-    private fun paintPanel(
-        g: Graphics2D,
-        x: Float,
-        y: Float,
-        w: Float,
-        h: Float,
-        style: RenderSettings.PerformanceStyle,
-        radius: Float = 18f,
-    ) {
-        val shape = RoundRectangle2D.Float(x, y, w, h, radius, radius)
-        if (style == RenderSettings.PerformanceStyle.VANILLA) {
-            g.color = Color(0xFF, 0xFF, 0xFF, 16)
-            g.fill(shape)
-            return
-        }
-        // 卡身：顶部亮→底部暗的透亮玻璃
-        g.paint = java.awt.GradientPaint(x, y, Color(0xFF, 0xFF, 0xFF, 72), x, y + h, Color(0xFF, 0xFF, 0xFF, 16))
-        g.fill(shape)
-        // 边缘折射：亮框，顶部最亮往下渐隐
-        g.paint = java.awt.GradientPaint(x, y, Color(0xFF, 0xFF, 0xFF, 175), x, y + h, Color(0xFF, 0xFF, 0xFF, 38))
-        g.stroke = java.awt.BasicStroke(2f)
-        g.draw(shape)
-        // 顶部高光带：裁剪上部后粗描圆角，视觉即顶缘一条亮弧
-        val previousClip = g.clip
-        g.clip(java.awt.geom.Rectangle2D.Float(x, y, w, h * 0.30f))
-        g.paint = java.awt.GradientPaint(
-            x, y, Color(0xFF, 0xFF, 0xFF, 125),
-            x, y + h * 0.30f, Color(0xFF, 0xFF, 0xFF, 0),
-        )
-        g.stroke = java.awt.BasicStroke(5f)
-        g.draw(shape)
-        g.clip = previousClip
+    /** 面板底色：半透明白圆角面板（与其他卡片同源的经典样式）。 */
+    private fun paintPanel(g: Graphics2D, x: Float, y: Float, w: Float, h: Float, radius: Float = 18f) {
+        g.color = Color(0xFF, 0xFF, 0xFF, 16)
+        g.fill(RoundRectangle2D.Float(x, y, w, h, radius, radius))
     }
 
     /** 顶部标题区：眉题 + 主标题 + 右侧更新时间卡。 */
-    private fun drawHeader(g: Graphics2D, serverName: String, updateTime: String, style: RenderSettings.PerformanceStyle) {
+    private fun drawHeader(g: Graphics2D, serverName: String, updateTime: String) {
         val top = MARGIN
 
         // 英文眉题（字距拉宽）
@@ -353,9 +309,7 @@ object PerformanceRenderer {
         val cardHeight = HEADER_HEIGHT - 16
         val cardX = WIDTH - MARGIN - cardWidth
         val cardY = top + 8
-        paintPanel(
-            g, cardX.toFloat(), cardY.toFloat(), cardWidth.toFloat(), cardHeight.toFloat(), style, 20f,
-        )
+        paintPanel(g, cardX.toFloat(), cardY.toFloat(), cardWidth.toFloat(), cardHeight.toFloat(), 20f)
         g.font = InfoCardRenderer.font(24f, false)
         g.color = COLOR_LABEL
         g.drawString("更新时间", (cardX + 28).toFloat(), (cardY + 42).toFloat())
@@ -371,7 +325,7 @@ object PerformanceRenderer {
     }
 
     /** 指标卡网格：2 列 × N 行，每卡 = 标签 + 状态胶囊 + 大数值 + 进度条 + 副说明。 */
-    private fun drawMetricGrid(g: Graphics2D, cards: List<MetricCard>, style: RenderSettings.PerformanceStyle) {
+    private fun drawMetricGrid(g: Graphics2D, cards: List<MetricCard>) {
         if (cards.isEmpty()) return
         val gridTop = MARGIN + HEADER_HEIGHT + HEADER_GAP
         val contentWidth = WIDTH - 2 * MARGIN
@@ -379,12 +333,12 @@ object PerformanceRenderer {
         val rows = (cards.size + COLUMNS - 1) / COLUMNS
         val gridHeight = rows * CARD_HEIGHT + (rows - 1) * CARD_GAP
 
-        // 网格容器（模板风格：整块区域裹一层半透明深色底；液态玻璃同款玻璃面板）
+        // 网格容器（模板风格：整块区域裹一层半透明深色底）
         paintPanel(
             g,
             MARGIN.toFloat(), (gridTop - 14).toFloat(),
             contentWidth.toFloat(), (gridHeight + 28).toFloat(),
-            style, 18f,
+            18f,
         )
 
         cards.forEachIndexed { index, card ->
@@ -395,7 +349,6 @@ object PerformanceRenderer {
                 MARGIN + col * (cardWidth + CARD_GAP),
                 gridTop + row * (CARD_HEIGHT + CARD_GAP),
                 cardWidth,
-                style,
             )
         }
     }
@@ -407,19 +360,16 @@ object PerformanceRenderer {
         x: Int,
         y: Int,
         cardWidth: Int,
-        style: RenderSettings.PerformanceStyle,
     ) {
-        val liquidGlass = style == RenderSettings.PerformanceStyle.LIQUID_GLASS
-
-        // 卡片底色（液态玻璃 = 玻璃面板）
-        paintPanel(g, x.toFloat(), y.toFloat(), cardWidth.toFloat(), CARD_HEIGHT.toFloat(), style, 18f)
+        // 卡片底色
+        paintPanel(g, x.toFloat(), y.toFloat(), cardWidth.toFloat(), CARD_HEIGHT.toFloat(), 18f)
 
         // 左上标签
         g.font = InfoCardRenderer.font(24f, false)
-        g.color = if (liquidGlass) COLOR_VALUE else COLOR_LABEL
+        g.color = COLOR_LABEL
         g.drawString(card.label, (x + 32).toFloat(), (y + 52).toFloat())
 
-        // 右上状态胶囊（液态玻璃更透亮并带亮边）
+        // 右上状态胶囊
         g.font = InfoCardRenderer.font(22f, true)
         val statusWidth = g.getFontMetrics().stringWidth(card.statusText)
         val pillWidth = statusWidth + 40
@@ -428,60 +378,31 @@ object PerformanceRenderer {
             (card.statusColor.red.coerceAtLeast(60)),
             (card.statusColor.green.coerceAtLeast(60)),
             (card.statusColor.blue.coerceAtLeast(60)),
-            if (liquidGlass) 150 else 110,
+            110,
         )
-        val pillShape = RoundRectangle2D.Float(pillX.toFloat(), (y + 22).toFloat(), pillWidth.toFloat(), 40f, 20f, 20f)
         g.color = pillColor
-        g.fill(pillShape)
-        if (liquidGlass) {
-            g.paint = java.awt.GradientPaint(
-                pillX.toFloat(), (y + 22).toFloat(), Color(0xFF, 0xFF, 0xFF, 95),
-                pillX.toFloat(), (y + 62).toFloat(), Color(0xFF, 0xFF, 0xFF, 10),
-            )
-            g.fill(pillShape)
-            g.color = Color(0xFF, 0xFF, 0xFF, 90)
-            g.stroke = java.awt.BasicStroke(1.5f)
-            g.draw(pillShape)
-        }
-        g.color = if (liquidGlass) brighten(card.statusColor, 0.25) else card.statusColor
+        g.fill(RoundRectangle2D.Float(pillX.toFloat(), (y + 22).toFloat(), pillWidth.toFloat(), 40f, 20f, 20f))
+        g.color = card.statusColor
         g.drawString(card.statusText, (pillX + 20).toFloat(), (y + 50).toFloat())
 
-        // 中部大数值（带状态色：不可读时灰色，其余用状态色渐变到白太花哨——数值用白，仅状态区带色）
+        // 中部大数值（不可读时灰色，其余用白色）
         g.font = InfoCardRenderer.font(64f, true)
         g.color = if (card.valueText == "--") COLOR_SUB else COLOR_VALUE
         g.drawString(card.valueText, (x + 32).toFloat(), (y + 148).toFloat())
 
-        // 进度条（底部；液态玻璃 = 光泽渐变填充 + 顶部亮线）
+        // 进度条（底部）
         val barX = x + 32
         val barY = y + 178
         val barWidth = cardWidth - 64
         val barHeight = 12
-        g.color = Color(0xFF, 0xFF, 0xFF, if (liquidGlass) 44 else 30)
+        g.color = Color(0xFF, 0xFF, 0xFF, 30)
         g.fill(RoundRectangle2D.Float(barX.toFloat(), barY.toFloat(), barWidth.toFloat(), barHeight.toFloat(), 6f, 6f))
         if (card.progress != null && card.progress > 0.0) {
             val fillWidth = (barWidth * card.progress).toFloat().coerceAtMost(barWidth.toFloat())
-            if (liquidGlass) {
-                val left = brighten(card.barColor, 0.45)
-                g.paint = java.awt.GradientPaint(
-                    barX.toFloat(), barY.toFloat(), left,
-                    (barX + fillWidth).coerceAtLeast((barX + 1).toFloat()), barY.toFloat(), card.barColor,
-                )
-            } else {
-                g.color = card.barColor
-            }
+            g.color = card.barColor
             g.fill(RoundRectangle2D.Float(
                 barX.toFloat(), barY.toFloat(),
                 fillWidth.coerceAtLeast(6f), barHeight.toFloat(), 6f, 6f))
-            if (liquidGlass) {
-                // 进度条顶部光泽线（玻璃反光）
-                g.paint = java.awt.GradientPaint(
-                    barX.toFloat(), barY.toFloat(), Color(0xFF, 0xFF, 0xFF, 105),
-                    barX.toFloat(), (barY + barHeight / 2).toFloat(), Color(0xFF, 0xFF, 0xFF, 0),
-                )
-                g.fill(RoundRectangle2D.Float(
-                    barX.toFloat(), barY.toFloat(),
-                    fillWidth.coerceAtLeast(6f), (barHeight / 2).toFloat(), 3f, 3f))
-            }
         }
 
         // 底部副说明

@@ -5,11 +5,12 @@
 
 覆盖：
   SP. Spark 联动（SparkBridge 反射桥 / 双端 performanceSnapshot 接入）
-  LG. 液态玻璃样式（style 配置 / 渲染器 paintPanel / 枚举）
-  K.  性能数据缓存（cache-seconds / PerformanceService peekCache）
-  F.  配置版本重建（ConfigFileRebuilder / YamlTextMerge / 兼容层 getResource /
-      load 整树替换 / config-version 20）
-  D.  默认值调整（from-group 新默认 / idle-release-minutes 15）
+  LG. 液态玻璃已移除（覆盖版：枚举/样式配置/玻璃绘制全删，反断言）
+  GO. 全局透明度（覆盖版：GlobalOpacity / render.global-opacity / 四渲染器接入）
+  K.  性能数据缓存（cache-seconds 覆盖版默认 60 / PerformanceService peekCache）
+  F.  配置版本重建（ConfigFileRebuilder / YamlTextMerge 单元素列表修复 /
+      兼容层 getResource / load(Reader) / config-version 21）
+  D.  默认值调整（from-group 新默认 / idle-release-minutes 15 / 缓存 60）
   P.  /查性能 1.6.7.1 调整保持（TPS/MSPT 分层反射 / 固定四项 / show-* 已删）
   M.  /查在线 默认图片渲染（1.6.7 保持）
   R.  重连风暴降噪（1.6.6.3 保持）
@@ -100,26 +101,44 @@ def main():
                 check("SP6 NeoForge 端 spark 检测接入（SparkBridge + ModList）",
                       b"SparkBridge" in nf_main and b"ModList" in nf_main and b"spark" in nf_main)
 
-            # ================= LG. 液态玻璃样式（1.6.7.2 新增） =================
+            # ================= LG. 液态玻璃已移除（1.6.7.2 覆盖版反断言） =================
             rs = class_blob(zf, "cn/kerong/penguin/spigot/render/RenderSettings")
-            check(f"LG1 {label} RenderSettings 样式与缓存读取器（performanceStyle / performanceCacheMillis）",
-                  b"performanceStyle" in rs and b"performanceCacheMillis" in rs)
-            check(f"LG2 {label} RenderSettings 样式枚举与默认值（PerformanceStyle / liquid-glass）",
-                  b"PerformanceStyle" in rs and b"liquid-glass" in rs and b"vanilla" in rs)
+            check(f"LG1 {label} RenderSettings 无样式读取器（performanceStyle 已删）",
+                  b"performanceStyle" not in rs and b"performanceCacheMillis" in rs)
+            check(f"LG2 {label} RenderSettings 样式枚举已删（无 PerformanceStyle / liquid-glass）",
+                  b"PerformanceStyle" not in rs and b"liquid-glass" not in rs and b"vanilla" not in rs)
             perf = class_blob(zf, "cn/kerong/penguin/spigot/render/PerformanceRenderer")
-            check(f"LG3 {label} 渲染器玻璃绘制（paintPanel / brighten / LIQUID_GLASS）",
-                  b"paintPanel" in perf and b"brighten" in perf and b"LIQUID_GLASS" in perf)
-            check(f"LG4 {label} 渲染器入参带 style（PerformanceData）",
-                  has(zf, "cn/kerong/penguin/spigot/render/PerformanceRenderer$PerformanceData.class"))
+            check(f"LG3 {label} 渲染器玻璃绘制已删（无 brighten / LIQUID_GLASS），经典面板保留",
+                  b"paintPanel" in perf and b"brighten" not in perf and b"LIQUID_GLASS" not in perf)
+            check(f"LG4 {label} 渲染器入参无 style（PerformanceData 在位）",
+                  has(zf, "cn/kerong/penguin/spigot/render/PerformanceRenderer$PerformanceData.class") and
+                  b"style" not in perf)
             psvc = class_blob(zf, "cn/kerong/penguin/spigot/stats/PerformanceService")
-            check(f"LG5 {label} 服务读样式并渲染（performanceStyle 传入）",
-                  b"performanceStyle" in psvc)
+            check(f"LG5 {label} 服务不再读样式（performanceStyle 无引用）",
+                  b"performanceStyle" not in psvc)
 
-            # ================= K. 性能数据缓存（1.6.7.2 新增） =================
+            # ================= GO. 全局透明度（1.6.7.2 覆盖版新增） =================
+            check(f"GO1 {label} GlobalOpacity 类在位",
+                  has(zf, "cn/kerong/penguin/spigot/render/GlobalOpacity.class"))
+            go = class_blob(zf, "cn/kerong/penguin/spigot/render/GlobalOpacity")
+            check(f"GO2 {label} GlobalOpacity 用 AlphaComposite 合成（apply / applyOpacity）",
+                  b"applyOpacity" in go and b"java/awt/AlphaComposite" in go)
+            check(f"GO3 {label} RenderSettings 含 globalOpacity 读取器",
+                  b"globalOpacity" in rs and b"global-opacity" in rs)
+            onl = class_blob(zf, "cn/kerong/penguin/spigot/render/OnlineListRenderer")
+            lb = class_blob(zf, "cn/kerong/penguin/spigot/render/LeaderboardRenderer")
+            icr2 = class_blob(zf, "cn/kerong/penguin/spigot/render/InfoCardRenderer")
+            check(f"GO4 {label} 四渲染器全部接入全局透明度",
+                  b"GlobalOpacity" in perf and b"GlobalOpacity" in onl and
+                  b"GlobalOpacity" in lb and b"GlobalOpacity" in icr2)
+
+            # ================= K. 性能数据缓存（1.6.7.2；覆盖版默认 60） =================
             check(f"K1 {label} 服务缓存字段与方法（peekCache / storeCache / cachedPng）",
                   b"peekCache" in psvc and b"storeCache" in psvc and b"cachedPng" in psvc)
             check(f"K2 {label} 服务缓存时长读取（performanceCacheMillis）",
                   b"performanceCacheMillis" in psvc)
+            check(f"K3 {label} 缓存默认 60 秒（源码常量内联 60）",
+                  b"performanceCacheMillis" in rs and b"liquid-glass" not in rs)
 
             # ================= F. 配置版本重建（1.6.7.2 新增） =================
             check(f"F1 {label} ConfigFileRebuilder 类在位", has(zf, "cn/kerong/penguin/spigot/manager/ConfigFileRebuilder.class"))
@@ -133,6 +152,12 @@ def main():
             ytm = class_blob(zf, "cn/kerong/penguin/spigot/manager/YamlTextMerge")
             check(f"F5 {label} YamlTextMerge 走 snakeyaml 渲染值",
                   b"org/yaml/snakeyaml/DumperOptions" in ytm)
+            check(f"F5b {label} YamlTextMerge 列表按类型分派（Collection，覆盖版单元素列表修复）",
+                  b"java/util/Collection" in ytm and b"[]" in ytm)
+            check(f"F9 {label} 重建器 loadYaml 可感知失败（load + Reader）",
+                  b"java/io/Reader" in rebuilder and b"loadConfiguration" not in rebuilder)
+            check(f"F10 {label} 重建器旧默认收敛键（cache-seconds 字符串）",
+                  b"render.performance.cache-seconds" in rebuilder)
             if label == "NeoForge":
                 jp = class_blob(zf, "org/bukkit/plugin/java/JavaPlugin")
                 check("F6 NeoForge 兼容层 JavaPlugin 含 getResource",
@@ -143,13 +168,15 @@ def main():
                 check("F8 NeoForge 兼容层 load 整树替换（clear 语义在位）",
                       b"clear" in yc)
 
-            # ================= D. 默认值调整（1.6.7.2） =================
+            # ================= D. 默认值调整（1.6.7.2 覆盖版） =================
             cfg = read_text(zf, "config.yml")
-            check(f"D1 {label} config-version 升 20", "config-version: 20" in cfg)
+            check(f"D1 {label} config-version 升 21（覆盖版）", "config-version: 21" in cfg)
             check(f"D2 {label} from-group 新默认（§b 染 QQ）",
                   'from-group: "[§bQQ§r] {name}: {message}"' in cfg)
             check(f"D3 {label} idle-release-minutes 默认 15", "idle-release-minutes: 15" in cfg)
             check(f"D4 {label} 旧 from-group 默认不再出现", 'from-group: "[QQ] {name}: {message}"' not in cfg)
+            check(f"D5 {label} cache-seconds 默认 60（覆盖版 5 → 60）", "cache-seconds: 60" in cfg)
+            check(f"GO5 {label} config global-opacity: 1.0", "global-opacity: 1.0" in cfg)
 
             # ================= P. /查性能 1.6.7.1 调整保持 =================
             check(f"P1 {label} PerformanceRenderer 类在位", has(zf, "cn/kerong/penguin/spigot/render/PerformanceRenderer.class"))
@@ -201,9 +228,9 @@ def main():
                 check("P16b NeoForge 旧错误反射调用已移除",
                       b'"getAverageTickTime"' not in nf_main2 and b'"tickTimes"' not in nf_main2)
 
-            check(f"P17 {label} config performance 段：builtin-background + style + cache-seconds",
-                  "builtin-background: true" in cfg and "style: vanilla" in cfg and
-                  "cache-seconds: 5" in cfg and "show-tps" not in cfg and "show-online" not in cfg)
+            check(f"P17 {label} config performance 段：builtin-background + cache-seconds 60，style 已删",
+                  "builtin-background: true" in cfg and "cache-seconds: 60" in cfg and
+                  "style: vanilla" not in cfg and "show-tps" not in cfg and "show-online" not in cfg)
             check(f"P18 {label} config commands.查性能 默认开", "查性能: true" in cfg)
             check(f"P19 {label} help.md 含 /查性能 行（四项指标）",
                   "/查性能" in read_text(zf, "Markdown/help.md") and
@@ -249,8 +276,10 @@ def main():
             # ================= Y. config.yml =================
             check(f"Y3 {label} 释放说明：不刷控制台", "不刷控制台" in cfg)
             check(f"Y6 {label} idle-release 默认 15（1.6.7.2）", "idle-release-minutes: 15" in cfg)
-            check(f"Y7 {label} style 注释含液态玻璃说明", "液态玻璃" in cfg)
+            check(f"Y7 {label} style 键与液态玻璃说明已删（覆盖版）",
+                  "液态玻璃" not in cfg and "style: vanilla" not in cfg)
             check(f"Y8 {label} cache-seconds 注释含渲染过慢说明", "渲染过慢" in cfg)
+            check(f"Y9 {label} global-opacity 注释（全局透明度说明）", "全局透明度" in cfg)
 
             # ================= V. 版本 =================
             if label == "Spigot":
@@ -310,24 +339,29 @@ def main():
     check("S23 KERONG 源码 capture 三参重载（cpuOverride）",
           "fun capture(\n            tps: Double?,\n            mspt: Double?,\n            cpuOverride: Double?," in kerong_src)
     rs_src = src("common-Bot/src/main/kotlin/cn/kerong/penguin/spigot/render/RenderSettings.kt")
-    check("S24 RenderSettings 源码样式与缓存默认值",
-          'const val DEFAULT_PERFORMANCE_STYLE = "vanilla"' in rs_src and
-          "const val DEFAULT_PERFORMANCE_CACHE_SECONDS = 5" in rs_src and
+    check("S24 RenderSettings 源码缓存与透明度默认值（覆盖版）",
+          "const val DEFAULT_PERFORMANCE_CACHE_SECONDS = 60" in rs_src and
+          "const val DEFAULT_GLOBAL_OPACITY = 1.0" in rs_src and
           "DEFAULT_IDLE_RELEASE_MINUTES = 15.0" in rs_src)
-    check("S24b RenderSettings 源码样式枚举", "enum class PerformanceStyle { VANILLA, LIQUID_GLASS }" in rs_src)
+    check("S24b RenderSettings 源码样式枚举已删（覆盖版）",
+          "enum class PerformanceStyle" not in rs_src and "liquid-glass" not in rs_src and
+          "fun globalOpacity(): Float" in rs_src)
     check("S24c RenderSettings 源码 idle 默认注释（5 → 15）", "1.6.7.2 默认 5 → 15" in rs_src)
     pr_src = src("common-Bot/src/main/kotlin/cn/kerong/penguin/spigot/render/PerformanceRenderer.kt")
-    check("S25 渲染器源码玻璃面板与光泽",
-          "paintPanel" in pr_src and "brighten" in pr_src and "LIQUID_GLASS" in pr_src)
-    check("S25b 渲染器源码样式入参（style 默认 VANILLA）",
-          "style: RenderSettings.PerformanceStyle = RenderSettings.PerformanceStyle.VANILLA" in pr_src)
+    check("S25 渲染器源码玻璃绘制已删（覆盖版）",
+          "paintPanel" in pr_src and "brighten" not in pr_src and "LIQUID_GLASS" not in pr_src)
+    check("S25b 渲染器源码无样式入参（覆盖版）",
+          "style: RenderSettings.PerformanceStyle" not in pr_src and
+          "RenderSettings.PerformanceStyle" not in pr_src)
     check("S25c 渲染器设计来源含模板合集链接",
           "easybot-image-templates" in pr_src)
+    check("S25d 渲染器源码接入全局透明度（覆盖版）",
+          "GlobalOpacity.apply(image)" in pr_src)
     ps_src = src("common-Bot/src/main/kotlin/cn/kerong/penguin/spigot/stats/PerformanceService.kt")
-    check("S26 性能服务源码缓存（peekCache / storeCache / 样式失效）",
-          "peekCache" in ps_src and "storeCache" in ps_src and "cachedStyle != style" in ps_src)
-    check("S26b 性能服务源码渲染带样式",
-          "style = style," in ps_src)
+    check("S26 性能服务源码缓存（peekCache / storeCache，无样式失效链）",
+          "peekCache" in ps_src and "storeCache" in ps_src and "cachedStyle" not in ps_src)
+    check("S26b 性能服务源码渲染无样式参数（覆盖版）",
+          "style = style" not in ps_src and "performanceStyle" not in ps_src)
     fr_src = src("server-Spigot/src/main/kotlin/cn/kerong/penguin/spigot/manager/ConfigFileRebuilder.kt")
     check("S27 重建器源码：默认值收敛（旧 from-group / 旧 idle 5）",
           'OLD_FROM_GROUP_DEFAULT = "[QQ] {name}: {message}"' in fr_src and
@@ -339,14 +373,27 @@ def main():
           "YamlTextMerge" in fr_src and "不经 YAML 序列化重写" in fr_src)
     check("S27d ConfigManager 挂接重建器",
           "ConfigFileRebuilder.rebuildIfNeeded(" in cm_src)
-    check("S27e ConfigManager 版本 20 与共享迁移表",
-          "CURRENT_CONFIG_VERSION = 20" in cm_src and
+    check("S27e ConfigManager 版本 21 与共享迁移表（覆盖版）",
+          "CURRENT_CONFIG_VERSION = 21" in cm_src and
           "internal val LEGACY_PATH_MOVES" in cm_src and "internal val REMOVED_CONFIG_KEYS" in cm_src)
-    check("S27f DEFAULT_VALUES 新键与默认值调整",
-          '"render.performance.style" to "vanilla"' in cm_src and
-          '"render.performance.cache-seconds" to 5' in cm_src and
+    check("S27f DEFAULT_VALUES 覆盖版（style 删 / cache 60 / global-opacity）",
+          '"render.performance.style" to "vanilla"' not in cm_src and
+          '"render.performance.cache-seconds" to 60' in cm_src and
+          '"render.global-opacity" to 1.0' in cm_src and
           '"chat-format.from-group" to "[§bQQ§r] {name}: {message}"' in cm_src and
           '"render.idle-release-minutes" to 15' in cm_src)
+    check("S27h ConfigManager 废弃键含 style（覆盖版）",
+          '"render.performance.style",' in cm_src)
+    check("S27i ConfigManager 兑底收敛（cache 5 → 60）",
+          'config.set("render.performance.cache-seconds", 60)' in cm_src)
+    check("S27j 重建器源码：单元素列表修复（Collection 类型分派，覆盖版核心）",
+          "value is Collection<*>" in fr_src and
+          'listOf("$indentStr$key: []")' in fr_src and
+          '"$indentStr- $dumped"' in fr_src)
+    check("S27k 重建器源码：loadYaml 可感知失败（config.load 实例方法，覆盖版）",
+          "config.load(it)" in fr_src and "reader.use { config.load(it) }" in fr_src)
+    check("S27l 重建器源码：旧缓存默认收敛（5 删 60 生效，覆盖版）",
+          "OLD_PERFORMANCE_CACHE_SECONDS = 5" in fr_src)
     check("S27g chatFormat() 读取新默认", '"[§bQQ§r] {name}: {message}") ?: "[§bQQ§r] {name}: {message}"' in cm_src)
     nf_jp_src = src("server-NeoForge/src/main/kotlin/org/bukkit/plugin/java/JavaPlugin.kt")
     check("S28 NF 兼容层 getResource 源码在位", "fun getResource(name: String)" in nf_jp_src)
@@ -354,6 +401,11 @@ def main():
     check("S28b NF 兼容层 load 整树替换 + Reader 重载",
           "rootMap.clear()" in nf_yc_src and "fun loadConfiguration(reader: java.io.Reader)" in nf_yc_src)
     check("S28c NF 兼容层注释更新（重建不经本层重存）", "ConfigFileRebuilder 文本级重建" in nf_yc_src)
+    check("S28d NF 兼容层 load(Reader) 实例方法（覆盖版，可感知失败）",
+          "fun load(reader: java.io.Reader)" in nf_yc_src)
+    go_src = src("common-Bot/src/main/kotlin/cn/kerong/penguin/spigot/render/GlobalOpacity.kt")
+    check("S28e GlobalOpacity 源码：AlphaComposite 合成 + 纯函数形态（覆盖版）",
+          "AlphaComposite.SrcOver.derive" in go_src and "fun applyOpacity(image: BufferedImage, opacity: Float)" in go_src)
 
     check("S29 源码渲染器无 System.gc() 调用",
           "System.gc()" not in src("common-Bot/src/main/kotlin/cn/kerong/penguin/spigot/render/InfoCardRenderer.kt") and
@@ -365,11 +417,14 @@ def main():
     check("S17 双端 help.md 查性能行",
           "/查性能" in src("common-Bot/src/main/resources/Markdown/help.md") and
           "/查性能" in src("server-NeoForge/src/main/resources/Markdown/help.md"))
-    check("S18 双端 config.yml show-* 全删 + 新键在位",
+    check("S18 双端 config.yml show-* 全删 + style 键删（覆盖版）+ 缓存 60",
           "show-tps" not in src("server-Spigot/src/main/resources/config.yml") and
           "show-tps" not in src("server-NeoForge/src/main/resources/config.yml") and
-          "style: vanilla" in src("server-Spigot/src/main/resources/config.yml") and
-          "style: vanilla" in src("server-NeoForge/src/main/resources/config.yml"))
+          "style: vanilla" not in src("server-Spigot/src/main/resources/config.yml") and
+          "style: vanilla" not in src("server-NeoForge/src/main/resources/config.yml") and
+          "cache-seconds: 60" in src("server-Spigot/src/main/resources/config.yml") and
+          "global-opacity: 1.0" in src("server-Spigot/src/main/resources/config.yml") and
+          "global-opacity: 1.0" in src("server-NeoForge/src/main/resources/config.yml"))
     check("S19 RenderSettings 源码无 performanceItemEnabled",
           "performanceItemEnabled" not in rs_src)
     check("S30 README 设计来源含模板合集 + 1.6.7.2 更新日志",

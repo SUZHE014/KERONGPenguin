@@ -42,6 +42,9 @@ internal object ConfigFileRebuilder {
     private const val OLD_IDLE_RELEASE_MINUTES = 5.0
     private const val NEW_IDLE_RELEASE_MINUTES = 15.0
 
+    /** 1.6.7.2 覆盖版：性能数据缓存默认 5 → 60。 */
+    private const val OLD_PERFORMANCE_CACHE_SECONDS = 5
+
     /**
      * 磁盘版本低于 [currentVersion] 时以 JAR 新版 config.yml 重建用户配置。
      *
@@ -111,6 +114,13 @@ internal object ConfigFileRebuilder {
         ) {
             disk.set("render.idle-release-minutes", null)
         }
+        // 1.6.7.2 覆盖版：性能数据缓存默认 5 → 60（仍是旧默认 5 的配置删除后
+        // 由 JAR 新默认生效，用户自定义值不动）
+        if (disk.isSet("render.performance.cache-seconds") &&
+            disk.getInt("render.performance.cache-seconds", -1) == OLD_PERFORMANCE_CACHE_SECONDS
+        ) {
+            disk.set("render.performance.cache-seconds", null)
+        }
 
         // 3. 收集用户自定义值：与 JAR 新默认不同的项 + JAR 不存在的自定义键
         val diskLeaves = LinkedHashMap<String, Any?>()
@@ -168,11 +178,19 @@ internal object ConfigFileRebuilder {
 
     // ---------- 内部工具 ----------
 
-    /** 解析 YAML 文本（双端同名 API；失败抛出或返回空由调用方判定）。 */
-    @Suppress("DEPRECATION")
+    /**
+     * 解析 YAML 文本（解析失败抛异常，由调用方捕获判定；双端同名 API）。
+     *
+     * 1.6.7.2 覆盖版：改用 load(Reader) 实例方法（解析失败抛出）——
+     * 旧写法 loadConfiguration(Reader) 是“吞异常打 ERROR 返回空配置”的
+     * 容错 API，解析失败永远走不到调用方的 catch，只能靠版本号不一致
+     * 兼底，且会在控制台刷一大段吓人的异常堆栈。
+     */
     private fun loadYaml(text: String): YamlConfiguration {
         val reader = java.io.InputStreamReader(ByteArrayInputStream(text.toByteArray(StandardCharsets.UTF_8)), StandardCharsets.UTF_8)
-        return reader.use { YamlConfiguration.loadConfiguration(it) }
+        val config = YamlConfiguration()
+        reader.use { config.load(it) }
+        return config
     }
 
     /** 递归收集叶子键值（路径 → 值；列表与标量均按叶子处理）。 */
@@ -306,13 +324,39 @@ internal object YamlTextMerge {
 
     // ---------- 渲染 ----------
 
-    /** 键值 → 行（标量一行；空列表 []；非空列表 = 键行 + 同缩进项行）。 */
+    /**
+     * 键值 → 行（标量一行；空列表 []；非空列表 = 键行 + 同缩进项行）。
+     *
+     * 1.6.7.2 覆盖版修复：列表按类型分派，不再依赖 dump 结果是否含换行判
+     * 分支——单元素列表 dump 出的是单行“- item”（不含换行），旧判式把它
+     * 误当标量拼成“key: - item”非法 YAML，单群用户的 bot.groups 回填
+     * 恰好踩中（合并结果解析失败 → 配置重建放弃）。现按 [Collection]
+     * 类型显式分支：空列表写 []，非空列表逐项写块状行；列表项自身 dump
+     * 出多行（如 custom-commands 的映射项）时续行补两空格续行缩进。
+     */
     private fun renderEntry(indentStr: String, key: String, value: Any?): List<String> {
+        if (value is Collection<*>) {
+            if (value.isEmpty()) return listOf("$indentStr$key: []")
+            val itemLines = ArrayList<String>(value.size)
+            for (item in value) {
+                val dumped = dump(item)
+                if (dumped.contains('\n')) {
+                    val parts = dumped.split('\n')
+                    itemLines.add("$indentStr- ${parts.first()}")
+                    for (i in 1 until parts.size) {
+                        itemLines.add("$indentStr  ${parts[i]}")
+                    }
+                } else {
+                    itemLines.add("$indentStr- $dumped")
+                }
+            }
+            return listOf("$indentStr$key:") + itemLines
+        }
         val dumped = dump(value)
         if (!dumped.contains('\n')) {
             return listOf("$indentStr$key: $dumped")
         }
-        // 块状列表项与键行同缩进（与 config.yml 现有书写风格一致）
+        // 罕见兜底（本插件配置不产生的形态）：多行块值按行加缩进续写
         return listOf("$indentStr$key:") + dumped.split('\n').map { "$indentStr$it" }
     }
 

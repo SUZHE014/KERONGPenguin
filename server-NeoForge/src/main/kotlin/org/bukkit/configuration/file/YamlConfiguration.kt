@@ -61,6 +61,18 @@ open class YamlConfiguration : FileConfiguration() {
         rootMap.putAll(loaded ?: emptyMap())
     }
 
+    /**
+     * 从字符流装载（整树替换；1.6.7.2 覆盖版新增：对齐 Bukkit 的 load(Reader)
+     * 实例方法——解析失败抛出异常而非吞掉，配置重建器用它做可感知失败的
+     * 合并结果校验；与 [loadConfiguration] 容错语义的区别见其 KDoc）。
+     */
+    fun load(reader: java.io.Reader) {
+        val loaded = org.yaml.snakeyaml.Yaml().load<MutableMap<String, Any?>>(reader)
+        val rootMap = root as MutableMap<String, Any?>
+        rootMap.clear()
+        rootMap.putAll(loaded ?: emptyMap())
+    }
+
     /** 从流装载（整树替换）。 */
     fun loadStream(stream: InputStream) {
         val loaded = org.yaml.snakeyaml.Yaml().load<MutableMap<String, Any?>>(stream)

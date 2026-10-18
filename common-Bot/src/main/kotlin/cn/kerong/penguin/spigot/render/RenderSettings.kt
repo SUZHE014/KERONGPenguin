@@ -22,17 +22,14 @@ object RenderSettings {
     /** 渲染空闲内存释放默认阈值（分钟，1.6.6.2 新增；1.6.7.2 默认 5 → 15）。 */
     const val DEFAULT_IDLE_RELEASE_MINUTES = 15.0
 
-    /** 查性能卡片样式默认值（1.6.7.2 新增，默认原版）。 */
-    const val DEFAULT_PERFORMANCE_STYLE = "vanilla"
+    /** 性能数据缓存默认秒数（1.6.7.2 新增；覆盖版默认 5 → 60）。 */
+    const val DEFAULT_PERFORMANCE_CACHE_SECONDS = 60
 
-    /** 性能数据缓存默认秒数（1.6.7.2 新增，对应「渲染过慢」推荐的性能数据缓存）。 */
-    const val DEFAULT_PERFORMANCE_CACHE_SECONDS = 5
+    /** 全局透明度默认值（1.6.7.2 覆盖版新增，1.0 = 不透明）。 */
+    const val DEFAULT_GLOBAL_OPACITY = 1.0
 
     /** 头像获取优先方式（1.6.6.1 覆盖版新增配置）。 */
     enum class AvatarFetchPriority { LOCAL, EXTERNAL }
-
-    /** 查性能卡片渲染样式（1.6.7.2 新增，参考 EasyBot 液态玻璃模板的样式切换）。 */
-    enum class PerformanceStyle { VANILLA, LIQUID_GLASS }
 
     /** 图片渲染命令的用户冷却（毫秒；0 = 无冷却）。 */
     fun commandCooldownMillis(): Long {
@@ -142,35 +139,31 @@ object RenderSettings {
     }
 
     /**
-     * 查性能卡片渲染样式（1.6.7.2 新增，默认原版）。
+     * 全局透明度（1.6.7.2 覆盖版新增 render.global-opacity，默认 1.0）。
      *
-     * - render.performance.style：
-     *   - vanilla（默认）：原版毛玻璃深色（与其他卡片同源的经典样式）；
-     *   - liquid-glass：液态玻璃（更亮更通透的玻璃质感：亮边折射 +
-     *     顶部高光 + 光泽进度条，参考 EasyBot 液态玻璃模板）；
-     * - 液态玻璃多层高光渐变的渲染耗时会略高于原版，注重生成速度用
-     *   原版并配合 [performanceCacheMillis] 缓存；
-     * - 值不区分大小写，未识别的值一律按 vanilla；实时读取
-     *   （/kerong reload 后立即生效）。
+     * - 作用于全部图片卡片输出（查信息 / 查在线 / 查性能 / 在线排行榜 /
+     *   财富榜）：编码 PNG 前把整张画布像素 alpha 统一乘以该系数；
+     * - 1.0 = 完全不透明（默认，行为与旧版一致）；0.5 = 半透明；
+     *   越小越透明（QQ 客户端按 PNG 透明度叠加在聊天背景上显示）；
+     * - 取值范围 0.0 ~ 1.0，超出自动收敛到边界；
+     * - 实时读取（/kerong reload 后立即生效）。
      */
-    fun performanceStyle(): PerformanceStyle {
+    fun globalOpacity(): Float {
         val value = try {
-            (BotShared.instance as? JavaPlugin)?.config?.getString("render.performance.style", DEFAULT_PERFORMANCE_STYLE)
-                ?: DEFAULT_PERFORMANCE_STYLE
+            (BotShared.instance as? JavaPlugin)?.config?.getDouble(
+                "render.global-opacity",
+                DEFAULT_GLOBAL_OPACITY,
+            ) ?: DEFAULT_GLOBAL_OPACITY
         } catch (_: Throwable) {
-            DEFAULT_PERFORMANCE_STYLE
+            DEFAULT_GLOBAL_OPACITY
         }
-        return if (value.trim().equals("liquid-glass", ignoreCase = true)) {
-            PerformanceStyle.LIQUID_GLASS
-        } else {
-            PerformanceStyle.VANILLA
-        }
+        return value.coerceIn(0.0, 1.0).toFloat()
     }
 
     /**
-     * 性能数据缓存时长（毫秒，1.6.7.2 新增）。
+     * 性能数据缓存时长（毫秒，1.6.7.2 新增；覆盖版默认 5 → 60）。
      *
-     * - render.performance.cache-seconds（默认 5）：缓存时间内的重复
+     * - render.performance.cache-seconds（默认 60）：缓存时间内的重复
      *   /查性能 查询直接复用上一张卡片（多人同时查 / 冷却结束立刻再查
      *   时秒回，不重复取数与渲染——对应 EasyBot 模板「渲染过慢」一节
      *   推荐开启的性能数据缓存）；

@@ -12,7 +12,7 @@ import java.util.Date
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * /查性能 命令图片输出服务（1.6.7 新增，1.6.7.1 调整，1.6.7.2 增样式与缓存）。
+ * /查性能 命令图片输出服务（1.6.7 新增，1.6.7.1 调整，1.6.7.2 增缓存）。
  *
  * 全流程异步（与 /查在线 一致）：机器人消息线程只做冷却判断
  * （render.command-cooldown-seconds，同一配置共用冷却秒数但独立计数），
@@ -22,13 +22,14 @@ import java.util.concurrent.ConcurrentHashMap
  *    优先直接取 spark 数据；核心不支持读取的项为 null，卡片显示「--」）；
  * 2. 指标固定四项（TPS / MSPT / 内存 / CPU，1.6.7.1 起不再展示
  *    在线人数，单项显隐配置已移除）；
- * 3. [PerformanceRenderer] 渲染卡片（1.6.7.2 起按 render.performance.style
- *    切换原版 / 液态玻璃样式；背景与其他渲染共用
+ * 3. [PerformanceRenderer] 渲染卡片（背景与其他渲染共用
  *    [InfoCardAssets.resolveBackground]，render.performance.builtin-background
- *    默认内置底图）；
+ *    默认内置底图；1.6.7.2 覆盖版起样式固定原版，透明度由
+ *    render.global-opacity 统一控制）；
  * 4. 单图发送；性能数据缓存（1.6.7.2 新增 render.performance.cache-seconds，
- *    默认 5 秒）：缓存窗口内的重复查询直接复用上一张卡片秒回（对应
- *    EasyBot 模板「渲染过慢」一节推荐开启的性能数据缓存），0 = 关闭。
+ *    覆盖版默认 60 秒）：缓存窗口内的重复查询直接复用上一张卡片秒回
+ *    （对应 EasyBot 模板「渲染过慢」一节推荐开启的性能数据缓存），
+ *    0 = 关闭。
  *
  * 命令总开关走 commands.查性能（与其他群命令一致：关闭后命令失效、
  * 快捷菜单按钮同步消失、回复 command-disabled 模板）。
@@ -47,36 +48,29 @@ object PerformanceService {
     @Volatile
     private var cachedPng: ByteArray? = null
 
-    /** 缓存对应的样式（样式切换后旧缓存不复用）。 */
-    @Volatile
-    private var cachedStyle: RenderSettings.PerformanceStyle? = null
-
     /** 缓存写入时间。 */
     @Volatile
     private var cachedAtMillis: Long = 0L
 
-    /** 取未过期缓存（无缓存 / 过期 / 样式不一致返回 null）。 */
-    private fun peekCache(style: RenderSettings.PerformanceStyle): ByteArray? {
+    /** 取未过期缓存（无缓存 / 过期返回 null）。 */
+    private fun peekCache(): ByteArray? {
         val ttl = RenderSettings.performanceCacheMillis()
         if (ttl <= 0) return null
         synchronized(cacheLock) {
             val cached = cachedPng ?: return null
-            if (cachedStyle != style) return null
             if (System.currentTimeMillis() - cachedAtMillis >= ttl) return null
             return cached
         }
     }
 
     /** 写入缓存（关闭缓存时清空旧缓存）。 */
-    private fun storeCache(style: RenderSettings.PerformanceStyle, png: ByteArray) {
+    private fun storeCache(png: ByteArray) {
         synchronized(cacheLock) {
             if (RenderSettings.performanceCacheMillis() <= 0) {
                 cachedPng = null
-                cachedStyle = null
                 return
             }
             cachedPng = png
-            cachedStyle = style
             cachedAtMillis = System.currentTimeMillis()
         }
     }
@@ -101,10 +95,8 @@ object PerformanceService {
         try {
             CardRenderPool.submit {
                 try {
-                    val style = RenderSettings.performanceStyle()
-
                     // 0. 缓存命中直接复用（性能数据缓存，1.6.7.2 新增）
-                    peekCache(style)?.let { cached ->
+                    peekCache()?.let { cached ->
                         if (!QClient.replyWithImgBytes(event, cached)) {
                             cn.kerong.penguin.spigot.qqbind.MessageTemplates.sendPlain(event, "image-send-failed")
                         }
@@ -134,12 +126,11 @@ object PerformanceService {
                             updateTime = updateTime,
                             snapshot = snapshot,
                             background = background,
-                            style = style,
                         )
                     )
 
                     // 3. 写入缓存（render.performance.cache-seconds 窗口内复用）
-                    storeCache(style, png)
+                    storeCache(png)
 
                     // 4. 单图发送
                     if (png.isEmpty() || !QClient.replyWithImgBytes(event, png)) {
