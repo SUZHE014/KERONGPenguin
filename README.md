@@ -7,8 +7,8 @@ Minecraft QQ 机器人插件，通过 QQ 官方机器人 API 实现 QQ 群与服
 ## 设计来源
 
 - **图片渲染界面设计参考：BaiZhouziYou / 新亭泪**（设计来源：
-  https://xintinglei.cn/，模板合集：
-  https://github.com/BaizhouziYou/easybot-image-templates/）
+  <https://xintinglei.cn/>，模板合集：
+  <https://github.com/BaizhouziYou/easybot-image-templates/>）
   —— /查信息卡片、/查在线列表、排行榜的毛玻璃深色风格，早期版本参照
   该作者发布在 EasyBot 资源市场的图片模板复刻（见
   [issue #1](https://github.com/SUZHE014/KERONGPenguin/issues/1)）；
@@ -359,7 +359,7 @@ server-NeoForge/ # NeoForge 1.21.1 平台适配（org.bukkit 兼容层 + @Mod �
   「插件实际占用」与「JVM 预留量」。
 - **新增：图片渲染界面设计来源署名（issue #1）** —— README 与
   官网补充设计参考来源：BaiZhouziYou / 新亭泪
-  （https://xintinglei.cn/，EasyBot 资源市场图片模板），三个渲染器
+  （<https://xintinglei.cn/>，EasyBot 资源市场图片模板），三个渲染器
   源码文件头同步标注。
 
 ### v1.6.6.1 更新日志（头像本地优先 / 渲染内存优化 / 功能删减）
