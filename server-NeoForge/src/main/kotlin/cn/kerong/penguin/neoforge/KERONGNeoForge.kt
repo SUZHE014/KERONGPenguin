@@ -261,17 +261,19 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         get() = NeoServerRef.server?.playerList?.players?.map { it.gameProfile.name } ?: emptyList()
 
     /**
-     * 服务器性能快照（1.6.7，/查性能 数据源；1.6.7.1 修复读不到；1.6.7.6 增延迟与在线人数）。
+     * 服务器性能快照（1.6.7，/查性能 数据源；1.6.7.1 修复读不到；1.6.7.6 增
+     * 在线人数；1.6.7.8 移除延迟项）。
      *
      * - MSPT 反射读取 MinecraftServer 的 getAverageTickTimeNanos()
      *   （1.20.5+ Mojang 映射公有方法，纳秒 → 毫秒），失败时回退
      *   tickTimesNanos / tickTimes 数组平均；NeoForge 单一服务器线程，
      *   该读数权威稳定，不需要自采样兜底；
      * - TPS 由 MSPT 换算（1000/mspt 封顶 20）；
-     * - 延迟（1.6.7.6）：spark playerPing 优先，回退读各玩家连接的
-     *   ServerCommonPacketListenerImpl#latency()（keep-alive 维护的毫秒值，
-     *   mojmap 公有方法）取平均；无人在线为 null；
      * - 在线人数（1.6.7.6）：playerList 当前人数（仅人数展示）；
+     * - 1.6.7.8：延迟项移除——玩家 Ping 反映的是「客户端到服务器」连接
+     *   的往返，本地 / 同机 / 内网穿透部署下恒为 0ms，数据永远只代表
+     *   服务器本地网络，对性能监控无实际意义（用户反馈），
+     *   spark playerPing 与连接 latency 平均链路一并下线；
      * - JVM 堆内存与进程 CPU 由 [cn.kerong.bot.PerformanceSnapshot.capture]
      *   统一采集（双端一致）；
      * - 服务器未完成启动（NeoServerRef 为空）返回 null。
@@ -283,7 +285,6 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         var sparkTps: Double? = null
         var sparkMspt: Double? = null
         var sparkCpu: Double? = null
-        var sparkPing: Double? = null
         try {
             if (net.neoforged.fml.ModList.get().isLoaded("spark")) {
                 val metrics = SparkBridge.read()
@@ -291,7 +292,6 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
                     sparkTps = metrics.tps
                     sparkMspt = metrics.mspt
                     sparkCpu = metrics.cpu
-                    sparkPing = metrics.ping
                 }
             }
         } catch (_: Throwable) {
@@ -303,37 +303,19 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             ?: cn.kerong.bot.PerformanceSnapshot.readTps(server)
             ?: cn.kerong.bot.PerformanceSnapshot.tpsFromMspt(mspt)
 
-        // 1.6.7.6：延迟与在线人数（延迟 spark 优先 → 各玩家连接 latency 平均）
-        // 1.6.7.7：延迟 0 是合法值（本地/局域网连接与首次 keep-alive 未完成时
-        // 保持 0），`> 0` 会误判为无效——单人本地进服时平均延迟永远算不出；
-        // 现改为 >= 0 计数，-1 仍是读取失败哨兵
+        // 1.6.7.6：在线人数（仅人数展示）；1.6.7.8 起不再采集延迟——玩家
+        // Ping 反映的是「客户端到服务器」连接的往返，本地 / 同机 / 内网
+        // 穿透部署下恒为 0ms，数据永远只代表服务器本地网络，对性能监控
+        // 无实际意义（用户反馈），延迟指标与采集链路整体下线
         var online: Int? = null
-        var ping: Double? = sparkPing
         try {
-            val players = server.playerList?.players ?: emptyList()
-            online = players.size
-            if (ping == null && players.isNotEmpty()) {
-                var sum = 0.0
-                var count = 0
-                for (player in players) {
-                    val value = try {
-                        player.connection?.latency() ?: -1
-                    } catch (_: Throwable) {
-                        -1
-                    }
-                    if (value >= 0) {
-                        sum += value
-                        count++
-                    }
-                }
-                if (count > 0) ping = sum / count
-            }
+            online = server.playerList?.players?.size
         } catch (_: Throwable) {
-            // 玩家表读取失败：人数与延迟保持 null（卡片显示「--」）
+            // 玩家表读取失败：人数保持 null（卡片显示「--」）
         }
 
         return try {
-            cn.kerong.bot.PerformanceSnapshot.capture(tps, mspt, sparkCpu, ping, online)
+            cn.kerong.bot.PerformanceSnapshot.capture(tps, mspt, sparkCpu, online)
         } catch (_: Throwable) {
             null
         }
@@ -420,7 +402,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             .resolve("kerongpenguin").toFile()
 
         /** 模组版本（与 neoforge.mods.toml 一致）。 */
-        private const val MOD_VERSION = "1.6.7.7"
+        private const val MOD_VERSION = "1.6.7.8"
 
         /** 当前模组实例（命令与事件层访问）。 */
         @Volatile

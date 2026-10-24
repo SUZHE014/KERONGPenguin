@@ -282,8 +282,11 @@ internal class TextExecution(
  * - TPS / MSPT 由平台实现采集，读不到时为 null，卡片显示「--」；
  * - JVM 堆内存与进程 CPU 为 JVM 级数据，双端一致，统一由
  *   [capture] 伴生工厂采集，平台实现只补核心层指标；
- * - 1.6.7.6 新增：[avgPingMillis]（在线玩家平均延迟，毫秒；无人在线 / 核心
- *   不支持时为 null）与 [onlinePlayers]（在线人数，仅人数展示；读不到为 null）。
+ * - 1.6.7.6 新增：[onlinePlayers]（在线人数，仅人数展示；读不到为 null）；
+ * - 1.6.7.8 移除：原「在线玩家平均延迟」字段（avgPingMillis）——玩家
+ *   Ping 反映的是「客户端到服务器」连接的往返，本地 / 同机 / 内网穿透
+ *   部署下恒为 0ms，数据永远只代表服务器本地网络，对性能监控无实际
+ *   意义（用户反馈），整条延迟采集与展示链路随字段一并下线。
  */
 data class PerformanceSnapshot(
     /** 最近 1 分钟平均 TPS（满值 20；核心不支持读取时为 null）。 */
@@ -296,9 +299,8 @@ data class PerformanceSnapshot(
     val maxMemoryMb: Long,
     /** 本进程 CPU 占用（0.0 ~ 1.0；读取失败时为 null）。 */
     val cpuLoad: Double?,
-    /** 在线玩家平均延迟（毫秒；无人在线 / 不支持读取时为 null，1.6.7.6 新增）。 */
-    val avgPingMillis: Double?,
-    /** 当前在线玩家数（仅人数展示；读不到为 null，1.6.7.6 新增）。 */
+    /** 当前在线玩家数（仅人数展示；读不到为 null，1.6.7.6 新增；
+     *  1.6.7.8 起快照不再携带延迟数据——延迟指标整体下线）。 */
     val onlinePlayers: Int?,
 ) {
     companion object {
@@ -340,17 +342,19 @@ data class PerformanceSnapshot(
             tps: Double?,
             mspt: Double?,
             cpuOverride: Double?,
-        ): PerformanceSnapshot = capture(tps, mspt, cpuOverride, null, null)
+        ): PerformanceSnapshot = capture(tps, mspt, cpuOverride, null)
 
         /**
-         * 1.6.7.6：全参工厂——平台补齐延迟与在线人数（无人在线 / 读不到传 null）。
+         * 1.6.7.6：全参工厂——平台补齐在线人数（读不到传 null）。
+         * 1.6.7.8：延迟参数移除——玩家 Ping 只反映「客户端到服务器」连接
+         * 的往返，本地 / 同机连接下恒为 0ms，永远只代表服务器本地网络，
+         * 对性能监控无实际意义（用户反馈），延迟指标与采集链路整体下线。
          */
         @JvmStatic
         fun capture(
             tps: Double?,
             mspt: Double?,
             cpuOverride: Double?,
-            avgPingMillis: Double?,
             onlinePlayers: Int?,
         ): PerformanceSnapshot {
             // 1.6.7.7：TPS 物理上限 20 统一收敛——Minecraft 刻速率固定 20/s，
@@ -386,7 +390,7 @@ data class PerformanceSnapshot(
                     }
                 }
             }
-            return PerformanceSnapshot(safeTps, mspt, usedMb, maxMb, cpu, avgPingMillis, onlinePlayers)
+            return PerformanceSnapshot(safeTps, mspt, usedMb, maxMb, cpu, onlinePlayers)
         }
 
         // ---------- 核心指标分层读取（1.6.7.1：修复 TPS/MSPT 读不到） ----------

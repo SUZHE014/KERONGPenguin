@@ -171,11 +171,10 @@ object SparkStartupCheck {
         true
     }
 
-    /** 指标可读项清单（TPS / MSPT / CPU / 延迟）。 */
+    /** 指标可读项清单（TPS / MSPT / CPU；1.6.7.8 起延迟项已随指标整体下线）。 */
     private fun readableList(metrics: SparkBridge.SparkMetrics): String = buildString {
         if (metrics.tps != null) append("TPS")
         if (metrics.mspt != null) append(if (isEmpty()) "MSPT" else " / MSPT")
         if (metrics.cpu != null) append(if (isEmpty()) "CPU" else " / CPU")
-        if (metrics.ping != null) append(if (isEmpty()) "延迟" else " / 延迟")
     }.ifEmpty { "指标" }
 }

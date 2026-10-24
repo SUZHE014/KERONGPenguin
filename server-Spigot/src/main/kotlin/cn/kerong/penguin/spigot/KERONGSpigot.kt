@@ -392,7 +392,7 @@ class KERONGSpigot : JavaPlugin(), KERONG {
      * 服务器性能快照（1.6.7，/查性能 数据源；1.6.7.1 修复读不到；1.6.7.6 重排队列）。
      *
      * 采集优先级（逐项独立，单项读不到回退下一层）：
-     * 1. spark（装了且可读时）：TPS / MSPT / CPU / 延迟——spark 的窗口均值
+     * 1. spark（装了且可读时）：TPS / MSPT / CPU——spark 的窗口均值
      *    天然稳定；
      * 2. Folia 多线程核心：优先自采样器 [TickMonitor]（10 秒窗口均值）——
      *    Paper 系 API 在 Folia 上量的是「全局区域线程」耗时，波动极大
@@ -401,7 +401,11 @@ class KERONGSpigot : JavaPlugin(), KERONG {
      * 3. 其他核心：反射链优先（Paper / Purpur 的 Server API、Spigot 的
      *    NMS 跳板，见 [cn.kerong.bot.PerformanceSnapshot] 分层读取器），
      *    自采样器兜底；
-     * 4. 延迟：spark → 平台玩家 getPing 平均；在线人数：平台玩家表。
+     * 4. 在线人数：平台玩家表（Folia 上经全局区域线程采样）。1.6.7.8 起
+     *    不再采集延迟——玩家 Ping 反映的是「客户端到服务器」连接的
+     *    往返，本地 / 同机 / 内网穿透部署下恒为 0ms，数据永远只代表
+     *    服务器本地网络，对性能监控无实际意义（用户反馈），延迟指标
+     *    与整条采集链路（getPing 平均 / spark playerPing）一并下线。
      *
      * 读取全部只读数据，无实体状态写操作；Folia 上玩家统计经全局区域线程
      * 采样（[FoliaCompat.callSync]）。
@@ -418,7 +422,6 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         var sparkTps: Double? = null
         var sparkMspt: Double? = null
         var sparkCpu: Double? = null
-        var sparkPing: Double? = null
         try {
             // 1.6.7.7：插件表（大小写不敏感）查无或未启用时，尝试内置 spark
             // 通道（Paper 1.21+ 系核心内置 spark 不注册插件表）——与启动自检
@@ -435,7 +438,6 @@ class KERONGSpigot : JavaPlugin(), KERONG {
                     sparkTps = metrics.tps
                     sparkMspt = metrics.mspt
                     sparkCpu = metrics.cpu
-                    sparkPing = metrics.ping
                 }
             }
         } catch (_: Throwable) {
@@ -458,51 +460,33 @@ class KERONGSpigot : JavaPlugin(), KERONG {
             ?: cn.kerong.bot.PerformanceSnapshot.readTps(api)
             ?: cn.kerong.bot.PerformanceSnapshot.tpsFromMspt(mspt)
 
-        // 4. 延迟与在线人数（Folia 上玩家表读数经全局区域线程采样）
-        val playerStats = readPlayerStats(folia)
-        val ping = sparkPing ?: playerStats?.second
+        // 4. 在线人数（Folia 上玩家表读数经全局区域线程采样；1.6.7.8 起
+        //    不再采集延迟——玩家 Ping 只反映客户端到服务器连接的往返，
+        //    本地 / 同机连接下恒为 0ms，只代表服务器本地网络，无实际监控意义）
+        val onlineCount = readOnlinePlayerCount(folia)
 
         return try {
-            cn.kerong.bot.PerformanceSnapshot.capture(tps, mspt, sparkCpu, ping, playerStats?.first)
+            cn.kerong.bot.PerformanceSnapshot.capture(tps, mspt, sparkCpu, onlineCount)
         } catch (_: Throwable) {
             null
         }
     }
 
     /**
-     * 在线人数与平均延迟（毫秒）采样（1.6.7.6 新增；1.6.7.7 修复延迟暂不可读）。
+     * 在线人数采样（1.6.7.6 新增；1.6.7.7 曾修复延迟 0 合法计数；
+     * 1.6.7.8 起延迟采集整体移除——玩家 Ping 只反映客户端到服务器连接
+     * 的往返，本地 / 同机连接下恒为 0ms，数据永远只代表服务器本地
+     * 网络，对性能监控无实际意义，仅保留人数）。
      *
      * - Folia：玩家集合访问经全局区域线程（[FoliaCompat.callSync]，超时 3 秒
      *   返回 null）；
      * - 其他核心：直接读（与 /查在线 同级安全性）；
-     * - getPing 为 Paper 系 API（纯 Spigot 无此方法 → NoSuchMethodError 被
-     *   捕获，人数照常返回、延迟为 null）；
-     * - 1.6.7.7：延迟为 0 是合法值（本机/同机连接、首次 keep-alive 未完成
-     *   都会长时间保持 0），旧版 `ping > 0` 会把 0 延误玩家当作无效跳过
-     *   ——单人本地进服时平均延迟永远算不出来，卡片误显示「暂无玩家」；
-     *   现改为 `ping >= 0` 计数，-1 仍是读取失败哨兵不入平均；
-     * - 无人在线延迟为 null。
+     * - 读不到为 null。
      */
-    private fun readPlayerStats(folia: Boolean): Pair<Int, Double?>? {
-        val direct: () -> Pair<Int, Double?>? = {
+    private fun readOnlinePlayerCount(folia: Boolean): Int? {
+        val direct: () -> Int? = {
             try {
-                val players = Bukkit.getOnlinePlayers()
-                val count = players.size
-                var pingSum = 0.0
-                var pingCount = 0
-                for (player in players) {
-                    val ping = try {
-                        player.ping
-                    } catch (_: Throwable) {
-                        -1
-                    }
-                    if (ping >= 0) {
-                        pingSum += ping
-                        pingCount++
-                    }
-                }
-                val avg = if (pingCount > 0) pingSum / pingCount else null
-                count to avg
+                Bukkit.getOnlinePlayers().size
             } catch (_: Throwable) {
                 null
             }

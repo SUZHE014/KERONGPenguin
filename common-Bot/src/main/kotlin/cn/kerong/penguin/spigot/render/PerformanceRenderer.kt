@@ -33,10 +33,14 @@ import javax.imageio.ImageIO
  * 半透明卡片风格（1.6.7.5 覆盖版，1350 宽，固定版式单页图）：
  * - 顶部标题区：英文眉题 MINECRAFT SERVER + 主标题「服务器性能监控」
  *   + 右侧「更新时间」卡；
- * - 指标卡网格（2 列 × 3 行，固定六项：TPS / MSPT / 内存 / CPU / 延迟 / 在线人数）：
+ * - 指标卡网格（2 列网格，1.6.7.8 起固定五项：TPS / MSPT / 内存 / CPU /
+ *   在线人数，末行单卡整行通栏）：
  *   每卡 = 标签 + 状态胶囊 + 大数值 + 进度条（或「--」表示核心
- *   不支持读取）；1.6.7.1 起不再展示在线人数（查在线命令已有专门
- *   卡片，性能卡专注性能指标），单项显隐配置 show-* 同步移除；
+ *   不支持读取）；1.6.7.1 起单项显隐配置 show-* 已移除；
+ * - 1.6.7.8 移除「延迟（玩家平均）」卡——玩家 Ping 反映的是「客户端到
+ *   服务器」连接的往返，本地 / 同机 / 内网穿透部署下恒为 0ms，数据
+ *   永远只代表服务器本地网络，对性能监控无实际意义（用户反馈），
+ *   采集与展示链路一并下线；在线人数卡保留（名单用 /查在线）；
  * - 背景与其他渲染共用 [InfoCardAssets.resolveBackground]
  *   （render.performance.builtin-background，默认内置底图）；
  * - 画布 PNG 写出后立即 flush 释放栅格内存（与其他渲染器一致）。
@@ -68,8 +72,8 @@ object PerformanceRenderer {
     /** 指标卡列数。 */
     private const val COLUMNS = 2
 
-    /** 固定指标卡数（TPS / MSPT / 内存 / CPU / 延迟 / 在线人数，1.6.7.6 起六项）。 */
-    private const val CARD_COUNT = 6
+    /** 固定指标卡数（TPS / MSPT / 内存 / CPU / 在线人数，1.6.7.8 起五项——延迟项已移除）。 */
+    private const val CARD_COUNT = 5
 
     /** 底部留白。 */
     private const val BOTTOM_PAD = 40
@@ -113,7 +117,7 @@ object PerformanceRenderer {
         val background: BufferedImage? = null,
     )
 
-    /** 单个指标卡的绘制模型（由快照派生，固定六项）。 */
+    /** 单个指标卡的绘制模型（由快照派生，固定五项）。 */
     private data class MetricCard(
         val label: String,
         val valueText: String,
@@ -128,7 +132,8 @@ object PerformanceRenderer {
     )
 
     /**
-     * 计算画布高度（固定六项指标：TPS / MSPT / 内存 / CPU / 延迟 / 在线人数）。
+     * 计算画布高度（固定五项指标：TPS / MSPT / 内存 / CPU / 在线人数；
+     * 五项仍占三行，末行通栏，高度与旧六项版一致不变）。
      * 必须在取背景（尺寸相关）与渲染前调用，两者共用本结果。
      */
     fun measureHeight(): Int {
@@ -164,7 +169,7 @@ object PerformanceRenderer {
 
     // ---------- 指标卡派生 ----------
 
-    /** 由快照派生要绘制的指标卡列表（顺序即展示顺序，固定六项）。 */
+    /** 由快照派生要绘制的指标卡列表（顺序即展示顺序，固定五项）。 */
     private fun buildCards(data: PerformanceData): List<MetricCard> {
         val snapshot = data.snapshot
         val cards = ArrayList<MetricCard>(CARD_COUNT)
@@ -280,45 +285,10 @@ object PerformanceRenderer {
             )
         }
 
-        // 延迟（在线玩家平均 Ping，毫秒；1.6.7.6 新增）：
-        // <80 流畅 / 80~150 偏高 / >=150 高；无人在线为 null（显示「--」）
-        // 1.6.7.7：延迟为 null 不再一律显示「暂无玩家」——有玩家在线但
-        // ping 逐项读取失败（如纯 Spigot 无 getPing）时改显「暂不可读」，
-        // 与无人在线的正常态区分开（用户反馈「延迟暂不可读」分不清场景）
-        run {
-            val ping = snapshot.avgPingMillis
-            val online = snapshot.onlinePlayers
-            val color = when {
-                ping == null -> COLOR_SUB
-                ping < 80.0 -> COLOR_GOOD
-                ping < 150.0 -> COLOR_WARN
-                else -> COLOR_BAD
-            }
-            cards.add(
-                MetricCard(
-                    label = "延迟（玩家平均）",
-                    valueText = ping?.let { "${String.format("%.0f", it)} ms" } ?: "--",
-                    statusText = when {
-                        ping == null && online != null && online > 0 -> "暂不可读"
-                        ping == null -> "暂无玩家"
-                        ping < 80.0 -> "流畅"
-                        ping < 150.0 -> "偏高"
-                        else -> "高"
-                    },
-                    statusColor = color,
-                    // 进度条以 300 ms 为满（超过即视为严重延迟）
-                    progress = ping?.let { (it / 300.0).coerceIn(0.0, 1.0) },
-                    barColor = color,
-                    note = if (ping == null && online != null && online > 0) {
-                        "有玩家在线但延迟读不到（核心不支持 getPing）"
-                    } else {
-                        "全部在线玩家网络延迟平均 · 毫秒"
-                    },
-                )
-            )
-        }
-
-        // 在线玩家（仅人数展示，1.6.7.6 新增：名单详情用 /查在线 命令）
+        // 在线玩家（仅人数展示，1.6.7.6 新增：名单详情用 /查在线 命令；
+        // 1.6.7.8：原第五位「延迟（玩家平均）」卡已移除——玩家 Ping 只
+        // 反映客户端到服务器连接的往返，本地 / 同机连接下恒为 0ms，
+        // 数据永远只代表服务器本地网络，对性能监控无实际意义）
         run {
             val online = snapshot.onlinePlayers
             val color = when {
@@ -426,7 +396,10 @@ object PerformanceRenderer {
         g.drawString(serverName, (MARGIN + 6).toFloat(), (top + 138).toFloat())
     }
 
-    /** 指标卡网格：2 列 × N 行，每卡 = 标签 + 状态胶囊 + 大数值 + 进度条 + 副说明。 */
+    /**
+     * 指标卡网格：2 列 × N 行，每卡 = 标签 + 状态胶囊 + 大数值 + 进度条 + 副说明；
+     * 末行仅一张卡时（五项布局的在线人数卡）整行通栏，避免右下留空位。
+     */
     private fun drawMetricGrid(g: Graphics2D, cards: List<MetricCard>) {
         if (cards.isEmpty()) return
         val gridTop = MARGIN + HEADER_HEIGHT + HEADER_GAP
@@ -447,11 +420,14 @@ object PerformanceRenderer {
         cards.forEachIndexed { index, card ->
             val col = index % COLUMNS
             val row = index / COLUMNS
+            // 1.6.7.8：末行首列且是最后一张卡时整行通栏（五项布局的
+            // 在线人数卡）；偶数项布局不受影响
+            val lone = index == cards.size - 1 && col == 0
             drawMetricCard(
                 g, card,
                 MARGIN + col * (cardWidth + CARD_GAP),
                 gridTop + row * (CARD_HEIGHT + CARD_GAP),
-                cardWidth,
+                if (lone) contentWidth else cardWidth,
             )
         }
     }
