@@ -282,8 +282,12 @@ object PerformanceRenderer {
 
         // 延迟（在线玩家平均 Ping，毫秒；1.6.7.6 新增）：
         // <80 流畅 / 80~150 偏高 / >=150 高；无人在线为 null（显示「--」）
+        // 1.6.7.7：延迟为 null 不再一律显示「暂无玩家」——有玩家在线但
+        // ping 逐项读取失败（如纯 Spigot 无 getPing）时改显「暂不可读」，
+        // 与无人在线的正常态区分开（用户反馈「延迟暂不可读」分不清场景）
         run {
             val ping = snapshot.avgPingMillis
+            val online = snapshot.onlinePlayers
             val color = when {
                 ping == null -> COLOR_SUB
                 ping < 80.0 -> COLOR_GOOD
@@ -295,6 +299,7 @@ object PerformanceRenderer {
                     label = "延迟（玩家平均）",
                     valueText = ping?.let { "${String.format("%.0f", it)} ms" } ?: "--",
                     statusText = when {
+                        ping == null && online != null && online > 0 -> "暂不可读"
                         ping == null -> "暂无玩家"
                         ping < 80.0 -> "流畅"
                         ping < 150.0 -> "偏高"
@@ -304,7 +309,11 @@ object PerformanceRenderer {
                     // 进度条以 300 ms 为满（超过即视为严重延迟）
                     progress = ping?.let { (it / 300.0).coerceIn(0.0, 1.0) },
                     barColor = color,
-                    note = "全部在线玩家网络延迟平均 · 毫秒",
+                    note = if (ping == null && online != null && online > 0) {
+                        "有玩家在线但延迟读不到（核心不支持 getPing）"
+                    } else {
+                        "全部在线玩家网络延迟平均 · 毫秒"
+                    },
                 )
             )
         }

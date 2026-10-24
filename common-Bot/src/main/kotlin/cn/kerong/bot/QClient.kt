@@ -60,7 +60,7 @@ object QClient {
      *    1.6.2：断线重连改由 [ReconnectManager] 统一编排计数——控制台输出本轮
      *    第 1 次 / 最后一次 / 成功 / 超时等关键提示（1.6.6.3 起中间过程只写
      *    文件，重连风暴不再刷屏），连续 5 次失败暂停自动重连
-     *    （提示可用 /hb chs 手动重试，30 分钟后自动再试，最多 3 轮）；
+     *    （提示可用 /kerong chs 手动重试，30 分钟后自动再试，最多 3 轮）；
      * 2. 新增常驻连接看门狗：连接持续断开超过约 2 分钟（SDK 自身重连卡死时）
      *    由插件兑底触发重连，并写入日志文件。
      *
@@ -210,7 +210,7 @@ object QClient {
                 closedChecks++
                 // 首次发现断开先等待下一轮：给 SDK 自身 3 秒重连留出足够窗口
                 if (closedChecks < 2 || lastOpenAt == 0L) continue
-                // 1.6.2：重连超时挂起期间（等待 30 分钟退避或 /hb chs）不兑底重连
+                // 1.6.2：重连超时挂起期间（等待 30 分钟退避或 /kerong chs）不兑底重连
                 if (ReconnectManager.isSuspended()) continue
                 PluginFileLog.errorAndKeep(
                     "检测到 QQ 机器人连接已持续断开超过 1 分钟，尝试兑底重连…"
@@ -565,7 +565,7 @@ object QClient {
     }
 
     /**
-     * 1.6.2：恢复机器人连接（/hb chs 手动重试 / 重连退避结束后自动重试）。
+     * 1.6.2：恢复机器人连接（/kerong chs 手动重试 / 重连退避结束后自动重试）。
      *
      * 重新打开 SDK 自动重连（重连超时挂起期间会被关掉），并对当前 socket
      * 触发一次非阻塞重连——连接成功后服务端重新下发 Hello，SDK 自动重新鉴权，

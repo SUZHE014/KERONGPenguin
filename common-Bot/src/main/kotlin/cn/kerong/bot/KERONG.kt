@@ -353,6 +353,12 @@ data class PerformanceSnapshot(
             avgPingMillis: Double?,
             onlinePlayers: Int?,
         ): PerformanceSnapshot {
+            // 1.6.7.7：TPS 物理上限 20 统一收敛——Minecraft 刻速率固定 20/s，
+            // 任何 >20 的读数都是采集层异常（自研反射链读到的 Spigot 系
+            // recentTps 无上限、启动追赶 / 空闲加速场景会算出 300+ 的瞬时值；
+            // spark 个别版本同理），一律按满速 20 处理（服务器实际确实在
+            // 以固定速率满速运行）
+            val safeTps = tps?.coerceAtMost(20.0)
             val runtime = Runtime.getRuntime()
             val usedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L)
             val maxMb = runtime.maxMemory() / (1024L * 1024L)
@@ -380,7 +386,7 @@ data class PerformanceSnapshot(
                     }
                 }
             }
-            return PerformanceSnapshot(tps, mspt, usedMb, maxMb, cpu, avgPingMillis, onlinePlayers)
+            return PerformanceSnapshot(safeTps, mspt, usedMb, maxMb, cpu, avgPingMillis, onlinePlayers)
         }
 
         // ---------- 核心指标分层读取（1.6.7.1：修复 TPS/MSPT 读不到） ----------
@@ -474,11 +480,20 @@ data class PerformanceSnapshot(
             return null
         }
 
-        /** 取 TPS 数组首元素（1 分钟平均）：兼容 double[] 与装箱 Number 数组。 */
+        /**
+         * 取 TPS 数组首元素（1 分钟平均）：兼容 double[] 与装箱 Number 数组。
+         *
+         * 1.6.7.7：读数统一封顶 20——Minecraft 刻速率固定 20/s，TPS 物理
+         * 上限就是 20；Spigot 系（含部分新核心）的 recentTps 是对「瞬时
+         * TPS = 1e9/相邻两刻间隔」的无上限指数平均，启动追赶 / 空闲加速
+         * 等场景下间隔 < 50ms 会算出 300+ 的荒谬值（用户实测「查性能时
+         * TPS 飙到 300+」），封顶到满速 20（此刻服务器确实在满速运行，
+         * 显示值反而最接近物理事实）。
+         */
         private fun firstTps(value: Any?): Double? {
             return when (value) {
-                is DoubleArray -> value.firstOrNull()
-                is Array<*> -> (value.firstOrNull() as? Number)?.toDouble()
+                is DoubleArray -> value.firstOrNull()?.coerceAtMost(20.0)
+                is Array<*> -> (value.firstOrNull() as? Number)?.toDouble()?.coerceAtMost(20.0)
                 else -> null
             }
         }

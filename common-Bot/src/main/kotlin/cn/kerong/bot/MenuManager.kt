@@ -27,7 +27,7 @@ import java.nio.charset.StandardCharsets
  *   消除「先删后建」中间态（旧流程删除成功、创建失败时面板直接丢失）；
  *   生效群列表变化或面板异常时才删除重建；
  * - 40030009（操作进行中）自动重试（最多 3 次，间隔 1 秒）；
- * - 同步结束后输出面板 ID 与可用按钮数，/hb panel 与启动日志均可核对。
+ * - 同步结束后输出面板 ID 与可用按钮数，/kerong panel 与启动日志均可核对。
  */
 object MenuManager {
     private const val API_BASE = "https://api.sgroup.qq.com"
@@ -214,7 +214,7 @@ object MenuManager {
             if (panelId != null) {
                 log("已同步 ${groupOpenIds.size} 个群的快捷菜单（面板 $panelId，${checked.size} 个按钮可用）")
             } else {
-                log("快捷菜单同步失败：面板未创建成功，详情见上方错误日志（可稍后用 /hb panel 重试）")
+                log("快捷菜单同步失败：面板未创建成功，详情见上方错误日志（可稍后用 /kerong panel 重试）")
             }
         } catch (e: Exception) {
             cn.kerong.bot.provider.BotShared.instance?.log_error("面板同步失败: ${e.message}")

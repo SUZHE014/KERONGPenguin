@@ -22,9 +22,9 @@ import java.util.concurrent.atomic.AtomicInteger
  *    （1.6.6.3：网络抖动 / 平台网关异常引起的重连风暴不再刷屏控制台，
  *    完整过程日志仍在 logs/qq/qq-bind-日期.log 里可追溯）；
  * 2. **每轮最多 5 次**：连续 5 次重连失败（连接打开但未存活到健康阈值又被关闭）
- *    则暂时放弃自动重连，输出「重连超时」提示：可使用指令 /hb chs 立即手动重试，
+ *    则暂时放弃自动重连，输出「重连超时」提示：可使用指令 /kerong chs 立即手动重试，
  *    或等待 30 分钟后自动进行下一轮（最多 3 轮）；
- * 3. **手动重试**：/hb chs 重置全部计数并立即恢复连接（也可在 30 分钟退避期间随时使用）。
+ * 3. **手动重试**：/kerong chs 重置全部计数并立即恢复连接（也可在 30 分钟退避期间随时使用）。
  *
  * ## 计数模型
  *
@@ -220,19 +220,19 @@ object ReconnectManager {
         // —— 不可关闭的失败提示（用户明确要求：重试失败的重连指引不能关） ——
         val builder = StringBuilder()
         builder.append("[重连] QQ 机器人已连续 $SMALL_RETRY_MAX 次重连失败（重连超时），已暂停自动重连。")
-        builder.append(" 可在服务器内使用指令 /hb chs 立即重新尝试连接。")
+        builder.append(" 可在服务器内使用指令 /kerong chs 立即重新尝试连接。")
         if (nextRound <= BIG_ROUND_MAX) {
             val minutes = BIG_BACKOFF_MILLIS / 60000
             builder.append("未手动干预时，$minutes 分钟后将自动进行下一轮重试（第 $nextRound/$BIG_ROUND_MAX 轮，每轮 $SMALL_RETRY_MAX 次）。")
         } else {
-            builder.append("自动重试的 $BIG_ROUND_MAX 轮已全部用尽，此后需要使用 /hb chs 手动恢复。")
+            builder.append("自动重试的 $BIG_ROUND_MAX 轮已全部用尽，此后需要使用 /kerong chs 手动恢复。")
         }
         PluginFileLog.errorAndKeep(builder.toString())
 
         // 关闭 SDK 自动重连 + 断开当前 socket（给 QQ 网关降温）
         suspendConnection()
 
-        // 30 分钟退避后自动恢复（最后一轮之后不再恢复，等待 /hb chs）
+        // 30 分钟退避后自动恢复（最后一轮之后不再恢复，等待 /kerong chs）
         if (nextRound <= BIG_ROUND_MAX) {
             scheduleBackoffWake(myGen, nextRound)
         }
@@ -278,7 +278,7 @@ object ReconnectManager {
     }
 
     /**
-     * 手动重连（/hb chs）：重置全部计数，立即恢复连接。
+     * 手动重连（/kerong chs）：重置全部计数，立即恢复连接。
      *
      * @return 给命令发送者的结果文本
      */

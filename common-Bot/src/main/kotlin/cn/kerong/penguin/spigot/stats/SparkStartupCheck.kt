@@ -41,15 +41,23 @@ object SparkStartupCheck {
     private const val RETRY_AFTER_FAILED_MILLIS = 15_000L
 
     /**
-     * spark 探测三态结果（1.6.7.4：区分「未安装」与「已安装但接入失败」，
-     * 前者静默、后者必须提示；1.6.7.6 新增第四态 NoStatsOnThisCore）。
+     * spark 探测结果态（1.6.7.4 三态；1.6.7.6 第四态；1.6.7.7 重做五态：
+     * 内置 spark 通道接入 + 「文件在但未作插件加载」识别）。
      */
     sealed class ProbeOutcome {
-        /** spark 未安装（Spigot 插件表 / NeoForge ModList 均查无）→ 完全静默。 */
+        /** spark 未安装（插件表 / 内置通道 / plugins 目录均查无）→ 完全静默。 */
         object NotInstalled : ProbeOutcome()
 
-        /** spark 已接入且至少一项指标可读（携带 [SparkBridge.SparkMetrics]）。 */
-        class Installed(val metrics: SparkBridge.SparkMetrics) : ProbeOutcome()
+        /**
+         * spark 已接入且至少一项指标可读（携带 [SparkBridge.SparkMetrics]）。
+         *
+         * 1.6.7.7 新增 [bundled] 来源标记：true = 服务器核心内置 spark
+         * （Paper 1.21+ / Purpur / Folia 1.21 与 26.x 系把 spark 类挂在系统
+         * 类路径上、不注册插件表——插件表查无但内置通道可读，用户没装
+         * 插件也能接入）；false = 传统 spark 插件。提示文案区分
+         * 「来源：服务器核心内置 / 插件」，防止把内置接入当成误报。
+         */
+        class Installed(val metrics: SparkBridge.SparkMetrics, val bundled: Boolean) : ProbeOutcome()
 
         /** spark 已安装但接入失败（未启用 / 指标读不到 / 探测异常，携带原因）。 */
         class Failed(val reason: String) : ProbeOutcome()
@@ -62,6 +70,16 @@ object SparkStartupCheck {
          * 却提示接入失败/未安装」的误报误导排查）。
          */
         class NoStatsOnThisCore(val note: String) : ProbeOutcome()
+
+        /**
+         * plugins 目录里放着 spark 相关 JAR 但服务器未将其作为插件加载
+         * （1.6.7.7 重做，对齐 1.6.7.6 覆盖版设计）——最常见原因：下载到的
+         * 是模组版 spark（Modrinth 分发的全是 NeoForge/Fabric/Forge 变体，
+         * 放进 plugins/ 无法识别，Bukkit 插件版需从 spark.lucko.me 下载）；
+         * 或当前核心（Paper 1.21+ 系）已内置 spark 且默认忽略自装插件版
+         * JAR。[fileNames] 为命中的文件名列表（提示里展示）。
+         */
+        class NotLoaded(val fileNames: String) : ProbeOutcome()
     }
 
     /**
@@ -96,16 +114,19 @@ object SparkStartupCheck {
                         PluginFileLog.write("[性能数据] 未检测到 spark，/查性能 使用内置反射链读取")
                     }
                     is ProbeOutcome.Installed -> {
+                        // 1.6.7.7：来源标记（核心内置 / 插件）——用户没装插件
+                        // 也能接入内置 spark，来源说明防止被当成误报
                         val readable = readableList(outcome.metrics)
+                        val source = if (outcome.bundled) "服务器核心内置" else "插件"
                         if (isPerformanceCommandEnabled()) {
                             PluginFileLog.infoAndKeep(
-                                "[性能数据] 已接入 spark（$readable 读取优先走 spark，对服务端核心无感，数据更稳）"
+                                "[性能数据] 已接入 spark（来源：$source，可读项：$readable），读取优先走 spark，数据更稳"
                             )
-                            PluginFileLog.write("[性能数据] spark 接入自检通过（可读项：$readable）")
+                            PluginFileLog.write("[性能数据] spark 接入自检通过（来源：$source，可读项：$readable）")
                         } else {
                             // 查性能关闭：成功与否不影响任何功能，不刷控制台
                             PluginFileLog.write(
-                                "[性能数据] spark 接入自检通过（可读项：$readable），但 commands.查性能 已关闭，成功不另作提示"
+                                "[性能数据] spark 接入自检通过（来源：$source，可读项：$readable），但 commands.查性能 已关闭，成功不另作提示"
                             )
                         }
                     }
@@ -122,6 +143,15 @@ object SparkStartupCheck {
                         // 不再按接入失败警告（用户反馈「装了还是提示没接入」）
                         PluginFileLog.infoAndKeep(
                             "[性能数据] 已安装 spark，但其统计在当前核心暂不可读（${outcome.note}）；/查性能 将使用内置采样器读取，数据正常可用"
+                        )
+                    }
+                    is ProbeOutcome.NotLoaded -> {
+                        // 1.6.7.7：spark 文件在但未作插件加载——给出可操作的排查
+                        // 方向（模组版误装 / 核心已内置）而不是笼统的「接入失败」
+                        PluginFileLog.warnAndKeep(
+                            "[性能数据] plugins 目录存在 spark 相关文件（${outcome.fileNames}），但服务器未将它作为插件加载——/查性能 将回退内置反射链读取，功能不受影响。\n" +
+                                "[性能数据]   常见原因：下载到的是模组版 spark（Modrinth 的 spark 全是 NeoForge/Fabric/Forge 变体，放进 plugins/ 无法识别；Bukkit 插件版需从 spark 官网 spark.lucko.me 下载）\n" +
+                                "[性能数据]   另注：Paper 1.21+ 系核心（Paper/Purpur/Folia 1.21 及 26.x）已内置 spark，无需再装插件版"
                         )
                     }
                 }

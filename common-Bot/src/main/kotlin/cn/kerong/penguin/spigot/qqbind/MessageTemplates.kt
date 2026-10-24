@@ -163,7 +163,7 @@ object MessageTemplates {
     /**
      * 释放全部默认模板到数据目录 Markdown/（已存在的文件不覆盖；
      * 自定义文件名的模板不在此释放，读取时回退内置默认内容）。
-     * 由运行时初始化（reloadRuntimeConfig）在启动与 /hb reload 时调用。
+     * 由运行时初始化（reloadRuntimeConfig）在启动与 /kerong reload 时调用。
      */
     fun initialize() {
         val dir = directory() ?: run {
@@ -298,6 +298,6 @@ object MessageTemplates {
         }
     }
 
-    /** 清空缓存（/hb reload 后重新读文件）。 */
+    /** 清空缓存（/kerong reload 后重新读文件）。 */
     fun clearCache() = cache.clear()
 }

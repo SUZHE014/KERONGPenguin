@@ -13,14 +13,17 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent
 
 /**
  * 游戏内命令注册（等价 Spigot 版 plugin.yml 命令 + KERONGCommand / QqCommand）：
- * - /kerong（短别名 /hb）：reload / info / panel / chs / help，需要权限等级 2（OP）；
+ * - /kerong：reload / info / panel / chs / help，需要权限等级 2（OP）；
  *   1.6.2 新增 chs：机器人重连超时挂起或断线期间手动重试连接；
  * - /qq：rebind（玩家自助解绑）与 qxqq / skip / unskip（OP 管理）。
+ *
+ * 1.6.7.7：移除短别名 /hb（用户需求），主命令唯一 /kerong；旧 /hb 输入
+ * 由原版“未知指令”路径处理。
  */
 class NeoForgeCommands(private val plugin: KERONGNeoForge) {
 
-    /** 主命令全部注册名：/kerong 为主，短别名 /hb（子命令一致）。 */
-    private val MAIN_COMMAND_LABELS = listOf("kerong", "hb")
+    /** 主命令注册名（1.6.7.7 起仅 /kerong，/hb 别名已移除）。 */
+    private val MAIN_COMMAND_LABELS = listOf("kerong")
 
     @SubscribeEvent
     fun onRegisterCommands(event: RegisterCommandsEvent) {
@@ -28,16 +31,16 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
         registerQq(event)
     }
 
-    // ---------- /kerong（短别名 /hb） ----------
+    // ---------- /kerong ----------
 
     private fun registerKerong(event: RegisterCommandsEvent) {
-        // 主命令 /kerong 与短别名 /hb 一并注册（同一套子命令）
+        // 注册主命令 /kerong（同一套子命令）
         for (label in MAIN_COMMAND_LABELS) {
             event.dispatcher.register(buildMainCommand(label))
         }
     }
 
-    /** 构造主命令节点（label = kerong / hb，子命令完全一致）。 */
+    /** 构造主命令节点（label = kerong，子命令完全一致）。 */
     private fun buildMainCommand(label: String): LiteralArgumentBuilder<CommandSourceStack> {
         val builder = Commands.literal(label).requires { it.hasPermission(2) }
 

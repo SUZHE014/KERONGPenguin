@@ -9,7 +9,7 @@ import org.bukkit.plugin.java.JavaPlugin
  * - render.command-cooldown-seconds：同一 QQ 用户两次触发图片渲染命令
  *   （/查信息、/查在线、/在线排行榜、/财富榜）的最小间隔秒数，
  *   防止刷屏导致渲染风暴。默认 5（与旧版硬编码一致）；0 = 关闭冷却；
- *   负数按 0 处理。实时读取（/hb reload 后立即生效）。
+ *   负数按 0 处理。实时读取（/kerong reload 后立即生效）。
  */
 object RenderSettings {
 

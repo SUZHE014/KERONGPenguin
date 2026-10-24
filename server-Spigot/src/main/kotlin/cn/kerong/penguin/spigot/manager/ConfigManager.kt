@@ -168,9 +168,48 @@ class ConfigManager(private val plugin: JavaPlugin) {
         }
     }
 
-    fun botAppId(): String = plugin.config.getString("bot.app-id") ?: ""
+    // 1.6.7.7（对齐 1.6.7.6 覆盖版）：凭据读取自动清洗首尾空白与不可见
+    // 字符——用户从网页/聊天工具复制 app-id 与 secret 时极易带上零宽空格
+    // （\u200B）、BOM（\uFEFF）、全角空格等，肉眼不可见但平台按字面校验
+    // 直接拒绝（appid invalid 100007，且报错不含糊其辞地指向「凭据错了」，
+    // 用户反复核对肉眼可见的字符永远找不到原因）。读取时统一剥掉，
+    // 检测到污染时醒目提示一次并说明去哪里修正。
+    fun botAppId(): String = sanitizeCredential(plugin.config.getString("bot.app-id"), "bot.app-id")
 
-    fun botSecret(): String = plugin.config.getString("bot.secret") ?: ""
+    fun botSecret(): String = sanitizeCredential(plugin.config.getString("bot.secret"), "bot.secret")
+
+    /**
+     * 凭据清洗（1.6.7.7）：剥除首尾空白与不可见字符，检测到污染时
+     * 控制台 warning 提示（带原长/清理后长度对照）。
+     */
+    private fun sanitizeCredential(raw: String?, key: String): String {
+        val value = raw ?: return ""
+        val cleaned = trimInvisible(value)
+        if (cleaned != value) {
+            plugin.logger.warning(
+                "配置 $key 读到首尾空白/不可见字符（原长 ${value.length} → 清理后 ${cleaned.length}），已自动清理；" +
+                    "请修正 config.yml 中该行的多余空格/引号内空白，避免凭据被平台拒绝（appid invalid）"
+            )
+        }
+        return cleaned
+    }
+
+    /**
+     * 剥除首尾空白与不可见字符（空格/制表符等常规空白 + 全角空格/BOM/
+     * 零宽字符/窄窄空格等 20 个不可见码位）。
+     */
+    private fun trimInvisible(value: String): String {
+        val invisible = charArrayOf(
+            '\u3000', '\u00A0', '\u2000', '\u2001', '\u2002', '\u2003', '\u2004', '\u2005',
+            '\u2006', '\u2007', '\u2008', '\u2009', '\u200A', '\u200B', '\u200C', '\u200D',
+            '\u202F', '\u205F', '\uFEFF', '\u2060',
+        )
+        var start = 0
+        var end = value.length
+        while (start < end && (value[start].isWhitespace() || value[start] in invisible)) start++
+        while (end > start && (value[end - 1].isWhitespace() || value[end - 1] in invisible)) end--
+        return value.substring(start, end)
+    }
 
     fun botName(): String = plugin.config.getString("bot.name", "KERONGPenguin") ?: "KERONGPenguin"
 
@@ -384,7 +423,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "bot.groups" to emptyList<Any>(),
             // 1.6.2：断线重连过程提示开关（1.6.6.3 起默认防刷屏：控制台只输出本轮第 1 次 /
             // 最后一次 / 成功 / 超时里程碑，中间过程写文件；false = 里程碑过程提示也不输出；
-            // 重连成功与重连超时后的 /hb chs 恢复指引不受此开关影响，始终输出）
+            // 重连成功与重连超时后的 /kerong chs 恢复指引不受此开关影响，始终输出）
             "bot.reconnect-notify" to true,
             // 1.6.2：更新检查开关（启动后异步访问官网版本文件，发现新版本时控制台提示
             // 版本号 / 下载页 / 简要日志；检测失败仅一句话提示，细节进日志）

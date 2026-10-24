@@ -102,7 +102,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
                     if (metrics == null) {
                         SparkStartupCheck.ProbeOutcome.Failed("各指标均暂不可读")
                     } else {
-                        SparkStartupCheck.ProbeOutcome.Installed(metrics)
+                        SparkStartupCheck.ProbeOutcome.Installed(metrics, bundled = false)
                     }
                 } else {
                     SparkStartupCheck.ProbeOutcome.NotInstalled
@@ -304,6 +304,9 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             ?: cn.kerong.bot.PerformanceSnapshot.tpsFromMspt(mspt)
 
         // 1.6.7.6：延迟与在线人数（延迟 spark 优先 → 各玩家连接 latency 平均）
+        // 1.6.7.7：延迟 0 是合法值（本地/局域网连接与首次 keep-alive 未完成时
+        // 保持 0），`> 0` 会误判为无效——单人本地进服时平均延迟永远算不出；
+        // 现改为 >= 0 计数，-1 仍是读取失败哨兵
         var online: Int? = null
         var ping: Double? = sparkPing
         try {
@@ -318,7 +321,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
                     } catch (_: Throwable) {
                         -1
                     }
-                    if (value > 0) {
+                    if (value >= 0) {
                         sum += value
                         count++
                     }
@@ -417,7 +420,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             .resolve("kerongpenguin").toFile()
 
         /** 模组版本（与 neoforge.mods.toml 一致）。 */
-        private const val MOD_VERSION = "1.6.7.6"
+        private const val MOD_VERSION = "1.6.7.7"
 
         /** 当前模组实例（命令与事件层访问）。 */
         @Volatile

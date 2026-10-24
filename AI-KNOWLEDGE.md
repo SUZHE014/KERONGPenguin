@@ -1,7 +1,7 @@
 # KERONGPenguin AI 交接知识库
 
 > **本文档的用途**：把本文件丢给一个对项目一无所知的 AI，它能立刻了解当前情况并接手工作。
-> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-18（v1.6.7.6：Folia 自采样刻监视器（MSPT 读不到/忽高忽低）、config.yml 语法错误三级自愈、查性能六项（延迟+在线人数）、spark 探测第四态；同日另发 1.6.7_Cross-posting.1 互转版——本地分支不上传 git，见 §8）。
+> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-24（v1.6.7.7：TPS 三层封顶 20（1.6.7.6 覆盖版宣称但未实装，字节核对确认）、延迟 0 合法化与「暂不可读/暂无玩家」区分、spark 探测五态（内置通道+大小写不敏感+NotLoaded）、凭据清洗重做（1.6.7.6 覆盖版三功能因源码同步事故丢失后重做合入）、移除 /hb 别名；1.6.7.6 覆盖版与源码版自此归一）。
 > 自包含版本（发给本地无任何东西的 AI）见官网 `AI-KNOWLEDGE.txt`，含从零开始的环境重建与凭据获取说明。
 
 ### 1.1 受限网络环境重建（2026-10-14 实战，环境重置后可用）
@@ -111,7 +111,7 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 
 - **WssDiagnostics**（`bot/WssDiagnostics.kt`）：纯观察者钩子（**必须返回 true**，返回 false 会掐断 SDK 协议链——1.5.3 的 1006 死循环教训）。职责：协议帧落盘（Hello/READY/RESUMED/Identify/关闭/错误堆栈，业务帧仅计数）、心跳自愈（代发+假死检测）、鉴权 60 秒超时主动重连（90 秒限频）、看门狗（10 秒，MIN_PRIORITY）。**1.6.6.3 防刷屏**：关闭帧 / op9 会话无效 / op7 要求重连改 `PluginFileLog.write` 仅文件（旧版每次 WARN 上控制台，重连风暴一轮 8~10 条）；看门狗主动重连与心跳兜底仍控制台 WARN（有排查价值且 90 秒限频）。
 - **ReconnectManager**（`bot/ReconnectManager.kt`）：重连编排。每次连接打开=1 次尝试；**1.6.6.3 控制台只报里程碑**：本轮第 1 次（受 bot.reconnect-notify 控制）、最后一次、重连成功、重连超时（不可关），中间次数仅文件；连续 5 次失败→「重连超时」挂起（anyCloseReconnect=false+断开 socket），30 分钟后自动下一轮（新一轮清零计数），最多 3 轮，之后只能 /kerong chs。**1.6.6.3 计数越界修复**：挂起后 SDK 已排队的延迟重连（delayIdentifyConnect 3 秒后触发，无法从外部取消）仍会建连——onOpen 检测 attempt≥上限时按新一轮重置计数（旧版显示「第 6/5 次」越界）。**1.6.5 成功提示双路**：鉴权完成（READY/RESUMED）即宣告「重连成功（第 N/5 次尝试）」；短命会话后的 READY 保持沉默等 90 秒健康判定兑底；首次连接（无关闭历史）不宣告。健康（≥90 秒）时仍清零全部计数。
-- **/kerong chs**（短别名 /hb）：手动重连（重置全部计数→QClient.resumeConnection；socket 不可达时回退完整重启）。Spigot：KERONGCommand+plugin.yml（命令名 kerong，aliases [hb]，权限 kerong.command）；NeoForge：NeoForgeCommands 双 literal（kerong/hb）。
+- **/kerong chs**：手动重连（重置全部计数→QClient.resumeConnection；socket 不可达时回退完整重启）。Spigot：KERONGCommand+plugin.yml（命令名 kerong，aliases [hb]，权限 kerong.command）；NeoForge：NeoForgeCommands 双 literal（kerong/hb）。
 - 看门狗/兜底重连在挂起期间凭 `ReconnectManager.isSuspended()` 停连。
 
 ### 3.3 双服务器同绑一个机器人（1.6.1~1.6.6.2 检测，**1.6.6.3 整体移除**，务必理解）
@@ -225,7 +225,18 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
 
 ---
 
-## 7. 当前已知状态（2026-10-18，v1.6.7.6 完成 + Cross-posting 版发布）
+## 7. 当前已知状态（2026-10-24，v1.6.7.7 完成）
+
+- **⚠️ 1.6.7.6 覆盖版源码丢失事故与归一**：1.6.7.6 发版当日曾做过一轮「同日覆盖版」（内置 spark 通道 / TPS 封顶宣称 / 凭据清洗三项），官网 JAR 与 version.json 已更新，**但覆盖版代码未 commit/push——环境重置后丢失**，git main 一度停留在首发版；1.6.7.7 逐项反编译官网覆盖 JAR（CFR）核实差异后把缺失功能全部重做合入源码（内置通道与凭据清洗完整还原；TPS 封顶覆盖版并未实装——字节码无任何 min(20) 逻辑，仅 version.json 宣称——1.6.7.7 以更彻底的三层封顶真正落位）。**教训：同日覆盖必须立即 commit+push，官网宣称前必须字节级核对 JAR。**
+- 双端 1.6.7.7 全部完成（门禁 verify_jar_1677 75 项 / 冒烟 smoke1677 35 项（TC 三层封顶行为/真实形态假 spark 300→20/内置通道 bundledSparkClassLoader 行为/延迟卡三态反射验证/JAR 内容）/ 部署 16 项 / 官网 kerong.xin/penguin 已上线）：
+  - **TPS 物理上限 20 三层封顶**：SparkBridge.pollTps 出口、PerformanceSnapshot.firstTps（getTPS/recentTps/装箱数组全分支）、capture 工厂 safeTps——任何来源（spark/反射/换算）>20 一律按满速 20 处理（Minecraft 刻速率固定 20/s，300+ 读数是 recentTps 无上限瞬时平均或 1.21.2+ tick 加速期 getTPS 的真实数百值，显示满速最接近物理事实）；tpsFromMspt 与 TickMonitor 原有 cap 保持。
+  - **延迟采集 0 合法**：双端 `ping >= 0` 计数（-1 仍是读取失败哨兵）——0 是合法延迟（本机/同机连接、首次 keep-alive 往返未完成）；渲染器延迟卡区分「有玩家但读不到 → 暂不可读 + 副说明核心不支持 getPing」与「无人在线 → 暂无玩家」。
+  - **spark 探测五态**：NotInstalled / Installed(metrics, bundled) / Failed / NoStatsOnThisCore / **NotLoaded(fileNames)**。probeSpark 顺序：findSparkPlugin（大小写不敏感，Bukkit getPlugin 精确 equals 会漏检变体包名）→ 内置通道 SparkBridge.bundledSparkClassLoader(bukkitApiLoader())（候选 = Bukkit API loader / 本类 loader / TCCL，探测 SparkProvider.get() 非 null 且 isInstance；Paper 1.21+ 系核心内置 spark 不注册插件表且默认忽略自装插件版 JAR——Purpur 26.2「装了检测不到」真正根因）→ findStraySparkFiles（plugins 目录 isFile+*.jar+名含 spark 忽略大小写，文件名串入提示）→ NotInstalled。Installed 提示带「来源：服务器核心内置 / 插件」；NotLoaded 提示带模组版误装（Modrinth 全是 NF/Fabric/Forge 变体）/核心已内置双重指引；性能快照 spark 读取与 probe 同口径（表中查无→内置通道）。
+  - **凭据清洗**：ConfigManager.sanitizeCredential + trimInvisible（20 个不可见码位：全角空格/U+00A0/U+2000-200B/U+202F/U+205F/U+FEFF/U+2060 等，源码里用显式 \uXXXX 转义防工具链损坏不可见字面量），bot.app-id/bot.secret 读取时清洗，污染时 logger.warning 带原长/清理后长度与「appid invalid」指引；双端共用（ConfigManager 编译进两模块）。
+  - **/hb 别名移除**：plugin.yml aliases 行删除、NeoForgeCommands MAIN_COMMAND_LABELS 仅 kerong、24 处文案/注释（QClient/ReconnectManager「重连超时」提示/MenuManager/WssDiagnostics/ConfigManager 注释/help.md（QQ 用户可见帮助）/双端 config.yml 注释/docs/API.md/README 历史段）全部改 /kerong 形态；门禁 HB-5 用正则 `/hb\s?(chs|panel|reload|help|mem)` 断言全库无可操作指引（README/官网更新日志里「移除 /hb」说明性提及合法）。
+- 环境重建备注（本次会话第三次环境重置）：JDK21 TUNA Adoptium 21.0.12.1 装 /home/z/jdk21；Gradle 8.14.5 wrapper 直连卡死改腾讯镜像 zip 预置 ~/.gradle/wrapper/dists（哈希目录 690y85m0j9nfaub7xoiayko8a）；~/.gradle/gradle.properties 用 org.gradle.java.installations.paths 指向本地 JDK（foojay 联网下载被墙）；paper-api 等冒烟依赖直接从 ~/.gradle/caches/modules-2 复制到 scripts/deps-work；kerong.xin 的 DNS 对 curl 报错但对 python 正常，curl 用 `-H "Host: kerong.xin" https://156.233.228.248/...` IP 直连可用；后台任务必须 setsid nohup 脱离会话（普通 nohup & 会被会话回收杀掉）；工作区 git 状态曾出现 301 文件 0 行 diff（纯 mode 100644→100755 变化，reset --hard 即清）。
+
+## 8.（原 1.6.7.6 状态段，历史归档）
 
 - 双端 **1.6.7.6** 全部完成（门禁 **verify_jar_1676 62 项** / 冒烟 **smoke1676 26 项**（ConfigBrokenRecovery 三级恢复含用户实测 player-events:true 样例 / TickMonitor 窗口数学 / PerformanceSnapshot 新字段 / fakespark1676 playerPing / 六项卡渲染 1350×1034）/ 官网部署 / git 推送 6917246）：
   - 修复①：Folia 多线程核心 MSPT 读不到 + 数值忽高忽低——新增 **TickMonitor**（common-Bot stats 包：FoliaCompat.runTimer 每 tick 采样 nanoTime 间隔 → 1200 tick 环形缓冲；MSPT=最近 200 tick 均值、TPS=60 秒窗口换算封顶 20；样本<40 不读、单次间隔>10s 丢弃；Spigot onEnable start/onDisable stop）——Folia 上采样器优先、反射兜底，其他核心反射优先、采样器兜底，spark 窗口均值最优先；CPU 无 spark 时经 PerformanceSnapshot.capture 的 EWMA（0.7/0.3）平滑；

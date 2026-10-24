@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap
  * 出现的「金币」二字都会替换为该名称（金币排行榜图片标题、查信息卡片金币项、
  * 签到回复、/帮助、全部消息模板等）。留空时行为与旧版完全一致。
  *
- * 读取实时进行（每次输出都取最新配置，/hb reload 后立即生效，无需重启）。
+ * 读取实时进行（每次输出都取最新配置，/kerong reload 后立即生效，无需重启）。
  */
 object EconomyName {
 

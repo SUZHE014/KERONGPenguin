@@ -61,7 +61,7 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         // 启动 QQ 机器人运行时（注册共享实例 → 装载状态 → 异步启动 QQ 客户端）
         initializeRuntime()
 
-        // 初始化命令（主命令 /kerong，短别名 /hb）
+        // 初始化命令（主命令 /kerong）
         val command = KERONGCommand(this)
         getCommand("kerong")?.let { pluginCommand ->
             pluginCommand.setExecutor(command)
@@ -127,35 +127,126 @@ class KERONGSpigot : JavaPlugin(), KERONG {
     }
 
     /**
-     * spark 可用性探测（1.6.7.4 三态 + 1.6.7.6 第四态）：查插件表返回
-     * 未安装 / 已接入 / 已装但失败 / 当前核心无统计。
+     * spark 可用性探测（1.6.7.4 三态 + 1.6.7.6 第四态 + 1.6.7.7 五态融合）。
      * 本插件名 KERONGPenguin 按字母序先于 spark 加载，onEnable 时 spark 多半
      * 尚未 enable，故仅在 ServerLoadEvent 之后调用。
      *
-     * 1.6.7.6：新增 NoStatsOnThisCore——spark 已装且启用但其统计读不到且
-     * 当前是 Folia 多线程核心时，不再按「接入失败」警告（那正是用户反馈的
-     * 「装了 spark 还是提示没接入」误报）：内置采样器已兜底，降为信息级。
+     * 探测顺序（1.6.7.7 重做，对齐 1.6.7.6 覆盖版设计并强化）：
+     * 1. 插件表查 spark（[findSparkPlugin]，大小写不敏感——Bukkit getPlugin
+     *    是精确 equals，变体包名会漏检）；
+     * 2. 表中查无 → **内置通道**（[SparkBridge.bundledSparkClassLoader] 在
+     *    Bukkit API 加载器 / 本类加载器 / 线程上下文加载器里探测）——
+     *    Paper 1.21+ 系核心（Paper/Purpur/Folia 1.21 与 26.x）内置 spark、
+     *    不注册插件表且默认忽略自装插件版 JAR，这正是用户实测 Purpur 26.2
+     *    「装了 spark 仍检测不到」的根因；内置可读时按已接入处理并标记
+     *    来源为「服务器核心内置」；
+     * 3. 内置也没有但 plugins 目录里有 spark 相关 JAR（[findStraySparkFiles]）
+     *    → [ProbeOutcome.NotLoaded]：多为下载到模组版 spark（Modrinth 全是
+     *    NeoForge/Fabric/Forge 变体）或核心已内置而忽略插件版，给出排查
+     *    方向而不是笼统的「接入失败」；
+     * 4. 全部查无 → 未安装（静默）。
+     *
+     * 1.6.7.6：Folia 下 spark 统计整体不可读属平台现状而非故障，第四态按
+     * 信息级提示（内置采样器已兜底），不再误报「接入失败」。
      */
     private fun probeSpark(): SparkStartupCheck.ProbeOutcome = try {
-        val sparkPlugin = Bukkit.getPluginManager().getPlugin("spark")
+        val sparkPlugin = findSparkPlugin()
         when {
-            sparkPlugin == null -> SparkStartupCheck.ProbeOutcome.NotInstalled
-            !sparkPlugin.isEnabled ->
+            sparkPlugin != null && !sparkPlugin.isEnabled ->
                 SparkStartupCheck.ProbeOutcome.Failed("spark 插件未启用")
-            else -> {
+            sparkPlugin != null -> {
                 val metrics = SparkBridge.read(sparkPlugin.javaClass.classLoader)
                 when {
-                    metrics != null -> SparkStartupCheck.ProbeOutcome.Installed(metrics)
+                    metrics != null -> SparkStartupCheck.ProbeOutcome.Installed(metrics, bundled = false)
                     FoliaCompat.isFolia -> SparkStartupCheck.ProbeOutcome.NoStatsOnThisCore(
                         "Folia 多线程核心区域化 ticking，spark 统计暂不可读"
                     )
                     else -> SparkStartupCheck.ProbeOutcome.Failed("各指标均暂不可读")
                 }
             }
+            else -> {
+                // 插件表查无 → 内置 spark 通道（Paper 1.21+ 系核心）
+                val bundledLoader = SparkBridge.bundledSparkClassLoader(bukkitApiLoader())
+                when {
+                    bundledLoader != null -> {
+                        val metrics = SparkBridge.read(bundledLoader)
+                        when {
+                            metrics != null -> SparkStartupCheck.ProbeOutcome.Installed(metrics, bundled = true)
+                            FoliaCompat.isFolia -> SparkStartupCheck.ProbeOutcome.NoStatsOnThisCore(
+                                "Folia 多线程核心区域化 ticking，spark 统计暂不可读"
+                            )
+                            else -> SparkStartupCheck.ProbeOutcome.Failed("spark 已随核心内置但各指标均暂不可读")
+                        }
+                    }
+                    else -> {
+                        val strayFiles = findStraySparkFiles()
+                        if (strayFiles != null) {
+                            SparkStartupCheck.ProbeOutcome.NotLoaded(strayFiles)
+                        } else {
+                            SparkStartupCheck.ProbeOutcome.NotInstalled
+                        }
+                    }
+                }
+            }
         }
     } catch (t: Throwable) {
         SparkStartupCheck.ProbeOutcome.Failed(t.message?.takeIf { it.isNotEmpty() } ?: t.toString())
     }
+
+    /**
+     * 查 spark 插件（1.6.7.7：大小写不敏感）。
+     * Bukkit 的 getPlugin(name) 是区分大小写的精确 equals，第三方分发或
+     * 改名变体的插件名大小写有差异时会漏检；先精确匹配（快路径），
+     * 再全表忽略大小写扫一遍。
+     */
+    private fun findSparkPlugin(): org.bukkit.plugin.Plugin? {
+        return try {
+            Bukkit.getPluginManager().getPlugin("spark")
+                ?: Bukkit.getPluginManager().plugins.firstOrNull {
+                    it.name.equals("spark", ignoreCase = true)
+                }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /**
+     * Bukkit API 类加载器（服务器系统类加载器，1.6.7.7 内置通道首选候选）。
+     * Paper 1.21+ 系核心把内置 spark 挂在系统类路径上，Bukkit 接口本身由
+     * 该加载器定义——从它的加载器起探测最直接。
+     */
+    private fun bukkitApiLoader(): ClassLoader? {
+        return try {
+            Bukkit::class.java.classLoader
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /**
+     * plugins 目录里的 spark 相关 JAR 文件名列表（1.6.7.7，对齐 1.6.7.6
+     * 覆盖版形态）。
+     *
+     * 过滤：普通文件 + .jar 结尾 + 文件名含 "spark"（均忽略大小写）；
+     * 命中文件名 join 成串用于 [SparkStartupCheck.ProbeOutcome.NotLoaded]
+     * 提示（展示具体文件让用户一眼认出自己下载的是模组版还是插件版）；
+     * 无命中返回 null。
+     */
+    private fun findStraySparkFiles(): String? {
+        return try {
+            val pluginsDir = dataFolder.parentFile ?: return null
+            val files = pluginsDir.listFiles { file ->
+                file.isFile &&
+                    file.name.endsWith(".jar", ignoreCase = true) &&
+                    file.name.contains("spark", ignoreCase = true)
+            } ?: return null
+            if (files.isEmpty()) null else files.joinToString(", ") { it.name }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+
 
     override fun onDisable() {
         // 1.6.4：每一步都独立捕获——停机阶段任何一步失败（含历史遗留的
@@ -329,9 +420,17 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         var sparkCpu: Double? = null
         var sparkPing: Double? = null
         try {
-            val sparkPlugin = Bukkit.getPluginManager().getPlugin("spark")
-            if (sparkPlugin != null && sparkPlugin.isEnabled) {
-                val metrics = SparkBridge.read(sparkPlugin.javaClass.classLoader)
+            // 1.6.7.7：插件表（大小写不敏感）查无或未启用时，尝试内置 spark
+            // 通道（Paper 1.21+ 系核心内置 spark 不注册插件表）——与启动自检
+            // 同口径，装不装插件版都能接入
+            val sparkPlugin = findSparkPlugin()
+            val loader = if (sparkPlugin != null && sparkPlugin.isEnabled) {
+                sparkPlugin.javaClass.classLoader
+            } else {
+                SparkBridge.bundledSparkClassLoader(bukkitApiLoader())
+            }
+            if (loader != null) {
+                val metrics = SparkBridge.read(loader)
                 if (metrics != null) {
                     sparkTps = metrics.tps
                     sparkMspt = metrics.mspt
@@ -371,13 +470,18 @@ class KERONGSpigot : JavaPlugin(), KERONG {
     }
 
     /**
-     * 在线人数与平均延迟（毫秒）采样（1.6.7.6 新增）。
+     * 在线人数与平均延迟（毫秒）采样（1.6.7.6 新增；1.6.7.7 修复延迟暂不可读）。
      *
      * - Folia：玩家集合访问经全局区域线程（[FoliaCompat.callSync]，超时 3 秒
      *   返回 null）；
      * - 其他核心：直接读（与 /查在线 同级安全性）；
      * - getPing 为 Paper 系 API（纯 Spigot 无此方法 → NoSuchMethodError 被
-     *   捕获，人数照常返回、延迟为 null）；无人在线延迟为 null。
+     *   捕获，人数照常返回、延迟为 null）；
+     * - 1.6.7.7：延迟为 0 是合法值（本机/同机连接、首次 keep-alive 未完成
+     *   都会长时间保持 0），旧版 `ping > 0` 会把 0 延误玩家当作无效跳过
+     *   ——单人本地进服时平均延迟永远算不出来，卡片误显示「暂无玩家」；
+     *   现改为 `ping >= 0` 计数，-1 仍是读取失败哨兵不入平均；
+     * - 无人在线延迟为 null。
      */
     private fun readPlayerStats(folia: Boolean): Pair<Int, Double?>? {
         val direct: () -> Pair<Int, Double?>? = {
@@ -392,7 +496,7 @@ class KERONGSpigot : JavaPlugin(), KERONG {
                     } catch (_: Throwable) {
                         -1
                     }
-                    if (ping > 0) {
+                    if (ping >= 0) {
                         pingSum += ping
                         pingCount++
                     }

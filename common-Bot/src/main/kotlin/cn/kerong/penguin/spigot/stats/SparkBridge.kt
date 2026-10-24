@@ -77,6 +77,42 @@ object SparkBridge {
     private const val DOUBLE_AVERAGE_INFO = "me.lucko.spark.api.statistic.misc.DoubleAverageInfo"
 
     /**
+     * 「内置 spark」通道类加载器解析（1.6.7.7 重做，对齐 1.6.7.6 覆盖版设计）。
+     *
+     * Paper 1.21+ 系核心（Paper / Purpur / Folia 1.21 与 26.x）**内置 spark**：
+     * 其类直接挂在服务器系统类路径上，不注册 Bukkit 插件表，自装插件版
+     * JAR 还会被这些核心默认忽略——这正是「装了 spark 仍检测不到」的根因
+     * （用户实测 Purpur 26.2）。插件表查不到时，依次在候选加载器里探测
+     * `me.lucko.spark.api.SparkProvider`（能加载且单例非空且是 Spark 实例
+     * 即视为内置 spark 可用）：
+     * 1. [extraCandidate]——Spigot 端传 Bukkit API 类加载器（服务器主加载器）；
+     * 2. 本类自己的加载器（混合端 / 极端环境兜底）；
+     * 3. 线程上下文加载器（部分核心把 spark 挂在 TCCL）。
+     *
+     * @return 第一个能读到 spark 的加载器；全部探测失败返回 null（无内置）。
+     */
+    fun bundledSparkClassLoader(extraCandidate: ClassLoader?): ClassLoader? {
+        val candidates = ArrayList<ClassLoader>(3)
+        extraCandidate?.let { candidates.add(it) }
+        candidates.add(SparkBridge::class.java.classLoader)
+        try {
+            Thread.currentThread().contextClassLoader?.let { candidates.add(it) }
+        } catch (_: Throwable) {
+        }
+        return candidates
+            .distinctBy { System.identityHashCode(it) }
+            .firstOrNull { loader ->
+                try {
+                    val spark = Class.forName(SPARK_PROVIDER, true, loader)
+                        .getMethod("get").invoke(null) ?: return@firstOrNull false
+                    Class.forName(SPARK_INTERFACE, true, loader).isInstance(spark)
+                } catch (_: Throwable) {
+                    false
+                }
+            }
+    }
+
+    /**
      * 尝试从 spark 读取性能指标。
      *
      * @param preferredLoader 优先使用的类加载器（Spigot 端传 spark 插件的
@@ -104,13 +140,19 @@ object SparkBridge {
         }
     }
 
-    /** TPS：Spark#tps() → DoubleStatistic#poll(TicksPerSecond.MINUTES_1)。 */
+    /**
+     * TPS：Spark#tps() → DoubleStatistic#poll(TicksPerSecond.MINUTES_1)。
+     * 1.6.7.7：读数封顶 20——spark 的 TPS 数据源在部分核心（尤其新版
+     * Paper 系与自采样的 Spigot 系）下是对瞬时速率的无上限平均，启动
+     * 追赶 / 空闲加速场景会给出 300+ 的异常值，封顶到满速 20（与
+     * [cn.kerong.bot.PerformanceSnapshot] 各层一致的三重保险）。
+     */
     private fun pollTps(spark: Any, loader: ClassLoader): Double? {
         return pollWindowDouble(
             spark, loader, "tps",
             "me.lucko.spark.api.statistic.StatisticWindow\$TicksPerSecond",
             listOf("MINUTES_1", "SECONDS_10"),
-        )
+        )?.coerceAtMost(20.0)
     }
 
     /** CPU：Spark#cpuProcess() → DoubleStatistic#poll(CpuUsage.MINUTES_1)。 */

@@ -33,7 +33,7 @@
 
 **【游戏内命令】**（MC 内）
 - /qq help —— QQ 绑定管理命令
-- /hb help —— 插件命令
+- /kerong help —— 插件命令
 
 ---
 **当前插件版本：v{version}**

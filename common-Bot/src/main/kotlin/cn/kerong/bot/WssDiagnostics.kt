@@ -368,7 +368,7 @@ object WssDiagnostics : WebSocketListener {
      * 主动重连（90 秒限频共用，防重连风暴）。
      *
      * 1.6.2：重连超时挂起期间（ReconnectManager 已关闭 SDK 自动重连，
-     * 等待 30 分钟退避或 /hb chs）看门狗不再兑底重连。
+     * 等待 30 分钟退避或 /kerong chs）看门狗不再兑底重连。
      */
     private fun forcedReconnect(socket: WebSocketClient, message: String) {
         if (ReconnectManager.isSuspended()) return

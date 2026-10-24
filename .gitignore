@@ -39,3 +39,4 @@ gradle.properties
 scripts/smoke1675/out/
 scripts/render-test/out/
 scripts/smoke1676-out/
+smoke1677-out/

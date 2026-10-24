@@ -10,7 +10,7 @@ import org.bukkit.command.TabExecutor
 import java.util.Locale
 
 /**
- * /kerong 主命令（短别名 /hb）：reload / info / panel / chs / mem / help。
+ * /kerong 主命令：reload / info / panel / chs / mem / help。
  *
  * 1.6.2 新增 chs 子命令：机器人重连超时挂起或断线期间，手动重置重连计数
  * 并立即重新尝试连接（等价于 30 分钟退避结束后的自动重试，任何时候可用）。

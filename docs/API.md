@@ -294,7 +294,7 @@ BindingInfo copy = info.copy("Alex", "nickname", "default");
 
 | 命令 | 说明 | 同步状态 |
 |------|------|------|
-| `/kerong reload` | 重载配置（别名 /hb） | ✅ 可用 |
+| `/kerong reload` | 重载配置 | ✅ 可用 |
 | `/kerong info` | 查看适配器信息 | ✅ 可用 |
 | `/kerong panel` | 重新同步 QQ 快捷指令面板 | ✅ 可用 |
 | `/at <昵称> <消息>` | 向 QQ 群发送艾特消息 | ⚠️ 尚未同步（依赖 QClient.sendAtToGroups） |
