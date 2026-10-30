@@ -18,16 +18,23 @@ import java.nio.charset.StandardCharsets
  *
  * 1.6.0 面板同步加固（修复「面板显示没有指定 / 按钮丢失」问题）：
  * - 全部面板接口调用校验 HTTP 状态码并解析 QQ 错误码（如 40030009 并发冲突、
- *   40030013 超出数量限制、40030020 内容安全拦截），失败明细写入日志——
- *   旧版静默吞错，任何一步失败都无从得知，面板缺失后无法排查；
+ *   40030013 超出数量限制、40030020 内容安全拦截），失败明细写入日志；
  * - 面板元素长度预校验：name ≤ 14 单位 / desc ≤ 30 单位（中文按 2 单位），
- *   超限按钮跳过并告警——单个超限按钮会让整个面板创建请求被拒，
- *   导致全部按钮一起消失；
- * - 已存在本插件面板（按 remark 识别）时改走 PUT 原地更新（不删不建），
- *   消除「先删后建」中间态（旧流程删除成功、创建失败时面板直接丢失）；
- *   生效群列表变化或面板异常时才删除重建；
+ *   超限按钮跳过并告警；
  * - 40030009（操作进行中）自动重试（最多 3 次，间隔 1 秒）；
  * - 同步结束后输出面板 ID 与可用按钮数，/kerong panel 与启动日志均可核对。
+ *
+ * 1.6.7.9 先删后建（修复「创建面板失败 HTTP 400 code 30013 超出数量限制」）：
+ * - 同步逻辑改为**先删后建**——不再走 PUT 原地更新：平台侧 PUT 更新在部分
+ *   场景下仍会累积面板记录，且旧版「列表查询失败 → 误判无面板 → 直接创建」
+ *   的路径会在平台上残留旧面板，累计触发 30013 数量超限后创建永远被拒；
+ *   现每次同步前先删除列表里的全部面板（含非本插件 remark 的残留面板），
+ *   再按当前配置创建，面板数量始终为 1，不再逼近平台上限；
+ * - 创建面板遇 30013（超出数量限制，含 40030013 形态）时**自动清空重建**：
+ *   重新拉取列表 → 删除全部面板 → 再创建一次（中间态最多几秒，QQ 客户端
+ *   面板入口会即时反映）；
+ * - 报错如实提示：删除 / 创建失败时输出 HTTP 状态码 + QQ 错误码 + 平台
+ *   原始消息 + 人话解释（见 [describePanelError]），不再只有一句笼统的失败。
  */
 object MenuManager {
     private const val API_BASE = "https://api.sgroup.qq.com"
@@ -35,9 +42,18 @@ object MenuManager {
     /** 面板备注（用于识别本插件创建的面板；不对用户展示）。 */
     private const val PANEL_REMARK = "KERONG Penguin"
 
-    /** 面板操作冲突（40030009）重试次数与间隔。 */
+    /** 面板操作冲突（30009 / 40030009）重试次数与间隔。 */
     private const val RETRY_TIMES = 3
     private const val RETRY_INTERVAL_MILLIS = 1_000L
+
+    /** QQ 面板错误码（归一化后）：操作进行中（并发冲突）。 */
+    private const val PANEL_ERR_CONFLICT = 30009
+
+    /** QQ 面板错误码（归一化后）：面板数量超出平台限制。 */
+    private const val PANEL_ERR_LIMIT = 30013
+
+    /** QQ 面板错误码（归一化后）：内容安全拦截。 */
+    private const val PANEL_ERR_CONTENT_SAFETY = 30020
 
     /**
      * 面板按钮定义：name 菜单按钮文案 / desc 描述 / command 点击后发送的命令。
@@ -85,9 +101,9 @@ object MenuManager {
     private val ECONOMY_PANEL_NAMES = setOf("财富榜")
 
     /**
-     * 同步所有配置群的快捷面板：
-     * ① 列出已有面板 → ② 本插件面板走 PUT 原地更新（群列表一致时），
-     * 其余情况删除重建 → ③ 校验长度后提交按钮 → ④ 记录面板 ID 与结果日志。
+     * 同步所有配置群的快捷面板（1.6.7.9 起先删后建）：
+     * ① 列出已有面板 → ② 删除全部（含非本插件残留）→ ③ 校验长度后创建
+     * 新面板（遇 30013 数量超限自动清空重建）→ ④ 记录面板 ID 与结果日志。
      */
     fun syncGroupPanels(starter: Starter, groupOpenIds: List<String>) {
         if (groupOpenIds.isEmpty()) return
@@ -147,17 +163,6 @@ object MenuManager {
                 return
             }
 
-            // 列出已有面板（带响应校验；失败则保守走删除重建流程）
-            val existing = listPanels(authHeader, "group")
-            val mine = existing.firstOrNull { panel ->
-                val remark = try {
-                    panel.getJSONObject("panel")?.getString("remark")
-                } catch (_: Throwable) {
-                    null
-                }
-                remark == PANEL_REMARK
-            }
-
             val panelJson = JSONObject().apply {
                 put("remark", PANEL_REMARK)
                 put("items", JSONArray(checked.map { item ->
@@ -169,47 +174,20 @@ object MenuManager {
                 }))
             }
 
-            var panelId: String? = null
-            if (mine != null) {
-                val existingId = mine.getString("panel_id")
-                // 查详情确认生效群列表（GET 响应含 group_openids）
-                val detail = fetchPanelDetail(authHeader, existingId)
-                val existingGroups = try {
-                    detail?.getJSONArray("group_openids")?.mapNotNull { it as? String }?.toSet()
-                } catch (_: Throwable) {
-                    null
-                }
-                if (existingGroups != null && existingGroups == groupOpenIds.toSet()) {
-                    // 群列表一致：PUT 原地更新面板内容（不删不建，无中间态）
-                    val updated = updatePanel(authHeader, existingId, panelJson)
-                    if (updated) {
-                        panelId = existingId
-                        log("快捷菜单已原地更新（面板 $existingId，${checked.size} 个按钮可用）")
-                    }
-                }
-                if (panelId == null) {
-                    // 群列表变化或更新失败：删除后按新配置重建
-                    deletePanel(authHeader, existingId)
-                    val created = createPanel(authHeader, JSONObject().apply {
-                        put("scope", "group")
-                        put("target_type", "specific")
-                        put("group_openids", JSONArray(groupOpenIds))
-                        put("panel", panelJson)
-                    })
-                    panelId = created
-                }
-            } else {
-                // 无本插件面板：清理可能残留的其他旧面板后创建
-                for (other in existing) {
-                    other.getString("panel_id")?.let { deletePanel(authHeader, it) }
-                }
-                panelId = createPanel(authHeader, JSONObject().apply {
-                    put("scope", "group")
-                    put("target_type", "specific")
-                    put("group_openids", JSONArray(groupOpenIds))
-                    put("panel", panelJson)
-                })
+            val createBody = JSONObject().apply {
+                put("scope", "group")
+                put("target_type", "specific")
+                put("group_openids", JSONArray(groupOpenIds))
+                put("panel", panelJson)
             }
+
+            // 1.6.7.9：先删后建——不再 PUT 原地更新（旧面板在平台上累积触发
+            // 30013 数量超限的根因），每次同步前删除列表里的全部面板（含非本
+            // 插件 remark 的残留面板），再按当前配置创建一个新面板；创建遇
+            // 30013 时由 createPanelWithLimitRecovery 自动清空重建兜底
+            deleteAllPanels(authHeader)
+
+            val panelId = createPanelWithLimitRecovery(authHeader, createBody)
 
             if (panelId != null) {
                 log("已同步 ${groupOpenIds.size} 个群的快捷菜单（面板 $panelId，${checked.size} 个按钮可用）")
@@ -228,7 +206,7 @@ object MenuManager {
     private fun listPanels(authHeader: String, scope: String): List<JSONObject> {
         val (code, body) = httpCall("GET", "$API_BASE/v2/panels?scope=$scope&limit=50", authHeader)
         if (code !in 200..299) {
-            log("查询面板列表失败（HTTP $code）: $body")
+            log("查询面板列表失败（HTTP $code${describePanelError(body)}）: $body")
             return emptyList()
         }
         return try {
@@ -240,71 +218,108 @@ object MenuManager {
         }
     }
 
-    /** 查询面板详情（含 group_openids；失败返回 null）。 */
-    private fun fetchPanelDetail(authHeader: String, panelId: String): JSONObject? {
-        val (code, body) = httpCall("GET", "$API_BASE/v2/panels/$panelId", authHeader)
-        if (code !in 200..299) {
-            log("查询面板详情失败（HTTP $code）: $body")
-            return null
+    /**
+     * 删除列表里的全部面板（1.6.7.9 先删后建主体）。
+     * 删除失败逐个如实记录（HTTP 状态码 + 错误码 + 人话解释），不阻断后续创建。
+     */
+    private fun deleteAllPanels(authHeader: String) {
+        val existing = listPanels(authHeader, "group")
+        if (existing.isEmpty()) {
+            log("平台上无残留面板，直接创建")
+            return
         }
-        return try {
-            JSON.parseObject(body ?: "{}")
-        } catch (e: Exception) {
-            log("解析面板详情失败: ${e.message}")
-            null
-        }
-    }
-
-    /** 更新面板内容（PUT；40030009 自动重试）。返回是否成功。 */
-    private fun updatePanel(authHeader: String, panelId: String, panelJson: JSONObject): Boolean {
-        val body = JSONObject().apply { put("panel", panelJson) }
-        repeat(RETRY_TIMES) { attempt ->
-            val (code, text) = httpCall("PUT", "$API_BASE/v2/panels/$panelId", authHeader, body.toJSONString())
-            if (code in 200..299) return true
-            if (errorCodeOf(text) == 40030009 && attempt < RETRY_TIMES - 1) {
-                log("面板更新冲突（操作进行中），${RETRY_INTERVAL_MILLIS}ms 后重试（第 ${attempt + 1} 次）")
-                Thread.sleep(RETRY_INTERVAL_MILLIS)
-                return@repeat
+        var deleted = 0
+        var failed = 0
+        for (panel in existing) {
+            val id = panel.getString("panel_id") ?: continue
+            if (deletePanel(authHeader, id)) {
+                deleted++
+            } else {
+                failed++
             }
-            log("更新面板失败（HTTP $code）: $text")
-            return false
         }
-        return false
+        if (failed == 0) {
+            log("已删除全部旧面板（$deleted 个），开始创建新面板")
+        } else {
+            log("旧面板清理完成：成功 $deleted 个、失败 $failed 个（失败明细见上方日志），继续尝试创建")
+        }
     }
 
-    /** 删除面板（失败仅记录，不阻断后续创建）。 */
-    private fun deletePanel(authHeader: String, panelId: String) {
+    /** 删除面板（失败如实记录错误码与原因，不阻断后续创建）。返回是否成功。 */
+    private fun deletePanel(authHeader: String, panelId: String): Boolean {
         val (code, text) = httpCall("DELETE", "$API_BASE/v2/panels/$panelId", authHeader)
         if (code !in 200..299) {
-            log("删除旧面板 $panelId 失败（HTTP $code）: $text")
+            log("删除旧面板 $panelId 失败（HTTP $code${describePanelError(text)}）: $text")
+            return false
         }
+        return true
     }
 
-    /** 创建面板（POST；40030009 自动重试）。返回 panel_id（失败返回 null）。 */
-    private fun createPanel(authHeader: String, body: JSONObject): String? {
+    /**
+     * 创建面板（POST）：
+     * - 30009（操作进行中，含 40030009 形态）自动重试；
+     * - **30013（超出数量限制，含 40030013 形态）自动清空重建**——重新拉取
+     *   列表删除全部面板后再试，规避平台面板数量上限导致的永久创建失败；
+     * - 其余失败如实输出 HTTP 状态码 + QQ 错误码 + 平台原始响应。
+     * 返回 panel_id（失败返回 null）。
+     */
+    private fun createPanelWithLimitRecovery(authHeader: String, body: JSONObject): String? {
         repeat(RETRY_TIMES) { attempt ->
             val (code, text) = httpCall("POST", "$API_BASE/v2/panels", authHeader, body.toJSONString())
             if (code in 200..299) {
-                val panelId = try {
-                    JSON.parseObject(text ?: "{}")?.getString("panel_id")
-                } catch (_: Throwable) {
-                    null
-                }
-                if (panelId.isNullOrEmpty()) {
+                val panelId = parsePanelId(text)
+                if (panelId == null) {
                     log("创建面板成功但响应中无 panel_id（响应: $text）")
                     return null
                 }
                 return panelId
             }
-            if (errorCodeOf(text) == 40030009 && attempt < RETRY_TIMES - 1) {
-                log("面板创建冲突（操作进行中），${RETRY_INTERVAL_MILLIS}ms 后重试（第 ${attempt + 1} 次）")
-                Thread.sleep(RETRY_INTERVAL_MILLIS)
-                return@repeat
+            val err = normalizedErrorCode(text)
+            when {
+                err == PANEL_ERR_CONFLICT && attempt < RETRY_TIMES - 1 -> {
+                    log("面板创建冲突（操作进行中），${RETRY_INTERVAL_MILLIS}ms 后重试（第 ${attempt + 1} 次）")
+                    Thread.sleep(RETRY_INTERVAL_MILLIS)
+                    return@repeat
+                }
+                err == PANEL_ERR_LIMIT && attempt < RETRY_TIMES - 1 -> {
+                    // 30013：平台上面板数量已超上限——清空全部面板后重试创建
+                    log("创建面板被拒（错误码 30013：超出面板数量限制），自动清空全部面板后重建")
+                    deleteAllPanels(authHeader)
+                    return@repeat
+                }
+                else -> {
+                    log("创建面板失败（HTTP $code${describePanelError(text)}）: $text")
+                    return null
+                }
             }
-            log("创建面板失败（HTTP $code）: $text")
-            return null
         }
         return null
+    }
+
+    /** 从创建成功响应解析 panel_id。 */
+    private fun parsePanelId(text: String?): String? = try {
+        JSON.parseObject(text ?: "{}")?.getString("panel_id")
+    } catch (_: Throwable) {
+        null
+    }
+
+    /**
+     * 错误码归一化：QQ 面板接口的错误码存在 30013 与 40030013 两种形态
+     * （v2 API 返回前者、部分网关返回后者），统一折算为 30013 形态比较。
+     */
+    private fun normalizedErrorCode(body: String?): Int {
+        val code = errorCodeOf(body)
+        return if (code > 40_000_000) code - 40_000_000 else code
+    }
+
+    /** 面板错误码 → 人话解释（拼进失败日志，帮助服主自助排查）。 */
+    private fun describePanelError(body: String?): String {
+        return when (normalizedErrorCode(body)) {
+            PANEL_ERR_CONFLICT -> "，错误码 30009：操作进行中（并发冲突），稍后自动重试"
+            PANEL_ERR_LIMIT -> "，错误码 30013：超出面板数量限制（本次同步已自动清空重建，仍失败可稍后用 /kerong panel 重试）"
+            PANEL_ERR_CONTENT_SAFETY -> "，错误码 30020：内容安全拦截（检查按钮文案后重试）"
+            else -> ""
+        }
     }
 
     /**

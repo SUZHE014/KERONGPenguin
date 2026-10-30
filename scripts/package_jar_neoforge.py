@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-合成 NeoForge 1.21.1 分发模组 JAR（KERONGPenguin_NeoForge-1.21.1-<version>.jar）。
+合成 NeoForge 分发模组 JAR（KERONGPenguin_NeoForge-<MC>-<version>.jar，MC 段为最低支持版本）。
 
 用法：
     python3 scripts/package_jar_neoforge.py [base_jar] [-o output.jar]
@@ -63,7 +63,9 @@ RELOCATE_PREFIXES = (
 )
 RELOCATE_TARGET = "cn/kerong/shaded"
 
-MC_VERSION = "1.21.1"
+# 文件名中的 MC 段：最低支持版本（1.6.7.9 起多版本适配，实际支持
+# [MIN_MC, 1.22) 全区间——编译目标 1.20.4 / 运行兼容 1.20.4 / 1.20.6 / 1.21.x）
+MC_VERSION = "1.20.4"
 MOD_ID = "kerongpenguin"
 
 # base JAR 中需要剔除的内容（全部由新编译产物或模组资源提供）。
@@ -106,11 +108,20 @@ DEAD_LIB_PREFIXES = (
 
 
 def read_mod_version() -> str:
+    # 1.6.7.9：双 toml 声明（mods.toml 供 1.20.4 / neoforge.mods.toml 供
+    # 1.20.5+），两者内容一致，任取可解析者读 version
     with zipfile.ZipFile(MODULE_JAR) as zf:
-        text = zf.read("META-INF/neoforge.mods.toml").decode("utf-8")
+        names = set(zf.namelist())
+        toml_name = next(
+            (n for n in ("META-INF/neoforge.mods.toml", "META-INF/mods.toml") if n in names),
+            None,
+        )
+        if toml_name is None:
+            raise RuntimeError("模组产物中未找到 neoforge.mods.toml / mods.toml")
+        text = zf.read(toml_name).decode("utf-8")
     match = re.search(r'^version\s*=\s*"?([0-9A-Za-z.\-]+)', text, re.MULTILINE)
     if not match:
-        raise RuntimeError("neoforge.mods.toml 中未找到 version 字段")
+        raise RuntimeError(f"{toml_name} 中未找到 version 字段")
     return match.group(1)
 
 

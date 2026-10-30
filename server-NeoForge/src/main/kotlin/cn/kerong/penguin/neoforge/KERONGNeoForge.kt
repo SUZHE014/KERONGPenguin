@@ -30,7 +30,7 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
 /**
- * KERONGPenguin 模组主类（NeoForge 1.21.1 适配器）。
+ * KERONGPenguin 模组主类（NeoForge 适配器，MC 1.20.4+：1.20.4 / 1.20.6 / 1.21.x）。
  *
  * 与 Spigot 版（KERONGSpigot）同源：共用 common-Bot 全部业务
  * （QQ 机器人 / 命令系统 / 绑定 / 签到 / 统计 / 信息卡渲染），
@@ -207,7 +207,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         get() = MOD_VERSION
 
     override val serverVersion: String
-        get() = NeoServerRef.server?.serverModName ?: "NeoForge 1.21.1"
+        get() = NeoServerRef.server?.serverModName ?: "NeoForge"
 
     // ---------- 配置（ConfigManager，与 Spigot 同一实现） ----------
 
@@ -402,7 +402,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             .resolve("kerongpenguin").toFile()
 
         /** 模组版本（与 neoforge.mods.toml 一致）。 */
-        private const val MOD_VERSION = "1.6.7.8"
+        private const val MOD_VERSION = "1.6.7.9"
 
         /** 当前模组实例（命令与事件层访问）。 */
         @Volatile

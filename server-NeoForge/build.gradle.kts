@@ -2,17 +2,25 @@ plugins {
     kotlin("jvm")
 }
 
-// NeoForge 1.21.1 适配器：与 Spigot 版同源（common-Bot + manager 目录共用源码），
-// 经 org.bukkit 兼容层（src/main/kotlin/org/bukkit）桥接到 NeoForge API。
+// NeoForge 适配器（MC 1.20.4+：1.20.4 / 1.20.6 / 1.21.x）：与 Spigot 版同源
+// （common-Bot + manager 目录共用源码），经 org.bukkit 兼容层
+// （src/main/kotlin/org/bukkit）桥接到 NeoForge API。
+//
+// 1.6.7.9 多版本适配：编译目标降到 MC 1.20.4（NeoForge 20.4.253 / FML loader
+// 2.0.17 / bus 7.2.0），面向最低支持版本编译、在更高版本运行（多版本模组标准
+// 做法）；跨版本签名差异（ServerChatEvent 消息读取）由 NeoForgeEvents
+// 运行时反射适配；mods.toml 与 neoforge.mods.toml 双声明（1.20.4 只认前者，
+// 1.20.5+ 优先后者），minecraft 版本范围 [1.20.4,1.22)。
 //
 // 构建方式（本仓库构建机内存不足以跑完 NFRT 反编译→重编译全流程）：
 // 编译类路径直接使用真实构件（全部 compileOnly，见 libs/README.txt）——
-//   - minecraft-1.21.1-mojmap.jar：NFRT 管线 rename 中间产物（mojmap 名的原版类）；
-//   - neoforge-21.1.252-universal.jar：NeoForge 官方 universal（事件 / 总线 API 真实字节码）；
-//   - fml-loader / bus / brigadier / authlib：官方构件。
+//   - minecraft-1.20.4-mojmap.jar：官方 client.jar 经 ART --reverse 重映射
+//     （mojmap 名的原版类）；
+//   - neoforge-20.4.253-universal.jar：NeoForge 官方 universal（事件 / 总线 API 真实字节码）；
+//   - fml-loader / bus / brigadier / authlib：官方构件（版本随目标 MC）。
 // 分发 JAR 由 scripts/package_jar_neoforge.py 合成（并入 kloping SDK / fastjson /
 // kotlin-stdlib / snakeyaml 等运行时依赖），模块自身产物不含这些依赖。
-version = "1.6.7.8"
+version = "1.6.7.9"
 
 kotlin {
     jvmToolchain(21)

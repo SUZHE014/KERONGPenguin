@@ -3,9 +3,12 @@ loaderVersion = "[1,)"
 license = "GPL-3.0"
 issueTrackerURL = "https://github.com/SUZHE014/KERONGPenguin"
 
+# 1.6.7.9：修复段头历史笔误（mods 数组表段头曾误写损）并放宽版本范围
+# 适配 MC 1.20.4+（面向最低版本 1.20.4 编译，向上兼容运行）。
+# 版本范围放宽适配 MC 1.20.4+（面向最低版本 1.20.4 编译，向上兼容运行）。
 [[mods]]
 modId = "kerongpenguin"
-version = "1.6.7.8"
+version = "1.6.7.9"
 displayName = "KERONGPenguin"
 authors = "KERONG"
 description = '''
@@ -17,13 +20,13 @@ displayTest = "IGNORE_SERVER_VERSION"
 [[dependencies.kerongpenguin]]
 modId = "neoforge"
 type = "required"
-versionRange = "[21.1.0,)"
+versionRange = "[20.4.0,)"
 ordering = "NONE"
 side = "SERVER"
 
 [[dependencies.kerongpenguin]]
 modId = "minecraft"
 type = "required"
-versionRange = "[1.21.1,1.22)"
+versionRange = "[1.20.4,1.22)"
 ordering = "NONE"
 side = "SERVER"

@@ -8,18 +8,19 @@ server-Spigot 的 manager 目录 + org.bukkit 兼容层 + 模组源编译，编�
 一键重建（推荐）：
     python3 scripts/build_neoforge_libs.py
 
-构件清单（7 个 jar）：
-  1. minecraft-1.21.1-mojmap.jar
+构件清单（7 个 jar；1.6.7.9 起默认目标 MC 1.20.4，可用 --mc/--neoforge 等
+参数切换目标版本重建，详见脚本头注释）：
+  1. minecraft-1.20.4-mojmap.jar
      Mojang 官方 client.jar + client.txt（ProGuard 官方映射），经
      ForgeAutoRenamingTool --reverse 反向重映射为 mojang 命名
      （net/minecraft/server/MinecraftServer 等）；
-  2. neoforge-21.1.252-universal.jar
+  2. neoforge-20.4.253-universal.jar
      NeoForge 官方 universal（事件类 / NeoForge.EVENT_BUS 等真实字节码）；
-  3. loader-4.0.45.jar
+  3. loader-2.0.17.jar
      FML loader（net.neoforged.fml.common.@Mod 注解）；
-  4. bus-8.0.5.jar
+  4. bus-7.2.0.jar
      NeoForge EventBus（net.neoforged.bus.api.SubscribeEvent）；
-  5. brigadier.jar（com.mojang:brigadier，版本取自 1.21.1 版本清单）；
+  5. brigadier.jar（com.mojang:brigadier，版本取自 1.20.4 版本清单）；
   6. authlib.jar（com.mojang:authlib，同上）；
   7. deps.jar
      kloping QQ SDK / fastjson / kotlin-stdlib / okhttp 等，直接复制

@@ -428,6 +428,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 1.6.2：更新检查开关（启动后异步访问官网版本文件，发现新版本时控制台提示
             // 版本号 / 下载页 / 简要日志；检测失败仅一句话提示，细节进日志）
             "update-check.enabled" to true,
+            // 1.6.7.9：更新检查镜像源（官网域名不可达时回退：默认官网服务器 IP 直连；
+            // 填 off 关闭镜像回退只试主源；也可填自建镜像地址）
+            "update-check.mirror-url" to "",
             "serverName" to "KERONGPenguin",
             "chat-format.from-game" to "[游戏] <{name}> {message}",
             // 1.6.7.2：新默认仅染 QQ 字样（§b 青色），§r 重置后再接玩家名

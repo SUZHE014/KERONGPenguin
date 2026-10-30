@@ -89,6 +89,9 @@ class NeoForgeEvents(private val plugin: KERONGNeoForge) {
     fun onChat(event: ServerChatEvent) {
         val player = event.player
         if (player.level().isClientSide) return
+        // 1.6.7.9 多版本适配备注：getRawText(): String 在 1.20.4 / 1.20.6 /
+        // 1.21.x 三代 NeoForge 字节码签名完全一致（已逐一 javap 核对），
+        // 直接调用无需跨版本反射。
         val message = event.rawText ?: return
         val playerName = player.gameProfile.name
 
