@@ -19,6 +19,9 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent
  *
  * 1.6.7.7：移除短别名 /hb（用户需求），主命令唯一 /kerong；旧 /hb 输入
  * 由原版“未知指令”路径处理。
+ *
+ * 1.6.7.10：panel 子命令改异步执行（同步含网络 IO 与退避等待，旧版在
+ * 服务器线程执行会卡服）+ 按同步真实结果反馈成功/失败。
  */
 class NeoForgeCommands(private val plugin: KERONGNeoForge) {
 
@@ -110,8 +113,19 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
                 source.sendFailure(Component.literal("§c未配置 QQ 群。"))
                 return 0
             }
-            MenuManager.syncGroupPanels(starter, groups)
-            source.sendSuccess({ Component.literal("§a已重新同步 QQ 快捷指令面板。") }, true)
+            // 1.6.7.10：面板同步含网络 IO 与退避等待（最坏 20 秒级），
+            // 改在异步线程执行，结果回服务器线程发送；按真实结果反馈
+            // 成功/失败（旧版无论成败一律报「已重新同步」误导服主）
+            source.sendSuccess({ Component.literal("§e正在同步 QQ 快捷指令面板（异步执行，完成后会反馈结果）…") }, false)
+            plugin.submitAsync {
+                val result = MenuManager.syncGroupPanelsWithResult(starter, groups)
+                val report = if (result.ok) {
+                    "§a已重新同步 QQ 快捷指令面板（面板 ${result.panelId}，${result.buttonCount} 个按钮，${result.groupCount} 个群）。"
+                } else {
+                    "§c快捷面板同步失败：${result.error}§e（可稍后用 /kerong panel 重试；持续失败见控制台与 logs/qq 日志）"
+                }
+                plugin.submit { source.sendSuccess({ Component.literal(report) }, false) }
+            }
         } catch (t: Throwable) {
             source.sendFailure(Component.literal("§c面板同步失败: ${t.message}"))
             return 0

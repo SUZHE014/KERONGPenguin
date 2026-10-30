@@ -18,6 +18,10 @@ import java.util.Locale
  * 1.6.6.2 覆盖版新增 mem 子命令：内存诊断（JVM 堆存活 / 已提交 / 上限 +
  * 插件各级缓存条目），用于排查「面板显示内存高」类问题——已提交堆是
  * JVM 预留量而非插件实际存活占用。
+ *
+ * 1.6.7.10 panel 子命令修复：① 面板同步改在异步线程执行（同步含网络 IO
+ * 与退避等待，旧版在主线程执行会卡服）；② 按同步真实结果反馈成功/失败
+ * （旧版无论成败一律绿字报「已重新同步」，面板同步失败时误导服主）。
  */
 class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
 
@@ -57,7 +61,11 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
         return true
     }
 
-    /** 重新同步 QQ 快捷指令面板。 */
+    /**
+     * 重新同步 QQ 快捷指令面板（1.6.7.10：异步执行 + 按真实结果反馈）。
+     * 同步含网络 IO 与退避等待（最坏 20 秒级），在主线程执行会卡服；
+     * 结果回主线程发送（Folia 上经全局区域调度器，兼容多线程核心）。
+     */
     private fun resyncPanel(sender: CommandSender) {
         try {
             val starter = QClient.starter
@@ -70,8 +78,17 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
                 sender.sendMessage("${ChatColor.RED}未配置 QQ 群。")
                 return
             }
-            MenuManager.syncGroupPanels(starter, groups)
-            sender.sendMessage("${ChatColor.GREEN}已重新同步 QQ 快捷指令面板。")
+            sender.sendMessage("${ChatColor.YELLOW}正在同步 QQ 快捷指令面板（异步执行，完成后会反馈结果）…")
+            plugin.submitAsync {
+                val result = MenuManager.syncGroupPanelsWithResult(starter, groups)
+                val report = if (result.ok) {
+                    "${ChatColor.GREEN}已重新同步 QQ 快捷指令面板（面板 ${result.panelId}，${result.buttonCount} 个按钮，${result.groupCount} 个群）。"
+                } else {
+                    "${ChatColor.RED}快捷面板同步失败：${result.error}" +
+                        "${ChatColor.YELLOW}（可稍后用 /kerong panel 重试；持续失败见控制台与 logs/qq 日志）"
+                }
+                plugin.submit { sender.sendMessage(report) }
+            }
         } catch (t: Throwable) {
             sender.sendMessage("${ChatColor.RED}面板同步失败: ${t.message}")
         }

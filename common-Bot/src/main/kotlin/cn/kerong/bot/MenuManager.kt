@@ -11,7 +11,9 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * QQ 快捷菜单（输入面板）管理：启动时按配置同步群快捷命令按钮。
@@ -21,20 +23,39 @@ import java.nio.charset.StandardCharsets
  *   40030013 超出数量限制、40030020 内容安全拦截），失败明细写入日志；
  * - 面板元素长度预校验：name ≤ 14 单位 / desc ≤ 30 单位（中文按 2 单位），
  *   超限按钮跳过并告警；
- * - 40030009（操作进行中）自动重试（最多 3 次，间隔 1 秒）；
+ * - 40030009（操作进行中）自动重试（最多 3 次）；
  * - 同步结束后输出面板 ID 与可用按钮数，/kerong panel 与启动日志均可核对。
  *
  * 1.6.7.9 先删后建（修复「创建面板失败 HTTP 400 code 30013 超出数量限制」）：
- * - 同步逻辑改为**先删后建**——不再走 PUT 原地更新：平台侧 PUT 更新在部分
- *   场景下仍会累积面板记录，且旧版「列表查询失败 → 误判无面板 → 直接创建」
- *   的路径会在平台上残留旧面板，累计触发 30013 数量超限后创建永远被拒；
- *   现每次同步前先删除列表里的全部面板（含非本插件 remark 的残留面板），
- *   再按当前配置创建，面板数量始终为 1，不再逼近平台上限；
- * - 创建面板遇 30013（超出数量限制，含 40030013 形态）时**自动清空重建**：
- *   重新拉取列表 → 删除全部面板 → 再创建一次（中间态最多几秒，QQ 客户端
- *   面板入口会即时反映）；
- * - 报错如实提示：删除 / 创建失败时输出 HTTP 状态码 + QQ 错误码 + 平台
- *   原始消息 + 人话解释（见 [describePanelError]），不再只有一句笼统的失败。
+ * - 同步逻辑改为**先删后建**——不再走 PUT 原地更新：旧版「列表查询失败 →
+ *   误判无面板 → 直接创建」的路径会在平台上残留旧面板，累计触发 30013 数量
+ *   超限后创建永远被拒；现每次同步前先删除列表里的全部面板（含非本插件
+ *   remark 的残留面板），再按当前配置创建；
+ * - 创建面板遇 30013（含 40030013 形态）时**自动清空重建**；错误码归一化
+ *   （30009/30013/30020 双形态）+ describePanelError 人话如实提示。
+ *
+ * 1.6.7.10 30013 真根因修复（1.6.7.9 的先删后建没有对症——用户实测列表 0
+ * 面板、清空重建 3 次仍被拒）：
+ * - **按钮数量上限裁剪**：QQ 官方文档明确「一个指令面板里最多配置 20 个面板
+ *   元素」——1.6.7 加入「查性能」按钮后，全功能开启时面板达 **21 项**，创建
+ *   必然被 40030013 拒绝（与平台上有没有旧面板无关，这才是列表为空仍报
+ *   超限的根因）。现按按钮优先级自动裁剪到 20 个：全功能开启时优先裁掉低频
+ *   管理按钮（查询open ID / 解除黑名单 / AI对话上下文…），被裁命令仍可在群
+ *   里手动输入，且日志如实列出被裁按钮；
+ * - **30013 重试加退避**：旧版三连发在同一秒内全部撞墙；现重试前等待退避
+ *   间隔（2.5s / 5s 递增），再走「清空可见面板 → 再创建」恢复路径；
+ * - **创建接口 QPM 节流**：官方限制 POST /v2/panels 为 10 次/分钟，全局
+ *   6.5 秒最小创建间隔——启动同步 + /kerong panel + 重试叠加时不再超频；
+ * - **列表分页完整拉取**（next_cursor / is_end，最多 10 页防死循环），
+ *   且列表查询失败与「确认无面板」区分开（旧版列表失败也报「平台上无残留
+ *   面板」，误导排查方向）；
+ * - **同步结果如实返回**（[PanelSyncResult]）：/kerong panel 按真实结果
+ *   反馈成功/失败，不再无条件报成功；
+ * - 持续 30013 时提示可能原因（平台配额统计延迟 / 存在列表不可见的残留
+ *   面板 / 创建过于频繁），引导等待几分钟后重试或到 QQ 开放平台管理端核查。
+ *
+ * 线程注意：本同步含网络 IO 与退避等待（最坏 20 秒级），**必须在异步线程
+ * 调用**（启动路径在 QClient 后台线程；/kerong panel 由命令层包 submitAsync）。
  */
 object MenuManager {
     private const val API_BASE = "https://api.sgroup.qq.com"
@@ -42,9 +63,21 @@ object MenuManager {
     /** 面板备注（用于识别本插件创建的面板；不对用户展示）。 */
     private const val PANEL_REMARK = "KERONG Penguin"
 
+    /** QQ 平台限制：一个指令面板最多 20 个面板元素（官方文档 v2/panels）。 */
+    private const val PANEL_MAX_ITEMS = 20
+
     /** 面板操作冲突（30009 / 40030009）重试次数与间隔。 */
     private const val RETRY_TIMES = 3
-    private const val RETRY_INTERVAL_MILLIS = 1_000L
+    private const val CONFLICT_RETRY_INTERVAL_MILLIS = 1_200L
+
+    /** 30013（超出数量限制）重试前退避间隔（毫秒），逐次加长。 */
+    private val LIMIT_RETRY_BACKOFF_MILLIS = longArrayOf(2_500L, 5_000L)
+
+    /**
+     * 创建接口 QPM 节流：官方限制 POST /v2/panels 10 次/分钟，
+     * 全局保持最小创建间隔（启动同步 + /kerong panel + 重试叠加时防超频）。
+     */
+    private const val CREATE_MIN_INTERVAL_MILLIS = 6_500L
 
     /** QQ 面板错误码（归一化后）：操作进行中（并发冲突）。 */
     private const val PANEL_ERR_CONFLICT = 30009
@@ -54,6 +87,9 @@ object MenuManager {
 
     /** QQ 面板错误码（归一化后）：内容安全拦截。 */
     private const val PANEL_ERR_CONTENT_SAFETY = 30020
+
+    /** 上次创建面板请求时间戳（QPM 节流用）。 */
+    private val lastCreatePostAt = AtomicLong(0L)
 
     /**
      * 面板按钮定义：name 菜单按钮文案 / desc 描述 / command 点击后发送的命令。
@@ -91,6 +127,21 @@ object MenuManager {
         PanelItem("签到", "每日签到领金币"),
     )
 
+    /**
+     * 超出平台上限（20 个）时的裁剪顺序（从本表头部开始裁）：
+     * 优先保留玩家常用按钮，低频管理类按钮先让位（对应命令仍可手动输入）。
+     * 1.6.7.10：全功能开启时面板 21 项超限，按此顺序裁掉「查询open ID」。
+     */
+    private val PANEL_TRIM_ORDER = listOf(
+        "查询open ID",
+        "解除黑名单",
+        "AI对话上下文",
+        "清除当前上下文",
+        "全量",
+        "黑名单",
+        "motd",
+    )
+
     /** 依赖 QQ 绑定功能开启的按钮（绑定关闭时一并隐藏；1.5.2：个人信息按钮更名为查信息）。 */
     private val QQ_BIND_PANEL_NAMES = setOf("绑定", "重新绑定", "黑名单", "解除黑名单", "查信息")
 
@@ -101,17 +152,51 @@ object MenuManager {
     private val ECONOMY_PANEL_NAMES = setOf("财富榜")
 
     /**
-     * 同步所有配置群的快捷面板（1.6.7.9 起先删后建）：
-     * ① 列出已有面板 → ② 删除全部（含非本插件残留）→ ③ 校验长度后创建
-     * 新面板（遇 30013 数量超限自动清空重建）→ ④ 记录面板 ID 与结果日志。
+     * 面板同步结果（1.6.7.10）：/kerong panel 据此如实反馈，
+     * 不再无条件报「已重新同步」。
+     */
+    data class PanelSyncResult(
+        /** 创建成功的面板 ID（null = 未创建成功）。 */
+        val panelId: String?,
+        /** 面板内按钮数（含被裁剪后的最终数量）。 */
+        val buttonCount: Int,
+        /** 本次同步覆盖的群数。 */
+        val groupCount: Int,
+        /** 失败 / 跳过原因（成功时为 null）。 */
+        val error: String?,
+    ) {
+        val ok: Boolean get() = panelId != null
+    }
+
+    /**
+     * 同步所有配置群的快捷面板（兼容入口：保持 1.6.7.9 及之前的 void 签名，
+     * 供旧编译产物（互转版 QClient 等）与无需结果的调用方使用；结果见日志）。
+     * 需要程序化结果的调用方用 [syncGroupPanelsWithResult]。
+     *
+     * 必须在异步线程调用（内部有网络 IO 与退避等待）。
      */
     fun syncGroupPanels(starter: Starter, groupOpenIds: List<String>) {
-        if (groupOpenIds.isEmpty()) return
+        syncGroupPanelsWithResult(starter, groupOpenIds)
+    }
+
+    /**
+     * 同步所有配置群的快捷面板（1.6.7.9 起先删后建，1.6.7.10 起上限裁剪 +
+     * 退避重试 + QPM 节流），返回同步结果（成功带面板 ID / 失败带原因）：
+     * ① 列出已有面板 → ② 删除全部（含非本插件残留）→ ③ 校验长度并按
+     * 优先级裁剪到 20 个后创建新面板（遇 30013 数量超限退避后自动清空重建）
+     * → ④ 记录面板 ID 与结果日志，并把结果返回给调用方。
+     *
+     * 必须在异步线程调用（内部有网络 IO 与退避等待）。
+     */
+    fun syncGroupPanelsWithResult(starter: Starter, groupOpenIds: List<String>): PanelSyncResult {
+        if (groupOpenIds.isEmpty()) {
+            return PanelSyncResult(null, 0, 0, "未配置 QQ 群（bot.groups 为空）")
+        }
         try {
             val start0 = starter.APPLICATION.INSTANCE.contextManager.getContextEntity(Start0::class.java)
             val token = start0.accessToken ?: run {
                 log("面板同步跳过：访问令牌不可用（机器人尚未完成鉴权）")
-                return
+                return PanelSyncResult(null, 0, 0, "访问令牌不可用（机器人尚未完成鉴权，连接成功后可用 /kerong panel 重试）")
             }
             val authHeader = "QQBot $token"
 
@@ -122,7 +207,7 @@ object MenuManager {
             var checkinEnabled = false
             var economyAvailable = false
             try {
-                val plugin = cn.kerong.bot.provider.BotShared.instance ?: return
+                val plugin = cn.kerong.bot.provider.BotShared.instance ?: return PanelSyncResult(null, 0, 0, "插件实例不可用")
                 commandList = plugin.commandList()
                 val manager = QqBindManager.getInstance()
                 qqBindEnabled = manager.isEnabled
@@ -160,12 +245,16 @@ object MenuManager {
             }
             if (checked.isEmpty()) {
                 log("面板同步中止：全部按钮被功能开关或长度校验过滤，本次不创建面板")
-                return
+                return PanelSyncResult(null, 0, groupOpenIds.size, "全部按钮被功能开关或长度校验过滤，本次未创建面板")
             }
+
+            // 1.6.7.10：按优先级裁剪到平台上限 20 个（真根因修复——
+            // 官方限制单个面板最多 20 个元素，21 项创建必然被 30013 拒绝）
+            val finalItems = trimToPlatformLimit(checked)
 
             val panelJson = JSONObject().apply {
                 put("remark", PANEL_REMARK)
-                put("items", JSONArray(checked.map { item ->
+                put("items", JSONArray(finalItems.map { item ->
                     JSONObject().apply {
                         put("type", "command")
                         put("name", item.name)
@@ -184,49 +273,112 @@ object MenuManager {
             // 1.6.7.9：先删后建——不再 PUT 原地更新（旧面板在平台上累积触发
             // 30013 数量超限的根因），每次同步前删除列表里的全部面板（含非本
             // 插件 remark 的残留面板），再按当前配置创建一个新面板；创建遇
-            // 30013 时由 createPanelWithLimitRecovery 自动清空重建兜底
+            // 30013 时由 createPanelWithLimitRecovery 退避后清空重建兜底
             deleteAllPanels(authHeader)
 
-            val panelId = createPanelWithLimitRecovery(authHeader, createBody)
+            val outcome = createPanelWithLimitRecovery(authHeader, createBody, finalItems.size, groupOpenIds.size)
 
-            if (panelId != null) {
-                log("已同步 ${groupOpenIds.size} 个群的快捷菜单（面板 $panelId，${checked.size} 个按钮可用）")
+            return if (outcome.panelId != null) {
+                log("已同步 ${groupOpenIds.size} 个群的快捷菜单（面板 ${outcome.panelId}，${finalItems.size} 个按钮可用）")
+                PanelSyncResult(outcome.panelId, finalItems.size, groupOpenIds.size, null)
             } else {
-                log("快捷菜单同步失败：面板未创建成功，详情见上方错误日志（可稍后用 /kerong panel 重试）")
+                val reason = outcome.error ?: "面板未创建成功"
+                log("快捷菜单同步失败：$reason")
+                PanelSyncResult(null, finalItems.size, groupOpenIds.size, reason)
             }
         } catch (e: Exception) {
             cn.kerong.bot.provider.BotShared.instance?.log_error("面板同步失败: ${e.message}")
+            return PanelSyncResult(null, 0, 0, "面板同步异常: ${e.message}")
         }
+    }
+
+    /**
+     * 按优先级把按钮列表裁剪到平台上限（20 个）：
+     * 按 [PANEL_TRIM_ORDER] 从头部开始裁（低频管理按钮先让位），
+     * 裁剪顺序表未覆盖的溢出部分从列表末尾直接截断（兜底）。
+     * 被裁命令仍可在群里手动输入；被裁按钮名如实写入日志。
+     */
+    private fun trimToPlatformLimit(items: List<PanelItem>): List<PanelItem> {
+        if (items.size <= PANEL_MAX_ITEMS) return items
+        var remaining = items
+        val dropped = mutableListOf<String>()
+        for (name in PANEL_TRIM_ORDER) {
+            if (remaining.size <= PANEL_MAX_ITEMS) break
+            val index = remaining.indexOfFirst { it.name == name }
+            if (index >= 0) {
+                dropped.add(name)
+                remaining = remaining.filterIndexed { i, _ -> i != index }
+            }
+        }
+        if (remaining.size > PANEL_MAX_ITEMS) {
+            val extra = remaining.size - PANEL_MAX_ITEMS
+            dropped.addAll(remaining.takeLast(extra).map { it.name })
+            remaining = remaining.dropLast(extra)
+        }
+        log(
+            "面板按钮 ${items.size} 个超过平台上限 $PANEL_MAX_ITEMS，已自动裁剪「${dropped.joinToString("、")}」" +
+                "（对应命令仍可在群里手动输入）"
+        )
+        return remaining
     }
 
 
     // ---------- HTTP 调用（全部带响应校验与错误码日志） ----------
 
-    /** 拉取已存在的面板列表（失败返回空表并记录错误）。 */
-    private fun listPanels(authHeader: String, scope: String): List<JSONObject> {
-        val (code, body) = httpCall("GET", "$API_BASE/v2/panels?scope=$scope&limit=50", authHeader)
-        if (code !in 200..299) {
-            log("查询面板列表失败（HTTP $code${describePanelError(body)}）: $body")
-            return emptyList()
+    /**
+     * 拉取已存在的面板列表（1.6.7.10 起分页完整拉取）。
+     * @return 全部面板；**列表查询失败返回 null**（与「确认无面板」的空列表区分）
+     */
+    private fun listPanels(authHeader: String, scope: String): List<JSONObject>? {
+        val records = mutableListOf<JSONObject>()
+        var cursor = ""
+        var pages = 0
+        while (pages < 10) {
+            pages++
+            val url = if (cursor.isEmpty()) {
+                "$API_BASE/v2/panels?scope=$scope&limit=50"
+            } else {
+                "$API_BASE/v2/panels?scope=$scope&limit=50&cursor=${URLEncoder.encode(cursor, "UTF-8")}"
+            }
+            val (code, body) = httpCall("GET", url, authHeader)
+            if (code !in 200..299) {
+                log("查询面板列表失败（HTTP $code${describePanelError(body)}）: $body")
+                return null
+            }
+            val parsed = try {
+                JSON.parseObject(body ?: "{}")
+            } catch (e: Exception) {
+                log("解析面板列表响应失败: ${e.message}")
+                return null
+            } ?: return null
+            val page = parsed.getJSONArray("records") ?: JSONArray()
+            (0 until page.size).forEach { i -> (page.get(i) as? JSONObject)?.let { records.add(it) } }
+            val next = parsed.getString("next_cursor") ?: ""
+            val end = parsed.getBooleanValue("is_end")
+            if (end || next.isEmpty()) return records
+            cursor = next
         }
-        return try {
-            val records = JSON.parseObject(body ?: "{}")?.getJSONArray("records") ?: return emptyList()
-            (0 until records.size).mapNotNull { records.get(it) as? JSONObject }
-        } catch (e: Exception) {
-            log("解析面板列表响应失败: ${e.message}")
-            emptyList()
-        }
+        return records
     }
+
+    /** 清理结果：删除数 / 失败数 / 列表是否查询失败。 */
+    private class CleanupResult(val deleted: Int, val failed: Int, val listFailed: Boolean)
 
     /**
      * 删除列表里的全部面板（1.6.7.9 先删后建主体）。
      * 删除失败逐个如实记录（HTTP 状态码 + 错误码 + 人话解释），不阻断后续创建。
+     * 1.6.7.10：列表查询失败时明确说「无法确认/清理旧面板」，不再误报
+     * 「平台上无残留面板」。
      */
-    private fun deleteAllPanels(authHeader: String) {
+    private fun deleteAllPanels(authHeader: String): CleanupResult {
         val existing = listPanels(authHeader, "group")
+        if (existing == null) {
+            log("面板列表查询失败，无法确认/清理旧面板（可能是网络抖动或接口限频），直接尝试创建")
+            return CleanupResult(0, 0, listFailed = true)
+        }
         if (existing.isEmpty()) {
             log("平台上无残留面板，直接创建")
-            return
+            return CleanupResult(0, 0, listFailed = false)
         }
         var deleted = 0
         var failed = 0
@@ -243,6 +395,7 @@ object MenuManager {
         } else {
             log("旧面板清理完成：成功 $deleted 个、失败 $failed 个（失败明细见上方日志），继续尝试创建")
         }
+        return CleanupResult(deleted, failed, listFailed = false)
     }
 
     /** 删除面板（失败如实记录错误码与原因，不阻断后续创建）。返回是否成功。 */
@@ -255,45 +408,58 @@ object MenuManager {
         return true
     }
 
+    /** 创建结果：面板 ID 或失败原因。 */
+    private class CreateOutcome(val panelId: String?, val error: String?)
+
     /**
      * 创建面板（POST）：
-     * - 30009（操作进行中，含 40030009 形态）自动重试；
-     * - **30013（超出数量限制，含 40030013 形态）自动清空重建**——重新拉取
-     *   列表删除全部面板后再试，规避平台面板数量上限导致的永久创建失败；
+     * - 30009（操作进行中，含 40030009 形态）等待后自动重试；
+     * - **30013（超出数量限制，含 40030013 形态）退避后自动清空重建**——
+     *   1.6.7.10：重试前先退避（2.5s / 5s 递增，旧版三连发同一秒内全部
+     *   撞墙），再重新拉取列表删除全部面板后重试；
+     * - 每次创建经 [paceCreate] 全局节流（官方 10 QPM）；
      * - 其余失败如实输出 HTTP 状态码 + QQ 错误码 + 平台原始响应。
-     * 返回 panel_id（失败返回 null）。
      */
-    private fun createPanelWithLimitRecovery(authHeader: String, body: JSONObject): String? {
+    private fun createPanelWithLimitRecovery(
+        authHeader: String,
+        body: JSONObject,
+        buttonCount: Int,
+        groupCount: Int,
+    ): CreateOutcome {
         repeat(RETRY_TIMES) { attempt ->
+            paceCreate()
             val (code, text) = httpCall("POST", "$API_BASE/v2/panels", authHeader, body.toJSONString())
             if (code in 200..299) {
                 val panelId = parsePanelId(text)
                 if (panelId == null) {
                     log("创建面板成功但响应中无 panel_id（响应: $text）")
-                    return null
+                    return CreateOutcome(null, "创建面板成功但响应中无 panel_id（响应: $text）")
                 }
-                return panelId
+                return CreateOutcome(panelId, null)
             }
             val err = normalizedErrorCode(text)
             when {
                 err == PANEL_ERR_CONFLICT && attempt < RETRY_TIMES - 1 -> {
-                    log("面板创建冲突（操作进行中），${RETRY_INTERVAL_MILLIS}ms 后重试（第 ${attempt + 1} 次）")
-                    Thread.sleep(RETRY_INTERVAL_MILLIS)
-                    return@repeat
+                    log("面板创建冲突（操作进行中），${CONFLICT_RETRY_INTERVAL_MILLIS}ms 后重试（第 ${attempt + 1} 次）")
+                    sleepQuietly(CONFLICT_RETRY_INTERVAL_MILLIS)
                 }
                 err == PANEL_ERR_LIMIT && attempt < RETRY_TIMES - 1 -> {
-                    // 30013：平台上面板数量已超上限——清空全部面板后重试创建
-                    log("创建面板被拒（错误码 30013：超出面板数量限制），自动清空全部面板后重建")
+                    val backoff = LIMIT_RETRY_BACKOFF_MILLIS[minOf(attempt, LIMIT_RETRY_BACKOFF_MILLIS.size - 1)]
+                    log(
+                        "创建面板被拒（错误码 30013：超出数量限制，本次提交 $buttonCount 个按钮 / $groupCount 个群" +
+                            "${limitHintOf(text)}），${backoff}ms 后自动清空全部面板重建"
+                    )
+                    sleepQuietly(backoff)
                     deleteAllPanels(authHeader)
-                    return@repeat
                 }
                 else -> {
-                    log("创建面板失败（HTTP $code${describePanelError(text)}）: $text")
-                    return null
+                    val detail = "创建面板失败（HTTP $code${describePanelError(text)}）: $text"
+                    log(detail)
+                    return CreateOutcome(null, detail)
                 }
             }
         }
-        return null
+        return CreateOutcome(null, "创建面板连续 $RETRY_TIMES 次被拒（30013 已自动清空重建仍失败）")
     }
 
     /** 从创建成功响应解析 panel_id。 */
@@ -316,9 +482,39 @@ object MenuManager {
     private fun describePanelError(body: String?): String {
         return when (normalizedErrorCode(body)) {
             PANEL_ERR_CONFLICT -> "，错误码 30009：操作进行中（并发冲突），稍后自动重试"
-            PANEL_ERR_LIMIT -> "，错误码 30013：超出面板数量限制（本次同步已自动清空重建，仍失败可稍后用 /kerong panel 重试）"
+            PANEL_ERR_LIMIT -> "，错误码 30013：超出数量限制（单个面板最多 20 个按钮、一个机器人最多 20 个面板；本次同步已自动清空重建，仍失败可稍后用 /kerong panel 重试）"
             PANEL_ERR_CONTENT_SAFETY -> "，错误码 30020：内容安全拦截（检查按钮文案后重试）"
             else -> ""
+        }
+    }
+
+    /** 平台 30013 响应可能携带 limit 字段（官方：「具体限制值见返回信息中的 limit」）。 */
+    private fun limitHintOf(body: String?): String = try {
+        val limit = JSON.parseObject(body ?: "{}")?.getInteger("limit")
+        if (limit != null && limit > 0) "，平台提示上限 limit=$limit" else ""
+    } catch (_: Throwable) {
+        ""
+    }
+
+    /**
+     * 创建接口 QPM 节流：距上次 POST /v2/panels 不足
+     * [CREATE_MIN_INTERVAL_MILLIS] 时等待补足（官方限制 10 次/分钟）。
+     */
+    private fun paceCreate() {
+        val last = lastCreatePostAt.get()
+        if (last > 0) {
+            val wait = CREATE_MIN_INTERVAL_MILLIS - (System.currentTimeMillis() - last)
+            if (wait > 0) sleepQuietly(wait)
+        }
+        lastCreatePostAt.set(System.currentTimeMillis())
+    }
+
+    /** 可中断的睡眠（中断时恢复中断标记并立即返回）。 */
+    private fun sleepQuietly(millis: Long) {
+        try {
+            Thread.sleep(millis)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
         }
     }
 
