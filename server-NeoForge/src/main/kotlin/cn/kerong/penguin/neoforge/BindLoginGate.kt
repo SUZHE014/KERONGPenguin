@@ -8,15 +8,15 @@ import net.minecraft.network.protocol.configuration.ServerConfigurationPacketLis
 import net.minecraft.server.network.ConfigurationTask
 import net.minecraft.server.network.ServerCommonPacketListenerImpl
 import net.minecraft.world.level.storage.LevelResource
-import net.neoforged.bus.api.Event
 import net.neoforged.bus.api.IEventBus
-import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.neoforge.network.configuration.ICustomConfigurationTask
 import java.lang.reflect.Method
 import java.util.function.Consumer
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * QQ 绑定登录闸门（1.6.4，未绑定老玩家的加入前拦截；1.6.7.9 跨版本重做）。
+ * QQ 绑定登录闸门（1.6.4，未绑定老玩家的加入前拦截；1.6.7.9 跨版本重做；
+ * 1.6.7.11 修复挂载失败的真根因）。
  *
  * 背景：NeoForge 没有登录期玩家事件（PlayerLoggedInEvent 在加入完成
  * 之后才触发），旧版对未绑定玩家的踢出发生在加入后 1 tick——此时客户端仍在
@@ -31,15 +31,23 @@ import java.util.function.Consumer
  *   **OnGameConfigurationEvent**（register 参数 ICustomConfigurationTask）；
  * - 20.5+（MC 1.20.6 / 1.21.x）：net.neoforged.neoforge.network.event.
  *   **RegisterConfigurationTasksEvent**（register 参数原版 ConfigurationTask）。
+ * 两代事件类都实现 net.neoforged.fml.event.IModBusEvent（mod 总线事件，
+ * 由 ModLoader.postEventWithReturn 广播到每个 mod 自己的总线），且
+ * getListener()/register() 方法形态一致（已对 20.4.253 / 20.6.144 /
+ * 21.1.252 / 21.11.48 构件字节级核实）。
  *
- * 跨版本桥接（编译目标 20.4，运行时兼容全部目标版本）：
- * - 监听器方法参数用事件基类 [Event]（全部版本都有，EventBus 按类型链分发，
- *   基类监听器可收到子类事件——Forge/NeoForge 生态标准语义）；
- * - 注册前 Class.forName 探测当前运行时的事件类（先试 20.5+ 再试 20.4），
- *   探测结果缓存；事件到达时 isInstance 过滤后反射调 getListener/register；
- * - 闸门任务实现 [ICustomConfigurationTask]——该接口在 20.4 与 21.x 里
- *   签名完全一致（extends 原版 ConfigurationTask + run(Consumer)），
- *   是天然的跨版本桥梁。
+ * 1.6.7.11 挂载修复：1.6.7.9 用「@SubscribeEvent + 事件基类 Event 参数」
+ * 的监听器注册 mod 总线——但 mod 总线以 markerType(IModBusEvent) 构造，
+ * EventBus 校验监听参数必须实现 IModBusEvent，基类 Event 不满足，register()
+ * 直接抛 IllegalArgumentException（"takes an argument that is not valid for
+ * this bus"），闸门整个没挂上（运行时表现为一条 WARN 后仍报“已挂载”）。
+ * 而 @SubscribeEvent 参数又必须同时是 Event 子类型（接口 IModBusEvent 不行）
+ * 且是目标事件类的超类——编译目标 20.4 下不存在这样的公共类型，注解监听
+ * 这条路走不通。改为**反射调用 IEventBus.addListener(Class, Consumer)**
+ * 以「运行时探测到的具体事件类」精确注册：运行时校验用的是真实事件类
+ * （实现 IModBusEvent，能过 mod 总线 checker），且只收到该事件本身
+ * （无需 isInstance 过滤）；addListener(Class, Consumer) 重载在 bus 7.x/8.x
+ * 均存在（编译目标 bus 7.2.0，21.x 运行时 bus 8.0.5，签名一致）。
  *
  * 拦截策略（与 Spigot 版 GameChat.onPlayerLogin 同源）：
  * - 老玩家（服务器已有 playerdata/<uuid>.dat 档案）且未绑定 → 配置阶段直接
@@ -62,9 +70,8 @@ object BindLoginGate {
     private const val LEGACY_EVENT_CLASS =
         "net.neoforged.neoforge.network.event.OnGameConfigurationEvent"
 
-    /** 当前运行时识别到的配置阶段事件类（注册前解析，null = 未识别）。 */
-    @Volatile
-    private var configurationEventClass: Class<*>? = null
+    /** 幂等护栏：同一进程内（含集成服多世界重复启停）只挂载一次。 */
+    private val mounted = AtomicBoolean(false)
 
     /** 反射方法缓存（getListener / register；事件类确定后不变）。 */
     @Volatile
@@ -73,23 +80,47 @@ object BindLoginGate {
     @Volatile
     private var registerMethod: Method? = null
 
-    /** 挂载到 mod 事件总线（KERONGNeoForge 在服务器启动完成时调用）。 */
-    fun registerTo(modBus: IEventBus) {
+    /**
+     * 挂载到 mod 事件总线（KERONGNeoForge 在服务器启动完成时调用）。
+     *
+     * @return true = 挂载成功；false = 失败（调用方据此如实反馈，
+     *         失败细节已在本方法内 WARN，未绑定玩家由加入后踢出兜底）。
+     */
+    fun registerTo(modBus: IEventBus): Boolean {
         try {
+            if (!mounted.compareAndSet(false, true)) return true
             val eventClass = resolveConfigurationEventClass()
             if (eventClass == null) {
-                org.slf4j.LoggerFactory.getLogger("KERONGPenguin").warn(
-                    "[QQ绑定] 未识别当前 NeoForge 的配置阶段事件形态，登录闸门退化为加入后踢出"
-                )
-                return
+                warn("未识别当前 NeoForge 的配置阶段事件形态，登录闸门退化为加入后踢出")
+                return false
             }
-            configurationEventClass = eventClass
-            modBus.register(BindGateBusListener)
-        } catch (t: Throwable) {
-            org.slf4j.LoggerFactory.getLogger("KERONGPenguin").warn(
-                "[QQ绑定] 登录闸门挂载异常（老玩家拦截退化为加入后踢出）: ${t.message}"
+            val addListener = resolveAddListenerMethod()
+            if (addListener == null) {
+                warn("当前事件总线缺少 addListener(Class, Consumer) 重载，登录闸门退化为加入后踢出")
+                return false
+            }
+            // 以解析到的具体事件类精确注册：mod 总线 checker 校验的是真实
+            // 事件类（实现 IModBusEvent，可通过），泛型边界 <T extends Event>
+            // 仅编译期约束、反射调用不做运行时检查。
+            addListener.invoke(
+                modBus, eventClass,
+                Consumer<Any> { event ->
+                    try {
+                        handleConfigurationEvent(event)
+                    } catch (_: Throwable) {
+                        // 任何异常放行（加入后踢出兜底）
+                    }
+                }
             )
+            return true
+        } catch (t: Throwable) {
+            warn("登录闸门挂载异常（老玩家拦截退化为加入后踢出）: ${t.message}")
+            return false
         }
+    }
+
+    private fun warn(message: String) {
+        org.slf4j.LoggerFactory.getLogger("KERONGPenguin").warn("[QQ绑定] $message")
     }
 
     /** 探测当前运行时的配置阶段事件类（20.5+ 优先，20.4 兜底）。 */
@@ -104,21 +135,17 @@ object BindLoginGate {
     }
 
     /**
-     * 事件总线监听器：基类参数收全部 mod 总线事件，isInstance 过滤出配置
-     * 阶段事件后走闸门逻辑（每连接一次，无关事件快速返回）。
+     * 从 IEventBus 接口解析 addListener(Class&lt;T&gt;, Consumer&lt;T&gt;) 重载。
+     * 该重载自 Forge 时代起稳定存在（已核对 bus 7.2.0 与 8.0.5 字节码），
+     * 是唯一 (Class, Consumer) 双参形态，不会被其他重载误匹配。
      */
-    internal object BindGateBusListener {
-        @SubscribeEvent
-        fun onModBusEvent(event: Event) {
-            val eventClass = configurationEventClass ?: return
-            if (!eventClass.isInstance(event)) return
-            try {
-                handleConfigurationEvent(event)
-            } catch (_: Throwable) {
-                // 任何异常放行（加入后踢出兜底）
-            }
+    private fun resolveAddListenerMethod(): Method? =
+        IEventBus::class.java.methods.firstOrNull {
+            it.name == "addListener" &&
+                it.parameterCount == 2 &&
+                it.parameterTypes[0] == java.lang.Class::class.java &&
+                it.parameterTypes[1] == Consumer::class.java
         }
-    }
 
     /** 配置阶段事件处理：判定未绑定老玩家则注册闸门任务。 */
     private fun handleConfigurationEvent(event: Any) {
@@ -194,9 +221,9 @@ object BindLoginGate {
      * 闸门任务：轮到执行时直接断开连接（连接仍处配置阶段，客户端把断开
      * 原因显示在“无法连接到服务器”界面——与原版白名单/封禁提示同路径）。
      *
-     * 实现 [ICustomConfigurationTask]（跨版本桥梁：该接口在 20.4 与 21.x
-     * 签名完全一致，且分别是两时代 register 参数的合法实参）。本任务无需
-     * 发包，run 里只用监听器断开。
+     * 实现 [ICustomConfigurationTask]（跨版本桥梁：该接口在 20.4 与 20.5+
+     * 字节码完全一致，extends 原版 ConfigurationTask，分别是两时代 register
+     * 参数的合法实参）。本任务无需发包，run 里只用监听器断开。
      */
     private class BindGateTask(
         private val listener: ServerConfigurationPacketListener,

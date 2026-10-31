@@ -117,20 +117,24 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
     }
 
     /**
-     * 挂载绑定登录闸门（1.6.4）：监听 mod 总线的 RegisterConfigurationTasksEvent，
-     * 未绑定老玩家在配置阶段（进入世界之前）直接断开，绑定提示显示在连接失败
-     * 界面。挂载失败不影响功能（退化为加入后踢出的旧版兜底路径）。
+     * 挂载绑定登录闸门（1.6.4）：监听 mod 总线的配置阶段事件（20.5+
+     * RegisterConfigurationTasksEvent / 20.4 OnGameConfigurationEvent，经
+     * BindLoginGate 运行时探测），未绑定老玩家在配置阶段（进入世界之前）
+     * 直接断开，绑定提示显示在连接失败界面。挂载失败不影响功能（退化为
+     * 加入后踢出的旧版兜底路径）。1.6.7.11：按 registerTo 真实结果反馈，
+     * 不再无论成败一律报「已挂载」（失败细节由 registerTo 内部 WARN）。
      */
     private fun registerBindLoginGate() {
         try {
             val container = net.neoforged.fml.ModList.get()
                 .getModContainerById("kerongpenguin").orElse(null)
             val modBus = (container as? net.neoforged.fml.javafmlmod.FMLModContainer)?.getEventBus()
-            if (modBus != null) {
-                BindLoginGate.registerTo(modBus)
-                modLogger.info("[QQ绑定] 登录闸门已挂载（未绑定老玩家在配置阶段拦截）")
-            } else {
+            if (modBus == null) {
                 modLogger.warn("[QQ绑定] 登录闸门挂载失败（未取得 mod 事件总线），老玩家拦截退化为加入后踢出")
+                return
+            }
+            if (BindLoginGate.registerTo(modBus)) {
+                modLogger.info("[QQ绑定] 登录闸门已挂载（未绑定老玩家在配置阶段拦截）")
             }
         } catch (t: Throwable) {
             modLogger.warn("[QQ绑定] 登录闸门挂载异常（老玩家拦截退化为加入后踢出）: ${t.message}")
@@ -402,7 +406,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             .resolve("kerongpenguin").toFile()
 
         /** 模组版本（与 neoforge.mods.toml 一致）。 */
-        private const val MOD_VERSION = "1.6.7.10"
+        private const val MOD_VERSION = "1.6.7.11"
 
         /** 当前模组实例（命令与事件层访问）。 */
         @Volatile
