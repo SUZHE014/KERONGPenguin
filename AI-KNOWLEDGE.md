@@ -1,7 +1,8 @@
 # KERONGPenguin AI 交接知识库
 
 > **本文档的用途**：把本文件丢给一个对项目一无所知的 AI，它能立刻了解当前情况并接手工作。
-> 面向：接手开发/发版的 AI 助手。最后更新：2026-10-31 第二次会话（**主线 git 已推送**：本地 main 重建 1.6.7.11 等效提交 e3debc5（原 55854ae 随第七次环境重置丢失，按官网源码包重建）并推送 GitHub 成功——gh-proxy 只转发 clone 不转发 push 鉴权（报 No anonymous write access），**push 走官网服务器中继**：git bundle 上传 → /root/gitpush/bare.git fetch → 带 PAT 直连 push（服务器可直连 GitHub），远端 main = e3debc5 已双通道复核；**0.3AI v0.4 发布**（AI 专属版大更新，见文末 §9：本地 DeepSeek 取代云端 API、删私信、全局共享上下文+用户名片、ais.md 提示词、网页爬虫、管理员一键删除上下文+指令面板按钮，门禁 101 项冒烟 67 项全绿）；环境第七次重置后恢复：tooling 的 JDK21/CFR 仍在，本次补齐 AI 版构建链（kotlinc 2.2.0 + paper-api + adventure + guava + snakeyaml，全部 tooling/ 持久化））。
+> 面向：接手开发/发版的 AI 助手。最后更新：2026-11-01（**0.3AI v0.5 发布**（AI 专属版，见文末 §9：零环境自动部署 Ollama+DeepSeek（内存检测选档每次重启一次）、引用回复可选化（[引用 N] 标记 + 主动优先被动兜底）、表情包（guaipng 文件名语义匹配），门禁 138 项冒烟 120 项全绿，官网已上线）；主线 git 本轮仅知识库同步（远端 main = 42858a9，v0.5 内容随本次同步推送）；环境沿第八次会话：tooling 全套构建链（kotlinc 2.2.0 + paper-api + adventure + guava + snakeyaml）与 ai-git/ai-version 工作区完好）。
+> 前次：2026-10-31 第二次会话——**主线 git 已推送**：本地 main 重建 1.6.7.11 等效提交 e3debc5（原 55854ae 随第七次环境重置丢失，按官网源码包重建）并推送 GitHub 成功——gh-proxy 只转发 clone 不转发 push 鉴权（报 No anonymous write access），**push 走官网服务器中继**：git bundle 上传 → /root/gitpush/bare.git fetch → 带 PAT 直连 push（服务器可直连 GitHub），远端 main = e3debc5 已双通道复核；**0.3AI v0.4 发布**（本地 DeepSeek 取代云端 API、删私信、全局共享上下文+用户名片、ais.md 提示词、网页爬虫、管理员一键删除上下文+指令面板按钮，门禁 101 项冒烟 67 项全绿）；环境第七次重置后恢复：tooling 的 JDK21/CFR 仍在，补齐 AI 版构建链（kotlinc 2.2.0 + paper-api + adventure + guava + snakeyaml，全部 tooling/ 持久化）。
 > 自包含版本（发给本地无任何东西的 AI）见官网 `AI-KNOWLEDGE.txt`，含从零开始的环境重建与凭据获取说明。
 
 ### 1.1 受限网络环境重建（2026-10-14 实战，环境重置后可用）
@@ -248,6 +249,11 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
 | 冒烟 JVM 需补服务器自带依赖 | paper-api 的 MemorySection.set 需要 guava、YamlConfiguration 需要 adventure——真实服务器自带但独立 JVM 冒烟要手动加 classpath，否则 save **静默失败**（被 Kotlin catch 吞掉，文件根本不落盘）；YamlConfiguration 实例 load(File) 对真损坏 YAML 正常抛异常，但「:::xxx」其实是合法 YAML 标量——冒烟要用「messages: [unclosed」这类真坏样本 |
 | gh-proxy 不转发 push 鉴权 | gh-proxy 的 clone/ls-remote 可用，但 push 时 GitHub 收到匿名请求报「No anonymous write access」——**push 一律走官网服务器中继**（bundle→bare.git→带 PAT 直连，服务器可直连 GitHub）；含 token 的脚本用后即删（0.3AI v0.4 会话实测） |
 | Edit 工具改长中文注释易匹配失败 | 长中文注释块存在不可见字符差异（全半角/相似码位），Edit/MultiEdit 的 old_str 精确匹配易失败且报错信息不指明差异；批量改中文注释/配置块用 Python 脚本按锚点行+正则处理（幂等设计），单点小片段仍可用 Edit |
+| Write 工具吞标签字面量（0.3AI v0.5） | Write 对完整标签形态的字面量（think 标签等）会把标签内容吞掉只留引号——与反斜杠u转义变 NUL 同源的第二种损坏形态；修复必须 Python 字节级写入，改完 NUL+repr 双重复核 |
+| 正则改组后 groupValues 索引不同步 | 正则增加捕获组（如表情标记加分隔符组）后关键词组号变化，解析代码仍读旧组号→静默返回空——正则分组变更必须同步检查全部 groupValues 索引 |
+| 快速守卫与新语法脱节 | 函数入口的 contains 快速守卫（要求完整「[表情]」）挡住了冒号新形态「[表情:x]」——守卫条件要放宽到公共前缀，冒烟必须覆盖每种语法形态 |
+| 中缀运算符优先级 | 「1 until 1L shl 40」左结合解析为「(1 until 1L) shl 40」报 unresolved reference——until 与位运算混用必须加括号 |
+| grep -c 打断命令链 | 管道接 grep -c 无匹配时 exit 1 会中断后续 and-and 链——错误计数检查要单独执行 |
 
 ---
 
@@ -257,6 +263,21 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
   重建；历史链 bf9a48c→e931218→beefeb0→2011bac→e3debc5 全部上线），gh-proxy 与官网服务器双通道
   ls-remote 复核一致。推送通道：**官网服务器中继**（沙盒直连 GitHub 被墙、gh-proxy 不转发 push 鉴权），
   /root/gitpush/bare.git 为常驻中继仓（token 脚本已删，下次 push 重新生成即可）。
+- **0.3AI v0.5 已发布**（2026-11-01，AI 专属版；源码灾备 /root/ai-source/0.3AI_v0.5_source.zip；
+  0.3AI-0.4.jar 保留历史；工作流见 §9）：
+  **零环境自动部署**——AiLocalRuntime：启动异步守护线程，base-url 为本机回环且服务离线时自动下载
+  Ollama 运行时（tgz/zip 按平台解压到插件目录 ollama-runtime/，免 root）并 ProcessBuilder 拉起
+  serve（OLLAMA_HOST=配置端口 / OLLAMA_MODELS=安装目录 models 自包含），模型缺失自动 pull（digest
+  分层进度 + 10 分钟看门狗）；**内存检测每次重启一次**：min(物理内存, cgroup 限额) - MC 堆 - 1.5GB
+  预留 → 档位 24GB+→32b / 11GB+→14b / 6GB+→7b / 其余→1.5b，auto-model 开启回写 ai.local.model；
+  stop-on-shutdown 仅停自拉起进程。**引用可选**——RecentGroupMessages 每群环形缓冲记录消息（引用
+  ID 取事件 metadata deepFindValue msg_idx，回退消息 ID + ignore_get_message_error），注入本群
+  最近 10 条到上下文（独立 system 消息），AI 回复 [引用 N] 标记 → message_reference 载荷引用回复；
+  默认不引用：主动消息优先（group.send 普通气泡）被拒回退被动；ai.reply-quote 三态 auto/always/never。
+  **表情包**——AiMemeLibrary：guaipng 文件夹（png/jpg/gif/webp/bmp），文件名=含义，列表注入提示词
+  动态段，[表情] 标记三级匹配（归一化精确→互包含→字符重合度≥0.5）→ MessageChain image 被动发送
+  （读超时不算失败，10MB 上限）。协议说明由 capabilitySection() 动态注入（老 ais.md 免迁移）；
+  chat() 返回 ChatOutcome；config-version 2→3。门禁 138 + 冒烟 120 全绿。
 - **0.3AI v0.4 已发布**（AI 专属版，仅 Spigot 插件形态；源码 ai-git 不进公开仓库，服务器灾备
   /root/ai-source/0.3AI_v0.4_source.zip；工作流见 §9）：
   **本地 AI**——云端 API 整体替换为本机 OpenAI 兼容服务（默认 Ollama http://127.0.0.1:11434 +
@@ -394,13 +415,13 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
      org.jetbrains.kotlin.cli.jvm.K2JVMCompiler -no-stdlib -jvm-target 17 -language-version 2.2
      -cp "<上一版JAR>:tooling/paper-api-1.20.4.jar:tooling/adventure-api-4.16.0.jar:tooling/adventure-key-4.16.0.jar:tooling/examination-api-1.3.0.jar:tooling/examination-string-1.3.0.jar"
      -d ai-git/build/classes <全部kt>`）——不走 Gradle（AI 版改动集中在十几个类，kotlinc 秒级）；
-  2. 打包：`python3 scripts/package_ai_04.py`（底座=上一版线上 JAR：删除/覆写/新增记账 + 目录条目
-     保留 + 未触及条目字节一致断言；**下一个版本把脚本里 BASE/CLASSES 改指新底座与产物名即可**）；
-  3. 门禁：`python3 scripts/verify_ai_04.py`（101 项：版本/资源/删私信断言/字节码内容/基线一致/
-     JAR 完整性——**改版本号后同步更新脚本里的断言**）；
-  4. 冒烟：`ai-git/smoke/TestAi04.java`（67 项；JDK 内置 HttpServer + 沙盒全局 IP 21.0.3.21 自访问
-     测爬虫全链路 + 假 AI 服务测多轮对话；classpath 见脚本头部说明——**必须补 guava+snakeyaml+
-     adventure**，缺了 YamlConfiguration 会静默失败）。
+  2. 打包：`python3 scripts/package_ai_05.py`（底座=0.3AI-0.4.jar：覆写/新增记账 + 目录条目保留 +
+     未触及条目字节一致断言；**下一个版本把脚本里 BASE/CLASSES/OUT 与断言改指新底座与产物名即可**）；
+  3. 门禁：`python3 scripts/verify_ai_05.py`（138 项：版本/资源/新类/引用/表情/部署字节码内容/
+     基线一致/JAR 完整性——**改版本号后同步更新脚本里的断言**）；
+  4. 冒烟：`ai-git/smoke/TestAi05.java`（120 项；JDK 内置 HttpServer + 沙盒全局 IP 21.0.3.21 自访问
+     测爬虫全链路 + 假 AI 服务测多轮对话与上下文注入；classpath = 产物 JAR + tooling 的 guava+
+     snakeyaml+adventure 四件+paper-api——缺了 YamlConfiguration 会静默失败）。
 - **改公开类前想兼容**：AI 版与主线/互转版共享 cn.kerong.* 命名空间但**独立 JAR 独立演进**，无互转版
   那种旧产物链接问题；但 AiPanelManager/AiCommands 等新类是 AI 版专属，主线没有——两边不要混拷。
 - **QQ 平台事实（AI 版相关）**：面板按钮 name 即点击后发送的命令文本（按钮名=命令名）；群消息 sender.meta
