@@ -313,13 +313,10 @@ class ConfigManager(private val plugin: JavaPlugin) {
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
 
-        // 1.6.9.3：升 24——variable-fetch 新增 player-name / tps / custom-items
-        // 三键（变量获取扩展：玩家名与 TPS 可配置、自定义查信息项目），
-        // render.performance 新增 max-players-source（查性能在线人数卡最大人数
-        // 来源）；同时清理已删除命令 /在线服务器、/motd 的全部配置键
-        // （commands 开关 + messages 模板映射），升级触发配置重建把新段与
-        // 注释写入用户配置
-        private const val CURRENT_CONFIG_VERSION = 24
+        // 1.6.9.4：升 25——render 新增 background-style（图片卡片背景遮罩样式：
+        // gray-mask 原版灰色遮罩（默认）/ blur-mask 模糊遮罩，参考 EasyBot
+        // 液态玻璃图片模板），升级触发配置重建把新键与注释写入用户配置
+        private const val CURRENT_CONFIG_VERSION = 25
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -498,6 +495,10 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "render.performance.max-players-source" to "real",
             // 1.6.7.2 覆盖版：全局透明度（全部图片卡片编码前统一应用，1.0 = 不透明）
             "render.global-opacity" to 1.0,
+            // 1.6.9.4：背景遮罩样式（gray-mask = 原版灰色遮罩（默认）；
+            // blur-mask = 模糊遮罩，背景先高斯模糊再叠暗色遮罩，
+            // 参考 EasyBot 液态玻璃图片模板，对全部卡片生效）
+            "render.background-style" to "gray-mask",
             // 1.5.5：在线排行榜（1.6.0 从 qq-bind.leaderboard 迁至顶层）
             "leaderboard.top" to 15,
             "leaderboard.builtin-background" to true,

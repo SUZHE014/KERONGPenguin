@@ -22,6 +22,10 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent
  *
  * 1.6.7.10：panel 子命令改异步执行（同步含网络 IO 与退避等待，旧版在
  * 服务器线程执行会卡服）+ 按同步真实结果反馈成功/失败。
+ *
+ * 1.6.9.4：reload 子命令同样改异步执行（配置读写 / 模板释放全是磁盘
+ * IO）+ 反馈里写明重载边界（QQ 凭据与更新检查需重启；面板用 /kerong
+ * panel 手动同步）。
  */
 class NeoForgeCommands(private val plugin: KERONGNeoForge) {
 
@@ -55,8 +59,33 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
         )
         builder.then(
             Commands.literal("reload").executes { context ->
-                plugin.reloadPluginConfig()
-                context.source.sendSuccess({ Component.literal("§6已重载配置文件。") }, true)
+                // 1.6.9.4：重载移入异步线程（配置读写 / 模板释放 / 缺失键
+                // 补齐保存全部是磁盘 IO，不再占用服务器线程），完成后回
+                // 服务器线程反馈结果与重载边界说明
+                context.source.sendSuccess({ Component.literal("§e正在重载配置文件（异步执行）…") }, false)
+                val source = context.source
+                plugin.submitAsync {
+                    try {
+                        plugin.reloadPluginConfig()
+                        plugin.submit {
+                            source.sendSuccess({ Component.literal("§a已重载配置文件。") }, true)
+                            source.sendSuccess(
+                                {
+                                    Component.literal(
+                                        "§e注意: §f以下配置不能用 reload 生效，只能重启服务器：\n" +
+                                            "  - bot.app-id / bot.secret（QQ 机器人凭据，仅启动时连接一次）\n" +
+                                            "  - update-check 段（更新检查，仅启动后第 8 秒检查一次）\n" +
+                                            "QQ 快捷指令面板按钮不随 reload 更新，改完用 /kerong panel 手动同步即可（无需重启）。"
+                                    )
+                                },
+                                false,
+                            )
+                        }
+                    } catch (t: Throwable) {
+                        val message = t.message ?: t.toString()
+                        plugin.submit { source.sendFailure(Component.literal("§c重载配置失败: $message")) }
+                    }
+                }
                 1
             },
         )
@@ -137,7 +166,7 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
         fun line(text: String) = source.sendSuccess({ Component.literal(text) }, false)
         line("§6===== /$label 命令帮助 =====")
         line("§e/$label help§f - 查看此帮助")
-        line("§e/$label reload§f - 重载配置文件")
+        line("§e/$label reload§f - 重载配置文件（QQ 凭据与更新检查除外，需重启）")
         line("§e/$label info§f - 查看适配器信息")
         line("§e/$label panel§f - 重新同步 QQ 快捷指令面板")
         line("§e/$label chs§f - 立即重试连接 QQ 机器人（断线 / 重连超时后用）")

@@ -22,6 +22,12 @@ import java.util.Locale
  * 1.6.7.10 panel 子命令修复：① 面板同步改在异步线程执行（同步含网络 IO
  * 与退避等待，旧版在主线程执行会卡服）；② 按同步真实结果反馈成功/失败
  * （旧版无论成败一律绿字报「已重新同步」，面板同步失败时误导服主）。
+ *
+ * 1.6.9.4 reload 子命令：① 重载改在异步线程执行（配置文件读写 + 模板
+ * 释放 + 缺失键补齐保存全是磁盘 IO，旧版在主线程执行；1.6.9.4 起
+ * 「能用异步就用异步」审查的一部分）；② 反馈里明确写出重载边界——
+ * bot.app-id / bot.secret（QQ 凭据）与 update-check（更新检查）仅启动时
+ * 读一次，改动后必须重启服务器，/kerong reload 不生效。
  */
 class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
 
@@ -29,8 +35,25 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
         val sub = if (args.isNotEmpty()) args[0].lowercase(Locale.ROOT) else "help"
         when (sub) {
             "reload" -> {
-                plugin.reloadPluginConfig()
-                sender.sendMessage("${ChatColor.GOLD}已重载配置文件。")
+                // 1.6.9.4：重载移入异步线程（配置读写 / 模板释放 / 缺失键
+                // 补齐保存全部是磁盘 IO，不再占用主线程），完成后反馈结果
+                sender.sendMessage("${ChatColor.YELLOW}正在重载配置文件（异步执行）…")
+                plugin.submitAsync {
+                    try {
+                        plugin.reloadPluginConfig()
+                        plugin.submit {
+                            sender.sendMessage("${ChatColor.GREEN}已重载配置文件。")
+                            sender.sendMessage(
+                                "${ChatColor.YELLOW}注意: ${ChatColor.WHITE}以下配置不能用 reload 生效，只能重启服务器：\n" +
+                                    "  - bot.app-id / bot.secret（QQ 机器人凭据，仅启动时连接一次）\n" +
+                                    "  - update-check 段（更新检查，仅启动后第 8 秒检查一次）\n" +
+                                    "QQ 快捷指令面板按钮不随 reload 更新，改完用 /kerong panel 手动同步即可（无需重启）。"
+                            )
+                        }
+                    } catch (t: Throwable) {
+                        plugin.submit { sender.sendMessage("${ChatColor.RED}重载配置失败: ${t.message}") }
+                    }
+                }
                 return true
             }
             "info" -> {
@@ -104,7 +127,7 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
     private fun sendHelp(sender: CommandSender, label: String) {
         sender.sendMessage("${ChatColor.GOLD}===== /$label 命令帮助 =====")
         sender.sendMessage("${ChatColor.YELLOW}/$label help${ChatColor.WHITE} - 查看此帮助")
-        sender.sendMessage("${ChatColor.YELLOW}/$label reload${ChatColor.WHITE} - 重载配置文件")
+        sender.sendMessage("${ChatColor.YELLOW}/$label reload${ChatColor.WHITE} - 重载配置文件（QQ 凭据与更新检查除外，需重启）")
         sender.sendMessage("${ChatColor.YELLOW}/$label info${ChatColor.WHITE} - 查看适配器信息")
         sender.sendMessage("${ChatColor.YELLOW}/$label panel${ChatColor.WHITE} - 重新同步 QQ 快捷指令面板")
         sender.sendMessage("${ChatColor.YELLOW}/$label chs${ChatColor.WHITE} - 立即重试连接 QQ 机器人（断线 / 重连超时后用）")

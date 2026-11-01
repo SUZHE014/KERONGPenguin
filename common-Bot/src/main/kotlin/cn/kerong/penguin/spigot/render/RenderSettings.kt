@@ -31,6 +31,18 @@ object RenderSettings {
     /** 头像获取优先方式（1.6.6.1 覆盖版新增配置）。 */
     enum class AvatarFetchPriority { LOCAL, EXTERNAL }
 
+    /**
+     * 图片卡片的背景遮罩样式（1.6.9.4 新增 render.background-style）。
+     *
+     * - [GRAY_MASK]：原版样式（默认）——背景图直接叠一层半透明暗色遮罩，
+     *   保留背景图全部细节（1.5.4.4 起的既有行为）；
+     * - [BLUR_MASK]：模糊遮罩样式（参考 EasyBot 液态玻璃图片模板）——
+     *   背景图先做高斯模糊再叠暗色遮罩，背景变成柔和的毛玻璃观感，
+     *   前景卡片文字对比更突出。对查信息 / 查在线 / 查性能 /
+     *   在线排行榜 / 财富榜全部生效（含内置背景图与 img/ 随机图）。
+     */
+    enum class BackgroundStyle { GRAY_MASK, BLUR_MASK }
+
     /** 图片渲染命令的用户冷却（毫秒；0 = 无冷却）。 */
     fun commandCooldownMillis(): Long {
         val seconds = try {
@@ -135,6 +147,32 @@ object RenderSettings {
             ) ?: true
         } catch (_: Throwable) {
             true
+        }
+    }
+
+    /**
+     * 图片卡片的背景遮罩样式（1.6.9.4 新增 render.background-style）。
+     *
+     * - render.background-style（默认 gray-mask）：
+     *   - gray-mask：原版样式——背景图叠一层半透明暗色遮罩，保留全部细节；
+     *   - blur-mask：模糊遮罩样式（参考 EasyBot 液态玻璃模板）——背景图
+     *     先做高斯模糊再叠暗色遮罩，柔和毛玻璃观感，前景文字更突出；
+     * - 值不区分大小写；未识别的值一律按 gray-mask 处理（原版样式兜底）；
+     * - 对全部图片卡片生效（查信息 / 查在线 / 查性能 / 在线排行榜 /
+     *   财富榜，含内置背景图与 img/ 随机图）；
+     * - 实时读取（/kerong reload 后立即生效——已缓存的背景图按
+     *   「文件 + 尺寸 + 样式」键缓存，切换样式后自动重新处理）。
+     */
+    fun backgroundStyle(): BackgroundStyle {
+        val value = try {
+            (BotShared.instance as? JavaPlugin)?.config?.getString("render.background-style", "gray-mask")
+                ?: "gray-mask"
+        } catch (_: Throwable) {
+            "gray-mask"
+        }
+        return when (value.trim().lowercase()) {
+            "blur-mask", "blur", "glass" -> BackgroundStyle.BLUR_MASK
+            else -> BackgroundStyle.GRAY_MASK
         }
     }
 

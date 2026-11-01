@@ -189,4 +189,59 @@ object QqText {
         val target = if (quote.senderName != null) "${quote.senderName}「${quote.text}」" else "「${quote.text}」"
         return "[回复 $target] "
     }
+
+    /** 合并转发消息（聊天记录）识别结果（1.6.9.4 新增）。 */
+    data class MergedForward(
+        /** 解析到的消息条数（平台模板里「=== 消息 N ===」的最大 N；解析不到为 null）。 */
+        val count: Int?,
+    )
+
+    /** QQ 渲染聊天记录用的模板标记：顶层消息条目（zaofan-make/dsh-qqbot#8 实测样例）。 */
+    private val FORWARD_MSG_HEADER = Regex("""===\s*消息\s*(\d+)\s*===""")
+
+    /** QQ 渲染聊天记录用的模板标记：嵌套关联消息条目。 */
+    private val FORWARD_NESTED_ITEM = Regex("""---\s*第(\d+)条\s*---""")
+
+    /**
+     * 判定 QQ 合并转发消息（聊天记录）并提取条数（1.6.9.4 新增）。
+     *
+     * 背景（QQ 官方群消息事件协议 + 实测）：群成员转发合并聊天记录时，
+     * QQ 服务端会把整段记录渲染成多行文本模板串下发——
+     * `[群聊的聊天记录]` 标题 + 每条消息一段 `=== 消息 N ===` /
+     * `[消息内容]` / `[发送者]` / `[消息类型]`（嵌套转发内层用 `--- 第N条 ---`），
+     * 一次几十上百行；旧版整段原样转发到游戏聊天，一次刷好几屏。
+     *
+     * 判定条件（满足其一即视为合并转发）：
+     * 1. 事件 `message_type == 102`（官方文档 MsgElement：102 = 聊天记录）；
+     * 2. 正文本身带 QQ 聊天记录模板标记（`=== 消息 N ===` 与 `[发送者]`
+     *    同时出现，或出现 `[消息类型] 合并转发消息`）——两个标记同时
+     *    出现在正常闲聊里的概率为零，避免误伤。
+     *
+     * @return null = 非合并转发；[MergedForward] = 合并转发（count 可解析时
+     *   带条数，供占位文本展示「共 N 条」）
+     */
+    fun detectMergedForward(metadata: JSONObject?, content: String?): MergedForward? {
+        val isChatRecordType = try {
+            metadata?.getIntValue("message_type") == 102
+        } catch (_: Throwable) {
+            false
+        }
+        val text = content ?: ""
+        val hasTemplate = (text.contains("=== 消息 ") && text.contains("[发送者]")) ||
+            text.contains("[消息类型] 合并转发消息")
+        if (!isChatRecordType && !hasTemplate) return null
+
+        var count: Int? = null
+        for (match in FORWARD_MSG_HEADER.findAll(text)) {
+            val number = match.groupValues[1].toIntOrNull() ?: continue
+            if (count == null || number > count) count = number
+        }
+        if (count == null) {
+            for (match in FORWARD_NESTED_ITEM.findAll(text)) {
+                val number = match.groupValues[1].toIntOrNull() ?: continue
+                if (count == null || number > count) count = number
+            }
+        }
+        return MergedForward(count)
+    }
 }

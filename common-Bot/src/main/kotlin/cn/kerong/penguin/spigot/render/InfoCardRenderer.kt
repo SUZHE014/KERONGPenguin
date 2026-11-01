@@ -731,6 +731,15 @@ object InfoCardAssets {
     /** 背景图子采样解码的最长边限制（像素）：超长边照片降采样后再解码，防整图解码 OOM（0.1.5.5）。 */
     private const val BACKGROUND_MAX_DIM = 1600
 
+    /**
+     * blur-mask 模糊降采样倍率（1.6.9.4）：先缩到约 1/8 尺寸再做盒式模糊，
+     * 毫秒级完成；等效对原图做约 40px 半径的柔和高斯模糊。
+     */
+    private const val BLUR_DOWNSCALE = 8
+
+    /** blur-mask 小图盒式模糊半径（1.6.9.4，作用在降采样后的小图上）。 */
+    private const val BLUR_BOX_RADIUS = 3
+
     /** 近期解码失败的背景文件（路径 → 失败时间），10 分钟内不再抽中，避免坏图反复触发解码（0.1.5.5）。 */
     private val backgroundFailures = ConcurrentHashMap<String, Long>()
 
@@ -1899,7 +1908,10 @@ object InfoCardAssets {
         val path = file.absolutePath
         val stamp = file.lastModified() + file.length()
         val sizeKey = width.toLong() * 1_000_000L + height
-        val cached = backgroundCache[path]
+        // 1.6.9.4：样式进入缓存键（blur-mask 与 gray-mask 的处理结果互不复用，
+        // /kerong reload 切换样式后自动重新处理，旧样式条目随 LRU 淘汰）
+        val styleKey = "$path#${backgroundStyleTag()}"
+        val cached = backgroundCache[styleKey]
         if (cached != null && cached.stamp == stamp && cached.sizeKey == sizeKey) {
             cached.lastUsedAt = now
             return cached.image
@@ -1910,13 +1922,14 @@ object InfoCardAssets {
         if (decoded.width <= 0 || decoded.height <= 0) return null
 
         val cover = coverImage(decoded, width, height)
-        val processed = darkOverlay(cover)
+        // 1.6.9.4：blur-mask 样式先高斯模糊再叠暗色遮罩（毛玻璃观感）
+        val processed = applyBackgroundStyle(cover, builtin = false)
         val bytes = processed.width.toLong() * processed.height * 4
         // 1.6.5：中间图即用即释（cover 与 scaled 父图共享栅格，flush cover 即一并释放）
         try { cover.flush() } catch (_: Throwable) {}
         try { decoded.flush() } catch (_: Throwable) {}
         // 旧条目（文件已更换或尺寸不同）被覆盖前 flush，避免其栅格等 GC
-        val stale = backgroundCache.put(path, BackgroundEntry(stamp, sizeKey, processed, bytes, now))
+        val stale = backgroundCache.put(styleKey, BackgroundEntry(stamp, sizeKey, processed, bytes, now))
         if (stale != null) {
             try { stale.image.flush() } catch (_: Throwable) {}
         }
@@ -1974,8 +1987,9 @@ object InfoCardAssets {
         if (width <= 0 || height <= 0) return null
         val now = System.currentTimeMillis()
         val sizeKey = width.toLong() * 1_000_000L + height
-        // 键须含宽与高：首页 / 续页同宽不同高，尺寸不同各自缓存互不覆盖
-        val cacheKey = "builtin:$resource#${width}x$height"
+        // 键须含宽与高：首页 / 续页同宽不同高，尺寸不同各自缓存互不覆盖；
+        // 1.6.9.4：样式同样进入键（blur-mask / gray-mask 处理结果互不复用）
+        val cacheKey = "builtin:$resource#${width}x$height#${backgroundStyleTag()}"
         val cached = backgroundCache[cacheKey]
         if (cached != null && cached.stamp == 0L && cached.sizeKey == sizeKey) {
             cached.lastUsedAt = now
@@ -2001,7 +2015,7 @@ object InfoCardAssets {
             }
         } ?: return null
 
-        val processed = coverImage(source, width, height)
+        val processed = applyBackgroundStyle(coverImage(source, width, height), builtin = true)
         val bytes = processed.width.toLong() * processed.height * 4
         // 1.6.5：旧条目被覆盖前 flush（尺寸变化重入时旧图不再等 GC）
         val stale = backgroundCache.put(cacheKey, BackgroundEntry(0L, sizeKey, processed, bytes, now))
@@ -2136,7 +2150,9 @@ object InfoCardAssets {
      * - 无任何中间图像，处理开销与峰值内存均为历史最低。
      *
      * 历史包袱说明：0.1.5.x~1.5.3.2 曾对背景做模糊处理，1.5.4.4 起按用户
-     * 要求移除——“去掉模糊，直接加暗色遮罩”。
+     * 要求移除——“去掉模糊，直接加暗色遮罩”；1.6.9.4 起模糊以可选样式
+     * 回归（render.background-style = blur-mask，默认仍为本灰色遮罩样式，
+     * 参考 EasyBot 液态玻璃图片模板，见 [applyBackgroundStyle]）。
      */
     private fun darkOverlay(cover: BufferedImage): BufferedImage {
         val width = cover.width
@@ -2150,6 +2166,140 @@ object InfoCardAssets {
         } finally {
             g.dispose()
         }
+        return result
+    }
+
+    // ---------- 背景遮罩样式（1.6.9.4 render.background-style） ----------
+
+    /** 当前样式键标签（进入背景缓存键，样式切换后自动重新处理）。 */
+    private fun backgroundStyleTag(): String =
+        if (RenderSettings.backgroundStyle() == RenderSettings.BackgroundStyle.BLUR_MASK) "blur" else "gray"
+
+    /**
+     * 按配置的背景遮罩样式处理 cover 图（1.6.9.4 新增）。
+     *
+     * - gray-mask（默认）：[darkOverlay] 一层暗色遮罩，行为与旧版完全一致；
+     * - blur-mask（模糊遮罩，参考 EasyBot 液态玻璃模板 backdrop-filter 观感）：
+     *   先 [blurImage] 高斯模糊再叠暗色遮罩——背景细节被柔化成色块，
+     *   前景半透明卡片与文字对比更突出；
+     * - 内置背景图（builtin = true）本就不叠暗色遮罩（设计自带可读性），
+     *   blur-mask 时仅做模糊，观感与其他卡片的毛玻璃风格统一。
+     */
+    private fun applyBackgroundStyle(cover: BufferedImage, builtin: Boolean): BufferedImage {
+        if (RenderSettings.backgroundStyle() != RenderSettings.BackgroundStyle.BLUR_MASK) {
+            return if (builtin) cover else darkOverlay(cover)
+        }
+        val blurred = blurImage(cover)
+        return if (builtin) blurred else darkOverlay(blurred)
+    }
+
+    /**
+     * 背景高斯模糊（1.6.9.4 blur-mask 样式核心）。
+     *
+     * 实现走「降采样 → 小图盒式模糊 → 双线性放大」三步，而不是整图卷积：
+     * - 先双线性缩到约 1/8 尺寸（背景本就只做底板，细节无意义，降采样
+     *   本身即第一重柔化）；
+     * - 小图上做两趟可分离盒式模糊（水平 + 垂直各两遍，半径 3，多趟
+     *   盒式卷积逼近高斯分布）；
+     * - 双线性放大回目标尺寸——等效于对原图做约 40px 半径的柔和高斯模糊，
+     *   观感对齐 CSS backdrop-filter: blur(16~24px) 的液态玻璃底板。
+     *
+     * 性能：1350×1034 画布缩为 169×130 小图，四趟整数滑动窗口求和，
+     * 单次处理毫秒级，结果随背景缓存（键含样式标签），渲染期零重复开销。
+     */
+    private fun blurImage(image: BufferedImage): BufferedImage {
+        val width = image.width
+        val height = image.height
+        if (width < BLUR_DOWNSCALE * 2 || height < BLUR_DOWNSCALE * 2) return image
+        val smallWidth = (width + BLUR_DOWNSCALE - 1) / BLUR_DOWNSCALE
+        val smallHeight = (height + BLUR_DOWNSCALE - 1) / BLUR_DOWNSCALE
+
+        // 1. 降采样（双线性）
+        val small = BufferedImage(smallWidth, smallHeight, BufferedImage.TYPE_INT_RGB)
+        var g = small.createGraphics()
+        try {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+            g.drawImage(image, 0, 0, smallWidth, smallHeight, null)
+        } finally {
+            g.dispose()
+        }
+
+        // 2. 小图盒式模糊（两趟水平 + 两趟垂直，多趟叠加逼近高斯分布）
+        val blurred = boxBlur(small, BLUR_BOX_RADIUS, passes = 2)
+        if (blurred !== small) {
+            try { small.flush() } catch (_: Throwable) {}
+        }
+
+        // 3. 放大回目标尺寸（双线性，模糊后的色块平滑铺满）
+        val result = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+        g = result.createGraphics()
+        try {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+            g.drawImage(blurred, 0, 0, width, height, null)
+        } finally {
+            g.dispose()
+        }
+        try { blurred.flush() } catch (_: Throwable) {}
+        return result
+    }
+
+    /**
+     * 可分离盒式模糊（水平 + 垂直各 [passes] 遍，整数滑动窗口求和）。
+     * 多趟盒式卷积的叠加分布逼近高斯（每趟半径 [radius]）。
+     */
+    private fun boxBlur(image: BufferedImage, radius: Int, passes: Int): BufferedImage {
+        var current = image
+        repeat(passes.coerceAtLeast(1)) {
+            current = boxBlurAxis(current, radius, horizontal = true)
+            current = boxBlurAxis(current, radius, horizontal = false)
+        }
+        return current
+    }
+
+    /** 单轴盒式模糊（滑动窗口和，边界按最近像素扩展）。 */
+    private fun boxBlurAxis(source: BufferedImage, radius: Int, horizontal: Boolean): BufferedImage {
+        val width = source.width
+        val height = source.height
+        if (radius <= 0 || width <= 0 || height <= 0) return source
+        val pixels = source.getRGB(0, 0, width, height, null, 0, width)
+        val output = IntArray(pixels.size)
+        val lineCount = if (horizontal) height else width
+        val lineLength = if (horizontal) width else height
+        for (line in 0 until lineCount) {
+            var sumR = 0
+            var sumG = 0
+            var sumB = 0
+            // 窗口初始化：[0, radius] 区间（左边界按最近像素扩展）
+            for (offset in -radius..radius) {
+                val clamped = offset.coerceIn(0, lineLength - 1)
+                val pixel = if (horizontal) pixels[line * width + clamped] else pixels[clamped * width + line]
+                sumR += (pixel shr 16) and 0xFF
+                sumG += (pixel shr 8) and 0xFF
+                sumB += pixel and 0xFF
+            }
+            val windowSize = radius * 2 + 1
+            for (index in 0 until lineLength) {
+                val average = 0xFF shl 24 or
+                    (((sumR / windowSize) and 0xFF) shl 16) or
+                    (((sumG / windowSize) and 0xFF) shl 8) or
+                    ((sumB / windowSize) and 0xFF)
+                if (horizontal) {
+                    output[line * width + index] = average
+                } else {
+                    output[index * width + line] = average
+                }
+                // 滑动窗口：移出最左像素，移入最右新像素（边界按最近像素扩展）
+                val outgoing = (index - radius).coerceIn(0, lineLength - 1)
+                val incoming = (index + radius + 1).coerceIn(0, lineLength - 1)
+                val outPixel = if (horizontal) pixels[line * width + outgoing] else pixels[outgoing * width + line]
+                val inPixel = if (horizontal) pixels[line * width + incoming] else pixels[incoming * width + line]
+                sumR += ((inPixel shr 16) and 0xFF) - ((outPixel shr 16) and 0xFF)
+                sumG += ((inPixel shr 8) and 0xFF) - ((outPixel shr 8) and 0xFF)
+                sumB += (inPixel and 0xFF) - (outPixel and 0xFF)
+            }
+        }
+        val result = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+        result.setRGB(0, 0, width, height, output, 0, width)
         return result
     }
 

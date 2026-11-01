@@ -237,6 +237,12 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
      *
      * @return true = 消息已消费（AI 已回复或已给出提示）；false = AI 功能
      *   未开启，消息继续走全量转发（1.6.7.5：旧版直接吞掉，@ 消息凭空消失）
+     *
+     * 1.6.9.4：AI 调用移出 WSS 消息分发线程——AiChat.chat 是同步 HTTP
+     * （connect 10s + read 30s，失败重试更久），旧版在 WSS 读取线程里
+     * 直接执行，AI 回复期间同连接上后续所有群消息 / 命令全部排队等它；
+     * 现整体移入异步线程（submitAsync），WSS 线程即刻返回继续收消息，
+     * 回复照旧引用发送者原消息（QQ 被动回复窗口 5 分钟，远大于 AI 耗时）。
      */
     private fun handleAiChat(event: GroupMessageEvent, content: String, groupId: String?): Boolean {
         try {
@@ -268,16 +274,23 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
                 return true
             }
             val userId = safeUserId(event)
-            val reply = AiChat.chat(body, manager, groupId, userId)
-            val aiContent = "${manager.qqAiOutputPrefix} $reply"
-            // 0.1.5.2：AI 对话日志仅写入文件，不再上控制台（隐私泄露修复）
-            QqBindManager.logVerbose("[AI对话] 回复内容长度=${aiContent.length} 准备发送")
-            // 1.5.3：改为引用回复（引用发送者的原消息，QQ 官方 MessageReference 协议），
-            // 失败时在 QClient.replyMarkdownWithReference 内部逐级回退，回复不会丢失
-            try {
-                GroupMsgSender.sendReply(event, aiContent)
-            } catch (replyError: Throwable) {
-                QqBindManager.logVerbose("[AI对话] 引用回复发送失败: ${replyError.message}")
+            val preparedBody = body
+            plugin.submitAsync {
+                try {
+                    val reply = AiChat.chat(preparedBody, manager, groupId, userId)
+                    val aiContent = "${manager.qqAiOutputPrefix} $reply"
+                    // 0.1.5.2：AI 对话日志仅写入文件，不再上控制台（隐私泄露修复）
+                    QqBindManager.logVerbose("[AI对话] 回复内容长度=${aiContent.length} 准备发送")
+                    // 1.5.3：改为引用回复（引用发送者的原消息，QQ 官方 MessageReference 协议），
+                    // 失败时在 QClient.replyMarkdownWithReference 内部逐级回退，回复不会丢失
+                    try {
+                        GroupMsgSender.sendReply(event, aiContent)
+                    } catch (replyError: Throwable) {
+                        QqBindManager.logVerbose("[AI对话] 引用回复发送失败: ${replyError.message}")
+                    }
+                } catch (t: Throwable) {
+                    MessageTemplates.sendPlain(event, "ai-chat-error", mapOf("error" to (t.message ?: t.toString())))
+                }
             }
             return true
         } catch (t: Throwable) {
@@ -330,7 +343,20 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
                     }
                 }
             }
-            if (!hasImage && trimmed.isNotEmpty()) parts.add(trimmed)
+            // 1.6.9.4：合并转发消息（聊天记录）防刷屏——QQ 会把合并聊天记录
+            // 整段渲染成「=== 消息 N === / [消息内容] / [发送者]」的多行文本
+            // 模板（或 message_type=102 聊天记录）下发，旧版原样转发到游戏
+            // 聊天一次刷几十上百行；现改为单行占位（与 [图片] / [语音] /
+            // [视频] 占位同风格），条数可解析时带上「共 N 条」，玩家想知道
+            // 内容回 QQ 群点开卡片看
+            val mergedForward = QqText.detectMergedForward(metadata, rawContent)
+            if (mergedForward != null) {
+                parts.add(
+                    if (mergedForward.count != null) "[聊天记录 共${mergedForward.count}条]" else "[聊天记录]"
+                )
+            } else if (!hasImage && trimmed.isNotEmpty()) {
+                parts.add(trimmed)
+            }
             if (attachments != null) {
                 for (i in 0 until attachments.size) {
                     val attachment = attachments.getJSONObject(i) ?: continue
