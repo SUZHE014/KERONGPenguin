@@ -313,10 +313,10 @@ class ConfigManager(private val plugin: JavaPlugin) {
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
 
-        // 1.6.7.3：升 22——让 1.6.7.2 覆盖版（v21）用户再次触发配置重建，
-        // 本次重建把列表 / 字符串回填改写为与教程一致的行内双引号格式
-        // （修复「升级后 groups 从 ["xxx"] 被改写成块状裸串、看着像丢值」）
-        private const val CURRENT_CONFIG_VERSION = 22
+        // 1.6.9：升 23——新增 variable-fetch 段（变量获取信息：查信息卡片
+        // 指定项目改读 PlaceholderAPI 变量，默认关闭），升级触发配置重建
+        // 把新段与注释写入用户配置
+        private const val CURRENT_CONFIG_VERSION = 23
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -416,7 +416,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
         /** 全部默认配置值（用于补齐缺失键；1.6.7.2：from-group 新默认带 §b 染色）。 */
         private val DEFAULT_VALUES: Map<String, Any> = linkedMapOf(
-            CONFIG_VERSION_PATH to 22,
+            CONFIG_VERSION_PATH to 23,
             "bot.app-id" to "",
             "bot.secret" to "",
             "bot.name" to "KERONGPenguin",
@@ -495,6 +495,14 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "coins-leaderboard.builtin-background" to true,
             // 1.6.0：经济别名（留空 = 默认「金币」；填写后所有输出的金币字样替换为该名称）
             "economy-alias" to "",
+            // 1.6.9：变量获取信息（查信息卡片的指定项目改读 PlaceholderAPI 变量输出；
+            // 默认关闭；变量留空 / 解析失败自动回退插件自带数据）
+            "variable-fetch.enabled" to false,
+            "variable-fetch.total-playtime" to "",
+            "variable-fetch.today-playtime" to "",
+            "variable-fetch.coins" to "",
+            "variable-fetch.points" to "",
+            "variable-fetch.title" to "",
             "ai.enabled" to false,
             "ai.server-enabled" to false,
             "ai.server-prefix" to "ai",
