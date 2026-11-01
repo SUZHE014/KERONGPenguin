@@ -176,15 +176,14 @@ object LeaderboardRenderer {
 
     /**
      * 秒数格式化为时长文本（与查信息卡片「在线时长」同风格）：
-     * 天 / 时 / 分组合，全零时显示「暂无记录」。
+     * 小时 / 分组合（1.6.8 起最大单位为小时，不再展示「天」——
+     * 如 3天5小时20分钟 现展示为 77小时20分钟），全零时显示「暂无记录」。
      */
     fun formatPlayTime(seconds: Long): String {
         if (seconds <= 0) return "暂无记录"
-        val days = seconds / 86400
-        val hours = (seconds % 86400) / 3600
+        val hours = seconds / 3600
         val minutes = (seconds % 3600) / 60
         return buildString {
-            if (days > 0) append("${days}天")
             if (hours > 0) append("${hours}小时")
             if (minutes > 0) append("${minutes}分钟")
             if (isEmpty()) append("不足1分钟")

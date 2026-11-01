@@ -878,18 +878,17 @@ object QueryInfoService {
         return text.trimEnd('0').trimEnd('.').ifEmpty { "0" }
     }
 
-    /** 游戏时长：0天9时42分33秒。 */
+    /** 游戏时长：9时42分33秒。1.6.8 起最大单位为小时（不再展示「天」），
+     *     如 3天5时20分 现展示为 77时20分（查信息卡片「在线时长」）。 */
     fun formatPlayTime(seconds: Long): String {
         if (seconds <= 0) return "0分钟"
-        val days = seconds / 86400
-        val hours = (seconds % 86400) / 3600
+        val hours = seconds / 3600
         val minutes = (seconds % 3600) / 60
         val secs = seconds % 60
         return buildString {
-            if (days > 0) append("${days}天")
             if (hours > 0) append("${hours}时")
             if (minutes > 0) append("${minutes}分")
-            if (secs > 0 && days == 0L && hours == 0L) append("${secs}秒")
+            if (secs > 0 && hours == 0L) append("${secs}秒")
             if (isEmpty()) append("0分钟")
         }
     }

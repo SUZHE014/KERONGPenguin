@@ -544,8 +544,11 @@ object InfoCardRenderer {
  * 优先级（每一步失败都可检测，绝不回落到默认皮肤）：
  * 1. 在线玩家的 Profile 贴图 URL（含 SkinsRestorer 等改皮肤的情况）；
  * 2. 本服 playerdata/<UUID>.dat 中的 textures 属性（NBT 解析）；
- * 3. Mojang 会话服务器按 UUID 查询（仅正版 UUID，未知返回 204）；
- * 4. 离线 UUID / 未知 UUID 时按玩家名到 Mojang 查正版账号（查不到返回 404）；
+ * 3. 外部头像服务多线路（MC-Heads → Minotar → MinePic → Crafatar，
+ *    按实测速度排序；基岩玩家走 MC-Heads xuid 线路）；
+ * 4. Mojang 官方会话服务器 / 玩家名反查（1.6.8 起排最后兼底——
+ *    官方线路国内服务器普遍超时，先前排首位时排行榜等大批量
+ *    头像预热预算被逐玩家 3+5 秒超时耗尽，多数头像显示不出）；
  * 5. 全部失败 → null → 渲染占位图标。
  *
  * 0.1.5.2 性能修复：头像与背景均带 TTL 缓存，重复查询不再重复解码 / 请求。
@@ -764,8 +767,8 @@ object InfoCardAssets {
      * 获取（render.avatar-fetch-priority，默认 local）：
      * - local：本地方式优先（在线玩家 Profile + 本服存档 NBT 解析皮肤
      *   贴图，仅下载贴图文件本身，不走账号 API），取不到自动切换外置；
-     * - external：外置方式优先（Mojang 官方 API → MC-Heads → Minotar →
-     *   MinePic → Crafatar），全部失败后再试本地；
+     * - external：外置方式优先（MC-Heads → Minotar → MinePic → Crafatar
+     *   → Mojang 官方 API 兼底，1.6.8 起官方线路排最后），全部失败后再试本地；
      * 先试的一方失败自动切换另一方，两种方式都不成时才记入失败冷却。
      *
      * 1.6.6.2：
@@ -996,18 +999,27 @@ object InfoCardAssets {
     }
 
     /**
-     * 外置方式获取头像（1.6.6.1 覆盖版）：Mojang 官方原生 API
-     * （会话服务器直查 + 玩家名反查，网络冷却见
-     * [MOJANG_NETWORK_COOLDOWN_MS]）解析贴图 → 下载裁脸；官方链路
-     * 拿不到时再走外部头像服务多线路回退（[fetchExternalAvatar]）。
-     * 官方数据优先于外部头像服务（用户明确要求保留 Mojang 原生 API）。
+     * 外置方式获取头像（1.6.8：外部多线路优先，Mojang 官方 API 移到最后兼底）。
+     *
+     * 顺序调整原因（用户反馈「排行榜大多数头像没显示」）：官方线路
+     * （sessionserver / api.mojang.com）在国内服务器普遍不可达，此前
+     * 排首位时，排行榜 4 线程 × 8 秒预热预算全部烧在逐玩家 3+5 秒的
+     * 官方超时上（且官方冷却结束后又会重复烧一轮），多数头像在预算
+     * 耗尽后被整批取消。现改为快线路（MC-Heads ≈ 0.4s 等）先行，
+     * 官方 API 仅在四条外部线路全部失败后才尝试——外部线路全部不可达
+     * 的情况下才轮到官方，此时多等几秒可接受。
+     *
+     * 官方链路（会话服务器直查 + 玩家名反查，网络冷却见
+     * [MOJANG_NETWORK_COOLDOWN_MS]）解析贴图后下载裁脸。
      */
     private fun fetchViaExternalChain(request: AvatarRequest): FetchedFace? {
+        val external = fetchExternalAvatar(request)
+        if (external != null) return external
         val skinUrl = resolveMojangSkinUrl(request)
         if (skinUrl != null) {
             downloadAndCropFace(skinUrl)?.let { return FetchedFace(it, "Mojang官方API") }
         }
-        return fetchExternalAvatar(request)
+        return null
     }
 
     /**
@@ -1323,9 +1335,9 @@ object InfoCardAssets {
      * Crafatar ≈ 5.8s（慢但可用）；线路顺序按实测速度排（快 → 慢），
      * 任一成功即返回（在线列表 8 秒预热预算保护，不做四线全等）。
      *
-     * 注：本链路之前还有 Mojang 官方原生 API（会话服务器 + 名字反查，
-     * 见 [fetchViaExternalChain] / [resolveMojangSkinUrl]）——官方数据
-     * 始终优先，本链路仅在其失败或网络冷却期内兜底，不替代官方接口。
+     * 注：本链路之后还有 Mojang 官方原生 API（会话服务器 + 名字反查，
+     * 见 [resolveMojangSkinUrl]）——1.6.8 起官方线路移到最后兜底
+     * （四条外部线路全部失败才尝试），不再优先于外部头像服务。
      *
      * - 基岩玩家（Floodgate UUID，见 [floodgateXuid]）：MC-Heads 的
      *   xuid 线路（实测 200，官方支持 Xbox 头像）；其余 Java 侧

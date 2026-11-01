@@ -121,7 +121,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
      * RegisterConfigurationTasksEvent / 20.4 OnGameConfigurationEvent，经
      * BindLoginGate 运行时探测），未绑定老玩家在配置阶段（进入世界之前）
      * 直接断开，绑定提示显示在连接失败界面。挂载失败不影响功能（退化为
-     * 加入后踢出的旧版兜底路径）。1.6.7.11：按 registerTo 真实结果反馈，
+     * 加入后踢出的旧版兜底路径）。1.6.8：按 registerTo 真实结果反馈，
      * 不再无论成败一律报「已挂载」（失败细节由 registerTo 内部 WARN）。
      */
     private fun registerBindLoginGate() {
@@ -406,7 +406,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             .resolve("kerongpenguin").toFile()
 
         /** 模组版本（与 neoforge.mods.toml 一致）。 */
-        private const val MOD_VERSION = "1.6.7.11"
+        private const val MOD_VERSION = "1.6.8"
 
         /** 当前模组实例（命令与事件层访问）。 */
         @Volatile

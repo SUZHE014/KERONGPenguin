@@ -8,7 +8,7 @@ issueTrackerURL = "https://github.com/SUZHE014/KERONGPenguin"
 # 适配 MC 1.20.4+（面向最低版本 1.20.4 编译，向上兼容运行）。
 [[mods]]
 modId = "kerongpenguin"
-version = "1.6.7.11"
+version = "1.6.8"
 displayName = "KERONGPenguin"
 authors = "KERONG"
 description = '''
