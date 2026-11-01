@@ -1,7 +1,7 @@
 # KERONGPenguin AI 交接知识库
 
 > **本文档的用途**：把本文件丢给一个对项目一无所知的 AI，它能立刻了解当前情况并接手工作。
-> 面向：接手开发/发版的 AI 助手。最后更新：2026-11-01 四次（**主线 v1.6.9 发布**（新增变量获取信息 variable-fetch：查信息卡片五项目——总在线时长/今日在线时长/金币/点券/称号——可改读 PlaceholderAPI 变量输出，默认关、留空/失败自动回退自带数据；PlaceholderVariableService 新文件 + QueryInfoService 主线程快照解析；config-version 22→23；官网教程全量小白化改写（技术细节收进最后一个卡片）；门禁 33 + 冒烟 27 全绿；git 远端 main=9418cb7 已推送）。同日三次：**主线 v1.6.8 发布**（时长单位小时化 + 排行榜头像修复——Mojang 官方线路移到最后兜底；官网删 1.6.7.9 前旧版与 UI 精简；git 远端 main=40ab3ab 已推送，细粒度 PAT 403 被 token2 经典令牌顶替成功）；门禁 27 + 冒烟 20 全绿；环境第八次重建：tooling JDK21/Gradle 走 TUNA/腾讯镜像重装，deps.jar 从 1.6.7.11 Spigot JAR 重建，NF libs 沿用旧工作区遗留（目标版本一致）。同日二次：官网首页 1.6.7.11 回滚事故修复：v0.5 上线时 index.html 用 1.6.7.10 旧底稿整文件覆盖，把主线 1.6.7.11 的主下载框/历史版本表/更新日志整体回滚——version.json/双 JAR/源码包从未受影响、游戏内更新提示一直正常；已重建上线并新增 §6「官网整文件覆盖回滚」坑条目。同日早前：**0.3AI v0.5 发布**（AI 专属版，见文末 §9：零环境自动部署 Ollama+DeepSeek（内存检测选档每次重启一次）、引用回复可选化（[引用 N] 标记 + 主动优先被动兜底）、表情包（guaipng 文件名语义匹配），门禁 138 项冒烟 120 项全绿，官网已上线）；主线 git 本轮仅知识库同步（远端 main = 42858a9，v0.5 内容随本次同步推送）；环境沿第八次会话：tooling 全套构建链（kotlinc 2.2.0 + paper-api + adventure + guava + snakeyaml）与 ai-git/ai-version 工作区完好）。
+> 面向：接手开发/发版的 AI 助手。最后更新：2026-11-01 五次（**主线 v1.6.9.3 发布**（变量获取扩展：新增玩家名/TPS 可配置 + 自定义查信息项目（项目ID/项目名称/获取变量）+「填了变量必展示、读不到显示未获取成功」显隐规则 + 排行榜/财富榜/查性能同步拉取变量；查性能在线人数展示「N / 服务器最大人数」（默认真实值，可配 MOTD 展示人数，ServerListPingEvent MONITOR 捕获）；移除 /在线服务器 与 /motd 命令（面板 21→19 项）；config-version 23→24；兼容层 PluginManager 单槽改多槽；门禁 55 + 冒烟 50 全绿；git 远端 main=fff86a7 已推送双通道复核）。同日四次：**主线 v1.6.9 发布**（新增变量获取信息 variable-fetch：查信息卡片五项目——总在线时长/今日在线时长/金币/点券/称号——可改读 PlaceholderAPI 变量输出，默认关、留空/失败自动回退自带数据；PlaceholderVariableService 新文件 + QueryInfoService 主线程快照解析；config-version 22→23；官网教程全量小白化改写（技术细节收进最后一个卡片）；门禁 33 + 冒烟 27 全绿；git 远端 main=9418cb7 已推送）。同日三次：**主线 v1.6.8 发布**（时长单位小时化 + 排行榜头像修复——Mojang 官方线路移到最后兜底；官网删 1.6.7.9 前旧版与 UI 精简；git 远端 main=40ab3ab 已推送，细粒度 PAT 403 被 token2 经典令牌顶替成功）；门禁 27 + 冒烟 20 全绿；环境第八次重建：tooling JDK21/Gradle 走 TUNA/腾讯镜像重装，deps.jar 从 1.6.7.11 Spigot JAR 重建，NF libs 沿用旧工作区遗留（目标版本一致）。同日二次：官网首页 1.6.7.11 回滚事故修复：v0.5 上线时 index.html 用 1.6.7.10 旧底稿整文件覆盖，把主线 1.6.7.11 的主下载框/历史版本表/更新日志整体回滚——version.json/双 JAR/源码包从未受影响、游戏内更新提示一直正常；已重建上线并新增 §6「官网整文件覆盖回滚」坑条目。同日早前：**0.3AI v0.5 发布**（AI 专属版，见文末 §9：零环境自动部署 Ollama+DeepSeek（内存检测选档每次重启一次）、引用回复可选化（[引用 N] 标记 + 主动优先被动兜底）、表情包（guaipng 文件名语义匹配），门禁 138 项冒烟 120 项全绿，官网已上线）；主线 git 本轮仅知识库同步（远端 main = 42858a9，v0.5 内容随本次同步推送）；环境沿第八次会话：tooling 全套构建链（kotlinc 2.2.0 + paper-api + adventure + guava + snakeyaml）与 ai-git/ai-version 工作区完好）。
 > 前次：2026-10-31 第二次会话——**主线 git 已推送**：本地 main 重建 1.6.7.11 等效提交 e3debc5（原 55854ae 随第七次环境重置丢失，按官网源码包重建）并推送 GitHub 成功——gh-proxy 只转发 clone 不转发 push 鉴权（报 No anonymous write access），**push 走官网服务器中继**：git bundle 上传 → /root/gitpush/bare.git fetch → 带 PAT 直连 push（服务器可直连 GitHub），远端 main = e3debc5 已双通道复核；**0.3AI v0.4 发布**（本地 DeepSeek 取代云端 API、删私信、全局共享上下文+用户名片、ais.md 提示词、网页爬虫、管理员一键删除上下文+指令面板按钮，门禁 101 项冒烟 67 项全绿）；环境第七次重置后恢复：tooling 的 JDK21/CFR 仍在，补齐 AI 版构建链（kotlinc 2.2.0 + paper-api + adventure + guava + snakeyaml，全部 tooling/ 持久化）。
 > 自包含版本（发给本地无任何东西的 AI）见官网 `AI-KNOWLEDGE.txt`，含从零开始的环境重建与凭据获取说明。
 
@@ -256,6 +256,52 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
 | 快速守卫与新语法脱节 | 函数入口的 contains 快速守卫（要求完整「[表情]」）挡住了冒号新形态「[表情:x]」——守卫条件要放宽到公共前缀，冒烟必须覆盖每种语法形态 |
 | 中缀运算符优先级 | 「1 until 1L shl 40」左结合解析为「(1 until 1L) shl 40」报 unresolved reference——until 与位运算混用必须加括号 |
 | grep -c 打断命令链 | 管道接 grep -c 无匹配时 exit 1 会中断后续 and-and 链——错误计数检查要单独执行 |
+| Python set 的 in 是成员判定 | `"子串" in some_set` 是**精确成员判定**不是子串包含——单词条常量（如 javap 常量池里的「已读取」）恰好相等碰巧能用，长常量（如「最大 \u0001 人（MOTD 展示值）…」）必误报；常量池断言查子串要用 `any(sub in c for c in consts)`（verify_jar_1693 实测 7 项假 FAIL 部分源于此） |
+| Kotlin const val 调用点内联 | `const val` 编译期直接内联到调用点 ldc，字节码**无字段引用**——断言「服务常量被引用」要查调用方反汇编里的 `// String 字面量`（FETCH_FAILED_TEXT 曾按字段引用断言误报），服务类常量池里该字符串仍然在位 |
+| NF 模块资源副本陷阱 | `server-NeoForge/src/main/resources/` 有自己的一份 Markdown/ 全量副本（NF 打包脚本从模块 jar 合入）——**删模板资源时双份都要删**，只删 common-Bot 会让 NF 分发 JAR 残留旧资源（CD1 抓回）；改 help.md 同样要同步两份 |
+| javap 不显示 makeConcatWithConstants 配方 | Kotlin 字符串模板编译为 invokedynamic makeConcatWithConstants，recipe 常量（"\u0001.项目名称"）在 BootstrapMethods 属性里——`javap -c` 代码区不可见，只有 `-v` 的 Utf8 条目才有；模板形态断言一律用 -v 的常量池 |
+| ssh.py 用法 | `scripts/ssh.py` 把**全部参数拼成命令**执行（无 run 子命令）——写 `ssh.py run "cmd"` 会变成执行 `run` 报 127；正确用法 `python3 scripts/ssh.py "cmd"`；命令串里带 `;` 时 `run xxx; yyy` 后半段仍会执行（首查 version.json 曾因此静默漏跑） |
+
+---
+
+## 7. 当前已知状态（2026-11-01 五次会话，v1.6.9.3 完成）
+
+- **双端 1.6.9.3 全部完成**（门禁 verify_jar_1693 55 项 / 冒烟 smoke1693 50 项全绿 / 官网三文件 + 双 JAR 已上线、
+  在线验证含双 JAR md5 字节一致与外网域名复核 / git 远端 main = fff86a7 经 gh-proxy 双通道复核）：
+  **变量获取扩展**（用户需求：查信息项目自动隐藏修改 + 自定义项目 + 玩家名/tps 可配置 + 其他地方同步拉取）+
+  **查性能最大人数** + **命令精简**。实现：
+  - `PlaceholderVariableService` 重做：PLAYER_FIELDS 六字段（五项 + player-name）+ **Context**（overrides 六值 +
+    coinsConfigured/pointsConfigured/titleConfigured 显隐标记 + customItems 解析结果——configured 与读取成败/
+    PAPI 可用性无关，决定「填了变量必展示」）+ snapshotContext（六键 + 自定义项一次解析，日志汇总）+
+    customItems()（读 variable-fetch.custom-items 段，子键中文「项目名称」「获取变量」，缺任一跳过；每次查询
+    实时读取 → /kerong reload 即生效）+ resolveBatch（排行榜批量：两键均未配置零开销空表）+ resolveServerTps
+    （服务器级：有在线玩家借第一个解析否则 null OfflinePlayer，PAPI server 类变量无需玩家上下文）+
+    resolveOnMainThread（FoliaCompat.callSync 主线程跳转 3 秒超时，异步路径变量解析统一入口）+
+    resolveForOffline（支持 null target）；FETCH_FAILED_TEXT=「未获取成功」。
+  - `QueryInfoService`：MainThreadSnapshot 五 var 字段收敛为 `vars: Context`；buildItems 三处显隐改
+    `vaultAvailable || vars.coinsConfigured` 等 + elvis 链 `vars.coins ?: if (vaultAvailable) 自带 else 未获取成功`；
+    自定义项目 for 循环追加卡片末尾；卡片头部 playerName = vars.overrides.playerName ?: 真实名（头像/统计/缓存
+    仍按真实玩家）；timeoutSnapshot 用 EMPTY_CONTEXT。
+  - 排行榜/财富榜：snapshotVariableOverrides 主线程快照批量解析 top 条目（player-name + total-playtime/coins），
+    LeaderEntry.name 与 valueText 应用覆盖（头像/排名仍按真实名）。
+  - 查性能：PerformanceSnapshot 增 maxPlayers（capture 五参工厂带默认值兼容旧调用）；Spigot 端 api.maxPlayers、
+    NF 端 server.playerList.maxPlayers；**MotdDisplayTracker** 新单例记录 ServerListPingEvent MONITOR 优先级
+    （全部修改者之后）读到的 event.maxPlayers——即其他插件改过的展示人数；PerformanceService.resolveMaxPlayers
+    按 render.performance.max-players-source（real 默认 / motd 展示值，无人 ping 过回退真实）选源；
+    PerformanceRenderer 在线人数卡「N / M」+ 占比进度条 + 副说明标记（MOTD 展示值），TPS 卡 tpsVariableText
+    变量原文输出（parseDoubleOrNull 容错千分位，可解析数值同步用于状态分级与进度条，非数值状态「已读取」）。
+  - 命令删除：/在线服务器 与 /motd 全链路清理（PublicCommands 两方法、MotdCommands.kt、GroupMessageHandler
+    注册、MessageTemplates 六模板 ID、Markdown 资源**双份**、MenuManager 面板与裁剪表 21→19 项、help.md、
+    ConfigManager 三张表 + REMOVED_CONFIG_KEYS、双端 config.yml commands/messages 段）；motd 配置段保留
+    （查在线仍用 use-markdown/api/server-ip）。
+  - 配置：双端 config.yml variable-fetch 增 player-name/tps/custom-items（含示例注释）+
+    render.performance.max-players-source；config-version 23→24。
+  - 兼容层 PluginManager 单槽改多槽（COW 列表按名查找；生产仅注册模组自身行为不变；解决 1.6.9 冒烟记录的
+    「双插件无法共存」限制——snapshotContext/resolveServerTps/resolveBatch 全链冒烟得以真跑）。
+  - 冒烟亮点：假 PAPI 下端到端 snapshotContext 六键解析（含 player-name）与自定义项目（正常返回保留）；
+    buildItems「填了变量读不到且无 Vault → 金币展示未获取成功」正反向对照；resolveServerTps 采用/未配置；
+    resolveBatch 双玩家名值覆盖与未注册回退；性能卡端到端 PNG 99571B（maxPlayers+MOTD 标记+TPS 变量）；
+    resolveBatch 入参需构造重定位后的 cn.kerong.shaded.kotlin.Pair（NF JAR kotlin 已重定位）。
 
 ---
 
