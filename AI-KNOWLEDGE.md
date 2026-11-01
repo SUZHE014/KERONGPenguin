@@ -1,7 +1,7 @@
 # KERONGPenguin AI 交接知识库
 
 > **本文档的用途**：把本文件丢给一个对项目一无所知的 AI，它能立刻了解当前情况并接手工作。
-> 面向：接手开发/发版的 AI 助手。最后更新：2026-11-01 三次（**主线 v1.6.8 发布**（时长单位小时化 + 排行榜头像修复——Mojang 官方线路移到最后兜底；官网删 1.6.7.9 前旧版与 UI 精简；git 远端 main=40ab3ab 已推送，细粒度 PAT 403 被 token2 经典令牌顶替成功）；门禁 27 + 冒烟 20 全绿；环境第八次重建：tooling JDK21/Gradle 走 TUNA/腾讯镜像重装，deps.jar 从 1.6.7.11 Spigot JAR 重建，NF libs 沿用旧工作区遗留（目标版本一致）。同日二次：官网首页 1.6.7.11 回滚事故修复：v0.5 上线时 index.html 用 1.6.7.10 旧底稿整文件覆盖，把主线 1.6.7.11 的主下载框/历史版本表/更新日志整体回滚——version.json/双 JAR/源码包从未受影响、游戏内更新提示一直正常；已重建上线并新增 §6「官网整文件覆盖回滚」坑条目。同日早前：**0.3AI v0.5 发布**（AI 专属版，见文末 §9：零环境自动部署 Ollama+DeepSeek（内存检测选档每次重启一次）、引用回复可选化（[引用 N] 标记 + 主动优先被动兜底）、表情包（guaipng 文件名语义匹配），门禁 138 项冒烟 120 项全绿，官网已上线）；主线 git 本轮仅知识库同步（远端 main = 42858a9，v0.5 内容随本次同步推送）；环境沿第八次会话：tooling 全套构建链（kotlinc 2.2.0 + paper-api + adventure + guava + snakeyaml）与 ai-git/ai-version 工作区完好）。
+> 面向：接手开发/发版的 AI 助手。最后更新：2026-11-01 四次（**主线 v1.6.9 发布**（新增变量获取信息 variable-fetch：查信息卡片五项目——总在线时长/今日在线时长/金币/点券/称号——可改读 PlaceholderAPI 变量输出，默认关、留空/失败自动回退自带数据；PlaceholderVariableService 新文件 + QueryInfoService 主线程快照解析；config-version 22→23；官网教程全量小白化改写（技术细节收进最后一个卡片）；门禁 33 + 冒烟 27 全绿；git 远端 main=9418cb7 已推送）。同日三次：**主线 v1.6.8 发布**（时长单位小时化 + 排行榜头像修复——Mojang 官方线路移到最后兜底；官网删 1.6.7.9 前旧版与 UI 精简；git 远端 main=40ab3ab 已推送，细粒度 PAT 403 被 token2 经典令牌顶替成功）；门禁 27 + 冒烟 20 全绿；环境第八次重建：tooling JDK21/Gradle 走 TUNA/腾讯镜像重装，deps.jar 从 1.6.7.11 Spigot JAR 重建，NF libs 沿用旧工作区遗留（目标版本一致）。同日二次：官网首页 1.6.7.11 回滚事故修复：v0.5 上线时 index.html 用 1.6.7.10 旧底稿整文件覆盖，把主线 1.6.7.11 的主下载框/历史版本表/更新日志整体回滚——version.json/双 JAR/源码包从未受影响、游戏内更新提示一直正常；已重建上线并新增 §6「官网整文件覆盖回滚」坑条目。同日早前：**0.3AI v0.5 发布**（AI 专属版，见文末 §9：零环境自动部署 Ollama+DeepSeek（内存检测选档每次重启一次）、引用回复可选化（[引用 N] 标记 + 主动优先被动兜底）、表情包（guaipng 文件名语义匹配），门禁 138 项冒烟 120 项全绿，官网已上线）；主线 git 本轮仅知识库同步（远端 main = 42858a9，v0.5 内容随本次同步推送）；环境沿第八次会话：tooling 全套构建链（kotlinc 2.2.0 + paper-api + adventure + guava + snakeyaml）与 ai-git/ai-version 工作区完好）。
 > 前次：2026-10-31 第二次会话——**主线 git 已推送**：本地 main 重建 1.6.7.11 等效提交 e3debc5（原 55854ae 随第七次环境重置丢失，按官网源码包重建）并推送 GitHub 成功——gh-proxy 只转发 clone 不转发 push 鉴权（报 No anonymous write access），**push 走官网服务器中继**：git bundle 上传 → /root/gitpush/bare.git fetch → 带 PAT 直连 push（服务器可直连 GitHub），远端 main = e3debc5 已双通道复核；**0.3AI v0.4 发布**（本地 DeepSeek 取代云端 API、删私信、全局共享上下文+用户名片、ais.md 提示词、网页爬虫、管理员一键删除上下文+指令面板按钮，门禁 101 项冒烟 67 项全绿）；环境第七次重置后恢复：tooling 的 JDK21/CFR 仍在，补齐 AI 版构建链（kotlinc 2.2.0 + paper-api + adventure + guava + snakeyaml，全部 tooling/ 持久化）。
 > 自包含版本（发给本地无任何东西的 AI）见官网 `AI-KNOWLEDGE.txt`，含从零开始的环境重建与凭据获取说明。
 
@@ -258,6 +258,40 @@ CPU 渲染（CardRenderPool 共享线程池，核数一半 1~4 线程）、结�
 | grep -c 打断命令链 | 管道接 grep -c 无匹配时 exit 1 会中断后续 and-and 链——错误计数检查要单独执行 |
 
 ---
+
+## 7. 当前已知状态（2026-11-01 四次会话，v1.6.9 完成）
+
+- **双端 1.6.9 全部完成**（门禁 verify_jar_169 33 项 / 冒烟 smoke169 27 项全绿 / 官网三文件 + 双 JAR + 源码包已上线、
+  在线验证含双 JAR md5 字节一致 / git 远端 main = 9418cb7 经 gh-proxy 复核）：
+  **变量获取信息（variable-fetch）**——用户需求：开关开启时（默认关）各信息自动获取填写的变量返回的内容进行输出，
+  可配置总在线时长/今日在线时长/金币/点券/称号五项；获取失败退回插件自带；留空默认用自带。实现：
+  - `common-Bot/.../stats/PlaceholderVariableService.kt`（新文件）：isEnabled 总开关 + placeholderOf 键读取
+    （首尾空白清洗，与凭据清洗同思路——网页复制变量常带零宽字符）+ snapshot 主线程一次解析五项
+    （Overrides 五 String?）+ resolve 反射 setPlaceholders(OfflinePlayer, String)（与称号链路同模式：
+    PAPI 插件自身类加载器加载，跨插件类不可见）。回退判定三条：结果 trim 后空→null；结果与原文相同且原文含 %→null
+    （未注册；纯文本无 % 放行直通——服主可填固定文本）；异常→null。变量支持与固定文本混排（"%变量% 小时"）。
+    PAPI 缺失时经 PapiDependencyCheck.notifyMissingOnce 会话级提醒 + 文件日志，snapshot 全 null 回退。
+  - `QueryInfoService`：MainThreadSnapshot 增五个 var 字段；gatherOnMainThread 主线程快照内调用 snapshot
+    （PAPI 第三方扩展非线程安全；关闭时直接返回全 null 零开销；不增加主线程往返）；timeoutSnapshot 五 var 字段
+    null（主线程超时不做变量解析）；buildItems 五处 elvis 覆盖 + 金币/称号/点券显隐扩展
+    （`vaultAvailable || varCoins != null`——变量给出内容时对应依赖插件未装也展示该项，变量本身就是数据来源；
+    变量 null 时与旧版完全一致）。
+  - 配置：双端 config.yml 新增 variable-fetch 段（enabled 默认 false + 五键；注释含规则与「仅插件版有效——
+    模组版无 PAPI 生态恒用自带数据」口径）；config-version 22→23（升级自动重建写入新段，用户已改值保留）；
+    ConfigManager CURRENT_CONFIG_VERSION 与 DEFAULT_VALUES 六键同步。
+  - 官网：1.6.9 三处 + 兼容表新增 PlaceholderAPI 行与说明补充；version.json 1.6.9 + changelog；
+    **tutorial.html 全量小白化改写**（用户要求：教程给小白看，不要技术/原理/细节/更新问题，技术细节全收进
+    最后一个卡片）——结构：快速上手三步（原样）→「常用设置」（18 小节，每节配置片段+行内注释+一两句话，
+    砍掉全部长段落）→「技术细节与常见问题」最后卡片（配置自动升级/AppID 空白/双服同绑/查性能指标细节/
+    头像链路/变量回退规则/语法自愈/版本选择/数据存储/Geyser/内存 11 项收纳）；新增变量获取信息教程节；
+    26 项变量表砍到 7 项常用 + 指向 config.yml 注释。
+  - 冒烟亮点：FakeKeronPlugin 继承 NF 兼容层 JavaPlugin 提供 config（isEnabled/placeholderOf 配置通路真实走通）；
+    动态代理 Plugin 名为 PlaceholderAPI + me.clip.placeholderapi.PlaceholderAPI 假类，resolve 的反射链路端到端
+    真跑（成功采用/未注册回退/纯文本直通/混排四路径）；buildItems 经 17 参私有构造器反射端到端验证 elvis 与
+    显隐扩展。兼容层 PluginManager 单槽 self 的限制：snapshot 全链（同时要 KERONGPenguin 与 PlaceholderAPI
+    两个插件）无法在冒烟 JVM 复现，单插件场景 + resolve 直测分覆盖。
+  - 踩坑：**javap -c 不带 -p 时私有方法体不反汇编**——gatherOnMainThread 是私有方法，snapshot 调用点在
+    javap -c 默认输出里完全不可见（曾误判调用丢失），反汇编查私有方法必须加 -p。
 
 ## 7. 当前已知状态（2026-11-01 三次会话，v1.6.8 完成）
 
