@@ -465,8 +465,17 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         //    本地 / 同机连接下恒为 0ms，只代表服务器本地网络，无实际监控意义）
         val onlineCount = readOnlinePlayerCount(folia)
 
+        // 5. 真实最大人数（1.6.9.3 新增：查性能卡片在线人数卡展示「N / M」；
+        //    render.performance.max-players-source = motd 时由查性能服务侧改用
+        //    ping 捕获的展示人数，这里始终提供真实值兜底）
+        val realMaxPlayers = try {
+            api.maxPlayers
+        } catch (_: Throwable) {
+            null
+        }
+
         return try {
-            cn.kerong.bot.PerformanceSnapshot.capture(tps, mspt, sparkCpu, onlineCount)
+            cn.kerong.bot.PerformanceSnapshot.capture(tps, mspt, sparkCpu, onlineCount, realMaxPlayers)
         } catch (_: Throwable) {
             null
         }

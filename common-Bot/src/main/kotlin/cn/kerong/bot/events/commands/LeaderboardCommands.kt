@@ -42,6 +42,11 @@ import java.awt.image.BufferedImage
  * 提示文本模板（1.6.0）：manager-not-ready-retry / leaderboard-no-data /
  * leaderboard-render-failed / image-send-failed / server-busy（messages 段）。
  *
+ * 1.6.9.3：变量获取信息同步生效——variable-fetch 开启且填写了
+ * 玩家名（player-name）/ 总在线时长（total-playtime）变量时，榜单行
+ * 展示名与时长文本改为变量返回内容（主线程快照内批量解析，
+ * 失败 / 留空回退插件自带数据；头像 / 排名仍按真实玩家）。
+ *
  * 分段发送：超过 [LeaderboardRenderer.ROWS_PER_PAGE]（15）行时自动切页 ——
  * 第一张带标题区，后续各张只绘制行内容；逐张发送间隔 [SEND_INTERVAL_MILLIS]
  * 避免触发平台频控。
@@ -134,8 +139,11 @@ class LeaderboardCommands : CommandSupport() {
                         return@submit
                     }
 
-                    // 3. 主线程快照在线玩家（头像实时皮肤增强）+ 并发预热头像
+                    // 3. 主线程快照在线玩家（头像实时皮肤增强）+ 并发预热头像；
+                    //    1.6.9.3：变量获取（玩家名 / 总在线时长，同一次主线程
+                    //    语义内解析，仅对展示的 top 条目）
                     val onlineSkins = snapshotOnlineSkins()
+                    val variableOverrides = snapshotVariableOverrides(topEntries)
                     val playerDataDir = try {
                         Bukkit.getWorlds().firstOrNull()?.worldFolder?.resolve("playerdata")
                     } catch (_: Throwable) {
@@ -154,9 +162,10 @@ class LeaderboardCommands : CommandSupport() {
                         val pageEntries = topEntries.subList(pageStart, pageEnd).mapIndexed { offset, raw ->
                             LeaderboardRenderer.LeaderEntry(
                                 rank = pageStart + offset + 1,
-                                name = raw.name,
+                                name = variableOverrides[raw.name]?.first ?: raw.name,
                                 playSeconds = raw.seconds,
                                 avatar = avatars[raw.name],
+                                valueText = variableOverrides[raw.name]?.second,
                             )
                         }
                         val height = LeaderboardRenderer.measurePageHeight(pageEntries.size, pages.isEmpty())
@@ -259,6 +268,38 @@ class LeaderboardCommands : CommandSupport() {
             null
         } ?: return emptyMap()
         // 1.5.7.3：经 FoliaCompat 桥接（Folia 全局区域线程限时取值，超时回退空表）
+        return try {
+            cn.kerong.penguin.spigot.scheduler.FoliaCompat.callSync(bukkitPlugin, 3L) { snapshot() } ?: emptyMap()
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    /**
+     * 1.6.9.3：主线程快照解析 top 玩家的变量覆盖（玩家名 / 总在线时长）。
+     * 开关关闭或两键均未配置时零开销返回空表；超时 / 异常同样空表
+     * （回退插件自带数据，不影响榜单流程）。
+     */
+    private fun snapshotVariableOverrides(entries: List<RawEntry>): Map<String, Pair<String?, String?>> {
+        val enabled = try {
+            cn.kerong.penguin.spigot.stats.PlaceholderVariableService.isEnabled()
+        } catch (_: Throwable) {
+            false
+        }
+        if (!enabled) return emptyMap()
+        val snapshot: () -> Map<String, Pair<String?, String?>> = {
+            cn.kerong.penguin.spigot.stats.PlaceholderVariableService.resolveBatch(
+                entries.map { it.name to it.uuid },
+                nameKey = "player-name",
+                valueKey = "total-playtime",
+            )
+        }
+        if (Bukkit.isPrimaryThread()) return snapshot()
+        val bukkitPlugin = try {
+            Bukkit.getPluginManager().getPlugin("KERONGPenguin")
+        } catch (_: Throwable) {
+            null
+        } ?: return emptyMap()
         return try {
             cn.kerong.penguin.spigot.scheduler.FoliaCompat.callSync(bukkitPlugin, 3L) { snapshot() } ?: emptyMap()
         } catch (_: Exception) {

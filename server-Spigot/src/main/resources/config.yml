@@ -11,7 +11,7 @@
 
 # 配置文件版本号（插件自动维护，请勿手动修改；
 # 升级插件时会自动补齐新增的配置项、清理已废弃的配置项）
-config-version: 23
+config-version: 24
 
 # 插件启动后自动访问官网版本文件，检查是否有新版本
 # 关闭 false = 完全不联网检查
@@ -110,7 +110,7 @@ motd:
   server-ip: ""
   # 你的服务器端口（用于 api 地址里的 {port} 变量替换）
   server-port: 0
-  # 服务器状态图片 API 地址：/motd 命令与查在线输出的服务器状态图
+  # 服务器状态图片 API 地址：查在线 Markdown 模板输出的服务器状态图
   # 地址里的 {ip} {port} 会自动替换为上面填写的值；不需要状态图片可留空
   api: "http://motd.txssb.cn/api/app_img?ip={ip}&port={port}&dark=true&lang=zh-CN"
   # 是否随消息发送 api 生成的服务器状态图片
@@ -200,6 +200,13 @@ render:
     # 推荐开启的性能数据缓存）；0 = 关闭（每次实时渲染）；
     # 改动后 /kerong reload 立即生效
     cache-seconds: 60
+    # 在线人数卡的最大人数来源（1.6.9.3 新增；查性能卡片在线人数展示「N / M」）：
+    #   real = 服务器真实最大人数（默认；服务器属性里的 max-players）
+    #   motd = 其他插件修改过的展示人数（就是服务器列表 / MOTD 里显示的人数，
+    #          取自最近一次玩家 ping 服务器时显示的值；刚启动没人 ping 过时
+    #          自动回退真实值；模组版无此事件，恒用真实值）
+    # 改动后 /kerong reload 立即生效
+    max-players-source: "real"
 
 # ---------------- 卡片背景图（无需配置，仅说明） ----------------
 # 查信息卡片、查在线图片、在线排行榜、金币排行榜默认全部使用内置背景图
@@ -215,29 +222,50 @@ render:
 # （自动裁剪/缩放铺满；超大图自动降采样解码，手机原图直放不怕内存溢出）；
 # img 文件夹里没有图片时自动回退使用内置背景图
 
-# ---------------- 变量获取信息（1.6.9 新增，查信息卡片） ----------------
-# 开启后，/查信息 卡片的下面几个项目会先读取你填写的变量
-# （PlaceholderAPI 占位符，需要服务器安装 PlaceholderAPI 插件），
-# 读取到内容就直接显示变量返回的内容；
+# ---------------- 变量获取信息（1.6.9 新增，1.6.9.3 扩展） ----------------
+# 开启后，下面这些项目会先读取你填写的变量（PlaceholderAPI 占位符，
+# 需要服务器安装 PlaceholderAPI 插件），读取到内容就直接显示变量返回的内容：
+# - 查信息卡片：总在线时长 / 今日在线时长 / 金币 / 点券 / 称号 / 玩家名
+#   + 自定义项目（见下方 custom-items）
+# - 在线排行榜：玩家名 / 总在线时长；财富榜：玩家名 / 金币
+# - 查性能卡片：TPS
 # 变量留空 = 该项目照常显示插件自己统计的数据（默认行为）；
 # 变量读取失败（未装 PlaceholderAPI / 变量不存在 / 返回空白）自动回退插件数据；
+# 金币 / 点券 / 称号三项只要填了变量就一定会展示——对应插件（Vault /
+# PlayerPoints / 称号插件）没装且变量又读不到时显示「未获取成功」而不是隐藏；
 # 变量支持与固定文本混排（如 "%变量% 小时"）；
 # 仅插件版有效（模组版无 PlaceholderAPI 生态，恒用自带数据）；
-# 改动后重启服务器生效；每次查询的变量解析结果（采用 / 回退）会写进
-# logs/qq/qq-bind-日期.log 插件日志文件，排查填错变量时可直接翻看
+# 改动后 /kerong reload 立即生效（无需重启）；每次查询的变量解析结果
+# （采用 / 回退）会写进 logs/qq/qq-bind-日期.log 插件日志文件，
+# 排查填错变量时可直接翻看
 variable-fetch:
   # 总开关（默认 false = 关闭，全部项目用插件自带数据）
   enabled: false
-  # 总在线时长使用的变量（留空 = 插件自记录的在线时长）
+  # 总在线时长使用的变量（留空 = 插件自记录的在线时长；查信息 / 在线排行榜生效）
   total-playtime: ""
-  # 今日在线时长使用的变量（留空 = 插件自记录的今日在线）
+  # 今日在线时长使用的变量（留空 = 插件自记录的今日在线；查信息生效）
   today-playtime: ""
-  # 金币使用的变量（留空 = Vault 经济余额）
+  # 金币使用的变量（留空 = Vault 经济余额；查信息 / 财富榜生效）
   coins: ""
-  # 点券使用的变量（留空 = PlayerPoints 点券）
+  # 点券使用的变量（留空 = PlayerPoints 点券；查信息生效）
   points: ""
-  # 称号使用的变量（留空 = DeluxeTags / PlayerTitle / Vault 称号）
+  # 称号使用的变量（留空 = DeluxeTags / PlayerTitle / Vault 称号；查信息生效）
   title: ""
+  # 玩家名使用的变量（留空 = 玩家真实名字；查信息卡片头部与两个排行榜生效，
+  # 头像 / 统计 / 排名仍按真实玩家）
+  player-name: ""
+  # TPS 使用的变量（留空 = 插件自采集的 TPS；查性能卡片生效）
+  tps: ""
+  # 自定义查信息项目（可添加任意多个，改完 /kerong reload 重载即生效）：
+  # 每项三行——段名 = 项目ID（仅用于区分，不展示，互不重复即可）；
+  #   项目名称 = 展示在查信息卡片上的项目名；
+  #   获取变量 = 要读取的变量（正常返回才展示该项目，读不到不展示）
+  # 示例（去掉行首 # 号生效）：
+  # custom-items:
+  #   vip:
+  #     项目名称: "VIP等级"
+  #     获取变量: "%vault_rank%"
+  custom-items: {}
 
 # ---------------- 在线排行榜 ----------------
 # 群内发送 /在线排行榜 渲染总在线时长排行图片，
@@ -337,17 +365,12 @@ qq-bind:
 #   {group}           QQ 群 OpenId（填 bot.groups 用的那个编号）
 #   {nickname}        OpenId 对应的群昵称（无记录时为提示文案）
 #   {lastSeenPart}    最后活跃信息（有记录时为“\n最后活跃: 时间”，无记录为空、整行不显示）
-#   {version}         插件当前版本号（help 模板）/ 目标服务器版本（motd-status 模板）
+#   {version}         插件当前版本号（help 模板）
 #   {leaderboardLine} 帮助里的在线排行榜条目行（commands.在线排行榜 关闭时为空、该行不显示）
 #   {ip} / {port}     服务器地址与端口（motd.server-ip / server-port 配置）
 #   {status}          AI 对话上下文当前状态（“开启”或“关闭”）
-#   {host}            MOTD 查询的目标服务器地址
-#   {type}            目标服务器类型（如 VANILLA）
-#   {motd}            目标服务器 MOTD 文本
-#   {protocolLine}    协议版本行（有值时为“协议: N\n”，无值为空、该行不显示）
-#   {online} / {max}  目标服务器当前在线人数 / 最大人数
-#   {delay}           MOTD 查询延迟（毫秒）
-#   {playersSection}  在线玩家名单段（有人时为“\n在线玩家:\n- 名单”，空服为空、整段不显示）
+#   1.6.9.3：MOTD 查询相关占位符（{host} {type} {motd} {protocolLine}
+#   {online} {max} {delay} {playersSection}）已随 /motd 命令移除
 messages:
   # —— 通用（多条命令共用） ——
   command-disabled: "command-disabled.md"            # 发送已被关闭的命令时的提示
@@ -360,7 +383,7 @@ messages:
   manager-not-ready-retry: "manager-not-ready-retry.md"    # 管理器未就绪请稍后再试
   manager-not-ready-bind-retry: "manager-not-ready-bind-retry.md" # 绑定管理器未就绪请稍后再试
   qq-unknown: "qq-unknown.md"                        # 无法识别发送者 QQ 账号
-  server-status: "server-status.md"                  # /在线服务器 与 /motd 的服务器地址文本（{ip} {port}）
+  # 1.6.9.3：server-status 模板已随 /在线服务器、/motd 命令移除
   # —— QQ 绑定 ——
   bind-usage: "bind-usage.md"                        # /绑定 不带参数的用法提示
   bind-usage-fallback: "bind-usage-fallback.md"      # /绑定 用法（管理器异常时的简短回退）
@@ -425,14 +448,7 @@ messages:
   sent-request: "sent-request.md"                   # 命令已发送执行请求
   execute-failed: "execute-failed.md"               # 命令执行异常（{error}）
   full-amount-toggled: "full-amount-toggled.md"     # /全量 切换结果（{state} = 开启/关闭）
-  # —— MOTD 查询（/motd <地址>） ——
-  motd-usage: "motd-usage.md"                       # 用法提示
-  motd-query-failed: "motd-query-failed.md"         # 查询失败（地址错误/网络）
-  motd-offline: "motd-offline.md"                   # 目标服务器离线（{host} {error}）
-  motd-error: "motd-error.md"                       # 查询异常（{error}）
-  motd-status: "motd-status.md"                     # 在线状态报告（{type} {motd} {version}
-                                                     #   {protocolLine} {online} {max} {delay}
-                                                     #   {playersSection}，后两个为条件行）
+  # 1.6.9.3：MOTD 查询五个模板（motd-*）已随 /motd 命令移除
 
 # ---------------- 消息过滤 ----------------
 # 正则表达式过滤列表：机器人收发的消息里命中这些正则的部分会被直接删除，
@@ -472,13 +488,11 @@ commands:
   查性能: true          # /查性能 —— 服务器性能监控卡片（TPS/MSPT/内存/CPU/在线；1.6.7 新增；关闭后快捷菜单按钮同步消失）
   在线排行榜: true      # /在线排行榜 —— 总在线时长排行（关闭后快捷菜单按钮同步消失，1.5.5 新增）
   财富榜: true          # /财富榜 —— 金币持有量排行（需 Vault；关闭后快捷菜单按钮同步消失；1.6.0 新增为 /金币榜，1.6.2 更名，旧命令仍可用）
-  在线服务器: true      # /在线服务器 —— 查看服务器 IP 与端口
   发信息: true          # /发信息 <内容> —— 发送消息到游戏内
   执行命令: true        # /执行命令 <命令> —— 管理员执行服务器命令
   执行: true            # /执行 <key> —— 执行自定义命令（所有人可用项）
   管理员执行: true      # /管理员执行 <key> —— 管理员执行自定义命令（管理员限定项）
   全量: true            # /全量 —— 切换全量聊天转发（管理员）
-  motd: true            # /motd —— 查询服务器状态
   AI对话上下文: true    # /AI对话上下文 开|关 —— 切换 AI 对话记忆（管理员）
   清除当前上下文: true  # /清除当前上下文 —— 清空 AI 对话历史（管理员）
   黑名单: true          # /黑名单 @QQ —— 加入黑名单（自动解绑并踢出，管理员）

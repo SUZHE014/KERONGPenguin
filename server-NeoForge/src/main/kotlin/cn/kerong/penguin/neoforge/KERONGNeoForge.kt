@@ -318,8 +318,16 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             // 玩家表读取失败：人数保持 null（卡片显示「--」）
         }
 
+        // 1.6.9.3：真实最大人数（查性能卡片在线人数卡展示「N / M」；
+        // 模组端无 ping 状态事件可捕获展示人数，恒用真实值）
+        val realMaxPlayers = try {
+            server.playerList?.maxPlayers
+        } catch (_: Throwable) {
+            null
+        }
+
         return try {
-            cn.kerong.bot.PerformanceSnapshot.capture(tps, mspt, sparkCpu, online)
+            cn.kerong.bot.PerformanceSnapshot.capture(tps, mspt, sparkCpu, online, realMaxPlayers)
         } catch (_: Throwable) {
             null
         }
@@ -406,7 +414,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             .resolve("kerongpenguin").toFile()
 
         /** 模组版本（与 neoforge.mods.toml 一致）。 */
-        private const val MOD_VERSION = "1.6.9"
+        private const val MOD_VERSION = "1.6.9.3"
 
         /** 当前模组实例（命令与事件层访问）。 */
         @Volatile

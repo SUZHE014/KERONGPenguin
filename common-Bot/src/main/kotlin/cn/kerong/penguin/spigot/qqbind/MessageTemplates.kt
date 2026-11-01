@@ -45,7 +45,6 @@ object MessageTemplates {
         "manager-not-ready-retry",       // 管理器未就绪，请稍后再试
         "manager-not-ready-bind-retry",  // 绑定管理器未就绪，请稍后再试
         "qq-unknown",                    // 无法识别 QQ 账号
-        "server-status",                 // 服务器 IP 与端口（/在线服务器、/motd）
         // —— QQ 绑定 ——
         "bind-usage",                    // /绑定 无参数用法
         "bind-usage-fallback",           // /绑定 用法（管理器异常时的简短回退）
@@ -111,12 +110,8 @@ object MessageTemplates {
         "sent-request",                  // 已发送执行请求
         "execute-failed",                // 执行失败（异常）
         "full-amount-toggled",           // 全量转发切换结果
-        // —— MOTD 查询 ——
-        "motd-usage",                    // /motd 用法
-        "motd-query-failed",             // 查询失败
-        "motd-offline",                  // 目标服务器离线
-        "motd-error",                    // 查询异常
-        "motd-status",                   // 在线服务器的状态报告
+        // 1.6.9.3：MOTD 查询模板（motd-*）与 server-status 已随 /motd、
+        // /在线服务器 命令一并移除；已释放到用户数据目录的旧 .md 文件无害
     )
 
     /** 模板内容缓存：文件路径 →（修改时间戳，内容）。 */

@@ -11,7 +11,6 @@ import cn.kerong.bot.events.commands.BindCommands
 import cn.kerong.bot.events.commands.CheckInCommands
 import cn.kerong.bot.events.commands.CoinsLeaderboardCommands
 import cn.kerong.bot.events.commands.LeaderboardCommands
-import cn.kerong.bot.events.commands.MotdCommands
 import cn.kerong.bot.events.commands.PublicCommands
 import cn.kerong.bot.state.CommandRepositories
 import cn.kerong.bot.tools.QqText
@@ -40,7 +39,7 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
     init {
         commands.add(PublicCommands())
         commands.add(AdministrationCommands())
-        commands.add(MotdCommands())
+        // 1.6.9.3：/motd 与 /在线服务器 命令已移除（MotdCommands 下线）
         commands.add(BindCommands())
         commands.add(CheckInCommands())
         commands.add(LeaderboardCommands())

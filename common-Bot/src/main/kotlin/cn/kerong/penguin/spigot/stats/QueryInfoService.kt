@@ -68,6 +68,15 @@ import java.util.concurrent.TimeUnit
  * PlaceholderAPI 变量内容（[PlaceholderVariableService]，在主线程快照内
  * 解析）；变量留空或解析失败自动回退插件自带数据；金币 / 称号 / 点券
  * 项在变量给出内容时即使对应依赖插件未装也展示该项。
+ *
+ * 1.6.9.3：
+ * - 显隐规则升级：金币 / 点券 / 称号只要**填写了变量**（无论读取成败）
+ *   就展示，依赖插件未装且变量读取失败时显示「未获取成功」而不是隐藏；
+ * - 新增玩家名变量（variable-fetch.player-name）：卡片头部玩家名改为
+ *   变量返回内容（头像 / 统计仍按真实玩家拉取，仅展示名变化）；
+ * - 新增自定义查信息项目（variable-fetch.custom-items）：项目ID（段名，
+ *   仅区分不展示）+ 项目名称 + 获取变量，正常返回的追加展示在卡片末尾，
+ *   未返回的不展示；改完配置 /kerong reload 即生效（每次查询实时读取）。
  */
 object QueryInfoService {
 
@@ -104,13 +113,10 @@ object QueryInfoService {
         val titleAvailable: Boolean,
         /** PlayerPoints 是否可用——不可用时卡片不展示“点券”项。 */
         val pointsAvailable: Boolean,
-        /** 1.6.9 变量获取信息：五个项目的变量覆盖值（null = 用插件自带数据）。
-        * 开关关闭 / 变量留空 / 解析失败均为 null，见 [PlaceholderVariableService]。 */
-        val varPlaytime: String?,
-        val varToday: String?,
-        val varCoins: String?,
-        val varPoints: String?,
-        val varTitle: String?,
+        /** 1.6.9 变量获取信息（1.6.9.3 扩展为完整上下文）：六个项目的变量
+        * 覆盖值 + 显隐标记 + 自定义项目。开关关闭时为空上下文（全回退），
+        * 见 [PlaceholderVariableService]。 */
+        val vars: PlaceholderVariableService.Context,
     )
 
     /** 称号检测结果（值 + 来源说明）。 */
@@ -213,15 +219,17 @@ object QueryInfoService {
                     // 1.5.3：签到功能未开启时返回 null → 卡片不展示“累计签到”项
                     val checkinTotalText = resolveCheckinTotal(bindManager, quuid)
 
-                    // 6. 组装统计项（1.5.3：依赖插件缺失的项不展示）并计算卡片实际高度，
-                    //    背景图按实际高度处理与缓存（不同高度缓存隔离，互不污染）
+                    // 6. 组装统计项（1.5.3：依赖插件缺失的项不展示；1.6.9.3：
+                    //    填了变量的项必展示、读不到显示「未获取成功」）并计算卡片
+                    //    实际高度，背景图按实际高度处理与缓存（不同高度缓存隔离，互不污染）
                     val items = buildItems(snapshot, checkinTotalText)
                     val cardHeight = InfoCardRenderer.cardHeight(items.size)
                     PluginFileLog.write(
-                        "[查信息] 统计项 ${items.size} 项（金币=${if (snapshot.vaultAvailable) "展示" else "隐藏-Vault未装"}" +
-                            " 称号=${if (snapshot.titleAvailable) "展示" else "隐藏-无来源插件"}" +
-                            " 点券=${if (snapshot.pointsAvailable) "展示" else "隐藏-PlayerPoints未装"}" +
-                            " 签到=${if (checkinTotalText != null) "展示" else "隐藏-未开启"}）卡片 ${InfoCardRenderer.WIDTH}×$cardHeight"
+                        "[查信息] 统计项 ${items.size} 项（金币=${if (snapshot.vaultAvailable) "展示" else if (snapshot.vars.coinsConfigured) "展示-变量" else "隐藏-Vault未装"}" +
+                            " 称号=${if (snapshot.titleAvailable) "展示" else if (snapshot.vars.titleConfigured) "展示-变量" else "隐藏-无来源插件"}" +
+                            " 点券=${if (snapshot.pointsAvailable) "展示" else if (snapshot.vars.pointsConfigured) "展示-变量" else "隐藏-PlayerPoints未装"}" +
+                            " 签到=${if (checkinTotalText != null) "展示" else "隐藏-未开启"}" +
+                            " 自定义项目=${snapshot.vars.customItems.size} 项）卡片 ${InfoCardRenderer.WIDTH}×$cardHeight"
                     )
                     val dataDirectory = plugin.configFile?.parentFile
                     // 1.5.7：统一背景入口 —— 默认内置深灰底图（随 JAR 分发）；
@@ -233,7 +241,8 @@ object QueryInfoService {
                         bindManager.infoCardBuiltinBackground,
                     )
 
-                    // 7. 拉取头像并渲染
+                    // 7. 拉取头像并渲染（1.6.9.3：卡片头部玩家名可被玩家名变量覆盖，
+                    //    头像 / 统计 / 缓存仍按真实玩家，仅展示名变化）
                     val avatar = InfoCardAssets.fetchAvatar(
                         InfoCardAssets.AvatarRequest(
                             uuid = playerUuid,
@@ -244,7 +253,7 @@ object QueryInfoService {
                     )
                     val bytes = InfoCardRenderer.render(
                         InfoCardRenderer.CardData(
-                            playerName = playerName,
+                            playerName = snapshot.vars.overrides.playerName ?: playerName,
                             items = items,
                             avatar = avatar,
                             background = background,
@@ -311,31 +320,47 @@ object QueryInfoService {
         checkinTotalText: String?,
     ): List<InfoCardRenderer.CardItem> = buildList {
         // 1.6.9 变量获取信息：变量给出内容时优先输出变量内容（原文输出，不套
-        // 插件的数量缩写 / 时长格式化）；金币 / 称号 / 点券项在变量给出内容时
-        // 即使对应依赖插件未装也展示该项（变量本身就是数据来源）。
-        // 变量留空 / 解析失败（null）→ 与旧版完全一致（自带数据 + 依赖显隐）。
-        if (snapshot.vaultAvailable || snapshot.varCoins != null) {
+        // 插件的数量缩写 / 时长格式化）。
+        // 1.6.9.3 显隐规则：金币 / 称号 / 点券只要填写了变量（configured，与
+        // 读取成败无关）就展示——依赖插件未装时无自带数据可回退，显示
+        // 「未获取成功」而不是隐藏；变量留空（未配置）时与旧版完全一致。
+        val vars = snapshot.vars.overrides
+        if (snapshot.vaultAvailable || snapshot.vars.coinsConfigured) {
             // 1.6.0：金币项标签应用经济别名（economy-alias，留空时仍为「金币」）
             add(InfoCardRenderer.CardItem(
                 cn.kerong.penguin.spigot.qqbind.EconomyName.current(),
-                snapshot.varCoins
-                    ?: if (snapshot.balance != null) formatAmount(snapshot.balance) else "暂无",
+                vars.coins
+                    ?: if (snapshot.vaultAvailable) {
+                        if (snapshot.balance != null) formatAmount(snapshot.balance) else "暂无"
+                    } else {
+                        PlaceholderVariableService.FETCH_FAILED_TEXT
+                    },
             ))
         }
-        if (snapshot.titleAvailable || snapshot.varTitle != null) {
-            add(InfoCardRenderer.CardItem("称号", snapshot.varTitle ?: snapshot.title))
+        if (snapshot.titleAvailable || snapshot.vars.titleConfigured) {
+            add(InfoCardRenderer.CardItem(
+                "称号",
+                vars.title ?: if (snapshot.titleAvailable) snapshot.title else PlaceholderVariableService.FETCH_FAILED_TEXT,
+            ))
         }
-        add(InfoCardRenderer.CardItem("在线时长", snapshot.varPlaytime ?: formatPlayTime(snapshot.stats.playSeconds)))
-        add(InfoCardRenderer.CardItem("今日在线时长", snapshot.varToday ?: formatTodayTime(snapshot.stats.todaySeconds)))
+        add(InfoCardRenderer.CardItem("在线时长", vars.playtime ?: formatPlayTime(snapshot.stats.playSeconds)))
+        add(InfoCardRenderer.CardItem("今日在线时长", vars.today ?: formatTodayTime(snapshot.stats.todaySeconds)))
         if (checkinTotalText != null) {
             add(InfoCardRenderer.CardItem("累计签到", checkinTotalText))
         }
-        if (snapshot.pointsAvailable || snapshot.varPoints != null) {
-            add(InfoCardRenderer.CardItem("点券", snapshot.varPoints ?: snapshot.pointsText))
+        if (snapshot.pointsAvailable || snapshot.vars.pointsConfigured) {
+            add(InfoCardRenderer.CardItem(
+                "点券",
+                vars.points ?: if (snapshot.pointsAvailable) snapshot.pointsText else PlaceholderVariableService.FETCH_FAILED_TEXT,
+            ))
         }
         add(InfoCardRenderer.CardItem("屠龙次数", "${snapshot.stats.dragonKills} 次"))
         add(InfoCardRenderer.CardItem("击杀玩家次数", "${snapshot.stats.playerKills} 次"))
         add(InfoCardRenderer.CardItem("死亡次数", "${snapshot.stats.deaths} 次"))
+        // 1.6.9.3：自定义查信息项目追加在末尾（仅正常返回的项；顺序即配置顺序）
+        for (custom in snapshot.vars.customItems) {
+            add(InfoCardRenderer.CardItem(custom.name, custom.value))
+        }
     }
 
     /**
@@ -381,8 +406,8 @@ object QueryInfoService {
             // 1.5.3：依赖插件可用性检测（与数据同线程采集，避免状态不一致）
             val dependency = detectDependencies()
             // 1.6.9：变量获取信息（PlaceholderAPI 非线程安全，随主线程快照
-            // 一次解析，不增加额外的主线程往返；关闭时直接返回全 null）
-            val variables = PlaceholderVariableService.snapshot(playerName, playerUuid, onlinePlayer)
+            // 一次解析，不增加额外的主线程往返；关闭时直接返回空上下文）
+            val variables = PlaceholderVariableService.snapshotContext(playerName, playerUuid, onlinePlayer)
             MainThreadSnapshot(
                 stats = stats,
                 title = title.value,
@@ -396,11 +421,7 @@ object QueryInfoService {
                 vaultAvailable = dependency.vault,
                 titleAvailable = dependency.title,
                 pointsAvailable = dependency.points,
-                varPlaytime = variables.playtime,
-                varToday = variables.today,
-                varCoins = variables.coins,
-                varPoints = variables.points,
-                varTitle = variables.title,
+                vars = variables,
             )
         }
         if (Bukkit.isPrimaryThread()) return task()
@@ -456,11 +477,7 @@ object QueryInfoService {
         titleAvailable = true,
         pointsAvailable = true,
         // 1.6.9：主线程超时快照不做变量解析（PAPI 未走），全部回退插件自带数据
-        varPlaytime = null,
-        varToday = null,
-        varCoins = null,
-        varPoints = null,
-        varTitle = null,
+        vars = PlaceholderVariableService.EMPTY_CONTEXT,
     )
 
     /** 主线程查询：在线玩家取 Profile 皮肤 URL；同时定位 playerdata 目录（离线玩家 NBT 解析用）。 */

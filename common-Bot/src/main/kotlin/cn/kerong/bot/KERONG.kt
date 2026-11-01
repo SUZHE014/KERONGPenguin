@@ -286,7 +286,10 @@ internal class TextExecution(
  * - 1.6.7.8 移除：原「在线玩家平均延迟」字段（avgPingMillis）——玩家
  *   Ping 反映的是「客户端到服务器」连接的往返，本地 / 同机 / 内网穿透
  *   部署下恒为 0ms，数据永远只代表服务器本地网络，对性能监控无实际
- *   意义（用户反馈），整条延迟采集与展示链路随字段一并下线。
+ *   意义（用户反馈），整条延迟采集与展示链路随字段一并下线；
+ * - 1.6.9.3 新增：[maxPlayers]（服务器真实最大人数，读不到为 null；
+ *   查性能卡片在线人数卡展示「N / M」，M 默认用本真实值，服主可经
+ *   render.performance.max-players-source 改用其他插件修改过的展示人数）。
  */
 data class PerformanceSnapshot(
     /** 最近 1 分钟平均 TPS（满值 20；核心不支持读取时为 null）。 */
@@ -302,6 +305,8 @@ data class PerformanceSnapshot(
     /** 当前在线玩家数（仅人数展示；读不到为 null，1.6.7.6 新增；
      *  1.6.7.8 起快照不再携带延迟数据——延迟指标整体下线）。 */
     val onlinePlayers: Int?,
+    /** 服务器真实最大人数（1.6.9.3 新增；读不到为 null）。 */
+    val maxPlayers: Int? = null,
 ) {
     companion object {
         /**
@@ -349,6 +354,8 @@ data class PerformanceSnapshot(
          * 1.6.7.8：延迟参数移除——玩家 Ping 只反映「客户端到服务器」连接
          * 的往返，本地 / 同机连接下恒为 0ms，永远只代表服务器本地网络，
          * 对性能监控无实际意义（用户反馈），延迟指标与采集链路整体下线。
+         * 1.6.9.3：新增 maxPlayers（服务器真实最大人数，读不到传 null），
+         * 带默认值保持旧四参调用处字节码兼容。
          */
         @JvmStatic
         fun capture(
@@ -356,6 +363,7 @@ data class PerformanceSnapshot(
             mspt: Double?,
             cpuOverride: Double?,
             onlinePlayers: Int?,
+            maxPlayers: Int? = null,
         ): PerformanceSnapshot {
             // 1.6.7.7：TPS 物理上限 20 统一收敛——Minecraft 刻速率固定 20/s，
             // 任何 >20 的读数都是采集层异常（自研反射链读到的 Spigot 系
@@ -390,7 +398,7 @@ data class PerformanceSnapshot(
                     }
                 }
             }
-            return PerformanceSnapshot(safeTps, mspt, usedMb, maxMb, cpu, onlinePlayers)
+            return PerformanceSnapshot(safeTps, mspt, usedMb, maxMb, cpu, onlinePlayers, maxPlayers)
         }
 
         // ---------- 核心指标分层读取（1.6.7.1：修复 TPS/MSPT 读不到） ----------

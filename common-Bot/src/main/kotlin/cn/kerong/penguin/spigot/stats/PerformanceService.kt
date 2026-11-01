@@ -31,6 +31,15 @@ import java.util.concurrent.ConcurrentHashMap
  *    （对应 EasyBot 模板「渲染过慢」一节推荐开启的性能数据缓存），
  *    0 = 关闭。
  *
+ * 1.6.9.3：
+ * - 在线人数卡展示「N / M」：M 默认服务器真实最大人数，
+ *   render.performance.max-players-source = motd 时改用其他插件修改过的
+ *   展示人数（即 MOTD 里显示的人数，[MotdDisplayTracker] 从最近一次
+ *   ping 捕获；无人 ping 过回退真实值）；
+ * - TPS 变量（variable-fetch.tps）：开关开启且填写时优先输出变量内容
+ *   （主线程解析，失败 / 留空回退插件自采集值；可解析为数值的同步
+ *   用于状态分级与进度条，非数值文本仅展示）。
+ *
  * 命令总开关走 commands.查性能（与其他群命令一致：关闭后命令失效、
  * 快捷菜单按钮同步消失、回复 command-disabled 模板）。
  */
@@ -110,6 +119,21 @@ object PerformanceService {
                         return@submit
                     }
 
+                    // 1b. 1.6.9.3：在线人数卡的最大人数（real = 真实值默认；
+                    //     motd = 其他插件修改过的展示人数，最近一次 ping 捕获，
+                    //     无人 ping 过回退真实值）
+                    val (maxPlayers, maxFromMotd) = resolveMaxPlayers(snapshot.maxPlayers)
+
+                    // 1c. 1.6.9.3：TPS 变量（variable-fetch.tps，开启且填写时
+                    //     优先输出；主线程解析，失败 / 未配置回退自采集值）
+                    val tpsVariableText = if (cn.kerong.penguin.spigot.stats.PlaceholderVariableService.isConfigured("tps")) {
+                        cn.kerong.penguin.spigot.stats.PlaceholderVariableService.resolveOnMainThread {
+                            cn.kerong.penguin.spigot.stats.PlaceholderVariableService.resolveServerTps()
+                        }
+                    } else {
+                        null
+                    }
+
                     // 2. 固定四项指标（1.6.7.1 起无单项显隐配置）
                     val height = PerformanceRenderer.measureHeight()
                     val dataDirectory = plugin.configFile?.parentFile
@@ -126,6 +150,9 @@ object PerformanceService {
                             updateTime = updateTime,
                             snapshot = snapshot,
                             background = background,
+                            maxPlayers = maxPlayers,
+                            maxPlayersFromMotd = maxFromMotd,
+                            tpsVariableText = tpsVariableText,
                         )
                     )
 
@@ -150,5 +177,25 @@ object PerformanceService {
             // 理论上不会触发（队列无上限），兜底防止线程池异常时静默丢消息
             cn.kerong.penguin.spigot.qqbind.MessageTemplates.sendPlain(event, "server-busy")
         }
+    }
+
+    /**
+     * 最大人数来源解析（1.6.9.3）：
+     * - real（默认）：服务器真实最大人数（快照携带）；
+     * - motd：其他插件修改过的展示人数（[MotdDisplayTracker] 最近一次 ping
+     *   捕获值；无人 ping 过回退真实值）；返回（最大人数, 是否为展示值）。
+     */
+    private fun resolveMaxPlayers(realMax: Int?): Pair<Int?, Boolean> {
+        val source = try {
+            (org.bukkit.Bukkit.getPluginManager().getPlugin("KERONGPenguin") as? org.bukkit.plugin.java.JavaPlugin)
+                ?.config?.getString("render.performance.max-players-source", "real")?.trim()?.lowercase()
+        } catch (_: Throwable) {
+            null
+        }
+        if (source == "motd") {
+            val display = cn.kerong.penguin.spigot.stats.MotdDisplayTracker.lastDisplayMax
+            if (display != null && display > 0) return display to true
+        }
+        return realMax to false
     }
 }

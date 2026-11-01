@@ -22,6 +22,9 @@ import java.util.concurrent.CompletableFuture
  * 命令开关与 commands.查在线 共用）。
  *
  * 1.5.3：/查信息 @成员 查询该成员绑定的玩家；/查询OpenID 反查 QQ 账号。
+ *
+ * 1.6.9.3：移除 /在线服务器 与 /motd 两条命令（用户需求；服务器地址
+ * 改由服主自行在群里公告，插件侧不再提供查询）。
  */
 class PublicCommands : CommandSupport() {
 
@@ -248,16 +251,6 @@ class PublicCommands : CommandSupport() {
         }
     }
 
-    /** /在线服务器 —— 查看服务器状态文本（模板 server-status）。 */
-    @Commands("在线服务器")
-    fun queryServers(plugin: KERONG, event: GroupMessageEvent, params: String) {
-        val motd = plugin.motd
-        MessageTemplates.sendDirect(event, "server-status", mapOf(
-            "ip" to motd.serverIP,
-            "port" to motd.serverPort.toString(),
-        ))
-    }
-
     /** /AI对话上下文 开|关 —— 切换全局 AI 对话上下文（管理员）。模板：ai-context-usage/on/off。 */
     @Commands("AI对话上下文")
     fun aiContextToggle(plugin: KERONG, event: GroupMessageEvent, params: String) {
@@ -418,29 +411,6 @@ class PublicCommands : CommandSupport() {
         MessageTemplates.sendDirect(event, "help", mapOf(
             "version" to plugin.pluginVersion,
             "leaderboardLine" to (if (leaderboardEnabled) "- /在线排行榜 —— 总在线时长排行\n" else ""),
-        ))
-    }
-
-    /**
-     * /motd —— 无参数：查询本服状态（模板 server-status）；
-     * 带参数（/motd <host>）：委托 [MotdCommands] 查询任意 MC 服务器状态
-     * （minebbs MOTD API，模板 motd-*）。
-     *
-     * 1.6.3 修复：旧版注释声称「带参数时走 MotdCommands 的状态查询」，但
-     * PublicCommands 先于 MotdCommands 注册、命令分发首个匹配即短路，
-     * MotdCommands 实际永不可达（带参数也只会回本服状态）——现补上真正的
-     * 转发调用，/motd <host> 恢复可用，motd-* 五个模板恢复被渲染。
-     */
-    @Commands("motd")
-    fun motd(plugin: KERONG, event: GroupMessageEvent, params: String) {
-        if (params.isNotBlank()) {
-            MotdCommands().motd(plugin, event, params)
-            return
-        }
-        val config = plugin.motd
-        MessageTemplates.sendDirect(event, "server-status", mapOf(
-            "ip" to config.serverIP,
-            "port" to config.serverPort.toString(),
         ))
     }
 

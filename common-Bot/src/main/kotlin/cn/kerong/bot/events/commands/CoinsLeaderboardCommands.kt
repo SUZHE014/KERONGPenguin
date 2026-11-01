@@ -143,8 +143,11 @@ class CoinsLeaderboardCommands : CommandSupport() {
                         return@submit
                     }
 
-                    // 4. 主线程快照在线玩家（实时皮肤）+ 并发预热头像
+                    // 4. 主线程快照在线玩家（实时皮肤）+ 并发预热头像；
+                    //    1.6.9.3：变量获取（玩家名 / 金币，同一次主线程语义内
+                    //    解析，仅对展示的 top 条目）
                     val onlineSkins = snapshotOnlineSkins()
+                    val variableOverrides = snapshotVariableOverrides(topEntries)
                     val playerDataDir = try {
                         Bukkit.getWorlds().firstOrNull()?.worldFolder?.resolve("playerdata")
                     } catch (_: Throwable) {
@@ -164,10 +167,11 @@ class CoinsLeaderboardCommands : CommandSupport() {
                         val pageEntries = topEntries.subList(pageStart, pageEnd).mapIndexed { offset, raw ->
                             LeaderboardRenderer.LeaderEntry(
                                 rank = pageStart + offset + 1,
-                                name = raw.name,
+                                name = variableOverrides[raw.name]?.first ?: raw.name,
                                 playSeconds = 0L,
                                 avatar = avatars[raw.name],
-                                valueText = formatMoney(raw.balance),
+                                valueText = variableOverrides[raw.name]?.second
+                                    ?: formatMoney(raw.balance),
                             )
                         }
                         val height = LeaderboardRenderer.measurePageHeight(pageEntries.size, pages.isEmpty())
@@ -301,6 +305,38 @@ class CoinsLeaderboardCommands : CommandSupport() {
     /** 金额显示（整数去掉小数点，与签到 / 查信息卡片同风格）。 */
     private fun formatMoney(amount: Double): String =
         if (amount == amount.toLong().toDouble()) amount.toLong().toString() else amount.toString()
+
+    /**
+     * 1.6.9.3：主线程快照解析 top 玩家的变量覆盖（玩家名 / 金币）。
+     * 开关关闭或两键均未配置时零开销返回空表；超时 / 异常同样空表
+     * （回退插件自带数据，不影响榜单流程）。
+     */
+    private fun snapshotVariableOverrides(entries: List<RawEntry>): Map<String, Pair<String?, String?>> {
+        val enabled = try {
+            cn.kerong.penguin.spigot.stats.PlaceholderVariableService.isEnabled()
+        } catch (_: Throwable) {
+            false
+        }
+        if (!enabled) return emptyMap()
+        val snapshot: () -> Map<String, Pair<String?, String?>> = {
+            cn.kerong.penguin.spigot.stats.PlaceholderVariableService.resolveBatch(
+                entries.map { it.name to it.uuid },
+                nameKey = "player-name",
+                valueKey = "coins",
+            )
+        }
+        if (Bukkit.isPrimaryThread()) return snapshot()
+        val bukkitPlugin = try {
+            Bukkit.getPluginManager().getPlugin("KERONGPenguin")
+        } catch (_: Throwable) {
+            null
+        } ?: return emptyMap()
+        return try {
+            cn.kerong.penguin.spigot.scheduler.FoliaCompat.callSync(bukkitPlugin, 3L) { snapshot() } ?: emptyMap()
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
 
     /** 主线程快照在线玩家（与在线排行榜同实现；超时 / 失败返回空表）。 */
     private fun snapshotOnlineSkins(): Map<String, Pair<UUID?, String?>> {

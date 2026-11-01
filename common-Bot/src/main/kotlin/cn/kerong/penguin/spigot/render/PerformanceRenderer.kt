@@ -41,6 +41,9 @@ import javax.imageio.ImageIO
  *   服务器」连接的往返，本地 / 同机 / 内网穿透部署下恒为 0ms，数据
  *   永远只代表服务器本地网络，对性能监控无实际意义（用户反馈），
  *   采集与展示链路一并下线；在线人数卡保留（名单用 /查在线）；
+ * - 1.6.9.3：在线人数卡展示「N / M」（M = 服务器最大人数，默认真实值，
+ *   可配置改用其他插件修改过的 MOTD 展示人数并绘制占比进度条）；
+ *   TPS 卡支持变量覆盖（variable-fetch.tps，数值改为变量原文输出）；
  * - 背景与其他渲染共用 [InfoCardAssets.resolveBackground]
  *   （render.performance.builtin-background，默认内置底图）；
  * - 画布 PNG 写出后立即 flush 释放栅格内存（与其他渲染器一致）。
@@ -115,6 +118,16 @@ object PerformanceRenderer {
         val snapshot: cn.kerong.bot.PerformanceSnapshot,
         /** 预处理背景（尺寸可与画布不一致，渲染时拉伸铺满）；null 表示无背景。 */
         val background: BufferedImage? = null,
+        /** 在线人数卡展示的最大人数（1.6.9.3 新增；null = 不展示「/ M」部分）。 */
+        val maxPlayers: Int? = null,
+        /** 最大人数是否为其他插件修改过的展示值（MOTD 展示人数；副说明标记）。 */
+        val maxPlayersFromMotd: Boolean = false,
+        /**
+         * TPS 变量文本（1.6.9.3 新增，variable-fetch.tps）：非 null 时 TPS 卡
+         * 数值改为原文输出该文本（不套 %.1f 格式化）；可解析为数值的同步
+         * 用于状态分级与进度条，非数值文本仅展示（状态「已读取」）。
+         */
+        val tpsVariableText: String? = null,
     )
 
     /** 单个指标卡的绘制模型（由快照派生，固定五项）。 */
@@ -175,8 +188,11 @@ object PerformanceRenderer {
         val cards = ArrayList<MetricCard>(CARD_COUNT)
 
         // TPS：满值 20；≥18.5 流畅 / 15~18.5 轻度负载 / <15 过载
+        // 1.6.9.3：TPS 变量（variable-fetch.tps）优先——数值改为变量原文，
+        // 可解析为数值的仍用于状态分级与进度条，非数值文本仅展示
         run {
-            val tps = snapshot.tps
+            val variableText = data.tpsVariableText
+            val tps = if (variableText != null) parseDoubleOrNull(variableText) else snapshot.tps
             val color = when {
                 tps == null -> COLOR_SUB
                 tps >= 18.5 -> COLOR_GOOD
@@ -186,8 +202,9 @@ object PerformanceRenderer {
             cards.add(
                 MetricCard(
                     label = "TPS（每秒刻数）",
-                    valueText = tps?.let { String.format("%.1f", it) } ?: "--",
+                    valueText = variableText ?: tps?.let { String.format("%.1f", it) } ?: "--",
                     statusText = when {
+                        variableText != null && tps == null -> "已读取"
                         tps == null -> "暂不可读"
                         tps >= 18.5 -> "流畅"
                         tps >= 15.0 -> "轻度负载"
@@ -196,7 +213,11 @@ object PerformanceRenderer {
                     statusColor = color,
                     progress = tps?.let { (it / 20.0).coerceIn(0.0, 1.0) },
                     barColor = color,
-                    note = "满值 20.0 · 最近 1 分钟平均",
+                    note = if (variableText != null) {
+                        "来自变量 variable-fetch.tps · 满值 20.0"
+                    } else {
+                        "满值 20.0 · 最近 1 分钟平均"
+                    },
                 )
             )
         }
@@ -288,33 +309,57 @@ object PerformanceRenderer {
         // 在线玩家（仅人数展示，1.6.7.6 新增：名单详情用 /查在线 命令；
         // 1.6.7.8：原第五位「延迟（玩家平均）」卡已移除——玩家 Ping 只
         // 反映客户端到服务器连接的往返，本地 / 同机连接下恒为 0ms，
-        // 数据永远只代表服务器本地网络，对性能监控无实际意义）
+        // 数据永远只代表服务器本地网络，对性能监控无实际意义；
+        // 1.6.9.3：展示「N / M」——M 为服务器最大人数，默认真实值，
+        // render.performance.max-players-source = motd 时用其他插件修改过的
+        // 展示人数（副说明标记「MOTD 展示值」），进度条按 N/M 占比绘制）
         run {
             val online = snapshot.onlinePlayers
+            val max = data.maxPlayers
             val color = when {
                 online == null -> COLOR_SUB
                 online > 0 -> COLOR_GOOD
                 else -> COLOR_SUB
             }
+            // 人数占比（max 无效时不画进度条，与旧版一致）
+            val occupancy = if (online != null && max != null && max > 0) {
+                (online.toDouble() / max.toDouble()).coerceIn(0.0, 1.0)
+            } else {
+                null
+            }
             cards.add(
                 MetricCard(
                     label = "在线玩家（人数）",
-                    valueText = online?.toString() ?: "--",
+                    valueText = when {
+                        online == null -> "--"
+                        max != null && max > 0 -> "$online / $max"
+                        else -> online.toString()
+                    },
                     statusText = when {
                         online == null -> "暂不可读"
                         online > 0 -> "在线中"
                         else -> "空服"
                     },
                     statusColor = color,
-                    // 人数卡不画进度条（无满值语义）
-                    progress = null,
+                    progress = occupancy,
                     barColor = color,
-                    note = "仅展示人数 · 玩家名单用 /查在线 查看",
+                    note = when {
+                        max == null || max <= 0 -> "仅展示人数 · 玩家名单用 /查在线 查看"
+                        data.maxPlayersFromMotd -> "最大 $max 人（MOTD 展示值）· 名单用 /查在线 查看"
+                        else -> "服务器最大 $max 人 · 名单用 /查在线 查看"
+                    },
                 )
             )
         }
 
         return cards
+    }
+
+    /** 解析数值文本（容错：空白 / 千分位逗号 / 非法字符返回 null；TPS 变量用）。 */
+    private fun parseDoubleOrNull(text: String): Double? = try {
+        text.replace(",", "").trim().toDoubleOrNull()
+    } catch (_: Throwable) {
+        null
     }
 
     /** MB 数值转 GB 文本（一位小数；小于 1GB 显示 0.x）。 */

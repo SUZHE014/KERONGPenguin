@@ -313,10 +313,13 @@ class ConfigManager(private val plugin: JavaPlugin) {
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
 
-        // 1.6.9：升 23——新增 variable-fetch 段（变量获取信息：查信息卡片
-        // 指定项目改读 PlaceholderAPI 变量，默认关闭），升级触发配置重建
-        // 把新段与注释写入用户配置
-        private const val CURRENT_CONFIG_VERSION = 23
+        // 1.6.9.3：升 24——variable-fetch 新增 player-name / tps / custom-items
+        // 三键（变量获取扩展：玩家名与 TPS 可配置、自定义查信息项目），
+        // render.performance 新增 max-players-source（查性能在线人数卡最大人数
+        // 来源）；同时清理已删除命令 /在线服务器、/motd 的全部配置键
+        // （commands 开关 + messages 模板映射），升级触发配置重建把新段与
+        // 注释写入用户配置
+        private const val CURRENT_CONFIG_VERSION = 24
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -344,15 +347,19 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "render.performance.show-memory", "render.performance.show-cpu",
             "render.performance.show-online",
             "render.performance.style",
+            // 1.6.9.3：/在线服务器 与 /motd 命令已删除（开关与模板映射一并清理）
+            "commands.在线服务器", "commands.motd", "messages.server-status",
+            "messages.motd-usage", "messages.motd-query-failed", "messages.motd-offline",
+            "messages.motd-error", "messages.motd-status",
         )
 
         /**
          * 支持开关的群命令名单（1.5.2：查信息更名对应个人信息卡片命令，新增 查询open ID；
-         * 1.6.0 新增金币榜；1.6.2 更名财富榜）。
+         * 1.6.0 新增金币榜；1.6.2 更名财富榜；1.6.9.3 移除 在线服务器 与 motd）。
          */
         private val COMMAND_NAMES = listOf(
-            "查询open ID", "查信息", "绑定", "重新绑定", "查在线", "查性能", "在线排行榜", "财富榜", "在线服务器", "发信息",
-            "执行命令", "执行", "管理员执行", "全量", "motd", "帮助",
+            "查询open ID", "查信息", "绑定", "重新绑定", "查在线", "查性能", "在线排行榜", "财富榜", "发信息",
+            "执行命令", "执行", "管理员执行", "全量", "帮助",
             "AI对话上下文", "清除当前上下文", "黑名单", "解除黑名单", "签到",
         )
 
@@ -377,7 +384,8 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 通用
             "command-disabled", "no-admin-permission", "query-too-frequent", "server-busy",
             "image-send-failed", "manager-not-ready", "manager-not-ready-bind",
-            "manager-not-ready-retry", "manager-not-ready-bind-retry", "qq-unknown", "server-status",
+            "manager-not-ready-retry", "manager-not-ready-bind-retry", "qq-unknown",
+            // 1.6.9.3：server-status 与 motd-* 五个模板已随 /在线服务器、/motd 命令移除
             // QQ 绑定
             "bind-usage", "bind-usage-fallback", "bind-disabled", "bind-error", "bind-success", "bind-invalid",
             // 签到
@@ -410,13 +418,11 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "help",
             // 命令执行
             "invalid-params", "bridge-error", "sent-request", "execute-failed", "full-amount-toggled",
-            // MOTD 查询
-            "motd-usage", "motd-query-failed", "motd-offline", "motd-error", "motd-status",
         )
 
         /** 全部默认配置值（用于补齐缺失键；1.6.7.2：from-group 新默认带 §b 染色）。 */
         private val DEFAULT_VALUES: Map<String, Any> = linkedMapOf(
-            CONFIG_VERSION_PATH to 23,
+            CONFIG_VERSION_PATH to 24,
             "bot.app-id" to "",
             "bot.secret" to "",
             "bot.name" to "KERONGPenguin",
@@ -485,6 +491,11 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "render.performance.builtin-background" to true,
             // 1.6.7.2 覆盖版：性能数据缓存默认 5 → 60（渲染慢的服推荐保持开启）
             "render.performance.cache-seconds" to 60,
+            // 1.6.9.3：查性能在线人数卡的最大人数来源
+            // （real = 服务器真实最大人数（默认）；motd = 其他插件修改过的展示人数，
+            // 即 MOTD 里显示的人数，取自最近一次玩家 ping 服务器时的值，
+            // 无人 ping 过时回退真实值；模组端无此事件恒用真实值）
+            "render.performance.max-players-source" to "real",
             // 1.6.7.2 覆盖版：全局透明度（全部图片卡片编码前统一应用，1.0 = 不透明）
             "render.global-opacity" to 1.0,
             // 1.5.5：在线排行榜（1.6.0 从 qq-bind.leaderboard 迁至顶层）
@@ -496,13 +507,19 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 1.6.0：经济别名（留空 = 默认「金币」；填写后所有输出的金币字样替换为该名称）
             "economy-alias" to "",
             // 1.6.9：变量获取信息（查信息卡片的指定项目改读 PlaceholderAPI 变量输出；
-            // 默认关闭；变量留空 / 解析失败自动回退插件自带数据）
+            // 默认关闭；变量留空 / 解析失败自动回退插件自带数据）；
+            // 1.6.9.3：新增 player-name（玩家名，查信息 / 排行榜生效）、
+            // tps（查性能生效）与 custom-items（自定义查信息项目：段名=项目ID，
+            // 子键 项目名称 / 获取变量；正常返回才展示）
             "variable-fetch.enabled" to false,
             "variable-fetch.total-playtime" to "",
             "variable-fetch.today-playtime" to "",
             "variable-fetch.coins" to "",
             "variable-fetch.points" to "",
             "variable-fetch.title" to "",
+            "variable-fetch.player-name" to "",
+            "variable-fetch.tps" to "",
+            "variable-fetch.custom-items" to java.util.LinkedHashMap<String, Any>(),
             "ai.enabled" to false,
             "ai.server-enabled" to false,
             "ai.server-prefix" to "ai",

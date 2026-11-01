@@ -1,5 +1,6 @@
 package cn.kerong.penguin.spigot.events
 
+import cn.kerong.penguin.spigot.stats.MotdDisplayTracker
 import cn.kerong.penguin.spigot.stats.PlayerStatsManager
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
@@ -12,6 +13,7 @@ import org.bukkit.event.player.PlayerFishEvent
 import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.raid.RaidTriggerEvent
+import org.bukkit.event.server.ServerListPingEvent
 
 /**
  * 玩家统计事件监听（/查信息 卡片的数据采集端，1.5.2 前命令名为 /个人信息）。
@@ -19,7 +21,9 @@ import org.bukkit.event.raid.RaidTriggerEvent
  * - 高频事件（方块破坏）只在远古残骸时才写计数，其余直接返回；
  * - 击杀/死亡/钓鱼/繁殖/袭击为低频事件，直接累计；
  * - 游戏时长与原版统计（距离/伤害）由 PlayerStatsManager 周期快照结算，
- *   不依赖事件监听。
+ *   不依赖事件监听；
+ * - 1.6.9.3：附加 ServerListPingEvent 监听（MONITOR，全部修改者之后），
+ *   捕获其他插件修改过的展示人数供 /查性能 在线人数卡使用。
  */
 class PlayerEventsListener : Listener {
 
@@ -27,6 +31,21 @@ class PlayerEventsListener : Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     fun onJoin(event: PlayerJoinEvent) {
         PlayerStatsManager.onJoin(event.player)
+    }
+
+    /**
+     * 服务器列表 ping（1.6.9.3 新增）：MONITOR 优先级在全部修改该事件的
+     * 其他插件（虚假人数类）之后执行——读到的是最终对外展示的人数；
+     * 记入 [MotdDisplayTracker]，render.performance.max-players-source = motd
+     * 时 /查性能 在线人数卡的最大人数改用该展示值。
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    fun onServerListPing(event: ServerListPingEvent) {
+        try {
+            MotdDisplayTracker.record(event.maxPlayers)
+        } catch (_: Throwable) {
+            // 个别核心的 ping 事件实现异常：不影响正常 ping 流程
+        }
     }
 
     /** 退出：结算会话并保存。 */
