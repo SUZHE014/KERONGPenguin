@@ -51,7 +51,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
     /** 重新加载配置（含损坏自动恢复、格式错误保护与缺失键补齐）。 */
     fun reload() {
-        // 1.6.7.6：运行期重载同样先做损坏恢复（/kerong reload 时改坏的文件
+        // 1.6.7.6：运行期重载同样先做损坏恢复（/hbkng reload 时改坏的文件
         // 也能自动救回，不再「跳过保存」空配置硬跑）
         try {
             ConfigBrokenRecovery.recoverIfBroken(plugin)
@@ -316,7 +316,11 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 1.6.9.4：升 25——render 新增 background-style（图片卡片背景遮罩样式：
         // gray-mask 原版灰色遮罩（默认）/ blur-mask 模糊遮罩，参考 EasyBot
         // 液态玻璃图片模板），升级触发配置重建把新键与注释写入用户配置
-        private const val CURRENT_CONFIG_VERSION = 25
+        // 1.6.9.5：升 26——无新增键，纯注释刷新：主命令 /kerong → /hbkng
+        // （旧名移除不兼容）、panel 子命令移除（reload 一并重新同步面板）、
+        // blur-mask 语义修正为卡片背后局部模糊（backdrop-filter）、
+        // 背景图改 cover 裁剪铺满（等比放大 + 中心裁剪，不再拉伸）
+        private const val CURRENT_CONFIG_VERSION = 26
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -426,7 +430,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "bot.groups" to emptyList<Any>(),
             // 1.6.2：断线重连过程提示开关（1.6.6.3 起默认防刷屏：控制台只输出本轮第 1 次 /
             // 最后一次 / 成功 / 超时里程碑，中间过程写文件；false = 里程碑过程提示也不输出；
-            // 重连成功与重连超时后的 /kerong chs 恢复指引不受此开关影响，始终输出）
+            // 重连成功与重连超时后的 /hbkng chs 恢复指引不受此开关影响，始终输出）
             "bot.reconnect-notify" to true,
             // 1.6.2：更新检查开关（启动后异步访问官网版本文件，发现新版本时控制台提示
             // 版本号 / 下载页 / 简要日志；检测失败仅一句话提示，细节进日志）

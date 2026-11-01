@@ -61,12 +61,12 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         // 启动 QQ 机器人运行时（注册共享实例 → 装载状态 → 异步启动 QQ 客户端）
         initializeRuntime()
 
-        // 初始化命令（主命令 /kerong）
+        // 初始化命令（主命令 /hbkng，1.6.9.5 起由 /kerong 更名、旧名移除不兼容）
         val command = KERONGCommand(this)
-        getCommand("kerong")?.let { pluginCommand ->
+        getCommand("hbkng")?.let { pluginCommand ->
             pluginCommand.setExecutor(command)
             pluginCommand.setTabCompleter(command)
-        } ?: log_error("无法注册 /kerong 命令，请检查 plugin.yml")
+        } ?: log_error("无法注册 /hbkng 命令，请检查 plugin.yml")
 
         // 注册游戏事件监听（GameChat 构造时会初始化 QqBindManager，需在共享实例注册后）
         server.pluginManager.registerEvents(GameChat(), this)

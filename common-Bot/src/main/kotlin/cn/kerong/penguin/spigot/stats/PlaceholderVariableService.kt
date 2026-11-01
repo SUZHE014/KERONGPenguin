@@ -131,7 +131,7 @@ object PlaceholderVariableService {
      * 读出自定义查信息项目配置（variable-fetch.custom-items 段；
      * 每项：段名 = 项目ID，子键 项目名称 / 获取变量）。
      * 名称或变量留空的项跳过；段为空 / 读取异常返回空表。
-     * /kerong reload 重载配置后即读到新内容（每次查询实时读取）。
+     * /hbkng reload 重载配置后即读到新内容（每次查询实时读取）。
      */
     fun customItems(): List<CustomItem> = try {
         val section = (Bukkit.getPluginManager().getPlugin("KERONGPenguin") as? JavaPlugin)

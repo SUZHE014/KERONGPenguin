@@ -149,10 +149,13 @@ object InfoCardRenderer {
             g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
             g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
 
-            drawBackground(g, data.background, height)
-            drawTopPanel(g, data)
-            drawIdentityBar(g, data.playerName)
-            drawStatsPanel(g, data.items, height)
+            // 1.6.9.5：背景统一走共享入口（cover 裁剪铺满：等比放大不足的边
+            // + 以图片中心裁剪，不再拉伸变形）；blur-mask 样式时返回卡片
+            // 背后局部模糊上下文（backdrop-filter），由各卡片绘制前自取
+            val backdrop = InfoCardAssets.drawBackground(g, data.background, WIDTH, height)
+            drawTopPanel(g, data, backdrop)
+            drawIdentityBar(g, data.playerName, backdrop)
+            drawStatsPanel(g, data.items, height, backdrop)
         } finally {
             g.dispose()
         }
@@ -164,31 +167,15 @@ object InfoCardRenderer {
         return output.toByteArray()
     }
 
-    /** 绘制背景：传入的已是预处理完成的 WIDTH×height 图；无图片时纯黑。 */
-    private fun drawBackground(g: Graphics2D, background: BufferedImage?, height: Int) {
-        if (background != null && background.width == WIDTH && background.height == height) {
-            g.drawImage(background, 0, 0, null)
-        } else {
-            g.color = Color(0x05, 0x05, 0x08)
-            g.fillRect(0, 0, WIDTH, height)
-            // 纯黑模式加一点极淡的渐变光晕避免完全死黑
-            val gradient = java.awt.GradientPaint(
-                0f, 0f, Color(0x10, 0x12, 0x18),
-                0f, height.toFloat(), Color(0x05, 0x05, 0x08),
-            )
-            g.paint = gradient
-            g.fillRect(0, 0, WIDTH, height)
-        }
-    }
-
-    /** 顶部欢迎区。 */
-    private fun drawTopPanel(g: Graphics2D, data: CardData) {
+    /** 顶部欢迎区（1.6.9.5：blur-mask 样式时先铺卡片背后的局部模糊背景）。 */
+    private fun drawTopPanel(g: Graphics2D, data: CardData, backdrop: InfoCardAssets.CardBackdropContext?) {
         val x = 24f
         val y = 24f
         val w = (WIDTH - 48).toFloat()
         val h = 200f
 
-        // 毛玻璃容器（浅色半透明）
+        // 毛玻璃容器（浅色半透明；背后先铺模糊背景）
+        backdrop?.paintCard(g, x, y, w, h, 24f)
         g.color = Color(0xFF, 0xFF, 0xFF, 38)
         g.fill(RoundRectangle2D.Float(x, y, w, h, 24f, 24f))
 
@@ -223,13 +210,14 @@ object InfoCardRenderer {
         g.drawString("这是你的统计数据", 50f, 178f)
     }
 
-    /** 玩家身份条。 */
-    private fun drawIdentityBar(g: Graphics2D, playerName: String) {
+    /** 玩家身份条（1.6.9.5：blur-mask 样式时先铺卡片背后的局部模糊背景）。 */
+    private fun drawIdentityBar(g: Graphics2D, playerName: String, backdrop: InfoCardAssets.CardBackdropContext?) {
         val x = 24f
         val y = 244f
         val w = (WIDTH - 48).toFloat()
         val h = 64f
 
+        backdrop?.paintCard(g, x, y, w, h, 16f)
         g.color = Color(0xFF, 0xFF, 0xFF, 22)
         g.fill(RoundRectangle2D.Float(x, y, w, h, 16f, 16f))
 
@@ -245,13 +233,15 @@ object InfoCardRenderer {
 
     /**
      * 生涯统计面板（1.5.2：9 项 → 3 列 × 3 行；4-5 项时 2 列避免孤项；
-     * 1.5.3：高度随项数自适应，缺失依赖的项不渲染）。 */
-    private fun drawStatsPanel(g: Graphics2D, items: List<CardItem>, height: Int) {
+     * 1.5.3：高度随项数自适应，缺失依赖的项不渲染；
+     * 1.6.9.5：blur-mask 样式时先铺卡片背后的局部模糊背景。 */
+    private fun drawStatsPanel(g: Graphics2D, items: List<CardItem>, height: Int, backdrop: InfoCardAssets.CardBackdropContext?) {
         val x = 24f
         val y = 336f
         val w = (WIDTH - 48).toFloat()
         val h = (height - 24 - 336).toFloat()
 
+        backdrop?.paintCard(g, x, y, w, h, 24f)
         g.color = Color(0x00, 0x00, 0x00, 142)
         g.fill(RoundRectangle2D.Float(x, y, w, h, 24f, 24f))
 
@@ -706,7 +696,18 @@ object InfoCardAssets {
         val image: BufferedImage,
         val bytes: Long,
         @Volatile var lastUsedAt: Long,
-    )
+    ) {
+        /**
+         * blur-mask 卡片背后局部模糊副本（1.6.9.5）：惰性生成一次，
+         * 随本条目淘汰 / 覆盖 / 空闲释放一起 flush，不单独占缓存配额。
+         */
+        @Volatile
+        var backdrop: BufferedImage? = null
+
+        /** 模糊副本的栅格字节占用（计入背景缓存字节预算，见 evict）。 */
+        @Volatile
+        var backdropBytes: Long = 0L
+    }
 
     /** 预处理背景缓存：文件绝对路径 → 条目（0.1.5.3 起支持多张图随机切换）。 */
     private val backgroundCache = ConcurrentHashMap<String, BackgroundEntry>()
@@ -732,12 +733,13 @@ object InfoCardAssets {
     private const val BACKGROUND_MAX_DIM = 1600
 
     /**
-     * blur-mask 模糊降采样倍率（1.6.9.4）：先缩到约 1/8 尺寸再做盒式模糊，
-     * 毫秒级完成；等效对原图做约 40px 半径的柔和高斯模糊。
+     * blur-mask 卡片背后局部模糊的降采样倍率（1.6.9.4 引入；1.6.9.5 起
+     * 语义改为 backdrop-filter：仅卡片矩形内绘制模糊副本）：先缩到约
+     * 1/8 尺寸再做盒式模糊，毫秒级完成；等效约 40px 半径的柔和高斯模糊。
      */
     private const val BLUR_DOWNSCALE = 8
 
-    /** blur-mask 小图盒式模糊半径（1.6.9.4，作用在降采样后的小图上）。 */
+    /** blur-mask 小图盒式模糊半径（1.6.9.4；作用在降采样后的小图上）。 */
     private const val BLUR_BOX_RADIUS = 3
 
     /** 近期解码失败的背景文件（路径 → 失败时间），10 分钟内不再抽中，避免坏图反复触发解码（0.1.5.5）。 */
@@ -942,6 +944,7 @@ object InfoCardAssets {
         }
         for (entry in backgroundCache.values) {
             try { entry.image.flush() } catch (_: Throwable) {}
+            try { entry.backdrop?.flush() } catch (_: Throwable) {}
         }
         for (source in builtinBackgroundSources.values) {
             try { source.flush() } catch (_: Throwable) {}
@@ -1442,7 +1445,7 @@ object InfoCardAssets {
     private const val AVATAR_DISK_MAX_FILES = 512
 
     /**
-     * 磁盘缓存有效期（毫秒），实时读配置（/kerong reload 后立即生效）：
+     * 磁盘缓存有效期（毫秒），实时读配置（/hbkng reload 后立即生效）：
      * - render.avatar-cache-hours（默认 3 小时，支持小数如 0.5）；
      * - 0 = 关闭磁盘缓存（不读不写，清扫时把已有文件全部删掉）；
      * - 负数按默认处理；有效值下限 1 分钟（防误填 0.0001 之类的抖动值）。
@@ -1693,6 +1696,7 @@ object InfoCardAssets {
             }
             for (entry in backgroundCache.values) {
                 try { entry.image.flush() } catch (_: Throwable) {}
+                try { entry.backdrop?.flush() } catch (_: Throwable) {}
             }
             for (source in builtinBackgroundSources.values) {
                 try { source.flush() } catch (_: Throwable) {}
@@ -1721,7 +1725,7 @@ object InfoCardAssets {
     }
 
     /**
-     * 缓存与内存诊断快照（1.6.6.2 覆盖版：/kerong mem 子命令输出）。
+     * 缓存与内存诊断快照（1.6.6.2 覆盖版：/hbkng mem 子命令输出）。
      *
      * 用于排查「面板内存高」类问题：JVM 已提交堆 ≠ 插件实际占用的
      * 存活内存（渲染高峰后 G1 扩张的堆按 JVM 自然节奏归还；
@@ -1886,6 +1890,11 @@ object InfoCardAssets {
      *
      * 1.5.4.4：移除背景模糊（金字塔整段删除），背景直接叠暗色遮罩
      * （[darkOverlay]），处理开销与峰值内存进一步降低。
+     *
+     * 1.6.9.5：处理结果不再随遮罩样式变化——gray-mask 与 blur-mask
+     * 的背景图本身一致（blur-mask 只是在卡片矩形内额外铺一层模糊
+     * 副本，见 [cardBackdropOf]），缓存键不再携带样式标签，切换样式
+     * 零重新处理开销。
      */
     @Synchronized
     fun processedBackground(dataDirectory: File, width: Int, height: Int): BufferedImage? {
@@ -1908,10 +1917,8 @@ object InfoCardAssets {
         val path = file.absolutePath
         val stamp = file.lastModified() + file.length()
         val sizeKey = width.toLong() * 1_000_000L + height
-        // 1.6.9.4：样式进入缓存键（blur-mask 与 gray-mask 的处理结果互不复用，
-        // /kerong reload 切换样式后自动重新处理，旧样式条目随 LRU 淘汰）
-        val styleKey = "$path#${backgroundStyleTag()}"
-        val cached = backgroundCache[styleKey]
+        // 1.6.9.5：样式不再进缓存键（两种样式的处理结果相同，见 KDoc）
+        val cached = backgroundCache[path]
         if (cached != null && cached.stamp == stamp && cached.sizeKey == sizeKey) {
             cached.lastUsedAt = now
             return cached.image
@@ -1922,16 +1929,17 @@ object InfoCardAssets {
         if (decoded.width <= 0 || decoded.height <= 0) return null
 
         val cover = coverImage(decoded, width, height)
-        // 1.6.9.4：blur-mask 样式先高斯模糊再叠暗色遮罩（毛玻璃观感）
-        val processed = applyBackgroundStyle(cover, builtin = false)
+        val processed = darkOverlay(cover)
         val bytes = processed.width.toLong() * processed.height * 4
         // 1.6.5：中间图即用即释（cover 与 scaled 父图共享栅格，flush cover 即一并释放）
         try { cover.flush() } catch (_: Throwable) {}
         try { decoded.flush() } catch (_: Throwable) {}
-        // 旧条目（文件已更换或尺寸不同）被覆盖前 flush，避免其栅格等 GC
-        val stale = backgroundCache.put(styleKey, BackgroundEntry(stamp, sizeKey, processed, bytes, now))
+        // 旧条目（文件已更换或尺寸不同）被覆盖前 flush，避免其栅格等 GC；
+        // 1.6.9.5：模糊副本一并释放
+        val stale = backgroundCache.put(path, BackgroundEntry(stamp, sizeKey, processed, bytes, now))
         if (stale != null) {
             try { stale.image.flush() } catch (_: Throwable) {}
+            try { stale.backdrop?.flush() } catch (_: Throwable) {}
         }
         evictBackgroundsIfOversized()
         return processed
@@ -1944,9 +1952,10 @@ object InfoCardAssets {
      * - false → 随机取数据目录 img/ 文件夹图片；**img 里没有任何可用图片时
      *   自动回退内置背景**（不再退纯色渐变，保证出图风格统一）；
      * - 长图背景处理高度封顶 [ONLINE_BACKGROUND_MAX_HEIGHT] 防栅格膨胀（1.5.1
-     *   仅随机图封顶；1.6.6.1 覆盖版内置图同样封顶——查在线 / 排行榜渲染器
-     *   本就双线性拉伸铺满全画布，视觉一致，且不再为每种页高各存一张 10MB 级
-     *   cover 条目；查信息卡片高 ≤ 856px 不受影响），渲染时拉伸铺满；
+     *   仅随机图封顶；1.6.6.1 覆盖版内置图同样封顶，且不再为每种页高
+     *   各存一张 10MB 级 cover 条目；查信息卡片高 ≤ 856px 不受影响），
+     *   渲染时按 cover 裁剪铺满（1.6.9.5 起不再拉伸变形，见
+     *   [drawBackground]）；
      * - 卡片矮图不受影响。
      *
      * @param dataDirectory 插件 / 模组数据目录（img/ 的父目录），可为 null
@@ -1988,8 +1997,8 @@ object InfoCardAssets {
         val now = System.currentTimeMillis()
         val sizeKey = width.toLong() * 1_000_000L + height
         // 键须含宽与高：首页 / 续页同宽不同高，尺寸不同各自缓存互不覆盖；
-        // 1.6.9.4：样式同样进入键（blur-mask / gray-mask 处理结果互不复用）
-        val cacheKey = "builtin:$resource#${width}x$height#${backgroundStyleTag()}"
+        // 1.6.9.5：样式不再进键（两种样式的处理结果相同，见 processedBackground KDoc）
+        val cacheKey = "builtin:$resource#${width}x$height"
         val cached = backgroundCache[cacheKey]
         if (cached != null && cached.stamp == 0L && cached.sizeKey == sizeKey) {
             cached.lastUsedAt = now
@@ -2015,12 +2024,14 @@ object InfoCardAssets {
             }
         } ?: return null
 
-        val processed = applyBackgroundStyle(coverImage(source, width, height), builtin = true)
+        val processed = coverImage(source, width, height)
         val bytes = processed.width.toLong() * processed.height * 4
-        // 1.6.5：旧条目被覆盖前 flush（尺寸变化重入时旧图不再等 GC）
+        // 1.6.5：旧条目被覆盖前 flush（尺寸变化重入时旧图不再等 GC）；
+        // 1.6.9.5：模糊副本一并释放
         val stale = backgroundCache.put(cacheKey, BackgroundEntry(0L, sizeKey, processed, bytes, now))
         if (stale != null) {
             try { stale.image.flush() } catch (_: Throwable) {}
+            try { stale.backdrop?.flush() } catch (_: Throwable) {}
         }
         evictBackgroundsIfOversized()
         return processed
@@ -2081,7 +2092,11 @@ object InfoCardAssets {
         }
     }
 
-    /** 背景缓存超限淘汰：先按张数上限，再按字节预算，均淘汰最久未使用的条目（1.5.1；1.6.5 淘汰即 flush 释放栅格）。 */
+    /**
+     * 背景缓存超限淘汰：先按张数上限，再按字节预算（含 1.6.9.5 起
+     * blur-mask 模糊副本的占用），均淘汰最久未使用的条目（1.5.1；
+     * 1.6.5 淘汰即 flush 释放栅格；1.6.9.5 淘汰连带 flush 模糊副本）。
+     */
     private fun evictBackgroundsIfOversized() {
         val overflow = backgroundCache.size - BACKGROUND_CACHE_MAX
         if (overflow > 0) {
@@ -2091,10 +2106,11 @@ object InfoCardAssets {
                 .forEach {
                     if (backgroundCache.remove(it.key, it.value)) {
                         try { it.value.image.flush() } catch (_: Throwable) {}
+                        try { it.value.backdrop?.flush() } catch (_: Throwable) {}
                     }
                 }
         }
-        var totalBytes = backgroundCache.values.sumOf { it.bytes }
+        var totalBytes = backgroundCache.values.sumOf { it.bytes + it.backdropBytes }
         if (totalBytes > BACKGROUND_CACHE_MAX_BYTES) {
             backgroundCache.entries
                 .sortedBy { it.value.lastUsedAt }
@@ -2102,7 +2118,8 @@ object InfoCardAssets {
                     if (totalBytes <= BACKGROUND_CACHE_MAX_BYTES) return@forEach
                     if (backgroundCache.remove(entry.key, entry.value)) {
                         try { entry.value.image.flush() } catch (_: Throwable) {}
-                        totalBytes -= entry.value.bytes
+                        try { entry.value.backdrop?.flush() } catch (_: Throwable) {}
+                        totalBytes -= entry.value.bytes + entry.value.backdropBytes
                     }
                 }
         }
@@ -2152,7 +2169,9 @@ object InfoCardAssets {
      * 历史包袱说明：0.1.5.x~1.5.3.2 曾对背景做模糊处理，1.5.4.4 起按用户
      * 要求移除——“去掉模糊，直接加暗色遮罩”；1.6.9.4 起模糊以可选样式
      * 回归（render.background-style = blur-mask，默认仍为本灰色遮罩样式，
-     * 参考 EasyBot 液态玻璃图片模板，见 [applyBackgroundStyle]）。
+     * 参考 EasyBot 液态玻璃图片模板）；1.6.9.5 起改为 backdrop-filter
+     * 语义——背景本身不再整图模糊，只有卡片矩形内铺模糊副本
+     * （见 [cardBackdropOf]）。
      */
     private fun darkOverlay(cover: BufferedImage): BufferedImage {
         val width = cover.width
@@ -2169,32 +2188,132 @@ object InfoCardAssets {
         return result
     }
 
-    // ---------- 背景遮罩样式（1.6.9.4 render.background-style） ----------
+    // ---------- 背景铺放与卡片背后局部模糊（1.6.9.5） ----------
 
-    /** 当前样式键标签（进入背景缓存键，样式切换后自动重新处理）。 */
-    private fun backgroundStyleTag(): String =
-        if (RenderSettings.backgroundStyle() == RenderSettings.BackgroundStyle.BLUR_MASK) "blur" else "gray"
+    /** 背景 cover 铺放参数：源图上被铺到画布的区域（等比缩放 + 中心裁剪）。 */
+    class BackgroundPlacement internal constructor(val sx: Int, val sy: Int, val sw: Int, val sh: Int)
 
     /**
-     * 按配置的背景遮罩样式处理 cover 图（1.6.9.4 新增）。
-     *
-     * - gray-mask（默认）：[darkOverlay] 一层暗色遮罩，行为与旧版完全一致；
-     * - blur-mask（模糊遮罩，参考 EasyBot 液态玻璃模板 backdrop-filter 观感）：
-     *   先 [blurImage] 高斯模糊再叠暗色遮罩——背景细节被柔化成色块，
-     *   前景半透明卡片与文字对比更突出；
-     * - 内置背景图（builtin = true）本就不叠暗色遮罩（设计自带可读性），
-     *   blur-mask 时仅做模糊，观感与其他卡片的毛玻璃风格统一。
+     * 单次渲染的背景上下文（1.6.9.5 blur-mask）：持有背景铺放参数与
+     * 背景的模糊副本，卡片绘制前在其矩形内铺出「卡片背后局部模糊」
+     * 效果（CSS backdrop-filter 语义）。
      */
-    private fun applyBackgroundStyle(cover: BufferedImage, builtin: Boolean): BufferedImage {
-        if (RenderSettings.backgroundStyle() != RenderSettings.BackgroundStyle.BLUR_MASK) {
-            return if (builtin) cover else darkOverlay(cover)
+    class CardBackdropContext internal constructor(
+        private val blurred: BufferedImage,
+        private val placement: BackgroundPlacement,
+        private val canvasWidth: Int,
+        private val canvasHeight: Int,
+    ) {
+        /** 在圆角卡片矩形内绘制背景模糊副本（卡片外不受影响）。 */
+        fun paintCard(g: Graphics2D, x: Float, y: Float, w: Float, h: Float, radius: Float) {
+            val oldClip = g.clip
+            g.clip(RoundRectangle2D.Float(x, y, w, h, radius, radius))
+            try {
+                // drawImage 十参形式：目标矩形在前（画布全幅），源矩形在后（cover 裁剪窗口）
+                g.drawImage(
+                    blurred,
+                    0, 0, canvasWidth, canvasHeight,
+                    placement.sx, placement.sy, placement.sx + placement.sw, placement.sy + placement.sh,
+                    null,
+                )
+            } finally {
+                g.clip = oldClip
+            }
         }
-        val blurred = blurImage(cover)
-        return if (builtin) blurred else darkOverlay(blurred)
     }
 
     /**
-     * 背景高斯模糊（1.6.9.4 blur-mask 样式核心）。
+     * 计算背景铺满画布的 cover 裁剪区域（1.6.9.5）：取宽高两个方向
+     * 缩放比的较大者等比缩放——图片不够大就整张放大到覆盖画布，
+     * 再以图片中心为基准裁掉多余部分；不拉伸变形。
+     */
+    internal fun backgroundPlacement(background: BufferedImage, canvasWidth: Int, canvasHeight: Int): BackgroundPlacement {
+        val scale = maxOf(
+            canvasWidth.toFloat() / background.width,
+            canvasHeight.toFloat() / background.height,
+        )
+        // 源窗口 = 画布 / 缩放比（cover 语义：窗口不大于源图、恰好铺满画布）
+        val sw = (canvasWidth / scale).toInt().coerceIn(1, background.width)
+        val sh = (canvasHeight / scale).toInt().coerceIn(1, background.height)
+        val sx = ((background.width - sw) / 2).coerceAtLeast(0)
+        val sy = ((background.height - sh) / 2).coerceAtLeast(0)
+        return BackgroundPlacement(sx, sy, sw, sh)
+    }
+
+    /**
+     * 绘制背景（全部图片渲染的统一入口，1.6.9.5）：
+     * - 有图：按 [backgroundPlacement] 的 cover 区域双线性铺满画布
+     *   （等比放大不足的边 + 中心裁剪，不再拉伸变形——旧版对封顶高度的
+     *   背景直接拉伸铺满，长图页会把背景纵向压扁）；
+     * - 无图 / 尺寸非法：深色渐变兜底（各渲染器旧版自带实现原样收编）；
+     * - blur-mask 样式（render.background-style = blur-mask）时返回
+     *   [CardBackdropContext]，供卡片绘制前铺「卡片背后局部模糊」；
+     *   其余样式或无背景返回 null（调用方 `backdrop?.paintCard(...)` 即可）。
+     */
+    fun drawBackground(
+        g: Graphics2D,
+        background: BufferedImage?,
+        canvasWidth: Int,
+        canvasHeight: Int,
+    ): CardBackdropContext? {
+        if (background != null && background.width > 0 && background.height > 0) {
+            val placement = backgroundPlacement(background, canvasWidth, canvasHeight)
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+            // drawImage 十参形式：目标矩形在前（铺满画布），源矩形在后（cover 裁剪窗口）
+            g.drawImage(
+                background,
+                0, 0, canvasWidth, canvasHeight,
+                placement.sx, placement.sy, placement.sx + placement.sw, placement.sy + placement.sh,
+                null,
+            )
+            val blurred = cardBackdropOf(background)
+            if (blurred != null) {
+                return CardBackdropContext(blurred, placement, canvasWidth, canvasHeight)
+            }
+            return null
+        }
+        // 无图兑底：纯黑底 + 极淡纵向渐变光晕（与各渲染器旧版兑底一致）
+        g.color = Color(0x05, 0x05, 0x08)
+        g.fillRect(0, 0, canvasWidth, canvasHeight)
+        val gradient = java.awt.GradientPaint(
+            0f, 0f, Color(0x10, 0x12, 0x18),
+            0f, canvasHeight.toFloat(), Color(0x05, 0x05, 0x08),
+        )
+        g.paint = gradient
+        g.fillRect(0, 0, canvasWidth, canvasHeight)
+        return null
+    }
+
+    /**
+     * 取背景的模糊副本（1.6.9.5 blur-mask 卡片背后局部模糊）：
+     * - 仅 blur-mask 样式返回非 null（其余样式直接 null，零开销）；
+     * - 模糊副本挂在背景缓存条目上惰性生成一次（[blurImage] 毫秒级），
+     *   随条目淘汰 / 覆盖 / 空闲释放一起 flush，字节占用计入背景缓存
+     *   预算（[evictBackgroundsIfOversized]）；
+     * - 与背景处理 / 淘汰同为 [Synchronized]，渲染线程取副本与缓存
+     *   维护互斥，不会拿到已被淘汰释放的图像。
+     */
+    @Synchronized
+    private fun cardBackdropOf(background: BufferedImage): BufferedImage? {
+        if (RenderSettings.backgroundStyle() != RenderSettings.BackgroundStyle.BLUR_MASK) return null
+        for (entry in backgroundCache.values) {
+            if (entry.image !== background) continue
+            val existing = entry.backdrop
+            if (existing != null) return existing
+            val blurred = blurImage(entry.image)
+            entry.backdrop = blurred
+            entry.backdropBytes = blurred.width.toLong() * blurred.height * 4
+            evictBackgroundsIfOversized()
+            // 淘汰可能把本条目清掉（字节预算超限时），此时返回未挂缓存的副本
+            return entry.backdrop ?: blurred
+        }
+        // 不在缓存中的背景（防御路径，正常链路不会发生）：直接模糊不缓存
+        return blurImage(background)
+    }
+
+    /**
+     * 背景高斯模糊（1.6.9.4 blur-mask 引入；1.6.9.5 起用途改为
+     * 「卡片背后局部模糊」的模糊副本生成，见 [cardBackdropOf]）。
      *
      * 实现走「降采样 → 小图盒式模糊 → 双线性放大」三步，而不是整图卷积：
      * - 先双线性缩到约 1/8 尺寸（背景本就只做底板，细节无意义，降采样

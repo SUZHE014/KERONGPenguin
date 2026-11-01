@@ -69,4 +69,29 @@ abstract class CommandSupport : BaseCommand() {
     } catch (_: Exception) {
         ""
     }
+
+    /**
+     * 裁剪命令执行输出（1.6.9.5 新增）：超出上限按整行截断并加标记。
+     *
+     * 背景：/执行命令 / /执行 的服务器回显可能长达数千行（旧版捕获上限
+     * 512 行 / 128K 字符全部拼进一条回复），QQ 群消息内容有长度限制，
+     * 超长回复会被平台直接拒绝——且旧版 replyMarkdown 失败后不再回退
+     * 纯文本，最终表现为「执行完命令没有任何回复」。现在发送前先裁剪
+     * 到安全长度（在敏感词审核之前裁剪，审核接口同样处理不了超长文本）。
+     */
+    protected fun clipCommandOutput(output: String): String {
+        val text = output.trim()
+        if (text.length <= COMMAND_OUTPUT_MAX_CHARS) return text
+        val budget = text.take(COMMAND_OUTPUT_MAX_CHARS)
+        val cut = budget.lastIndexOf('\n').takeIf { it > 0 } ?: budget.length
+        return text.take(cut).trimEnd() + "\n……（命令输出过长，已截断，完整输出见服务器控制台）"
+    }
+
+    companion object {
+        /**
+         * 命令执行结果回复的字符上限（1.6.9.5）：QQ 群消息内容有长度
+         * 限制，超长回复被平台拒绝导致「执行完没有回复」，超限截断。
+         */
+        internal const val COMMAND_OUTPUT_MAX_CHARS = 1200
+    }
 }

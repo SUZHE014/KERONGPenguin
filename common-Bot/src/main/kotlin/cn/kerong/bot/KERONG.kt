@@ -35,7 +35,7 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
     /** 创建当前平台的一次命令执行器。 */
     fun createCommandExecutor(): HExecution
 
-    /** 重新加载插件配置（/kerong reload）。 */
+    /** 重新加载插件配置（/hbkng reload）。 */
     fun reloadPluginConfig()
 
     /** 在线玩家名列表。 */
@@ -329,7 +329,7 @@ data class PerformanceSnapshot(
          *   的 CPU 列；首次调用 JVM 可能返回 -1 表示暂不可用 → null；
          *   1.6.7.6 起无 spark 覆盖时经 EWMA 平滑，见 [smoothedCpu]）；
          * - 堆内存为 totalMemory - freeMemory（存活 + 待回收的堆占用，
-         *   与面板上 JVM 已提交内存不是一回事，见 /kerong mem）。
+         *   与面板上 JVM 已提交内存不是一回事，见 /hbkng mem）。
          */
         @JvmStatic
         fun capture(

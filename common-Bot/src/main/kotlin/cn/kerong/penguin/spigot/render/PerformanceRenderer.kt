@@ -46,6 +46,10 @@ import javax.imageio.ImageIO
  *   TPS 卡支持变量覆盖（variable-fetch.tps，数值改为变量原文输出）；
  * - 背景与其他渲染共用 [InfoCardAssets.resolveBackground]
  *   （render.performance.builtin-background，默认内置底图）；
+ *   1.6.9.5：背景统一走共享入口（cover 裁剪铺满：等比放大不足的边 +
+ *   图片中心裁剪，不再拉伸变形）；blur-mask 样式（render.background-style）
+ *   时卡片背后区域铺背景模糊副本（backdrop-filter 局部模糊，
+ *   卡片外背景保持清晰）；
  * - 画布 PNG 写出后立即 flush 释放栅格内存（与其他渲染器一致）。
  *
  * 字体 / 配色与 [InfoCardRenderer] 同源（复用其字体缓存）。
@@ -166,9 +170,11 @@ object PerformanceRenderer {
             g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
             g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
 
-            drawBackground(g, data.background, height)
-            drawHeader(g, data.serverName, data.updateTime)
-            drawMetricGrid(g, cards)
+            // 1.6.9.5：背景统一走共享入口（cover 裁剪铺满，不再拉伸变形）；
+            // blur-mask 样式时返回卡片背后局部模糊上下文
+            val backdrop = InfoCardAssets.drawBackground(g, data.background, WIDTH, height)
+            drawHeader(g, backdrop, data.serverName, data.updateTime)
+            drawMetricGrid(g, backdrop, cards)
         } finally {
             g.dispose()
         }
@@ -365,25 +371,6 @@ object PerformanceRenderer {
     /** MB 数值转 GB 文本（一位小数；小于 1GB 显示 0.x）。 */
     private fun formatGb(mb: Long): String = String.format("%.1f", mb / 1024.0)
 
-    // ---------- 绘制 ----------
-
-    /** 绘制背景（与在线列表同策略：任意尺寸双线性拉伸铺满；无图深色渐变）。 */
-    private fun drawBackground(g: Graphics2D, background: BufferedImage?, height: Int) {
-        if (background != null && background.width > 0 && background.height > 0) {
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-            g.drawImage(background, 0, 0, WIDTH, height, null)
-        } else {
-            g.color = Color(0x05, 0x05, 0x08)
-            g.fillRect(0, 0, WIDTH, height)
-            val gradient = java.awt.GradientPaint(
-                0f, 0f, Color(0x10, 0x12, 0x18),
-                0f, height.toFloat(), Color(0x05, 0x05, 0x08),
-            )
-            g.paint = gradient
-            g.fillRect(0, 0, WIDTH, height)
-        }
-    }
-
     // ---------- 面板绘制 ----------
 
     /**
@@ -404,8 +391,8 @@ object PerformanceRenderer {
         g.fill(RoundRectangle2D.Float(x, y, w, h, radius, radius))
     }
 
-    /** 顶部标题区：眉题 + 主标题 + 右侧更新时间卡。 */
-    private fun drawHeader(g: Graphics2D, serverName: String, updateTime: String) {
+    /** 顶部标题区：眉题 + 主标题 + 右侧更新时间卡（1.6.9.5：blur-mask 时时间卡背后铺局部模糊）。 */
+    private fun drawHeader(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, serverName: String, updateTime: String) {
         val top = MARGIN
 
         // 英文眉题（字距拉宽）
@@ -423,6 +410,7 @@ object PerformanceRenderer {
         val cardHeight = HEADER_HEIGHT - 16
         val cardX = WIDTH - MARGIN - cardWidth
         val cardY = top + 8
+        backdrop?.paintCard(g, cardX.toFloat(), cardY.toFloat(), cardWidth.toFloat(), cardHeight.toFloat(), 20f)
         paintPanel(
             g, cardX.toFloat(), cardY.toFloat(), cardWidth.toFloat(), cardHeight.toFloat(),
             COLOR_HEADER_CARD, 20f,
@@ -443,9 +431,11 @@ object PerformanceRenderer {
 
     /**
      * 指标卡网格：2 列 × N 行，每卡 = 标签 + 状态胶囊 + 大数值 + 进度条 + 副说明；
-     * 末行仅一张卡时（五项布局的在线人数卡）整行通栏，避免右下留空位。
+     * 末行仅一张卡时（五项布局的在线人数卡）整行通栏，避免右下留空位
+     * （1.6.9.5：blur-mask 时网格容器背后铺局部模糊，容器内的指标卡
+     * 不再重复模糊）。
      */
-    private fun drawMetricGrid(g: Graphics2D, cards: List<MetricCard>) {
+    private fun drawMetricGrid(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, cards: List<MetricCard>) {
         if (cards.isEmpty()) return
         val gridTop = MARGIN + HEADER_HEIGHT + HEADER_GAP
         val contentWidth = WIDTH - 2 * MARGIN
@@ -454,6 +444,12 @@ object PerformanceRenderer {
         val gridHeight = rows * CARD_HEIGHT + (rows - 1) * CARD_GAP
 
         // 网格容器（半透明黑底板：与查在线/排行榜网格容器同款 alpha 120）
+        backdrop?.paintCard(
+            g,
+            MARGIN.toFloat(), (gridTop - 14).toFloat(),
+            contentWidth.toFloat(), (gridHeight + 28).toFloat(),
+            18f,
+        )
         paintPanel(
             g,
             MARGIN.toFloat(), (gridTop - 14).toFloat(),

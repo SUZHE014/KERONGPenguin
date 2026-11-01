@@ -13,24 +13,24 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent
 
 /**
  * 游戏内命令注册（等价 Spigot 版 plugin.yml 命令 + KERONGCommand / QqCommand）：
- * - /kerong：reload / info / panel / chs / help，需要权限等级 2（OP）；
+ * - /hbkng：reload / info / chs / help，需要权限等级 2（OP）；
  *   1.6.2 新增 chs：机器人重连超时挂起或断线期间手动重试连接；
  * - /qq：rebind（玩家自助解绑）与 qxqq / skip / unskip（OP 管理）。
  *
- * 1.6.7.7：移除短别名 /hb（用户需求），主命令唯一 /kerong；旧 /hb 输入
- * 由原版“未知指令”路径处理。
+ * 1.6.7.7：移除短别名 /hb（用户需求），主命令唯一；旧输入由原版
+ * “未知指令”路径处理。
  *
- * 1.6.7.10：panel 子命令改异步执行（同步含网络 IO 与退避等待，旧版在
- * 服务器线程执行会卡服）+ 按同步真实结果反馈成功/失败。
+ * 1.6.9.5：主命令由 /kerong 更名为 /hbkng（旧名直接移除不兼容）；
+ * panel 子命令移除——reload 在重载配置后一并重新同步 QQ 快捷面板
+ * （先删后建，按新配置重建按钮）。
  *
- * 1.6.9.4：reload 子命令同样改异步执行（配置读写 / 模板释放全是磁盘
- * IO）+ 反馈里写明重载边界（QQ 凭据与更新检查需重启；面板用 /kerong
- * panel 手动同步）。
+ * 1.6.9.4：reload 子命令异步执行（配置读写 / 模板释放全是磁盘
+ * IO）+ 反馈里写明重载边界（QQ 凭据与更新检查需重启）。
  */
 class NeoForgeCommands(private val plugin: KERONGNeoForge) {
 
-    /** 主命令注册名（1.6.7.7 起仅 /kerong，/hb 别名已移除）。 */
-    private val MAIN_COMMAND_LABELS = listOf("kerong")
+    /** 主命令注册名（1.6.9.5 起 /hbkng，原 /kerong 已移除不兼容）。 */
+    private val MAIN_COMMAND_LABELS = listOf("hbkng")
 
     @SubscribeEvent
     fun onRegisterCommands(event: RegisterCommandsEvent) {
@@ -38,10 +38,10 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
         registerQq(event)
     }
 
-    // ---------- /kerong ----------
+    // ---------- /hbkng（1.6.9.5 前为 /kerong） ----------
 
     private fun registerKerong(event: RegisterCommandsEvent) {
-        // 注册主命令 /kerong（同一套子命令）
+        // 注册主命令 /hbkng（同一套子命令；1.6.9.5 前注册名 /kerong）
         for (label in MAIN_COMMAND_LABELS) {
             event.dispatcher.register(buildMainCommand(label))
         }
@@ -61,12 +61,15 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
             Commands.literal("reload").executes { context ->
                 // 1.6.9.4：重载移入异步线程（配置读写 / 模板释放 / 缺失键
                 // 补齐保存全部是磁盘 IO，不再占用服务器线程），完成后回
-                // 服务器线程反馈结果与重载边界说明
-                context.source.sendSuccess({ Component.literal("§e正在重载配置文件（异步执行）…") }, false)
+                // 服务器线程反馈结果与重载边界说明；
+                // 1.6.9.5：重载完成后顺带重新同步 QQ 快捷面板（先删后建，
+                // 原 panel 子命令已移除）
+                context.source.sendSuccess({ Component.literal("§e正在重载配置文件并重新同步 QQ 快捷面板（异步执行）…") }, false)
                 val source = context.source
                 plugin.submitAsync {
                     try {
                         plugin.reloadPluginConfig()
+                        val panelReport = syncPanelReport()
                         plugin.submit {
                             source.sendSuccess({ Component.literal("§a已重载配置文件。") }, true)
                             source.sendSuccess(
@@ -74,12 +77,14 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
                                     Component.literal(
                                         "§e注意: §f以下配置不能用 reload 生效，只能重启服务器：\n" +
                                             "  - bot.app-id / bot.secret（QQ 机器人凭据，仅启动时连接一次）\n" +
-                                            "  - update-check 段（更新检查，仅启动后第 8 秒检查一次）\n" +
-                                            "QQ 快捷指令面板按钮不随 reload 更新，改完用 /kerong panel 手动同步即可（无需重启）。"
+                                            "  - update-check 段（更新检查，仅启动后第 8 秒检查一次）"
                                     )
                                 },
                                 false,
                             )
+                            for (line in panelReport) {
+                                source.sendSuccess({ Component.literal(line) }, false)
+                            }
                         }
                     } catch (t: Throwable) {
                         val message = t.message ?: t.toString()
@@ -97,9 +102,6 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
                 )
                 1
             },
-        )
-        builder.then(
-            Commands.literal("panel").executes { context -> resyncPanel(context.source) },
         )
         builder.then(
             Commands.literal("chs").executes { context ->
@@ -130,48 +132,52 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
         return builder
     }
 
-    private fun resyncPanel(source: net.minecraft.commands.CommandSourceStack): Int {
-        try {
+    /**
+     * 重新同步 QQ 快捷指令面板（1.6.9.5：reload 的一部分，原 panel 子命令
+     * 已移除）。步骤与启动同步完全一致（MenuManager.syncGroupPanelsWithResult
+     * 先删后建）：① 列出已有面板 → ② 删除全部（含非本插件残留）→
+     * ③ 按当前配置重建按钮（遇 30013 自动退避后清空重建）。
+     *
+     * 必须在异步线程调用（内部有网络 IO 与退避等待，最坏 20 秒级）；
+     * 返回的反馈行由调用方回服务器线程发送。
+     */
+    private fun syncPanelReport(): List<String> {
+        return try {
             val starter = QClient.starter
-            if (starter == null) {
-                source.sendFailure(Component.literal("§cQQ 客户端未启动。"))
-                return 0
-            }
+                ?: return listOf("§eQQ 快捷面板：QQ 客户端未启动，本次未同步。")
             val groups = plugin.groupOpenIdList()
             if (groups.isEmpty()) {
-                source.sendFailure(Component.literal("§c未配置 QQ 群。"))
-                return 0
+                return listOf("§eQQ 快捷面板：未配置 QQ 群（bot.groups 为空），本次未同步。")
             }
-            // 1.6.7.10：面板同步含网络 IO 与退避等待（最坏 20 秒级），
-            // 改在异步线程执行，结果回服务器线程发送；按真实结果反馈
-            // 成功/失败（旧版无论成败一律报「已重新同步」误导服主）
-            source.sendSuccess({ Component.literal("§e正在同步 QQ 快捷指令面板（异步执行，完成后会反馈结果）…") }, false)
-            plugin.submitAsync {
-                val result = MenuManager.syncGroupPanelsWithResult(starter, groups)
-                val report = if (result.ok) {
-                    "§a已重新同步 QQ 快捷指令面板（面板 ${result.panelId}，${result.buttonCount} 个按钮，${result.groupCount} 个群）。"
-                } else {
-                    "§c快捷面板同步失败：${result.error}§e（可稍后用 /kerong panel 重试；持续失败见控制台与 logs/qq 日志）"
-                }
-                plugin.submit { source.sendSuccess({ Component.literal(report) }, false) }
+            val result = MenuManager.syncGroupPanelsWithResult(starter, groups)
+            if (result.ok) {
+                listOf(
+                    "§aQQ 快捷面板已按新配置重新同步（面板 ${result.panelId}，${result.buttonCount} 个按钮，${result.groupCount} 个群）。",
+                )
+            } else {
+                listOf(
+                    "§c快捷面板同步失败：${result.error}§e（重启服务器会再自动同步一次；持续失败见控制台与 logs/qq 日志）",
+                )
             }
         } catch (t: Throwable) {
-            source.sendFailure(Component.literal("§c面板同步失败: ${t.message}"))
-            return 0
+            listOf("§cQQ 快捷面板同步异常: ${t.message}")
         }
-        return 1
     }
 
     private fun sendHelp(source: net.minecraft.commands.CommandSourceStack, label: String) {
         fun line(text: String) = source.sendSuccess({ Component.literal(text) }, false)
         line("§6===== /$label 命令帮助 =====")
         line("§e/$label help§f - 查看此帮助")
-        line("§e/$label reload§f - 重载配置文件（QQ 凭据与更新检查除外，需重启）")
+        line("§e/$label reload§f - 重载配置并重新同步 QQ 快捷面板（QQ 凭据与更新检查除外，需重启）")
         line("§e/$label info§f - 查看适配器信息")
-        line("§e/$label panel§f - 重新同步 QQ 快捷指令面板")
         line("§e/$label chs§f - 立即重试连接 QQ 机器人（断线 / 重连超时后用）")
         line("§e/$label mem§f - 查看插件内存与缓存诊断（JVM 堆 + 各级缓存）")
     }
+
+    // ---------- 更名说明（1.6.9.5：/kerong → /hbkng） ----------
+
+    // 内部自定义命令协议串「kerong run|adminrun …」不受更名影响
+    // （CustomCommandRegistry 在派发前拦截，不会进入命令注册表）。
 
     // ---------- /qq ----------
 

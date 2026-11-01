@@ -11,7 +11,7 @@ import java.awt.image.BufferedImage
  * 系数——系数为 1.0（默认）时原样返回零开销，小于 1 时合成到 ARGB
  * 画布输出半透明卡片（QQ 客户端按 PNG 透明度叠加显示在聊天背景上）。
  *
- * 透明度由 [RenderSettings.globalOpacity] 实时读取（/kerong reload 后
+ * 透明度由 [RenderSettings.globalOpacity] 实时读取（/hbkng reload 后
  * 立即生效）；取值与语义详见其 KDoc。
  */
 object GlobalOpacity {

@@ -32,9 +32,13 @@ import javax.imageio.ImageIO
  * 背景同样取自插件目录 img/ 随机挑选（[InfoCardAssets.processedBackground]）。
  *
  * 1.5.1：背景不再要求与画布等尺寸 —— 长图背景处理高度封顶
- * （[InfoCardAssets.ONLINE_BACKGROUND_MAX_HEIGHT]），渲染时直接拉伸铺满整个画布
- * （裁剪/拉伸自适应，模糊背景下视觉无差异），既保留随机背景效果又避免
+ * （[InfoCardAssets.ONLINE_BACKGROUND_MAX_HEIGHT]），渲染时按 cover
+ * 裁剪铺满整个画布（1.6.9.5 起不再拉伸：等比放大不足的边 + 图片中心
+ * 裁剪，见 [InfoCardAssets.drawBackground]），既保留随机背景效果又避免
  * 大画布背景栅格膨胀到数十 MB。
+ *
+ * 1.6.9.5：blur-mask 样式（render.background-style）时，卡片背后区域
+ * 铺背景模糊副本（backdrop-filter 局部模糊，卡片外背景保持清晰）。
  *
  * 1.5.5：分段发送改造 —— 长图改为分页多张（每页 [MAX_PLAYERS_PER_PAGE] 人），
  * 首页带标题、续页只画内容，避免超长图在 QQ 客户端被压缩得看不清。
@@ -110,8 +114,8 @@ object OnlineListRenderer {
         /** 在线玩家（顺序即展示顺序）。 */
         val entries: List<OnlineEntry>,
         /**
-         * 预处理背景（含暗色遮罩，1.5.4.4 起不再模糊；尺寸可与画布不一致，渲染时拉伸铺满）；
-         * null 表示无背景。
+         * 预处理背景（含暗色遮罩；尺寸可与画布不一致，渲染时按 cover
+         * 裁剪铺满，1.6.9.5 起不再拉伸）；null 表示无背景。
          */
         val background: BufferedImage? = null,
     )
@@ -171,13 +175,15 @@ object OnlineListRenderer {
             g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
             g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
 
-            drawBackground(g, data.background, height)
+            // 1.6.9.5：背景统一走共享入口（cover 裁剪铺满，不再拉伸变形）；
+            // blur-mask 样式时返回卡片背后局部模糊上下文
+            val backdrop = InfoCardAssets.drawBackground(g, data.background, WIDTH, height)
             if (firstPage) {
-                drawHeader(g, data.entries.size)
-                drawStatusBar(g, data.serverName, data.updateTime)
+                drawHeader(g, backdrop, data.entries.size)
+                drawStatusBar(g, backdrop, data.serverName, data.updateTime)
                 drawListHeader(g, data.entries.size)
             }
-            drawPlayerGrid(g, pageEntries, firstPage)
+            drawPlayerGrid(g, backdrop, pageEntries, firstPage)
         } finally {
             g.dispose()
         }
@@ -189,32 +195,8 @@ object OnlineListRenderer {
         return output.toByteArray()
     }
 
-    /**
-     * 绘制背景（1.5.1）：任意尺寸背景直接拉伸铺满整个画布
-     * （长图背景高度封顶后仍能覆盖全画布）；无图片时深色渐变。
-     *
-     * 1.5.3.2：拉伸改用双线性插值（旧版未设插值提示，默认近邻采样
-     * 在长图放大时会出现可见的像素块）；背景 1.5.4.4 起不再模糊，
-     * 但双线性拉伸仍保留，避免背景放大时出现块状纹理。
-     */
-    private fun drawBackground(g: Graphics2D, background: BufferedImage?, height: Int) {
-        if (background != null && background.width > 0 && background.height > 0) {
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-            g.drawImage(background, 0, 0, WIDTH, height, null)
-        } else {
-            g.color = Color(0x05, 0x05, 0x08)
-            g.fillRect(0, 0, WIDTH, height)
-            val gradient = java.awt.GradientPaint(
-                0f, 0f, Color(0x10, 0x12, 0x18),
-                0f, height.toFloat(), Color(0x05, 0x05, 0x08),
-            )
-            g.paint = gradient
-            g.fillRect(0, 0, WIDTH, height)
-        }
-    }
-
-    /** 顶部标题区：眉题 + 主标题 + 右侧在线人数卡。 */
-    private fun drawHeader(g: Graphics2D, onlineCount: Int) {
+    /** 顶部标题区：眉题 + 主标题 + 右侧在线人数卡（1.6.9.5：blur-mask 时卡片背后铺局部模糊）。 */
+    private fun drawHeader(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, onlineCount: Int) {
         val top = MARGIN
 
         // 英文眉题（字距拉宽）
@@ -232,6 +214,7 @@ object OnlineListRenderer {
         val cardHeight = HEADER_HEIGHT - 16
         val cardX = WIDTH - MARGIN - cardWidth
         val cardY = top + 8
+        backdrop?.paintCard(g, cardX.toFloat(), cardY.toFloat(), cardWidth.toFloat(), cardHeight.toFloat(), 20f)
         g.color = Color(0xFF, 0xFF, 0xFF, 34)
         g.fill(RoundRectangle2D.Float(cardX.toFloat(), cardY.toFloat(), cardWidth.toFloat(), cardHeight.toFloat(), 20f, 20f))
         g.font = InfoCardRenderer.font(24f, false)
@@ -244,8 +227,8 @@ object OnlineListRenderer {
         g.drawString(countText, (cardX + cardWidth - 28 - countWidth).toFloat(), (cardY + 100).toFloat())
     }
 
-    /** 状态栏：服务器 / 更新时间 / 状态 三张并排小卡。 */
-    private fun drawStatusBar(g: Graphics2D, serverName: String, updateTime: String) {
+    /** 状态栏：服务器 / 更新时间 / 状态 三张并排小卡（1.6.9.5：blur-mask 时卡片背后铺局部模糊）。 */
+    private fun drawStatusBar(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, serverName: String, updateTime: String) {
         val top = (MARGIN + HEADER_HEIGHT + HEADER_GAP).toFloat()
         val gap = 16f
         val cardWidth = (WIDTH - 2 * MARGIN - 2 * gap).toFloat() / 3f
@@ -258,6 +241,7 @@ object OnlineListRenderer {
         )
         cells.forEachIndexed { index, (label, value) ->
             val x = MARGIN + index * (cardWidth + gap)
+            backdrop?.paintCard(g, x, top, cardWidth, cardHeight, 14f)
             g.color = Color(0x00, 0x00, 0x00, 120)
             g.fill(RoundRectangle2D.Float(x, top, cardWidth, cardHeight, 14f, 14f))
             g.font = InfoCardRenderer.font(22f, false)
@@ -287,8 +271,9 @@ object OnlineListRenderer {
         g.drawString(badgeText, (badgeX + 22).toFloat(), top + 34f)
     }
 
-    /** 玩家网格：3 列，每格头像 + 玩家名；空列表画提示卡；网格整体套深色容器（与模板一致）。 */
-    private fun drawPlayerGrid(g: Graphics2D, entries: List<OnlineEntry>, firstPage: Boolean) {
+    /** 玩家网格：3 列，每格头像 + 玩家名；空列表画提示卡；网格整体套深色容器（与模板一致；
+     * 1.6.9.5：blur-mask 时容器背后铺局部模糊，容器内的单元格不再重复模糊）。 */
+    private fun drawPlayerGrid(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, entries: List<OnlineEntry>, firstPage: Boolean) {
         val gridTop = if (firstPage) {
             MARGIN + HEADER_HEIGHT + HEADER_GAP + STATUS_HEIGHT + STATUS_GAP +
                 LIST_HEADER_HEIGHT + LIST_HEADER_GAP
@@ -297,6 +282,7 @@ object OnlineListRenderer {
         }
         if (entries.isEmpty()) {
             val cardWidth = WIDTH - 2 * MARGIN
+            backdrop?.paintCard(g, MARGIN.toFloat(), (gridTop - 14).toFloat(), cardWidth.toFloat(), (EMPTY_HEIGHT + 28).toFloat(), 18f)
             g.color = Color(0x00, 0x00, 0x00, 120)
             g.fill(RoundRectangle2D.Float(MARGIN.toFloat(), (gridTop - 14).toFloat(), cardWidth.toFloat(), (EMPTY_HEIGHT + 28).toFloat(), 18f, 18f))
             g.color = Color(0xFF, 0xFF, 0xFF, 16)
@@ -315,6 +301,7 @@ object OnlineListRenderer {
         val gridHeight = rows * CELL_HEIGHT + (rows - 1) * CELL_GAP
 
         // 网格深色容器（模板风格：整块列表区域裹一层半透明深色底）
+        backdrop?.paintCard(g, MARGIN.toFloat(), (gridTop - 14).toFloat(), contentWidth.toFloat(), (gridHeight + 28).toFloat(), 18f)
         g.color = Color(0x00, 0x00, 0x00, 120)
         g.fill(RoundRectangle2D.Float(
             MARGIN.toFloat(), (gridTop - 14).toFloat(),

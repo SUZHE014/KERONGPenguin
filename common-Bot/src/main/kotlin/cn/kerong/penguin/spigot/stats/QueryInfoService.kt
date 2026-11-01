@@ -76,7 +76,7 @@ import java.util.concurrent.TimeUnit
  *   变量返回内容（头像 / 统计仍按真实玩家拉取，仅展示名变化）；
  * - 新增自定义查信息项目（variable-fetch.custom-items）：项目ID（段名，
  *   仅区分不展示）+ 项目名称 + 获取变量，正常返回的追加展示在卡片末尾，
- *   未返回的不展示；改完配置 /kerong reload 即生效（每次查询实时读取）。
+ *   未返回的不展示；改完配置 /hbkng reload 即生效（每次查询实时读取）。
  */
 object QueryInfoService {
 

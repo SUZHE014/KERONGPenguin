@@ -448,6 +448,8 @@ class PublicCommands : CommandSupport() {
     /**
      * 派发命令并带 @ 提及回复执行结果。
      * 回复模板：bridge-error（桥接失败）/ sent-request（已发送）/ execute-failed（异常）。
+     * 1.6.9.5：执行结果先裁剪再发送（超长输出会被 QQ 平台拒绝，
+     * 表现为「执行完没有回复」，见 CommandSupport.clipCommandOutput）。
      */
     private fun executeGameCommandWithMention(plugin: KERONG, event: GroupMessageEvent, command: String, direct: Boolean) {
         try {
@@ -459,8 +461,8 @@ class PublicCommands : CommandSupport() {
                     when {
                         error != null || result == null -> MessageTemplates.sendDirect(event, "bridge-error")
                         result.rawString.isBlank() -> MessageTemplates.sendDirect(event, "sent-request")
-                        // 执行结果为动态内容（非固定文案），原样审核后转发
-                        else -> sendDirect(event, plugin.auditText(result.rawString))
+                        // 执行结果为动态内容（非固定文案），先裁剪后原样审核转发
+                        else -> sendDirect(event, plugin.auditText(clipCommandOutput(result.rawString)))
                     }
                 } catch (_: Throwable) {
                 }
@@ -470,7 +472,11 @@ class PublicCommands : CommandSupport() {
         }
     }
 
-    /** 带 @ 提及的纯文本回复（命令执行结果原样转发，非模板内容）。 */
+    /**
+     * 带 @ 提及的纯文本回复（命令执行结果原样转发，非模板内容）。
+     * 1.6.9.5：按 replyMarkdown 的返回值回退纯文本——旧版发送异常被
+     * 吞在 QClient 内部，catch 回退分支永远走不到。
+     */
     private fun sendDirect(event: GroupMessageEvent, message: String) {
         try {
             val userId = try {
@@ -479,10 +485,16 @@ class PublicCommands : CommandSupport() {
                 null
             }
             val content = if (!userId.isNullOrEmpty() && userId != "<unknown>") "<@$userId>\n$message" else message
-            try {
+            val sent = try {
                 QClient.replyMarkdown(event, content, null)
             } catch (_: Throwable) {
-                event.sendMessage(content)
+                false
+            }
+            if (!sent) {
+                try {
+                    event.sendMessage(content)
+                } catch (_: Throwable) {
+                }
             }
         } catch (_: Throwable) {
             try {

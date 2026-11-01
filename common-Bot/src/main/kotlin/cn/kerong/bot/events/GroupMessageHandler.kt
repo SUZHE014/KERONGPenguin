@@ -346,14 +346,11 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
             // 1.6.9.4：合并转发消息（聊天记录）防刷屏——QQ 会把合并聊天记录
             // 整段渲染成「=== 消息 N === / [消息内容] / [发送者]」的多行文本
             // 模板（或 message_type=102 聊天记录）下发，旧版原样转发到游戏
-            // 聊天一次刷几十上百行；现改为单行占位（与 [图片] / [语音] /
-            // [视频] 占位同风格），条数可解析时带上「共 N 条」，玩家想知道
-            // 内容回 QQ 群点开卡片看
-            val mergedForward = QqText.detectMergedForward(metadata, rawContent)
-            if (mergedForward != null) {
-                parts.add(
-                    if (mergedForward.count != null) "[聊天记录 共${mergedForward.count}条]" else "[聊天记录]"
-                )
+            // 聊天一次刷几十上百行；1.6.9.5 起直接以固定占位「[合并聊天记录]」
+            // 单行转发（与 [图片] / [语音] / [视频] 占位同风格，不透出内容
+            // 与条数），玩家想知道内容回 QQ 群点开卡片看
+            if (QqText.isMergedForward(metadata, rawContent)) {
+                parts.add("[合并聊天记录]")
             } else if (!hasImage && trimmed.isNotEmpty()) {
                 parts.add(trimmed)
             }
