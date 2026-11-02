@@ -14,7 +14,7 @@
 # ============================================================
 
 # 配置文件版本号（插件自动维护，请勿手动修改）
-config-version: 27
+config-version: 28
 
 # 启动后自动访问官网检查是否有新版本（false = 完全不联网检查；
 # 改这里后需重启服务器才生效；官网域名不可达时自动走镜像源，
@@ -141,8 +141,13 @@ render:
 # 然后把对应功能的开关改为 false：
 #   - 查信息：render.info-card-builtin-background
 #   - 查在线：render.online-list-builtin-background
+#   - 查性能：render.performance.builtin-background
 #   - 在线排行榜：leaderboard.builtin-background
 #   - 金币排行榜：coins-leaderboard.builtin-background
+# 一键切换：服务器里执行 /hbkrg bpngsz yes 全部改用 img/ 自定义背景，
+# /hbkrg bpngsz no 一键恢复内置背景（改完配置自动重载，不用手改文件）
+# 没有现成图片？执行 /hbkrg bpng 查看官网图片包（如 wl1 蔚蓝档案），
+# /hbkrg bpng <包ID> 自动下载到 img/ 文件夹（显示进度，可中断，失败自动跳过）
 # 多张图时每次渲染随机挑选一张轮换；任意尺寸均可（自动等比缩放 +
 # 中心裁剪铺满画布，不拉伸变形；超大图自动降采样解码）；
 # img 里没有图片时自动回退内置图

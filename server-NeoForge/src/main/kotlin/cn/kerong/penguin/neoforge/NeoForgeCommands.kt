@@ -10,10 +10,11 @@ import net.minecraft.commands.Commands
 import net.minecraft.network.chat.Component
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.neoforge.event.RegisterCommandsEvent
+import java.util.Locale
 
 /**
  * 游戏内命令注册（等价 Spigot 版 plugin.yml 命令 + KERONGCommand / QqCommand）：
- * - /hbkrg：reload / info / chs / help，需要权限等级 2（OP）；
+ * - /hbkrg：reload / info / chs / bpng / bpngsz / help，需要权限等级 2（OP）；
  *   1.6.2 新增 chs：机器人重连超时挂起或断线期间手动重试连接；
  * - /qq：rebind（玩家自助解绑）与 qxqq / skip / unskip（OP 管理）。
  *
@@ -125,6 +126,46 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
                 1
             },
         )
+        // 1.7.1：背景图片包（无参列表 / stop 中断 / 包 ID 下载）
+        builder.then(
+            Commands.literal("bpng")
+                .executes { context ->
+                    handleBpng(context.source, "")
+                    1
+                }
+                .then(
+                    Commands.literal("stop").executes { context ->
+                        handleBpng(context.source, "stop")
+                        1
+                    },
+                )
+                .then(
+                    Commands.argument("包ID", StringArgumentType.word()).executes { context ->
+                        handleBpng(context.source, StringArgumentType.getString(context, "包ID"))
+                        1
+                    },
+                ),
+        )
+        // 1.7.1：一键切换全部卡片背景（yes = img/ 自定义；no = 内置）
+        builder.then(
+            Commands.literal("bpngsz")
+                .executes { context ->
+                    handleBpngsz(context.source, "")
+                    1
+                }
+                .then(
+                    Commands.literal("yes").executes { context ->
+                        handleBpngsz(context.source, "yes")
+                        1
+                    },
+                )
+                .then(
+                    Commands.literal("no").executes { context ->
+                        handleBpngsz(context.source, "no")
+                        1
+                    },
+                ),
+        )
         builder.executes { context ->
             sendHelp(context.source, label)
             1
@@ -164,6 +205,79 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
         }
     }
 
+    // ---------- 背景图片包（1.7.1，与 Spigot 版同逻辑） ----------
+
+    /**
+     * /hbkrg bpng [包ID|stop]：无参列出图片包；带包 ID 下载（再次执行同一
+     * 命令或 stop 可中断）；进度行转回服务器主线程发送。
+     */
+    private fun handleBpng(source: net.minecraft.commands.CommandSourceStack, argRaw: String) {
+        val service = cn.kerong.penguin.spigot.render.BackgroundPackService
+        val arg = argRaw.trim().lowercase(Locale.ROOT)
+        when {
+            arg.isEmpty() -> {
+                source.sendSuccess({ Component.literal("§e正在获取图片包清单（异步）…") }, false)
+                plugin.submitAsync {
+                    val lines = service.listPacksLines()
+                    plugin.submit { lines.forEach { source.sendSuccess({ Component.literal(it) }, false) } }
+                }
+            }
+            arg == "stop" -> {
+                if (service.requestCancel()) {
+                    source.sendSuccess(
+                        { Component.literal("§e已发送中断信号，当前下载（${service.activeDownloadBrief()}）将在本张图片结束后停止。") },
+                        false,
+                    )
+                } else {
+                    source.sendSuccess({ Component.literal("§e当前没有进行中的图片包下载。") }, false)
+                }
+            }
+            else -> {
+                // 下载进行中：任何再次执行的下载命令都先中断当前任务（下载过程可执行指令中断）
+                if (service.hasActiveDownload()) {
+                    service.requestCancel()
+                    source.sendSuccess(
+                        { Component.literal("§e已发送中断信号，当前下载（${service.activeDownloadBrief()}）将在本张图片结束后停止。") },
+                        false,
+                    )
+                    return
+                }
+                source.sendSuccess({ Component.literal("§e开始下载图片包 $arg（异步执行）…") }, false)
+                plugin.submitAsync {
+                    service.downloadPackById(plugin.dataFolder, arg) { line ->
+                        plugin.submit { source.sendSuccess({ Component.literal(line) }, false) }
+                    }
+                }
+            }
+        }
+    }
+
+    /** /hbkrg bpngsz yes|no：一键切换全部卡片背景（写入配置后自动重载）。 */
+    private fun handleBpngsz(source: net.minecraft.commands.CommandSourceStack, argRaw: String) {
+        val arg = argRaw.trim().lowercase(Locale.ROOT)
+        if (arg != "yes" && arg != "no") {
+            source.sendFailure(
+                Component.literal("§c用法: /hbkrg bpngsz yes 开启 img/ 自定义背景；/hbkrg bpngsz no 恢复内置背景"),
+            )
+            return
+        }
+        val useCustom = arg == "yes"
+        source.sendSuccess(
+            {
+                Component.literal(
+                    "§e正在" +
+                        (if (useCustom) "把全部卡片切换为 img/ 自定义背景" else "把全部卡片恢复为内置背景") +
+                        "（写入配置并自动重载，异步执行）…",
+                )
+            },
+            false,
+        )
+        plugin.submitAsync {
+            val lines = cn.kerong.penguin.spigot.render.BackgroundPackService.switchBackgrounds(useCustom)
+            plugin.submit { lines.forEach { source.sendSuccess({ Component.literal(it) }, false) } }
+        }
+    }
+
     private fun sendHelp(source: net.minecraft.commands.CommandSourceStack, label: String) {
         fun line(text: String) = source.sendSuccess({ Component.literal(text) }, false)
         line("§6===== /$label 命令帮助 =====")
@@ -172,6 +286,8 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
         line("§e/$label info§f - 查看适配器信息")
         line("§e/$label chs§f - 立即重试连接 QQ 机器人（断线 / 重连超时后用）")
         line("§e/$label mem§f - 查看插件内存与缓存诊断（JVM 堆 + 各级缓存）")
+        line("§e/$label bpng§f - 查看可下载的背景图片包；/$label bpng <包ID> 下载到 img/（下载中可再执行一次中断）")
+        line("§e/$label bpngsz yes|no§f - 一键切换全部卡片是否使用 img/ 自定义背景图")
     }
 
     // ---------- 更名说明（/hbkrg） ----------

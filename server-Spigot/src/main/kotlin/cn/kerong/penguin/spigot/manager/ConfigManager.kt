@@ -313,10 +313,10 @@ class ConfigManager(private val plugin: JavaPlugin) {
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
 
-        // 1.7.0：升 27——render.blur-strength 新增（毛玻璃模糊度，0-100 默认 50，
-        // 取代原 background-style 样式选择与 global-opacity 整图透明度，两者均已移除；
-        // avatar-fetch-priority 随本地头像获取链路一并移除）；配置注释全面精简
-        private const val CURRENT_CONFIG_VERSION = 27
+        // 1.7.1：升 28——无新增键纯注释刷新（卡片背景图说明段补 /hbkrg bpng
+        // 图片包下载与 /hbkrg bpngsz 一键切换的用法说明）
+        // 1.7.0：render.blur-strength 新增（毛玻璃模糊度，0-100 默认 50）等，见 git 历史
+        private const val CURRENT_CONFIG_VERSION = 28
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；

@@ -10,7 +10,11 @@ import org.bukkit.command.TabExecutor
 import java.util.Locale
 
 /**
- * /hbkrg 主命令：reload / info / chs / mem / help。
+ * /hbkrg 主命令：reload / info / chs / mem / bpng / bpngsz / help。
+ *
+ * 1.7.1 新增 bpng / bpngsz：背景图片包下载与一键切换（共享逻辑在
+ * [cn.kerong.penguin.spigot.render.BackgroundPackService]，双端命令层仅做
+ * 线程调度与消息发送）。
  *
  * 1.7.0：主命令更名为 /hbkrg（旧名直接移除、不做兼容——
  * 输入 /kerong 由原版「未知指令」路径处理）。
@@ -79,6 +83,14 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
                 sender.sendMessage("${ChatColor.YELLOW}提示: ${ChatColor.WHITE}已提交堆是 JVM 预留量，渲染高峰后扩张、不代表插件实际占用；若此处存活堆很小而面板内存很高，多查其他插件 / JVM 参数（-Xmx 与 GC 行为）")
                 return true
             }
+            "bpng" -> {
+                handleBpng(sender, args)
+                return true
+            }
+            "bpngsz" -> {
+                handleBpngsz(sender, args)
+                return true
+            }
         }
         sendHelp(sender, label)
         return true
@@ -122,10 +134,86 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
         }
     }
 
+    // ---------- 背景图片包（1.7.1） ----------
+
+    /**
+     * /hbkrg bpng [包ID|stop]：无参列出图片包；带包 ID 下载（再次执行同一
+     * 命令或 stop 可中断）；下载中的进度行经主线程发回命令发送者。
+     */
+    private fun handleBpng(sender: CommandSender, args: Array<out String>) {
+        val service = cn.kerong.penguin.spigot.render.BackgroundPackService
+        val arg = args.drop(1).firstOrNull()?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        when {
+            arg.isEmpty() -> {
+                sender.sendMessage("${ChatColor.YELLOW}正在获取图片包清单（异步）…")
+                plugin.submitAsync {
+                    val lines = service.listPacksLines()
+                    plugin.submit { lines.forEach { sender.sendMessage(it) } }
+                }
+            }
+            arg == "stop" -> {
+                if (service.requestCancel()) {
+                    sender.sendMessage("${ChatColor.YELLOW}已发送中断信号，当前下载（${service.activeDownloadBrief()}）将在本张图片结束后停止。")
+                } else {
+                    sender.sendMessage("${ChatColor.YELLOW}当前没有进行中的图片包下载。")
+                }
+            }
+            else -> {
+                // 下载进行中：任何再次执行的下载命令都先中断当前任务（用户语义：下载过程可执行指令中断）
+                if (service.hasActiveDownload()) {
+                    service.requestCancel()
+                    sender.sendMessage("${ChatColor.YELLOW}已发送中断信号，当前下载（${service.activeDownloadBrief()}）将在本张图片结束后停止。")
+                    return
+                }
+                sender.sendMessage("${ChatColor.YELLOW}开始下载图片包 $arg（异步执行）…")
+                plugin.submitAsync {
+                    service.downloadPackById(plugin.dataFolder, arg) { line ->
+                        plugin.submit { sender.sendMessage(line) }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * /hbkrg bpngsz yes|no：一键切换全部卡片背景（写入配置后自动重载）。
+     */
+    private fun handleBpngsz(sender: CommandSender, args: Array<out String>) {
+        val arg = args.drop(1).firstOrNull()?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        when (arg) {
+            "yes", "no" -> {
+                val useCustom = arg == "yes"
+                sender.sendMessage(
+                    "${ChatColor.YELLOW}正在" +
+                        (if (useCustom) "把全部卡片切换为 img/ 自定义背景" else "把全部卡片恢复为内置背景") +
+                        "（写入配置并自动重载，异步执行）…",
+                )
+                plugin.submitAsync {
+                    val lines = cn.kerong.penguin.spigot.render.BackgroundPackService.switchBackgrounds(useCustom)
+                    plugin.submit { lines.forEach { sender.sendMessage(it) } }
+                }
+            }
+            else -> {
+                sender.sendMessage("${ChatColor.RED}用法: /hbkrg bpngsz yes 开启 img/ 自定义背景；/hbkrg bpngsz no 恢复内置背景")
+            }
+        }
+    }
+
     override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<out String>): List<String> {
-        if (args.size != 1) return emptyList()
-        val prefix = args[0].lowercase(Locale.ROOT)
-        return SUBCOMMANDS.filter { it.startsWith(prefix) }
+        if (args.size == 1) {
+            val prefix = args[0].lowercase(Locale.ROOT)
+            return SUBCOMMANDS.filter { it.startsWith(prefix) }
+        }
+        if (args.size == 2) {
+            val prefix = args[1].lowercase(Locale.ROOT)
+            val suggestions = when (args[0].lowercase(Locale.ROOT)) {
+                "bpng" -> listOf("stop")
+                "bpngsz" -> listOf("yes", "no")
+                else -> emptyList()
+            }
+            return suggestions.filter { it.startsWith(prefix) }
+        }
+        return emptyList()
     }
 
     /** 发送命令帮助。 */
@@ -136,9 +224,11 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
         sender.sendMessage("${ChatColor.YELLOW}/$label info${ChatColor.WHITE} - 查看适配器信息")
         sender.sendMessage("${ChatColor.YELLOW}/$label chs${ChatColor.WHITE} - 立即重试连接 QQ 机器人（断线 / 重连超时后用）")
         sender.sendMessage("${ChatColor.YELLOW}/$label mem${ChatColor.WHITE} - 查看插件内存与缓存诊断（JVM 堆 + 各级缓存）")
+        sender.sendMessage("${ChatColor.YELLOW}/$label bpng${ChatColor.WHITE} - 查看可下载的背景图片包；/$label bpng <包ID> 下载到 img/（下载中可再执行一次中断）")
+        sender.sendMessage("${ChatColor.YELLOW}/$label bpngsz yes|no${ChatColor.WHITE} - 一键切换全部卡片是否使用 img/ 自定义背景图")
     }
 
     companion object {
-        private val SUBCOMMANDS = listOf("reload", "info", "chs", "mem", "help")
+        private val SUBCOMMANDS = listOf("reload", "info", "chs", "mem", "bpng", "bpngsz", "help")
     }
 }

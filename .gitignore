@@ -48,3 +48,5 @@ smoke168-out/
 smoke16711-out-cp/
 scripts/base/
 scripts/smoke169-out/
+scripts/smoke1711/out/
+scripts/smoke1711/classpath.txt
