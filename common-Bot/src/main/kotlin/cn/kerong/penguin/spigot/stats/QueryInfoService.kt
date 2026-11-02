@@ -13,7 +13,6 @@ import org.bukkit.Bukkit
 import org.bukkit.OfflinePlayer
 import org.bukkit.entity.Player
 import org.bukkit.plugin.java.JavaPlugin
-import java.io.File
 import java.lang.reflect.Method
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -76,7 +75,7 @@ import java.util.concurrent.TimeUnit
  *   变量返回内容（头像 / 统计仍按真实玩家拉取，仅展示名变化）；
  * - 新增自定义查信息项目（variable-fetch.custom-items）：项目ID（段名，
  *   仅区分不展示）+ 项目名称 + 获取变量，正常返回的追加展示在卡片末尾，
- *   未返回的不展示；改完配置 /hbkng reload 即生效（每次查询实时读取）。
+ *   未返回的不展示；改完配置 /hbkrg reload 即生效（每次查询实时读取）。
  */
 object QueryInfoService {
 
@@ -105,8 +104,6 @@ object QueryInfoService {
         val balanceNote: String,
         val pointsText: String,
         val pointsNote: String,
-        val skinUrl: String?,
-        val playerDataDir: File?,
         /** Vault（含经济服务）是否可用——不可用时卡片不展示“金币”项。 */
         val vaultAvailable: Boolean,
         /** 称号来源链（DeluxeTags 或 Vault）是否有任一插件可用——均无时不展示“称号”项。 */
@@ -247,8 +244,6 @@ object QueryInfoService {
                         InfoCardAssets.AvatarRequest(
                             uuid = playerUuid,
                             playerName = playerName,
-                            skinUrl = snapshot.skinUrl,
-                            playerDataDir = snapshot.playerDataDir,
                         )
                     )
                     val bytes = InfoCardRenderer.render(
@@ -402,7 +397,6 @@ object QueryInfoService {
             val title = resolveTitle(playerName, playerUuid, onlinePlayer)
             val balance = queryBalance(playerName, playerUuid)
             val points = if (playerUuid != null) resolvePlayerPoints(playerUuid) else null
-            val skinInfo = if (playerUuid != null) querySkinInfo(playerUuid) else null
             // 1.5.3：依赖插件可用性检测（与数据同线程采集，避免状态不一致）
             val dependency = detectDependencies()
             // 1.6.9：变量获取信息（PlaceholderAPI 非线程安全，随主线程快照
@@ -416,8 +410,6 @@ object QueryInfoService {
                 balanceNote = balance.second,
                 pointsText = points?.text ?: "暂无",
                 pointsNote = points?.note ?: "无玩家 UUID",
-                skinUrl = skinInfo?.first,
-                playerDataDir = skinInfo?.second,
                 vaultAvailable = dependency.vault,
                 titleAvailable = dependency.title,
                 pointsAvailable = dependency.points,
@@ -471,31 +463,12 @@ object QueryInfoService {
         balanceNote = "主线程繁忙读取超时",
         pointsText = "暂无",
         pointsNote = "主线程繁忙读取超时",
-        skinUrl = null,
-        playerDataDir = null,
         vaultAvailable = true,
         titleAvailable = true,
         pointsAvailable = true,
         // 1.6.9：主线程超时快照不做变量解析（PAPI 未走），全部回退插件自带数据
         vars = PlaceholderVariableService.EMPTY_CONTEXT,
     )
-
-    /** 主线程查询：在线玩家取 Profile 皮肤 URL；同时定位 playerdata 目录（离线玩家 NBT 解析用）。 */
-    private fun querySkinInfo(playerUuid: UUID): Pair<String?, File?> {
-        val playerDataDir = try {
-            Bukkit.getWorlds().firstOrNull()?.worldFolder?.resolve("playerdata")
-        } catch (_: Throwable) {
-            null
-        }
-        val skinUrl = try {
-            val player = Bukkit.getPlayer(playerUuid) ?: return null to playerDataDir
-            // 在线玩家：Profile 贴图 URL（含 SkinsRestorer 等皮肤插件修改后的结果）
-            player.playerProfile.textures.skin?.toString()
-        } catch (_: Throwable) {
-            null
-        }
-        return skinUrl to playerDataDir
-    }
 
     /**
      * 解析玩家称号（返回值 + 检测来源说明）：

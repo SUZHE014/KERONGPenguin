@@ -9,7 +9,7 @@ import org.bukkit.plugin.java.JavaPlugin
  * - render.command-cooldown-seconds：同一 QQ 用户两次触发图片渲染命令
  *   （/查信息、/查在线、/在线排行榜、/财富榜）的最小间隔秒数，
  *   防止刷屏导致渲染风暴。默认 5（与旧版硬编码一致）；0 = 关闭冷却；
- *   负数按 0 处理。实时读取（/hbkng reload 后立即生效）。
+ *   负数按 0 处理。实时读取（/hbkrg reload 后立即生效）。
  */
 object RenderSettings {
 
@@ -25,25 +25,8 @@ object RenderSettings {
     /** 性能数据缓存默认秒数（1.6.7.2 新增；覆盖版默认 5 → 60）。 */
     const val DEFAULT_PERFORMANCE_CACHE_SECONDS = 60
 
-    /** 全局透明度默认值（1.6.7.2 覆盖版新增，1.0 = 不透明）。 */
-    const val DEFAULT_GLOBAL_OPACITY = 1.0
-
-    /** 头像获取优先方式（1.6.6.1 覆盖版新增配置）。 */
-    enum class AvatarFetchPriority { LOCAL, EXTERNAL }
-
-    /**
-     * 图片卡片的背景遮罩样式（1.6.9.4 新增 render.background-style；
-     * 1.6.9.5 起 blur-mask 为卡片背后局部模糊）。
-     *
-     * - [GRAY_MASK]：原版样式（默认）——背景图直接叠一层半透明暗色遮罩，
-     *   保留背景图全部细节（1.5.4.4 起的既有行为）；
-     * - [BLUR_MASK]：模糊遮罩样式（参考 EasyBot 液态玻璃图片模板的
-     *   backdrop-filter）——只有卡片（毛玻璃面板）背后的背景被模糊，
-     *   卡片外的背景保持清晰，前景卡片呈磨砂玻璃质感。对查信息 /
-     *   查在线 / 查性能 / 在线排行榜 / 财富榜全部生效（含内置背景图
-     *   与 img/ 随机图）。
-     */
-    enum class BackgroundStyle { GRAY_MASK, BLUR_MASK }
+    /** 毛玻璃模糊度默认值（1.7.0 新增 render.blur-strength，50 = 轻模糊）。 */
+    const val DEFAULT_BLUR_STRENGTH = 50
 
     /** 图片渲染命令的用户冷却（毫秒；0 = 无冷却）。 */
     fun commandCooldownMillis(): Long {
@@ -62,7 +45,7 @@ object RenderSettings {
      * - 皮肤头像保存到 cache/avatars/ 目录，超过有效期自动删除
      *   （后台每 30 分钟清扫 + 查询命中时顺手删）；
      * - 默认 3；支持小数（如 0.5 = 半小时）；0 = 关闭磁盘缓存；
-     * - 负数按默认处理；实时读取（/hbkng reload 后立即生效）。
+     * - 负数按默认处理；实时读取（/hbkrg reload 后立即生效）。
      */
     fun avatarCacheHours(): Double {
         val hours = try {
@@ -77,30 +60,6 @@ object RenderSettings {
     }
 
     /**
-     * 头像获取优先方式（1.6.6.1 覆盖版新增）。
-     *
-     * - render.avatar-fetch-priority（默认 local）：
-     *   - local：优先本地（在线玩家 Profile 皮肤 + 本服存档数据），
-     *     本地取不到自动切换外置接口（Mojang 官方 API → 头像多线路）；
-     *   - external：优先外置接口，全部失败后再试本地；
-     * - 值不区分大小写，未识别的值一律按 local 处理；
-     * - 实时读取（/hbkng reload 后立即生效）。
-     */
-    fun avatarFetchPriority(): AvatarFetchPriority {
-        val value = try {
-            (BotShared.instance as? JavaPlugin)?.config?.getString("render.avatar-fetch-priority", "local")
-                ?: "local"
-        } catch (_: Throwable) {
-            "local"
-        }
-        return if (value.trim().equals("external", ignoreCase = true)) {
-            AvatarFetchPriority.EXTERNAL
-        } else {
-            AvatarFetchPriority.LOCAL
-        }
-    }
-
-    /**
      * 渲染空闲内存释放阈值（毫秒，1.6.6.2 新增）。
      *
      * - render.idle-release-minutes（1.6.7.2 默认由 5 调整为 15）：一次
@@ -108,7 +67,7 @@ object RenderSettings {
      *   图像素材缓存占用的内存（flush + 清空；磁盘头像缓存与轻量元
      *   数据缓存保留，下次渲染从磁盘 / 外部接口秒级恢复）；
      * - 支持小数（如 2.5 = 2 分半）；0 = 关闭空闲释放；
-     * - 负数按默认处理；实时读取（/hbkng reload 后立即生效）。
+     * - 负数按默认处理；实时读取（/hbkrg reload 后立即生效）。
      */
     fun idleReleaseMillis(): Long {
         val minutes = try {
@@ -135,7 +94,7 @@ object RenderSettings {
      *
      * 语义与其他渲染的 builtin-background 一致：true = 内置深灰底图
      * （随 JAR 分发，与其他卡片共用横版底图），false = 随机取数据目录
-     * img/ 图片（无图自动回退内置）。实时读取（/hbkng reload 立即生效）。
+     * img/ 图片（无图自动回退内置）。实时读取（/hbkrg reload 立即生效）。
      *
      * 1.6.7.1：指标固定四项（TPS / MSPT / 内存 / CPU），原
      * render.performance.show-* 单项显隐配置已移除（在线人数卡同步
@@ -153,55 +112,27 @@ object RenderSettings {
     }
 
     /**
-     * 图片卡片的背景遮罩样式（1.6.9.4 新增 render.background-style；
-     * 1.6.9.5 修正 blur-mask 语义为 backdrop-filter）。
+     * 毛玻璃模糊度（render.blur-strength，1.7.0 新增，默认 50）。
      *
-     * - render.background-style（默认 gray-mask）：
-     *   - gray-mask：原版样式——背景图叠一层半透明暗色遮罩，保留全部细节；
-     *   - blur-mask：模糊遮罩样式（参考 EasyBot 液态玻璃模板的
-     *     backdrop-filter 观感）——**只有卡片（毛玻璃面板）背后的背景
-     *     被模糊**，卡片外的背景保持原样清晰，前景卡片呈磨砂玻璃质感
-     *     （1.6.9.4 曾为整图模糊，1.6.9.5 按模板语义修正为局部模糊）；
-     * - 值不区分大小写；未识别的值一律按 gray-mask 处理（原版样式兜底）；
-     * - 对全部图片卡片生效（查信息 / 查在线 / 查性能 / 在线排行榜 /
-     *   财富榜，含内置背景图与 img/ 随机图）；
-     * - 背景图按「等比缩放 + 中心裁剪」铺满画布，不拉伸变形（1.6.9.5）；
-     * - 实时读取（/hbkng reload 后立即生效——模糊副本按背景缓存
-     *   条目惰性生成，切换样式零重新处理开销）。
+     * - 作用于全部图片卡片（查信息 / 查在线 / 查性能 / 在线排行榜 /
+     *   财富榜）：只有卡片背后的背景被模糊（backdrop-filter），
+     *   卡片外的背景保持原样清晰；
+     * - 取值范围 0 ~ 100：越大越模糊；0 = 不模糊（卡片仅叠半透明底色）；
+     * - 默认 50 为轻模糊观感，100 等效旧版的最大模糊；
+     * - 背景图按「等比缩放 + 中心裁剪」铺满画布，不拉伸变形；
+     * - 实时读取（/hbkrg reload 后立即生效——模糊副本按背景缓存
+     *   条目惰性生成，模糊度变化自动重新生成）。
      */
-    fun backgroundStyle(): BackgroundStyle {
+    fun blurStrength(): Int {
         val value = try {
-            (BotShared.instance as? JavaPlugin)?.config?.getString("render.background-style", "gray-mask")
-                ?: "gray-mask"
+            (BotShared.instance as? JavaPlugin)?.config?.getInt(
+                "render.blur-strength",
+                DEFAULT_BLUR_STRENGTH,
+            ) ?: DEFAULT_BLUR_STRENGTH
         } catch (_: Throwable) {
-            "gray-mask"
+            DEFAULT_BLUR_STRENGTH
         }
-        return when (value.trim().lowercase()) {
-            "blur-mask", "blur", "glass" -> BackgroundStyle.BLUR_MASK
-            else -> BackgroundStyle.GRAY_MASK
-        }
-    }
-
-    /**
-     * 全局透明度（1.6.7.2 覆盖版新增 render.global-opacity，默认 1.0）。
-     *
-     * - 作用于全部图片卡片输出（查信息 / 查在线 / 查性能 / 在线排行榜 /
-     *   财富榜）：编码 PNG 前把整张画布像素 alpha 统一乘以该系数；
-     * - 1.0 = 完全不透明（默认，行为与旧版一致）；0.5 = 半透明；
-     *   越小越透明（QQ 客户端按 PNG 透明度叠加在聊天背景上显示）；
-     * - 取值范围 0.0 ~ 1.0，超出自动收敛到边界；
-     * - 实时读取（/hbkng reload 后立即生效）。
-     */
-    fun globalOpacity(): Float {
-        val value = try {
-            (BotShared.instance as? JavaPlugin)?.config?.getDouble(
-                "render.global-opacity",
-                DEFAULT_GLOBAL_OPACITY,
-            ) ?: DEFAULT_GLOBAL_OPACITY
-        } catch (_: Throwable) {
-            DEFAULT_GLOBAL_OPACITY
-        }
-        return value.coerceIn(0.0, 1.0).toFloat()
+        return value.coerceIn(0, 100)
     }
 
     /**
@@ -212,7 +143,7 @@ object RenderSettings {
      *   时秒回，不重复取数与渲染——对应 EasyBot 模板「渲染过慢」一节
      *   推荐开启的性能数据缓存）；
      * - 0 = 关闭缓存（每次都实时取数渲染）；负数按默认；
-     * - 实时读取（/hbkng reload 后立即生效）。
+     * - 实时读取（/hbkrg reload 后立即生效）。
      */
     fun performanceCacheMillis(): Long {
         val seconds = try {

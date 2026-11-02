@@ -12,7 +12,6 @@ import java.awt.geom.RoundRectangle2D
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
-import java.io.DataInputStream
 import java.io.File
 import java.io.InputStream
 import java.net.HttpURLConnection
@@ -24,7 +23,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.TimeUnit
-import java.util.zip.GZIPInputStream
 import javax.imageio.ImageIO
 
 /**
@@ -69,7 +67,7 @@ import javax.imageio.ImageIO
  * 1.5.4.4：背景不再模糊，直接叠一层暗色遮罩：
  * - 金字塔模糊整段移除，背景保留原图全部细节与锐度；
  * - 暗色遮罩保持单遍合成（等效总黑度约 41%），前景可读性与历史版本一致
- *   （详见 [InfoCardAssets.darkOverlay]）。
+ *   （背景原图直出，毛玻璃观感由卡片背后的局部模糊承担）。
  *
  * 1.5.7：全部图片渲染（查信息 / 查在线 / 在线排行榜）默认改用内置背景图
  * （深灰主体 + 深绿装饰，随 JAR 分发，各自配置开关默认 true，见
@@ -149,9 +147,9 @@ object InfoCardRenderer {
             g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
             g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
 
-            // 1.6.9.5：背景统一走共享入口（cover 裁剪铺满：等比放大不足的边
-            // + 以图片中心裁剪，不再拉伸变形）；blur-mask 样式时返回卡片
-            // 背后局部模糊上下文（backdrop-filter），由各卡片绘制前自取
+            // 背景统一走共享入口（cover 裁剪铺满：等比放大不足的边 +
+            // 以图片中心裁剪，不拉伸）；返回卡片背后局部模糊上下文
+            // （backdrop-filter，模糊度 render.blur-strength），由各卡片绘制前自取
             val backdrop = InfoCardAssets.drawBackground(g, data.background, WIDTH, height)
             drawTopPanel(g, data, backdrop)
             drawIdentityBar(g, data.playerName, backdrop)
@@ -160,14 +158,13 @@ object InfoCardRenderer {
             g.dispose()
         }
         val output = ByteArrayOutputStream(256 * 1024)
-        // 全局透明度（render.global-opacity，默认 1.0 原样零开销）
-        ImageIO.write(GlobalOpacity.apply(image), "png", output)
+        ImageIO.write(image, "png", output)
         // 1.5.0：PNG 已写出，立即释放单次画布的栅格内存（缓存中的背景/头像不受影响）
         image.flush()
         return output.toByteArray()
     }
 
-    /** 顶部欢迎区（1.6.9.5：blur-mask 样式时先铺卡片背后的局部模糊背景）。 */
+    /** 顶部欢迎区（先铺卡片背后的局部模糊背景，再叠半透明底色）。 */
     private fun drawTopPanel(g: Graphics2D, data: CardData, backdrop: InfoCardAssets.CardBackdropContext?) {
         val x = 24f
         val y = 24f
@@ -210,7 +207,7 @@ object InfoCardRenderer {
         g.drawString("这是你的统计数据", 50f, 178f)
     }
 
-    /** 玩家身份条（1.6.9.5：blur-mask 样式时先铺卡片背后的局部模糊背景）。 */
+    /** 玩家身份条（先铺卡片背后的局部模糊背景，再叠半透明底色）。 */
     private fun drawIdentityBar(g: Graphics2D, playerName: String, backdrop: InfoCardAssets.CardBackdropContext?) {
         val x = 24f
         val y = 244f
@@ -234,7 +231,7 @@ object InfoCardRenderer {
     /**
      * 生涯统计面板（1.5.2：9 项 → 3 列 × 3 行；4-5 项时 2 列避免孤项；
      * 1.5.3：高度随项数自适应，缺失依赖的项不渲染；
-     * 1.6.9.5：blur-mask 样式时先铺卡片背后的局部模糊背景。 */
+     * 先铺卡片背后的局部模糊背景，再叠半透明底色。 */
     private fun drawStatsPanel(g: Graphics2D, items: List<CardItem>, height: Int, backdrop: InfoCardAssets.CardBackdropContext?) {
         val x = 24f
         val y = 336f
@@ -242,7 +239,8 @@ object InfoCardRenderer {
         val h = (height - 24 - 336).toFloat()
 
         backdrop?.paintCard(g, x, y, w, h, 24f)
-        g.color = Color(0x00, 0x00, 0x00, 142)
+        // 1.7.0：毛玻璃底色调浅（黑 142 → 76，避免卡片发灰过深）
+        g.color = Color(0x00, 0x00, 0x00, 76)
         g.fill(RoundRectangle2D.Float(x, y, w, h, 24f, 24f))
 
         // 面板标题
@@ -527,25 +525,18 @@ object InfoCardRenderer {
 /**
  * 卡片素材获取与缓存：MC 皮肤正面贴图头像 + 背景图。
  *
- * 0.1.5.2 头像修复：
- * 旧版直接请求 minotar 3D 头像，离线服（离线 UUID）与查不到的账号都会
- * 得到 200 的默认史蒂夫皮肤，导致头像永远显示史蒂夫。
- * 现在改为解析玩家真实皮肤贴图并裁剪正面脸部（8×8 + 帽子层），
- * 优先级（每一步失败都可检测，绝不回落到默认皮肤）：
- * 1. 在线玩家的 Profile 贴图 URL（含 SkinsRestorer 等改皮肤的情况）；
- * 2. 本服 playerdata/<UUID>.dat 中的 textures 属性（NBT 解析）；
- * 3. 外部头像服务多线路（MC-Heads → Minotar → MinePic → Crafatar，
- *    按实测速度排序；基岩玩家走 MC-Heads xuid 线路）；
- * 4. Mojang 官方会话服务器 / 玩家名反查（1.6.8 起排最后兼底——
- *    官方线路国内服务器普遍超时，先前排首位时排行榜等大批量
- *    头像预热预算被逐玩家 3+5 秒超时耗尽，多数头像显示不出）；
- * 5. 全部失败 → null → 渲染占位图标。
+ * 头像获取链（每一步失败都可检测，绝不回落到默认皮肤；1.7.0：本地
+ * 贴图链路已移除，统一在线获取）：
+ * 1. 外部头像服务多线路（MC-Heads → Minotar → MinePic → Crafatar，
+ *    按实测速度排序；基岩玩家走 MC-Heads xuid 线路；各线路均带
+ *    帽子层/外层贴图）；
+ * 2. Mojang 官方会话服务器 / 玩家名反查兼底（官方线路国内服务器
+ *    普遍超时，排末位不挤占预热预算）；
+ * 3. 全部失败 → null → 渲染占位图标。
  *
- * 0.1.5.2 性能修复：头像与背景均带 TTL 缓存，重复查询不再重复解码 / 请求。
- *
- * 0.1.5.3 随机背景：卡片背景从 img/ 目录的候选图中随机挑选一张
- * （旧版固定取排序后的第一张），每张图的处理结果仍按文件签名缓存，
- * 重复抽中时不再重新解码，随机切换不增加 CPU 开销。
+ * 头像与背景均带 TTL 缓存，重复查询不再重复解码 / 请求。
+ * 卡片背景从 img/ 目录的候选图中随机挑选一张（每张图的处理结果
+ * 按文件签名缓存，重复抽中时不再重新解码）。
  */
 object InfoCardAssets {
 
@@ -625,10 +616,6 @@ object InfoCardAssets {
     data class AvatarRequest(
         val uuid: UUID?,
         val playerName: String,
-        /** 在线玩家 Profile 的皮肤贴图 URL（主线程捕获，可为 null）。 */
-        val skinUrl: String? = null,
-        /** 服务器 playerdata 目录（主线程捕获，可为 null）。 */
-        val playerDataDir: File? = null,
     )
 
     private class CacheEntry(val image: BufferedImage, val createdAt: Long)
@@ -698,7 +685,7 @@ object InfoCardAssets {
         @Volatile var lastUsedAt: Long,
     ) {
         /**
-         * blur-mask 卡片背后局部模糊副本（1.6.9.5）：惰性生成一次，
+         * 卡片背后局部模糊副本：惰性生成一次（1.7.0 起模糊度可配），
          * 随本条目淘汰 / 覆盖 / 空闲释放一起 flush，不单独占缓存配额。
          */
         @Volatile
@@ -707,6 +694,10 @@ object InfoCardAssets {
         /** 模糊副本的栅格字节占用（计入背景缓存字节预算，见 evict）。 */
         @Volatile
         var backdropBytes: Long = 0L
+
+        /** 生成模糊副本时使用的模糊度（render.blur-strength；配置变化后重生成）。 */
+        @Volatile
+        var backdropStrength: Int = 0
     }
 
     /** 预处理背景缓存：文件绝对路径 → 条目（0.1.5.3 起支持多张图随机切换）。 */
@@ -733,14 +724,18 @@ object InfoCardAssets {
     private const val BACKGROUND_MAX_DIM = 1600
 
     /**
-     * blur-mask 卡片背后局部模糊的降采样倍率（1.6.9.4 引入；1.6.9.5 起
-     * 语义改为 backdrop-filter：仅卡片矩形内绘制模糊副本）：先缩到约
-     * 1/8 尺寸再做盒式模糊，毫秒级完成；等效约 40px 半径的柔和高斯模糊。
+     * 卡片背后局部模糊的强度映射（1.7.0：模糊度可配 render.blur-strength，
+     * 0-100）。模糊度映射到「降采样倍率 + 盒式模糊半径」两档参数：
+     * - 降采样倍率 d = 2 + strength * 6 / 100（2 ~ 8 倍）；
+     * - 盒式模糊半径 r = 1 + strength * 2 / 100（1 ~ 3，作用在降采样
+     *   后的小图上，两趟水平 + 垂直）；
+     * - strength=100 等效旧版固定参数（d=8、r=3，观感约 40px 柔化）；
+     *   默认 50（d=5、r=2，观感约 20px，比旧版更轻）；
+     * - strength=0 不做任何模糊（无模糊副本，卡片仅叠半透明底色）。
      */
-    private const val BLUR_DOWNSCALE = 8
+    private fun blurDownscaleOf(strength: Int): Int = 2 + Math.round(strength * 6f / 100f).toInt()
 
-    /** blur-mask 小图盒式模糊半径（1.6.9.4；作用在降采样后的小图上）。 */
-    private const val BLUR_BOX_RADIUS = 3
+    private fun blurBoxRadiusOf(strength: Int): Int = 1 + Math.round(strength * 2f / 100f).toInt()
 
     /** 近期解码失败的背景文件（路径 → 失败时间），10 分钟内不再抽中，避免坏图反复触发解码（0.1.5.5）。 */
     private val backgroundFailures = ConcurrentHashMap<String, Long>()
@@ -772,20 +767,19 @@ object InfoCardAssets {
      * 获取玩家皮肤正面贴图头像（异步线程调用）。
      * 返回 FACE_SIZE × FACE_SIZE 的脸部图像；无皮肤数据时返回 null。
      *
-     * 查找顺序（1.6.6.1）：内存缓存 → 磁盘缓存（plugins/KERONGPenguin/
-     * cache/avatars/，默认 3 小时，render.avatar-cache-hours 可配置；
-     * 过期文件由后台清扫线程删除，命中即回填内存）→ 按配置的优先方式
-     * 获取（render.avatar-fetch-priority，默认 local）：
-     * - local：本地方式优先（在线玩家 Profile + 本服存档 NBT 解析皮肤
-     *   贴图，仅下载贴图文件本身，不走账号 API），取不到自动切换外置；
-     * - external：外置方式优先（MC-Heads → Minotar → MinePic → Crafatar
-     *   → Mojang 官方 API 兼底，1.6.8 起官方线路排最后），全部失败后再试本地；
-     * 先试的一方失败自动切换另一方，两种方式都不成时才记入失败冷却。
+     * 查找顺序：内存缓存 → 磁盘缓存（plugins/KERONGPenguin/cache/avatars/，
+     * 默认 3 小时，render.avatar-cache-hours 可配置；过期文件由后台清扫
+     * 线程删除，命中即回填内存）→ 在线获取（外部多线路 → Mojang 官方
+     * API 兼底）。
      *
-     * 1.6.6.2：
-     * - 每次成功获取（含磁盘缓存命中）把获取方式写入日志（[logAvatarSource]）；
-     * - 单张 PNG 超过 [AVATAR_MEMORY_MAX_BYTES]（10KB）的头像只走磁盘缓存，
-     *   不再进内存缓存（内存缓存条目上限恢复 128 条，见 [AVATAR_CACHE_MAX]）。
+     * 1.7.0：本地获取链路（在线玩家 Profile / 本服存档 NBT 解析皮肤贴图）
+     * 已移除——贴图文件托管在 textures.minecraft.net，国内服务器普遍
+     * 不可达导致大部分头像获取失败；现统一走外部头像线路（各线路均带
+     * 帽子层/外层贴图），全部失败才记入失败冷却。
+     *
+     * 每次成功获取（含磁盘缓存命中）把获取方式写入日志（[logAvatarSource]）；
+     * 单张 PNG 超过 [AVATAR_MEMORY_MAX_BYTES]（10KB）的头像只走磁盘缓存，
+     * 不再进内存缓存（内存缓存条目上限 128 条，见 [AVATAR_CACHE_MAX]）。
      */
     fun fetchAvatar(request: AvatarRequest): BufferedImage? {
         val key = request.uuid?.toString() ?: "name:${request.playerName.lowercase()}"
@@ -818,14 +812,14 @@ object InfoCardAssets {
             return disk.image
         }
 
-        // 4. 按配置优先级获取：local = 本地优先，取不到自动切外置；
-        //    external = 外置优先，全部失败再试本地（1.6.6.1 覆盖版）
+        // 4. 在线获取：外部多线路（MC-Heads → Minotar → MinePic → Crafatar）
+        //    优先，Mojang 官方 API 兼底（1.7.0：本地链路已移除）。
         //
-        // 1.6.6.2 覆盖版：single-flight 去重——并发查询同一玩家时只有
-        // 第一个请求真正走网络（执行者），其余请求等待其完成后直接
-        // 取结果（等待者），超时未等到按获取失败渲染占位块。启动 /
-        // 刷屏场景下多张渲染并发预热同一批头像时，网络请求与中间对象
-        // 分配量按并发数成倍削减（见 [inFlightFetches]）。
+        // single-flight 去重：并发查询同一玩家时只有第一个请求真正走网络
+        // （执行者），其余请求等待其完成后直接取结果（等待者），超时未等到
+        // 按获取失败渲染占位块。启动 / 刷屏场景下多张渲染并发预热同一批
+        // 头像时，网络请求与中间对象分配量按并发数成倍削减
+        // （见 [inFlightFetches]）。
         val latch = FetchLatch()
         val existing = inFlightFetches.putIfAbsent(key, latch)
         if (existing != null) {
@@ -838,13 +832,7 @@ object InfoCardAssets {
             return existing.image
         }
         try {
-            val preferExternal = RenderSettings.avatarFetchPriority() ==
-                RenderSettings.AvatarFetchPriority.EXTERNAL
-            val fetched: FetchedFace? = if (preferExternal) {
-                fetchViaExternalChain(request) ?: fetchViaLocalChain(request)
-            } else {
-                fetchViaLocalChain(request) ?: fetchViaExternalChain(request)
-            }
+            val fetched: FetchedFace? = fetchViaExternalChain(request)
 
             if (fetched != null) {
                 cacheAndStoreAvatar(key, fetched.image, now)
@@ -991,24 +979,7 @@ object InfoCardAssets {
         }
     }
 
-    // ---------- 皮肤贴图解析链（1.6.6.1 覆盖版：本地 / Mojang 官方两段拆分） ----------
-
-    /**
-     * 本地方式获取头像（1.6.6.1 覆盖版；1.6.6.2 返回带方式标签）：本服
-     * 已有数据解析皮肤贴图 URL → 下载贴图 → 裁脸。
-     *
-     * - 数据源仅限本服：在线玩家 Profile（含 SkinsRestorer 等皮肤插件
-     *   修改后的结果，主线程捕获）与本服 playerdata NBT 存档；
-     * - 账号 / 贴图解析完全不走外部接口，仅需下载贴图 PNG 本身
-     *   （textures.minecraft.net，服务器不保存皮肤文件，这是物理上限）；
-     * - 本地数据缺失或下载 / 裁剪失败返回 null，调用方自动切换外置方式
-     *   （基岩玩家的 Profile 无贴图属性，同样自动落外置 xuid 线路）。
-     */
-    private fun fetchViaLocalChain(request: AvatarRequest): FetchedFace? {
-        val resolved = resolveLocalSkinUrl(request) ?: return null
-        val face = downloadAndCropFace(resolved.url) ?: return null
-        return FetchedFace(face, "本地皮肤贴图（${resolved.source}）")
-    }
+    // ---------- 皮肤贴图解析链（1.7.0：仅 Mojang 官方线路，本地链路已移除） ----------
 
     /**
      * 外置方式获取头像（1.6.8：外部多线路优先，Mojang 官方 API 移到最后兼底）。
@@ -1035,40 +1006,14 @@ object InfoCardAssets {
     }
 
     /**
-     * 下载皮肤贴图并裁脸（1.6.5：中间贴图用后即 flush，即用即释不等 GC；
-     * 下载失败 / 尺寸异常返回 null）。
+     * 下载皮肤贴图并裁脸（含帽子层叠加；下载失败 / 尺寸异常返回 null；
+     * 中间贴图用后即 flush）。
      */
     private fun downloadAndCropFace(skinUrl: String): BufferedImage? {
         val skin = downloadSkin(skinUrl) ?: return null
         val cropped = cropFace(skin, FACE_SIZE)
         try { skin.flush() } catch (_: Throwable) {}
         return cropped
-    }
-
-    /** 本地皮肤 URL 解析结果（1.6.6.2：带数据源标签，用于获取方式日志）。 */
-    private class LocalSkinRef(val url: String, val source: String)
-
-    /**
-     * 解析本地皮肤贴图 URL：仅用本服已有数据，不访问任何外部接口。
-     * 顺序：在线玩家 Profile（含皮肤插件修改）→ 本服 playerdata NBT
-     * （离线服 + SkinsRestorer 的主要来源）。
-     */
-    private fun resolveLocalSkinUrl(request: AvatarRequest): LocalSkinRef? {
-        // 1. 在线玩家 Profile（最准确，含皮肤插件修改）
-        request.skinUrl?.takeIf { it.startsWith("http") }?.let {
-            return LocalSkinRef(it, "在线Profile")
-        }
-
-        // 2. 本服 playerdata NBT（离线服 + SkinsRestorer 的主要来源）
-        val uuid = request.uuid
-        val playerDataDir = request.playerDataDir
-        if (uuid != null && playerDataDir != null) {
-            val datFile = File(playerDataDir, "$uuid.dat")
-            if (datFile.isFile) {
-                extractNbtSkinUrl(datFile)?.let { return LocalSkinRef(it, "存档NBT") }
-            }
-        }
-        return null
     }
 
     /**
@@ -1113,126 +1058,12 @@ object InfoCardAssets {
         return null
     }
 
-    /** 解析 playerdata .dat（gzip NBT）中的贴图属性 → 皮肤 URL。 */
-    internal fun extractNbtSkinUrl(datFile: File): String? {
-        return try {
-            GZIPInputStream(datFile.inputStream().buffered()).use { raw ->
-                val input = DataInputStream(raw.buffered())
-                // 根标签必须是 Compound
-                if (input.readUnsignedByte() != 10) return null
-                skipName(input)
-                walkRootCompound(input)
-            }
-        } catch (_: Throwable) {
-            null
-        }
-    }
-
-    /** 遍历根复合标签，寻找 Properties → textures → value。 */
-    private fun walkRootCompound(input: DataInputStream): String? {
-        while (true) {
-            val type = input.readUnsignedByte()
-            if (type == 0) return null
-            val name = input.readUTF()
-            if (type == 10 && name == "Properties") {
-                walkProperties(input)?.let { return it }
-            } else {
-                skipPayload(input, type)
-            }
-        }
-    }
-
-    /** 遍历 Properties 复合标签，寻找 textures 列表。 */
-    private fun walkProperties(input: DataInputStream): String? {
-        while (true) {
-            val type = input.readUnsignedByte()
-            if (type == 0) return null
-            val name = input.readUTF()
-            if (type == 9 && name == "textures") {
-                val elemType = input.readUnsignedByte()
-                val count = input.readInt()
-                if (elemType == 10 && count > 0) {
-                    for (i in 0 until count) {
-                        walkTextureEntry(input)?.let { return it }
-                    }
-                } else {
-                    for (i in 0 until count) skipPayload(input, elemType)
-                }
-            } else {
-                skipPayload(input, type)
-            }
-        }
-    }
-
-    /** 遍历单个贴图属性复合标签，读取 value（base64 的贴图 JSON）。 */
-    private fun walkTextureEntry(input: DataInputStream): String? {
-        var value: String? = null
-        while (true) {
-            val type = input.readUnsignedByte()
-            if (type == 0) break
-            val name = input.readUTF()
-            if (type == 8 && name == "value") {
-                value = input.readUTF()
-            } else {
-                skipPayload(input, type)
-            }
-        }
-        return value?.let { decodeSkinUrl(it) }
-    }
-
     /** base64 贴图 JSON → 皮肤 URL。 */
     private fun decodeSkinUrl(base64: String): String? = try {
         val json = JSON.parseObject(String(Base64.getDecoder().decode(base64), Charsets.UTF_8))
         json.getJSONObject("textures")?.getJSONObject("SKIN")?.getString("url")
     } catch (_: Throwable) {
         null
-    }
-
-    /** 跳过 NBT 标签名（短长度 + UTF 字节）。 */
-    private fun skipName(input: DataInputStream) {
-        skipFully(input, input.readUnsignedShort())
-    }
-
-    /** 跳过指定类型标签的负载。 */
-    private fun skipPayload(input: DataInputStream, type: Int) {
-        when (type) {
-            1 -> skipFully(input, 1)
-            2 -> skipFully(input, 2)
-            3 -> skipFully(input, 4)
-            4 -> skipFully(input, 8)
-            5 -> skipFully(input, 4)
-            6 -> skipFully(input, 8)
-            7 -> skipFully(input, input.readInt())
-            8 -> skipFully(input, input.readUnsignedShort())
-            9 -> {
-                val elemType = input.readUnsignedByte()
-                val count = input.readInt()
-                for (i in 0 until count) skipPayload(input, elemType)
-            }
-            10 -> while (true) {
-                val t = input.readUnsignedByte()
-                if (t == 0) break
-                skipName(input)
-                skipPayload(input, t)
-            }
-            11 -> skipFully(input, 4 * input.readInt())
-            12 -> skipFully(input, 8 * input.readInt())
-        }
-    }
-
-    /** 确保跳过 n 字节（skipBytes 可能部分跳过）。 */
-    private fun skipFully(input: DataInputStream, count: Int) {
-        var left = count
-        while (left > 0) {
-            val skipped = input.skipBytes(left)
-            if (skipped > 0) {
-                left -= skipped
-            } else if (input.read() < 0) {
-                throw java.io.EOFException("NBT stream ended unexpectedly")
-            } else {
-                left -= 1
-            }
-        }
     }
 
     /**
@@ -1339,8 +1170,13 @@ object InfoCardAssets {
     }
 
     /**
-     * 外部头像服务回退链（1.6.6：官方皮肤链路失败后的兜底数据源，多线路；
-     * 1.6.6.1 新增 MinePic 第三线路）。
+     * 外部头像服务回退链（在线头像获取的主链路）。
+     *
+     * 1.7.0 外层贴图（帽子层）修复：Minotar 的 /avatar 与 MinePic 的
+     * /avatar 端点都只回内层皮肤（实测像素比对确认），玩家头像缺少
+     * 外层纹理。现改为：Minotar 走 /helm（带帽子层）；MinePic 改走
+     * /skin 原始皮肤贴图 + 本地裁脸（[downloadAndCropFace]，含帽子层
+     * 叠加与高清皮肤等比支持）。
      *
      * 生产实测可达性（2026-10）：MC-Heads ≈ 0.4s、Minotar ≈ 0.5s、
      * MinePic ≈ 1.7~6s（可用但波动大，偶发超时，见 [fetchMinePicAvatar]）、
@@ -1373,7 +1209,7 @@ object InfoCardAssets {
             if (uuid.version() == 4) {
                 // 正版账号：快线路优先，慢线路（MinePic / Crafatar）仅在前两者都失败后尝试
                 return fetchAvatarFromUrl("https://mc-heads.net/avatar/$uuid/$FACE_SIZE", 3000, "MC-Heads")
-                    ?: fetchAvatarFromUrl("https://minotar.net/avatar/$uuid/$FACE_SIZE", 3000, "Minotar")
+                    ?: fetchAvatarFromUrl("https://minotar.net/helm/$uuid/$FACE_SIZE", 3000, "Minotar")
                     ?: fetchMinePicAvatar(uuid.toString().replace("-", ""))
                     ?: fetchCrafatarAvatar(uuid)
             }
@@ -1381,24 +1217,29 @@ object InfoCardAssets {
         // 仅玩家名（离线 UUID / 无 UUID）：名字线路
         if (request.playerName.isNotBlank()) {
             return fetchAvatarFromUrl("https://mc-heads.net/avatar/${request.playerName}/$FACE_SIZE", 3000, "MC-Heads（名字线路）")
-                ?: fetchAvatarFromUrl("https://minotar.net/avatar/${request.playerName}/$FACE_SIZE", 3000, "Minotar（名字线路）")
+                ?: fetchAvatarFromUrl("https://minotar.net/helm/${request.playerName}/$FACE_SIZE", 3000, "Minotar（名字线路）")
                 ?: fetchMinePicAvatar(request.playerName)
         }
         return null
     }
 
     /**
-     * MinePic 线路（1.6.6.1 新增）：https://minepic.org/avatar/<UUID 或玩家名>/<尺寸>。
+     * MinePic 线路：https://minepic.org/skin/<UUID 或玩家名>。
      *
+     * - 1.7.0：改走 /skin 原始皮肤贴图 + 本地裁脸（[downloadAndCropFace]）——
+     *   MinePic 的 /avatar 端点只回内层皮肤（实测确认，帽子层缺失），
+     *   /skin 返回原始贴图（含帽子层区域，支持高清皮肤），裁脸时叠上
+     *   外层，与其他线路观感一致；
      * - 同时支持 32 位无横线 UUID 与玩家名（调用方传参前已归一化）；
-     * - 实测（2026-10）可用但波动较大：成功时 1.7~6s，偶发超时 / 连接
-     *   中断，未知账号不响应（按失败处理，不会返回默认皮肤假头像）；
-     *   因此作为第三线路插在 Minotar 之后、Crafatar 之前，超时 3 秒
-     *   不挤占后续线路预算；http 会 301 跳 https，此处直接走 https；
-     * - 返回尺寸即请求尺寸（实测 216×216 RGBA），命中时无需二次缩放。
+     * - 实测可用但波动较大：成功时 1.7~6s，偶发超时 / 连接中断，
+     *   未知账号不响应（按失败处理，不会返回默认皮肤假头像）；
+     *   因此作为第三线路插在 Minotar 之后、Crafatar 之前，不挤占
+     *   后续线路预算；http 会 301 跳 https，此处直接走 https。
      */
-    private fun fetchMinePicAvatar(id: String): FetchedFace? =
-        fetchAvatarFromUrl("https://minepic.org/avatar/$id/$FACE_SIZE", 3000, "MinePic")
+    private fun fetchMinePicAvatar(id: String): FetchedFace? {
+        val face = downloadAndCropFace("https://minepic.org/skin/$id") ?: return null
+        return FetchedFace(face, "MinePic（皮肤裁脸）")
+    }
 
     /**
      * Floodgate 基岩玩家 UUID → Xbox xuid（非基岩 UUID 返回 null）。
@@ -1445,7 +1286,7 @@ object InfoCardAssets {
     private const val AVATAR_DISK_MAX_FILES = 512
 
     /**
-     * 磁盘缓存有效期（毫秒），实时读配置（/hbkng reload 后立即生效）：
+     * 磁盘缓存有效期（毫秒），实时读配置（/hbkrg reload 后立即生效）：
      * - render.avatar-cache-hours（默认 3 小时，支持小数如 0.5）；
      * - 0 = 关闭磁盘缓存（不读不写，清扫时把已有文件全部删掉）；
      * - 负数按默认处理；有效值下限 1 分钟（防误填 0.0001 之类的抖动值）。
@@ -1725,7 +1566,7 @@ object InfoCardAssets {
     }
 
     /**
-     * 缓存与内存诊断快照（1.6.6.2 覆盖版：/hbkng mem 子命令输出）。
+     * 缓存与内存诊断快照（1.6.6.2 覆盖版：/hbkrg mem 子命令输出）。
      *
      * 用于排查「面板内存高」类问题：JVM 已提交堆 ≠ 插件实际占用的
      * 存活内存（渲染高峰后 G1 扩张的堆按 JVM 自然节奏归还；
@@ -1889,12 +1730,11 @@ object InfoCardAssets {
      * - 尺寸签名改用 width * 1_000_000 + height，消除长图高度超过 4096 时的碰撞。
      *
      * 1.5.4.4：移除背景模糊（金字塔整段删除），背景直接叠暗色遮罩
-     * （[darkOverlay]），处理开销与峰值内存进一步降低。
+     * ，处理开销与峰值内存进一步降低。
      *
-     * 1.6.9.5：处理结果不再随遮罩样式变化——gray-mask 与 blur-mask
-     * 的背景图本身一致（blur-mask 只是在卡片矩形内额外铺一层模糊
-     * 副本，见 [cardBackdropOf]），缓存键不再携带样式标签，切换样式
-     * 零重新处理开销。
+     * 1.7.0：不再叠暗色遮罩（原版灰色遮罩样式已移除，只保留毛玻璃
+     * 观感），处理结果即 cover 裁剪后的原图；模糊副本按需另行生成
+     * （见 [cardBackdropOf]），缓存键不含样式。
      */
     @Synchronized
     fun processedBackground(dataDirectory: File, width: Int, height: Int): BufferedImage? {
@@ -1929,7 +1769,9 @@ object InfoCardAssets {
         if (decoded.width <= 0 || decoded.height <= 0) return null
 
         val cover = coverImage(decoded, width, height)
-        val processed = darkOverlay(cover)
+        // 1.7.0：不再叠整图暗色遮罩（原版灰色遮罩样式已移除）——背景原图
+        // 直接作为画布底，观感交给卡片背后的局部模糊（毛玻璃）承担
+        val processed = cover
         val bytes = processed.width.toLong() * processed.height * 4
         // 1.6.5：中间图即用即释（cover 与 scaled 父图共享栅格，flush cover 即一并释放）
         try { cover.flush() } catch (_: Throwable) {}
@@ -1988,7 +1830,7 @@ object InfoCardAssets {
      * - 处理结果按「资源路径 + 尺寸」键入 [backgroundCache]（stamp 恒 0 永不失效，
      *   与随机背景共用 LRU / 字节预算淘汰），同一尺寸的后续页直接命中，
      *   首页 / 续页不同尺寸各存一份互不挤占；
-     * - 图像设计已自带可读性（深灰主体与卡片色拉开差距），不叠 [darkOverlay]；
+     * - 图像设计已自带可读性（深灰主体与卡片色拉开差距）；
      * - 资源缺失 / 解码失败返回 null（渲染层退回纯色渐变，不影响出图）。
      */
     @Synchronized
@@ -2094,7 +1936,7 @@ object InfoCardAssets {
 
     /**
      * 背景缓存超限淘汰：先按张数上限，再按字节预算（含 1.6.9.5 起
-     * blur-mask 模糊副本的占用），均淘汰最久未使用的条目（1.5.1；
+     * 模糊副本的占用），均淘汰最久未使用的条目（1.5.1；
      * 1.6.5 淘汰即 flush 释放栅格；1.6.9.5 淘汰连带 flush 模糊副本）。
      */
     private fun evictBackgroundsIfOversized() {
@@ -2158,43 +2000,13 @@ object InfoCardAssets {
         return scaled.getSubimage(offsetX, offsetY, targetWidth, targetHeight)
     }
 
-    /**
-     * 暗色遮罩（1.5.4.4：背景不再模糊）。
-     *
-     * 背景 = 原图（cover 裁剪 / 拉伸到目标尺寸后）直接叠一层半透明黑：
-     * - 不再做金字塔降采样 / 升采样，背景保留原图全部细节与锐度；
-     * - 单遍合成等效总黑度约 41%（与旧版暗度观感一致），前景文字可读；
-     * - 无任何中间图像，处理开销与峰值内存均为历史最低。
-     *
-     * 历史包袱说明：0.1.5.x~1.5.3.2 曾对背景做模糊处理，1.5.4.4 起按用户
-     * 要求移除——“去掉模糊，直接加暗色遮罩”；1.6.9.4 起模糊以可选样式
-     * 回归（render.background-style = blur-mask，默认仍为本灰色遮罩样式，
-     * 参考 EasyBot 液态玻璃图片模板）；1.6.9.5 起改为 backdrop-filter
-     * 语义——背景本身不再整图模糊，只有卡片矩形内铺模糊副本
-     * （见 [cardBackdropOf]）。
-     */
-    private fun darkOverlay(cover: BufferedImage): BufferedImage {
-        val width = cover.width
-        val height = cover.height
-        val result = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
-        val g = result.createGraphics()
-        try {
-            g.drawImage(cover, 0, 0, null)
-            g.color = Color(0x00, 0x00, 0x00, 105)
-            g.fillRect(0, 0, width, height)
-        } finally {
-            g.dispose()
-        }
-        return result
-    }
-
     // ---------- 背景铺放与卡片背后局部模糊（1.6.9.5） ----------
 
     /** 背景 cover 铺放参数：源图上被铺到画布的区域（等比缩放 + 中心裁剪）。 */
     class BackgroundPlacement internal constructor(val sx: Int, val sy: Int, val sw: Int, val sh: Int)
 
     /**
-     * 单次渲染的背景上下文（1.6.9.5 blur-mask）：持有背景铺放参数与
+     * 单次渲染的背景上下文：持有背景铺放参数与
      * 背景的模糊副本，卡片绘制前在其矩形内铺出「卡片背后局部模糊」
      * 效果（CSS backdrop-filter 语义）。
      */
@@ -2246,9 +2058,9 @@ object InfoCardAssets {
      *   （等比放大不足的边 + 中心裁剪，不再拉伸变形——旧版对封顶高度的
      *   背景直接拉伸铺满，长图页会把背景纵向压扁）；
      * - 无图 / 尺寸非法：深色渐变兜底（各渲染器旧版自带实现原样收编）；
-     * - blur-mask 样式（render.background-style = blur-mask）时返回
-     *   [CardBackdropContext]，供卡片绘制前铺「卡片背后局部模糊」；
-     *   其余样式或无背景返回 null（调用方 `backdrop?.paintCard(...)` 即可）。
+     * - 模糊度（render.blur-strength）大于 0 时返回 [CardBackdropContext]，
+     *   供卡片绘制前铺「卡片背后局部模糊」（backdrop-filter 毛玻璃）；
+     *   模糊度为 0 或无背景返回 null（调用方 `backdrop?.paintCard(...)` 即可）。
      */
     fun drawBackground(
         g: Graphics2D,
@@ -2285,53 +2097,61 @@ object InfoCardAssets {
     }
 
     /**
-     * 取背景的模糊副本（1.6.9.5 blur-mask 卡片背后局部模糊）：
-     * - 仅 blur-mask 样式返回非 null（其余样式直接 null，零开销）；
+     * 取背景的模糊副本（卡片背后局部模糊，1.7.0 起唯一样式）：
+     * - 模糊度（render.blur-strength）为 0 时返回 null（不模糊，零开销）；
      * - 模糊副本挂在背景缓存条目上惰性生成一次（[blurImage] 毫秒级），
-     *   随条目淘汰 / 覆盖 / 空闲释放一起 flush，字节占用计入背景缓存
+     *   模糊度变化后自动重新生成（条目记录生成时的强度）；
+     * - 随条目淘汰 / 覆盖 / 空闲释放一起 flush，字节占用计入背景缓存
      *   预算（[evictBackgroundsIfOversized]）；
      * - 与背景处理 / 淘汰同为 [Synchronized]，渲染线程取副本与缓存
      *   维护互斥，不会拿到已被淘汰释放的图像。
      */
     @Synchronized
     private fun cardBackdropOf(background: BufferedImage): BufferedImage? {
-        if (RenderSettings.backgroundStyle() != RenderSettings.BackgroundStyle.BLUR_MASK) return null
+        val strength = RenderSettings.blurStrength()
+        if (strength <= 0) return null
         for (entry in backgroundCache.values) {
             if (entry.image !== background) continue
             val existing = entry.backdrop
-            if (existing != null) return existing
-            val blurred = blurImage(entry.image)
+            if (existing != null && entry.backdropStrength == strength) return existing
+            // 首次生成或模糊度已变化：释放旧副本，按当前模糊度重新生成
+            if (existing != null) {
+                try { existing.flush() } catch (_: Throwable) {}
+            }
+            val blurred = blurImage(entry.image, strength)
             entry.backdrop = blurred
+            entry.backdropStrength = strength
             entry.backdropBytes = blurred.width.toLong() * blurred.height * 4
             evictBackgroundsIfOversized()
             // 淘汰可能把本条目清掉（字节预算超限时），此时返回未挂缓存的副本
             return entry.backdrop ?: blurred
         }
         // 不在缓存中的背景（防御路径，正常链路不会发生）：直接模糊不缓存
-        return blurImage(background)
+        return blurImage(background, strength)
     }
 
     /**
-     * 背景高斯模糊（1.6.9.4 blur-mask 引入；1.6.9.5 起用途改为
-     * 「卡片背后局部模糊」的模糊副本生成，见 [cardBackdropOf]）。
+     * 背景高斯模糊（卡片背后局部模糊的模糊副本生成，见 [cardBackdropOf]；
+     * 1.7.0 起模糊度由 render.blur-strength 控制）。
      *
      * 实现走「降采样 → 小图盒式模糊 → 双线性放大」三步，而不是整图卷积：
-     * - 先双线性缩到约 1/8 尺寸（背景本就只做底板，细节无意义，降采样
-     *   本身即第一重柔化）；
-     * - 小图上做两趟可分离盒式模糊（水平 + 垂直各两遍，半径 3，多趟
-     *   盒式卷积逼近高斯分布）；
-     * - 双线性放大回目标尺寸——等效于对原图做约 40px 半径的柔和高斯模糊，
-     *   观感对齐 CSS backdrop-filter: blur(16~24px) 的液态玻璃底板。
+     * - 先双线性缩到小尺寸（背景本就只做底板，细节无意义，降采样本身
+     *   即第一重柔化；倍率随模糊度 2 ~ 8 倍）；
+     * - 小图上做两趟可分离盒式模糊（水平 + 垂直各两遍，半径随模糊度
+     *   1 ~ 3，多趟盒式卷积逼近高斯分布）；
+     * - 双线性放大回目标尺寸——观感对齐 CSS backdrop-filter 的液态玻璃底板。
      *
-     * 性能：1350×1034 画布缩为 169×130 小图，四趟整数滑动窗口求和，
-     * 单次处理毫秒级，结果随背景缓存（键含样式标签），渲染期零重复开销。
+     * 性能：1350×1034 画布缩为小图后四趟整数滑动窗口求和，单次处理
+     * 毫秒级，结果随背景缓存条目保存，渲染期零重复开销。
      */
-    private fun blurImage(image: BufferedImage): BufferedImage {
+    private fun blurImage(image: BufferedImage, strength: Int): BufferedImage {
         val width = image.width
         val height = image.height
-        if (width < BLUR_DOWNSCALE * 2 || height < BLUR_DOWNSCALE * 2) return image
-        val smallWidth = (width + BLUR_DOWNSCALE - 1) / BLUR_DOWNSCALE
-        val smallHeight = (height + BLUR_DOWNSCALE - 1) / BLUR_DOWNSCALE
+        val downscale = blurDownscaleOf(strength)
+        val boxRadius = blurBoxRadiusOf(strength)
+        if (width < downscale * 2 || height < downscale * 2) return image
+        val smallWidth = (width + downscale - 1) / downscale
+        val smallHeight = (height + downscale - 1) / downscale
 
         // 1. 降采样（双线性）
         val small = BufferedImage(smallWidth, smallHeight, BufferedImage.TYPE_INT_RGB)
@@ -2344,7 +2164,7 @@ object InfoCardAssets {
         }
 
         // 2. 小图盒式模糊（两趟水平 + 两趟垂直，多趟叠加逼近高斯分布）
-        val blurred = boxBlur(small, BLUR_BOX_RADIUS, passes = 2)
+        val blurred = boxBlur(small, boxRadius, passes = 2)
         if (blurred !== small) {
             try { small.flush() } catch (_: Throwable) {}
         }

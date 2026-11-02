@@ -31,7 +31,7 @@ import javax.imageio.ImageIO
  * 画布 PNG 写出后立即 flush 释放栅格内存（与其他渲染器一致）。
  *
  * 1.6.9.5：背景统一走共享入口（cover 裁剪铺满：等比放大不足的边 +
- * 图片中心裁剪，不再拉伸变形）；blur-mask 样式（render.background-style）
+ * 图片中心裁剪，不拉伸变形）；毛玻璃模糊度（render.blur-strength）
  * 时卡片背后区域铺背景模糊副本（backdrop-filter 局部模糊，
  * 卡片外背景保持清晰）。
  */
@@ -159,7 +159,7 @@ object LeaderboardRenderer {
             g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
 
             // 1.6.9.5：背景统一走共享入口（cover 裁剪铺满，不再拉伸变形）；
-            // blur-mask 样式时返回卡片背后局部模糊上下文
+            // 返回卡片背后局部模糊上下文（毛玻璃，模糊度 render.blur-strength）
             val backdrop = InfoCardAssets.drawBackground(g, data.background, WIDTH, height)
             if (firstPage) {
                 drawHeader(g, backdrop, data.title, data.totalPlayers)
@@ -175,7 +175,7 @@ object LeaderboardRenderer {
         }
         val output = ByteArrayOutputStream(384 * 1024)
         // 全局透明度（render.global-opacity，默认 1.0 原样零开销）
-        ImageIO.write(GlobalOpacity.apply(image), "png", output)
+        ImageIO.write(image, "png", output)
         // PNG 已写出，立即释放单次画布的栅格内存
         image.flush()
         return output.toByteArray()
@@ -198,7 +198,7 @@ object LeaderboardRenderer {
     }
 
     /** 第一页标题区：眉题 + 主标题 + 右侧统计卡（1.6.0：主标题可自定义；
-     * 1.6.9.5：blur-mask 时统计卡背后铺局部模糊）。 */
+     * 统计卡背后铺局部模糊）。 */
     private fun drawHeader(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, title: String, totalPlayers: Long) {
         val top = MARGIN
 
@@ -249,7 +249,7 @@ object LeaderboardRenderer {
     }
 
     /** 玩家行：排名徽章 + 头像 + 玩家名 + 右侧总在线时长
-     * （1.6.9.5：blur-mask 时行容器背后铺局部模糊，容器内的行底色不再重复模糊）。 */
+     * （行容器背后铺局部模糊，容器内的行底色不再重复模糊）。 */
     private fun drawRows(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, entries: List<LeaderEntry>, firstPage: Boolean) {
         val contentWidth = WIDTH - 2 * MARGIN
         val gridTop = if (firstPage) {
@@ -261,7 +261,7 @@ object LeaderboardRenderer {
         // 行容器深色底（整块列表区域裹一层半透明深色底，与在线列表统一）
         val gridHeight = entries.size * ROW_HEIGHT + (entries.size - 1) * ROW_GAP
         backdrop?.paintCard(g, MARGIN.toFloat(), (gridTop - 14).toFloat(), contentWidth.toFloat(), (gridHeight + 28).toFloat(), 18f)
-        g.color = Color(0x00, 0x00, 0x00, 120)
+        g.color = Color(0x00, 0x00, 0x00, 64)
         g.fill(RoundRectangle2D.Float(
             MARGIN.toFloat(), (gridTop - 14).toFloat(),
             contentWidth.toFloat(), (gridHeight + 28).toFloat(), 18f, 18f))
@@ -322,7 +322,7 @@ object LeaderboardRenderer {
         }
     }
 
-    /** 空数据提示卡（1.6.9.5：blur-mask 时容器背后铺局部模糊）。 */
+    /** 空数据提示卡（容器背后铺局部模糊）。 */
     private fun drawEmpty(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, firstPage: Boolean) {
         val gridTop = if (firstPage) {
             MARGIN + HEADER_HEIGHT + HEADER_GAP + LIST_HEADER_HEIGHT + LIST_HEADER_GAP
@@ -331,7 +331,7 @@ object LeaderboardRenderer {
         }
         val cardWidth = WIDTH - 2 * MARGIN
         backdrop?.paintCard(g, MARGIN.toFloat(), (gridTop - 14).toFloat(), cardWidth.toFloat(), (EMPTY_HEIGHT + 28).toFloat(), 18f)
-        g.color = Color(0x00, 0x00, 0x00, 120)
+        g.color = Color(0x00, 0x00, 0x00, 64)
         g.fill(RoundRectangle2D.Float(MARGIN.toFloat(), (gridTop - 14).toFloat(), cardWidth.toFloat(), (EMPTY_HEIGHT + 28).toFloat(), 18f, 18f))
         g.color = Color(0xFF, 0xFF, 0xFF, 16)
         g.fill(RoundRectangle2D.Float(MARGIN.toFloat(), gridTop.toFloat(), cardWidth.toFloat(), EMPTY_HEIGHT.toFloat(), 18f, 18f))

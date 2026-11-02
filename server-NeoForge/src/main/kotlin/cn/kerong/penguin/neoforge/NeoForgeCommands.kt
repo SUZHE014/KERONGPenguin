@@ -13,14 +13,14 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent
 
 /**
  * 游戏内命令注册（等价 Spigot 版 plugin.yml 命令 + KERONGCommand / QqCommand）：
- * - /hbkng：reload / info / chs / help，需要权限等级 2（OP）；
+ * - /hbkrg：reload / info / chs / help，需要权限等级 2（OP）；
  *   1.6.2 新增 chs：机器人重连超时挂起或断线期间手动重试连接；
  * - /qq：rebind（玩家自助解绑）与 qxqq / skip / unskip（OP 管理）。
  *
  * 1.6.7.7：移除短别名 /hb（用户需求），主命令唯一；旧输入由原版
  * “未知指令”路径处理。
  *
- * 1.6.9.5：主命令由 /kerong 更名为 /hbkng（旧名直接移除不兼容）；
+ * 1.7.0：主命令更名为 /hbkrg（旧名直接移除不兼容）；
  * panel 子命令移除——reload 在重载配置后一并重新同步 QQ 快捷面板
  * （先删后建，按新配置重建按钮）。
  *
@@ -29,8 +29,8 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent
  */
 class NeoForgeCommands(private val plugin: KERONGNeoForge) {
 
-    /** 主命令注册名（1.6.9.5 起 /hbkng，原 /kerong 已移除不兼容）。 */
-    private val MAIN_COMMAND_LABELS = listOf("hbkng")
+    /** 主命令注册名（/hbkrg；旧名已移除不兼容）。 */
+    private val MAIN_COMMAND_LABELS = listOf("hbkrg")
 
     @SubscribeEvent
     fun onRegisterCommands(event: RegisterCommandsEvent) {
@@ -38,10 +38,10 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
         registerQq(event)
     }
 
-    // ---------- /hbkng（1.6.9.5 前为 /kerong） ----------
+    // ---------- /hbkrg 主命令 ----------
 
     private fun registerKerong(event: RegisterCommandsEvent) {
-        // 注册主命令 /hbkng（同一套子命令；1.6.9.5 前注册名 /kerong）
+        // 注册主命令 /hbkrg（同一套子命令）
         for (label in MAIN_COMMAND_LABELS) {
             event.dispatcher.register(buildMainCommand(label))
         }
@@ -174,7 +174,7 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
         line("§e/$label mem§f - 查看插件内存与缓存诊断（JVM 堆 + 各级缓存）")
     }
 
-    // ---------- 更名说明（1.6.9.5：/kerong → /hbkng） ----------
+    // ---------- 更名说明（/hbkrg） ----------
 
     // 内部自定义命令协议串「kerong run|adminrun …」不受更名影响
     // （CustomCommandRegistry 在派发前拦截，不会进入命令注册表）。

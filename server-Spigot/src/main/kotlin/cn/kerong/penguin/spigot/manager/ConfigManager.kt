@@ -51,7 +51,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
     /** 重新加载配置（含损坏自动恢复、格式错误保护与缺失键补齐）。 */
     fun reload() {
-        // 1.6.7.6：运行期重载同样先做损坏恢复（/hbkng reload 时改坏的文件
+        // 1.6.7.6：运行期重载同样先做损坏恢复（/hbkrg reload 时改坏的文件
         // 也能自动救回，不再「跳过保存」空配置硬跑）
         try {
             ConfigBrokenRecovery.recoverIfBroken(plugin)
@@ -313,14 +313,10 @@ class ConfigManager(private val plugin: JavaPlugin) {
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
 
-        // 1.6.9.4：升 25——render 新增 background-style（图片卡片背景遮罩样式：
-        // gray-mask 原版灰色遮罩（默认）/ blur-mask 模糊遮罩，参考 EasyBot
-        // 液态玻璃图片模板），升级触发配置重建把新键与注释写入用户配置
-        // 1.6.9.5：升 26——无新增键，纯注释刷新：主命令 /kerong → /hbkng
-        // （旧名移除不兼容）、panel 子命令移除（reload 一并重新同步面板）、
-        // blur-mask 语义修正为卡片背后局部模糊（backdrop-filter）、
-        // 背景图改 cover 裁剪铺满（等比放大 + 中心裁剪，不再拉伸）
-        private const val CURRENT_CONFIG_VERSION = 26
+        // 1.7.0：升 27——render.blur-strength 新增（毛玻璃模糊度，0-100 默认 50，
+        // 取代原 background-style 样式选择与 global-opacity 整图透明度，两者均已移除；
+        // avatar-fetch-priority 随本地头像获取链路一并移除）；配置注释全面精简
+        private const val CURRENT_CONFIG_VERSION = 27
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -352,6 +348,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "commands.在线服务器", "commands.motd", "messages.server-status",
             "messages.motd-usage", "messages.motd-query-failed", "messages.motd-offline",
             "messages.motd-error", "messages.motd-status",
+            // 1.7.0：本地头像获取链路移除（统一在线获取）；
+            // 原版遮罩样式与整图透明度移除（只保留毛玻璃，模糊度改 blur-strength）
+            "render.avatar-fetch-priority", "render.background-style", "render.global-opacity",
         )
 
         /**
@@ -430,7 +429,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "bot.groups" to emptyList<Any>(),
             // 1.6.2：断线重连过程提示开关（1.6.6.3 起默认防刷屏：控制台只输出本轮第 1 次 /
             // 最后一次 / 成功 / 超时里程碑，中间过程写文件；false = 里程碑过程提示也不输出；
-            // 重连成功与重连超时后的 /hbkng chs 恢复指引不受此开关影响，始终输出）
+            // 重连成功与重连超时后的 /hbkrg chs 恢复指引不受此开关影响，始终输出）
             "bot.reconnect-notify" to true,
             // 1.6.2：更新检查开关（启动后异步访问官网版本文件，发现新版本时控制台提示
             // 版本号 / 下载页 / 简要日志；检测失败仅一句话提示，细节进日志）
@@ -476,10 +475,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "render.result-cache-seconds" to 60,
             // 1.6.6.1：头像磁盘缓存有效期（小时；默认 3，支持小数，0 = 关闭）
             "render.avatar-cache-hours" to 3,
-            // 1.6.6.1 覆盖版：头像获取优先方式（local = 本地优先取不到自动切外置，
-            // external = 外置优先全部失败再试本地）
-            "render.avatar-fetch-priority" to "local",
-            // 1.6.6.2：渲染空闲内存释放阈值（分钟；1.6.7.2 默认 5 → 15，支持小数，0 = 关闭）
+            // 1.6.6.2：渲染空闲内存释放阈值（分钟，支持小数，0 = 关闭）
             "render.idle-release-minutes" to 15,
             // 1.6.0 新增：图片渲染命令的用户冷却秒数（旧版硬编码 5 秒；0 = 关闭）
             "render.command-cooldown-seconds" to 5,
@@ -497,12 +493,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 即 MOTD 里显示的人数，取自最近一次玩家 ping 服务器时的值，
             // 无人 ping 过时回退真实值；模组端无此事件恒用真实值）
             "render.performance.max-players-source" to "real",
-            // 1.6.7.2 覆盖版：全局透明度（全部图片卡片编码前统一应用，1.0 = 不透明）
-            "render.global-opacity" to 1.0,
-            // 1.6.9.4：背景遮罩样式（gray-mask = 原版灰色遮罩（默认）；
-            // blur-mask = 模糊遮罩，背景先高斯模糊再叠暗色遮罩，
-            // 参考 EasyBot 液态玻璃图片模板，对全部卡片生效）
-            "render.background-style" to "gray-mask",
+            // 1.7.0：毛玻璃模糊度（0-100，越大越模糊，0 = 不模糊；只模糊卡片
+            // 背后的背景，卡片外保持清晰）
+            "render.blur-strength" to 50,
             // 1.5.5：在线排行榜（1.6.0 从 qq-bind.leaderboard 迁至顶层）
             "leaderboard.top" to 15,
             "leaderboard.builtin-background" to true,

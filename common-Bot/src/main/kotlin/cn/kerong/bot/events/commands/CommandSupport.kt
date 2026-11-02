@@ -71,20 +71,50 @@ abstract class CommandSupport : BaseCommand() {
     }
 
     /**
-     * 裁剪命令执行输出（1.6.9.5 新增）：超出上限按整行截断并加标记。
+     * 清洗并裁剪命令执行输出。
      *
-     * 背景：/执行命令 / /执行 的服务器回显可能长达数千行（旧版捕获上限
-     * 512 行 / 128K 字符全部拼进一条回复），QQ 群消息内容有长度限制，
-     * 超长回复会被平台直接拒绝——且旧版 replyMarkdown 失败后不再回退
-     * 纯文本，最终表现为「执行完命令没有任何回复」。现在发送前先裁剪
-     * 到安全长度（在敏感词审核之前裁剪，审核接口同样处理不了超长文本）。
+     * 1.6.9.5：超长裁剪——服务器回显可能长达数千行，QQ 群消息内容有
+     * 长度限制，超长回复会被平台直接拒绝（在敏感词审核之前裁剪，
+     * 审核接口同样处理不了超长文本）。
+     *
+     * 1.7.0：内容清洗——服务器控制台输出常携带 ANSI 转义序列
+     * （\u001b[38;2;...m 之类）、Minecraft 旧版 § 颜色码与其他控制
+     * 字符，这类内容发到 QQ 平台会被拒收（HTTP 400，表现为「执行完
+     * 没有任何回复」）。发送前统一剥离：保留换行与普通可见字符，
+     * 去掉 ANSI 转义 / § 码 / 其余控制字符。
      */
     protected fun clipCommandOutput(output: String): String {
-        val text = output.trim()
+        val text = sanitizeConsoleText(output).trim()
         if (text.length <= COMMAND_OUTPUT_MAX_CHARS) return text
         val budget = text.take(COMMAND_OUTPUT_MAX_CHARS)
         val cut = budget.lastIndexOf('\n').takeIf { it > 0 } ?: budget.length
         return text.take(cut).trimEnd() + "\n……（命令输出过长，已截断，完整输出见服务器控制台）"
+    }
+
+    /** ANSI 转义序列（CSI / OSC 形态）。 */
+    private val ansiEscapeRegex = Regex("\u001B\\[[0-9;:?]*[ -/]*[@-~]|\u001B\\][^\u0007]*(\u0007|\u001B\\\\)")
+
+    /**
+     * 控制台文本清洗：剥离 ANSI 转义、§ 颜色码（旧版 Minecraft 文本）
+     * 与除换行 / 制表外的控制字符（控制字符会被 QQ 平台拒收）。
+     */
+    internal fun sanitizeConsoleText(text: String): String {
+        if (text.isEmpty()) return text
+        val noAnsi = ansiEscapeRegex.replace(text, "")
+        val sb = StringBuilder(noAnsi.length)
+        for (ch in noAnsi) {
+            val code = ch.code
+            val keep = when {
+                ch == '\n' || ch == '\t' -> true
+                code < 32 || code == 127 -> false          // 其余控制字符（含 ESC 残留）
+                else -> true
+            }
+            when {
+                keep -> sb.append(ch)
+                ch == '\r' -> {}                            // 回车直接丢弃（Windows 换行）
+            }
+        }
+        return sb.toString().replace("§[0-9a-fk-orxA-FK-ORx]".toRegex(), "")
     }
 
     companion object {

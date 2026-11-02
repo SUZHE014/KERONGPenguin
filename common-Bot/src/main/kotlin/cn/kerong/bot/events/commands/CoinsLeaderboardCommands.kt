@@ -12,7 +12,6 @@ import cn.kerong.penguin.spigot.render.RenderSettings
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import org.bukkit.Bukkit
 import org.bukkit.OfflinePlayer
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.UUID
@@ -146,14 +145,9 @@ class CoinsLeaderboardCommands : CommandSupport() {
                     // 4. 主线程快照在线玩家（实时皮肤）+ 并发预热头像；
                     //    1.6.9.3：变量获取（玩家名 / 金币，同一次主线程语义内
                     //    解析，仅对展示的 top 条目）
-                    val onlineSkins = snapshotOnlineSkins()
+                    val onlineUuids = snapshotOnlineUuids()
                     val variableOverrides = snapshotVariableOverrides(topEntries)
-                    val playerDataDir = try {
-                        Bukkit.getWorlds().firstOrNull()?.worldFolder?.resolve("playerdata")
-                    } catch (_: Throwable) {
-                        null
-                    }
-                    val avatars = fetchAvatars(topEntries, onlineSkins, playerDataDir)
+                    val avatars = fetchAvatars(topEntries, onlineUuids)
 
                     // 5. 分页渲染（第一页带标题，续页只画行内容）
                     val updateTime = SimpleDateFormat("HH:mm").format(Date())
@@ -339,16 +333,11 @@ class CoinsLeaderboardCommands : CommandSupport() {
     }
 
     /** 主线程快照在线玩家（与在线排行榜同实现；超时 / 失败返回空表）。 */
-    private fun snapshotOnlineSkins(): Map<String, Pair<UUID?, String?>> {
-        val snapshot: () -> Map<String, Pair<UUID?, String?>> = {
+    private fun snapshotOnlineUuids(): Map<String, UUID?> {
+        val snapshot: () -> Map<String, UUID?> = {
             try {
                 Bukkit.getOnlinePlayers().associate { player ->
-                    val skinUrl = try {
-                        player.playerProfile.textures.skin?.toString()
-                    } catch (_: Throwable) {
-                        null
-                    }
-                    player.name to (player.uniqueId to skinUrl)
+                    player.name to player.uniqueId
                 }
             } catch (_: Throwable) {
                 emptyMap()
@@ -367,22 +356,21 @@ class CoinsLeaderboardCommands : CommandSupport() {
         }
     }
 
-    /** 并发预热头像（与在线排行榜同实现：在线皮肤优先，离线四级链路兜底）。 */
+    /**
+     * 并发预热头像（在线获取链路，见 InfoCardAssets.fetchAvatar）。
+     * 超时未取到的玩家渲染占位块；头像缓存 10 分钟，重复查询秒回。
+     */
     private fun fetchAvatars(
         entries: List<RawEntry>,
-        onlineSkins: Map<String, Pair<UUID?, String?>>,
-        playerDataDir: File?,
+        onlineUuids: Map<String, UUID?>,
     ): Map<String, BufferedImage> {
         if (entries.isEmpty()) return emptyMap()
         val tasks = entries.map { entry ->
             Callable {
-                val online = onlineSkins[entry.name]
                 entry.name to InfoCardAssets.fetchAvatar(
                     InfoCardAssets.AvatarRequest(
-                        uuid = entry.uuid ?: online?.first,
+                        uuid = entry.uuid ?: onlineUuids[entry.name],
                         playerName = entry.name,
-                        skinUrl = online?.second,
-                        playerDataDir = playerDataDir,
                     )
                 )
             }

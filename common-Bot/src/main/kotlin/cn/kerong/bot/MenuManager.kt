@@ -24,9 +24,9 @@ import java.util.concurrent.atomic.AtomicLong
  * - 面板元素长度预校验：name ≤ 14 单位 / desc ≤ 30 单位（中文按 2 单位），
  *   超限按钮跳过并告警；
  * - 40030009（操作进行中）自动重试（最多 3 次）；
- * - 同步结束后输出面板 ID 与可用按钮数，启动日志与 /hbkng reload 反馈均可核对。
+ * - 同步结束后输出面板 ID 与可用按钮数，启动日志与 /hbkrg reload 反馈均可核对。
  *
- * 1.6.9.5：panel 子命令移除——/hbkng reload 在重载配置后
+ * 1.6.9.5：panel 子命令移除——/hbkrg reload 在重载配置后
  * 一并调用本同步（先删后建，按新配置重建按钮），不再需要单独命令。
  *
  * 1.6.7.9 先删后建（修复「创建面板失败 HTTP 400 code 30013 超出数量限制」）：
@@ -48,17 +48,17 @@ import java.util.concurrent.atomic.AtomicLong
  * - **30013 重试加退避**：旧版三连发在同一秒内全部撞墙；现重试前等待退避
  *   间隔（2.5s / 5s 递增），再走「清空可见面板 → 再创建」恢复路径；
  * - **创建接口 QPM 节流**：官方限制 POST /v2/panels 为 10 次/分钟，全局
- *   6.5 秒最小创建间隔——启动同步 + /hbkng reload + 重试叠加时不再超频；
+ *   6.5 秒最小创建间隔——启动同步 + /hbkrg reload + 重试叠加时不再超频；
  * - **列表分页完整拉取**（next_cursor / is_end，最多 10 页防死循环），
  *   且列表查询失败与「确认无面板」区分开（旧版列表失败也报「平台上无残留
  *   面板」，误导排查方向）；
- * - **同步结果如实返回**（[PanelSyncResult]）：/hbkng reload 按真实结果
+ * - **同步结果如实返回**（[PanelSyncResult]）：/hbkrg reload 按真实结果
  *   反馈成功/失败，不再无条件报成功；
  * - 持续 30013 时提示可能原因（平台配额统计延迟 / 存在列表不可见的残留
  *   面板 / 创建过于频繁），引导等待几分钟后重试或到 QQ 开放平台管理端核查。
  *
  * 线程注意：本同步含网络 IO 与退避等待（最坏 20 秒级），**必须在异步线程
- * 调用**（启动路径在 QClient 后台线程；/hbkng reload 由命令层包 submitAsync）。
+ * 调用**（启动路径在 QClient 后台线程；/hbkrg reload 由命令层包 submitAsync）。
  */
 object MenuManager {
     private const val API_BASE = "https://api.sgroup.qq.com"
@@ -78,7 +78,7 @@ object MenuManager {
 
     /**
      * 创建接口 QPM 节流：官方限制 POST /v2/panels 10 次/分钟，
-     * 全局保持最小创建间隔（启动同步 + /hbkng reload + 重试叠加时防超频）。
+     * 全局保持最小创建间隔（启动同步 + /hbkrg reload + 重试叠加时防超频）。
      */
     private const val CREATE_MIN_INTERVAL_MILLIS = 6_500L
 
@@ -155,7 +155,7 @@ object MenuManager {
     private val ECONOMY_PANEL_NAMES = setOf("财富榜")
 
     /**
-     * 面板同步结果（1.6.7.10）：启动同步与 /hbkng reload 据此如实反馈，
+     * 面板同步结果（1.6.7.10）：启动同步与 /hbkrg reload 据此如实反馈，
      * 不再无条件报「已重新同步」。
      */
     data class PanelSyncResult(
@@ -199,7 +199,7 @@ object MenuManager {
             val start0 = starter.APPLICATION.INSTANCE.contextManager.getContextEntity(Start0::class.java)
             val token = start0.accessToken ?: run {
                 log("面板同步跳过：访问令牌不可用（机器人尚未完成鉴权）")
-                return PanelSyncResult(null, 0, 0, "访问令牌不可用（机器人尚未完成鉴权，连接成功后可用 /hbkng reload 重试）")
+                return PanelSyncResult(null, 0, 0, "访问令牌不可用（机器人尚未完成鉴权，连接成功后可用 /hbkrg reload 重试）")
             }
             val authHeader = "QQBot $token"
 
@@ -485,7 +485,7 @@ object MenuManager {
     private fun describePanelError(body: String?): String {
         return when (normalizedErrorCode(body)) {
             PANEL_ERR_CONFLICT -> "，错误码 30009：操作进行中（并发冲突），稍后自动重试"
-            PANEL_ERR_LIMIT -> "，错误码 30013：超出数量限制（单个面板最多 20 个按钮、一个机器人最多 20 个面板；本次同步已自动清空重建，仍失败可稍后用 /hbkng reload 重试）"
+            PANEL_ERR_LIMIT -> "，错误码 30013：超出数量限制（单个面板最多 20 个按钮、一个机器人最多 20 个面板；本次同步已自动清空重建，仍失败可稍后用 /hbkrg reload 重试）"
             PANEL_ERR_CONTENT_SAFETY -> "，错误码 30020：内容安全拦截（检查按钮文案后重试）"
             else -> ""
         }

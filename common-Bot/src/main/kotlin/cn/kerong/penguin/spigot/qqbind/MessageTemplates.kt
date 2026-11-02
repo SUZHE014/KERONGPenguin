@@ -158,7 +158,7 @@ object MessageTemplates {
     /**
      * 释放全部默认模板到数据目录 Markdown/（已存在的文件不覆盖；
      * 自定义文件名的模板不在此释放，读取时回退内置默认内容）。
-     * 由运行时初始化（reloadRuntimeConfig）在启动与 /hbkng reload 时调用。
+     * 由运行时初始化（reloadRuntimeConfig）在启动与 /hbkrg reload 时调用。
      */
     fun initialize() {
         val dir = directory() ?: run {
@@ -256,8 +256,11 @@ object MessageTemplates {
     }
 
     /**
-     * 带 @ 提及的模板回复（与旧版 sendDirect 行为一致）：
-     * Markdown 优先、失败回退纯文本；渲染结果为空串时直接跳过（模板被清空的场景）。
+     * 带 @ 提及的模板回复：Markdown 优先、失败回退纯文本；渲染结果为空串时直接跳过（模板被清空的场景）。
+     *
+     * 1.7.0：按 [QClient.replyMarkdown] 的返回值回退——旧版只 catch
+     * 抛出的异常，但 SDK 的 HTTP 代理对平台拒收（4xx/5xx）不抛异常，
+     * 失败时消息静默丢失；现在返回 false 即回退 event.sendMessage。
      */
     fun sendDirect(event: GroupMessageEvent, id: String, vars: Map<String, String> = emptyMap()) {
         val message = render(id, vars)
@@ -270,10 +273,16 @@ object MessageTemplates {
                 null
             }
             val content = if (!userId.isNullOrEmpty()) "<@$userId>\n$message" else message
-            try {
+            val sent = try {
                 QClient.replyMarkdown(event, content, null)
-            } catch (t: Throwable) {
-                event.sendMessage(content)
+            } catch (_: Throwable) {
+                false
+            }
+            if (!sent) {
+                try {
+                    event.sendMessage(content)
+                } catch (_: Throwable) {
+                }
             }
         } catch (t: Throwable) {
             try {
@@ -293,6 +302,6 @@ object MessageTemplates {
         }
     }
 
-    /** 清空缓存（/hbkng reload 后重新读文件）。 */
+    /** 清空缓存（/hbkrg reload 后重新读文件）。 */
     fun clearCache() = cache.clear()
 }

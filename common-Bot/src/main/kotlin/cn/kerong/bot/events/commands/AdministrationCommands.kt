@@ -53,20 +53,29 @@ class AdministrationCommands : CommandSupport() {
      * 派发命令并带 @ 提及回复执行结果。
      * 回复模板：bridge-error（桥接失败）/ sent-request（已发送）/ execute-failed（异常）；
      * 执行结果本身为动态内容（服务器返回原文），先裁剪（1.6.9.5：超长
-     * 输出会被 QQ 平台拒绝导致「执行完没有回复」）再原样审核后经 Markdown 回复。
+     * 输出会被 QQ 平台拒绝）再原样审核后经 Markdown 回复。
+     *
+     * 1.7.0：回退链真可达——replyMarkdown 按平台响应校验真实送达
+     * （SDK 对 4xx/5xx 不抛异常，旧版「没抛异常」误判为已送达），拒收时
+     * 回退 event.sendMessage 纯文本；回复整体移到异步线程（命令完成
+     * 回调在主线程触发，旧版同步 HTTP 会卡服务器主线程）。
      */
     private fun executeGameCommandWithMention(plugin: KERONG, event: GroupMessageEvent, command: String, direct: Boolean) {
         try {
             val outgoingCommand = if (direct) command
             else "kerong run ${groupId(event)} ${userId(event)} $command"
             plugin.sendCommand(outgoingCommand).whenComplete { result, error ->
-                try {
-                    when {
-                        error != null || result == null -> MessageTemplates.sendDirect(event, "bridge-error")
-                        result.rawString.isBlank() -> MessageTemplates.sendDirect(event, "sent-request")
-                        else -> sendDirect(event, plugin.auditText(clipCommandOutput(result.rawString)))
+                // 回复（含 QQ HTTP 请求）移到异步线程：完成回调可能运行在
+                // 服务器主线程，同步 HTTP 会造成主线程卡顿
+                plugin.submitAsync {
+                    try {
+                        when {
+                            error != null || result == null -> MessageTemplates.sendDirect(event, "bridge-error")
+                            result.rawString.isBlank() -> MessageTemplates.sendDirect(event, "sent-request")
+                            else -> sendDirect(event, plugin.auditText(clipCommandOutput(result.rawString)))
+                        }
+                    } catch (_: Throwable) {
                     }
-                } catch (_: Throwable) {
                 }
             }
         } catch (t: Throwable) {
@@ -76,8 +85,7 @@ class AdministrationCommands : CommandSupport() {
 
     /**
      * 带 @ 提及的 Markdown 回复（动态内容；失败时退化为纯文本）。
-     * 1.6.9.5：按 replyMarkdown 的返回值回退——旧版发送异常被吞在
-     * QClient 内部，这里的 catch 回退分支永远走不到。
+     * 1.7.0：回退按 replyMarkdown 的真实送达结果（响应含消息 id 才算成功）。
      */
     private fun sendDirect(event: GroupMessageEvent, message: String) {
         try {

@@ -448,8 +448,9 @@ class PublicCommands : CommandSupport() {
     /**
      * 派发命令并带 @ 提及回复执行结果。
      * 回复模板：bridge-error（桥接失败）/ sent-request（已发送）/ execute-failed（异常）。
-     * 1.6.9.5：执行结果先裁剪再发送（超长输出会被 QQ 平台拒绝，
-     * 表现为「执行完没有回复」，见 CommandSupport.clipCommandOutput）。
+     * 1.7.0：回复移到异步线程（完成回调可能在主线程，同步 HTTP 卡主线程）；
+     * replyMarkdown 按平台响应校验真实送达，拒收时回退纯文本（见
+     * CommandSupport.clipCommandOutput 与 QClient.replyMarkdown）。
      */
     private fun executeGameCommandWithMention(plugin: KERONG, event: GroupMessageEvent, command: String, direct: Boolean) {
         try {
@@ -457,14 +458,16 @@ class PublicCommands : CommandSupport() {
             else "kerong run ${groupId(event)} ${userId(event)} $command"
             val future: CompletableFuture<cn.kerong.bot.provider.HExecution> = plugin.sendCommand(outgoingCommand)
             future.whenComplete { result, error ->
-                try {
-                    when {
-                        error != null || result == null -> MessageTemplates.sendDirect(event, "bridge-error")
-                        result.rawString.isBlank() -> MessageTemplates.sendDirect(event, "sent-request")
-                        // 执行结果为动态内容（非固定文案），先裁剪后原样审核转发
-                        else -> sendDirect(event, plugin.auditText(clipCommandOutput(result.rawString)))
+                plugin.submitAsync {
+                    try {
+                        when {
+                            error != null || result == null -> MessageTemplates.sendDirect(event, "bridge-error")
+                            result.rawString.isBlank() -> MessageTemplates.sendDirect(event, "sent-request")
+                            // 执行结果为动态内容（非固定文案），先裁剪后原样审核转发
+                            else -> sendDirect(event, plugin.auditText(clipCommandOutput(result.rawString)))
+                        }
+                    } catch (_: Throwable) {
                     }
-                } catch (_: Throwable) {
                 }
             }
         } catch (t: Throwable) {
@@ -474,8 +477,7 @@ class PublicCommands : CommandSupport() {
 
     /**
      * 带 @ 提及的纯文本回复（命令执行结果原样转发，非模板内容）。
-     * 1.6.9.5：按 replyMarkdown 的返回值回退纯文本——旧版发送异常被
-     * 吞在 QClient 内部，catch 回退分支永远走不到。
+     * 1.7.0：回退按 replyMarkdown 的真实送达结果（响应含消息 id 才算成功）。
      */
     private fun sendDirect(event: GroupMessageEvent, message: String) {
         try {

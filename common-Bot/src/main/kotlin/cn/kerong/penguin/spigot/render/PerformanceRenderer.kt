@@ -17,18 +17,9 @@ import javax.imageio.ImageIO
  * ——性能卡片延续本项目整套深色卡片风格基调（与查信息 / 查在线 /
  * 排行榜同源），本卡片为本项目的独立实现。
  *
- * 1.6.7.2 覆盖版：移除液态玻璃样式分支（render.performance.style 配置
- * 同步废弃，见 ConfigManager.REMOVED_CONFIG_KEYS），固定原版毛玻璃深色
- * 样式；新增全局透明度（render.global-opacity，编码前经
- * [GlobalOpacity.apply] 统一应用）。
- *
- * 1.6.7.5 同日覆盖版：面板透明度与其他卡片**完全统一**（用户反馈：
- * 实色不透明面板与查信息 / 查在线 / 排行榜的观感不一致）——头部卡 /
- * 网格容器 / 指标卡 / 状态胶囊 / 进度槽全部改回半透明体系，alpha 取值
- * 与其他卡片逐一相同（头部卡白 34 / 容器黑 120 / 指标卡白 16 / 胶囊白 30，
- * 无面板描边）；整卡透明度由全局 render.global-opacity 统一控制（与
- * 其他卡片同一份配置，[GlobalOpacity.apply] 编码前应用，见
- * [RenderSettings.globalOpacity]）；字体 / 布局 / 指标口径不变。
+ * 面板透明度与其他卡片统一（头部卡 / 网格容器 / 指标卡 / 状态胶囊 /
+ * 进度槽全部为半透明体系，头部卡白 34 / 容器黑 64 / 指标卡白 16 /
+ * 胶囊白 30，无面板描边）；字体 / 布局 / 指标口径不变。
  *
  * 半透明卡片风格（1.6.7.5 覆盖版，1350 宽，固定版式单页图）：
  * - 顶部标题区：英文眉题 MINECRAFT SERVER + 主标题「服务器性能监控」
@@ -47,7 +38,7 @@ import javax.imageio.ImageIO
  * - 背景与其他渲染共用 [InfoCardAssets.resolveBackground]
  *   （render.performance.builtin-background，默认内置底图）；
  *   1.6.9.5：背景统一走共享入口（cover 裁剪铺满：等比放大不足的边 +
- *   图片中心裁剪，不再拉伸变形）；blur-mask 样式（render.background-style）
+ *   图片中心裁剪，不拉伸变形）；毛玻璃模糊度（render.blur-strength）
  *   时卡片背后区域铺背景模糊副本（backdrop-filter 局部模糊，
  *   卡片外背景保持清晰）；
  * - 画布 PNG 写出后立即 flush 释放栅格内存（与其他渲染器一致）。
@@ -98,8 +89,8 @@ object PerformanceRenderer {
     /** 指标卡底色（半透明白，与查信息/查在线/排行榜单元格同款 alpha 16）。 */
     private val COLOR_CARD = Color(0xFF, 0xFF, 0xFF, 16)
 
-    /** 网格容器底色（半透明黑，与查在线/排行榜网格容器同款 alpha 120）。 */
-    private val COLOR_CONTAINER = Color(0x00, 0x00, 0x00, 120)
+    /** 网格容器底色（半透明黑，与查在线/排行榜网格容器同款 alpha 64）。 */
+    private val COLOR_CONTAINER = Color(0x00, 0x00, 0x00, 64)
 
     /** 状态胶囊底色（半透明白，与其他卡片徽标同款 alpha 30；语义色由文字承担）。 */
     private val COLOR_PILL_BG = Color(0xFF, 0xFF, 0xFF, 30)
@@ -171,7 +162,7 @@ object PerformanceRenderer {
             g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
 
             // 1.6.9.5：背景统一走共享入口（cover 裁剪铺满，不再拉伸变形）；
-            // blur-mask 样式时返回卡片背后局部模糊上下文
+            // 返回卡片背后局部模糊上下文（毛玻璃，模糊度 render.blur-strength）
             val backdrop = InfoCardAssets.drawBackground(g, data.background, WIDTH, height)
             drawHeader(g, backdrop, data.serverName, data.updateTime)
             drawMetricGrid(g, backdrop, cards)
@@ -179,8 +170,7 @@ object PerformanceRenderer {
             g.dispose()
         }
         val output = ByteArrayOutputStream(384 * 1024)
-        // 全局透明度（render.global-opacity，默认 1.0 原样零开销）
-        ImageIO.write(GlobalOpacity.apply(image), "png", output)
+        ImageIO.write(image, "png", output)
         // PNG 已写出，立即释放单次画布的栅格内存（缓存中的背景不受影响）
         image.flush()
         return output.toByteArray()
@@ -391,7 +381,7 @@ object PerformanceRenderer {
         g.fill(RoundRectangle2D.Float(x, y, w, h, radius, radius))
     }
 
-    /** 顶部标题区：眉题 + 主标题 + 右侧更新时间卡（1.6.9.5：blur-mask 时时间卡背后铺局部模糊）。 */
+    /** 顶部标题区：眉题 + 主标题 + 右侧更新时间卡（时间卡背后铺局部模糊）。 */
     private fun drawHeader(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, serverName: String, updateTime: String) {
         val top = MARGIN
 
@@ -432,8 +422,7 @@ object PerformanceRenderer {
     /**
      * 指标卡网格：2 列 × N 行，每卡 = 标签 + 状态胶囊 + 大数值 + 进度条 + 副说明；
      * 末行仅一张卡时（五项布局的在线人数卡）整行通栏，避免右下留空位
-     * （1.6.9.5：blur-mask 时网格容器背后铺局部模糊，容器内的指标卡
-     * 不再重复模糊）。
+     * （容器背后铺局部模糊，容器内的指标卡不再重复模糊）。
      */
     private fun drawMetricGrid(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, cards: List<MetricCard>) {
         if (cards.isEmpty()) return
@@ -443,7 +432,7 @@ object PerformanceRenderer {
         val rows = (cards.size + COLUMNS - 1) / COLUMNS
         val gridHeight = rows * CARD_HEIGHT + (rows - 1) * CARD_GAP
 
-        // 网格容器（半透明黑底板：与查在线/排行榜网格容器同款 alpha 120）
+        // 网格容器（半透明黑底板：与查在线/排行榜网格容器同款 alpha 64）
         backdrop?.paintCard(
             g,
             MARGIN.toFloat(), (gridTop - 14).toFloat(),

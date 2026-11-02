@@ -46,7 +46,7 @@ import java.util.Date
  *
  * 双端共用（Spigot 与 NeoForge 兼容层同名 API）；调用点：
  * [ConfigManager.initialize]（rebuildIfNeeded 之前）与 [ConfigManager.reload]
- * （/hbkng reload 运行期坏文件同样恢复）。
+ * （/hbkrg reload 运行期坏文件同样恢复）。
  */
 internal object ConfigBrokenRecovery {
 

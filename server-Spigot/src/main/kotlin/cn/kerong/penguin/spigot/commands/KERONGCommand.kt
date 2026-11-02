@@ -10,9 +10,9 @@ import org.bukkit.command.TabExecutor
 import java.util.Locale
 
 /**
- * /hbkng 主命令：reload / info / chs / mem / help。
+ * /hbkrg 主命令：reload / info / chs / mem / help。
  *
- * 1.6.9.5：主命令由 /kerong 更名为 /hbkng（旧名直接移除、不做兼容——
+ * 1.7.0：主命令更名为 /hbkrg（旧名直接移除、不做兼容——
  * 输入 /kerong 由原版「未知指令」路径处理）。
  *
  * 1.6.9.5：panel 子命令移除——reload 在重载配置后一并重新同步 QQ

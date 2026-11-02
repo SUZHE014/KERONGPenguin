@@ -60,7 +60,7 @@ object QClient {
      *    1.6.2：断线重连改由 [ReconnectManager] 统一编排计数——控制台输出本轮
      *    第 1 次 / 最后一次 / 成功 / 超时等关键提示（1.6.6.3 起中间过程只写
      *    文件，重连风暴不再刷屏），连续 5 次失败暂停自动重连
-     *    （提示可用 /hbkng chs 手动重试，30 分钟后自动再试，最多 3 轮）；
+     *    （提示可用 /hbkrg chs 手动重试，30 分钟后自动再试，最多 3 轮）；
      * 2. 新增常驻连接看门狗：连接持续断开超过约 2 分钟（SDK 自身重连卡死时）
      *    由插件兑底触发重连，并写入日志文件。
      *
@@ -210,7 +210,7 @@ object QClient {
                 closedChecks++
                 // 首次发现断开先等待下一轮：给 SDK 自身 3 秒重连留出足够窗口
                 if (closedChecks < 2 || lastOpenAt == 0L) continue
-                // 1.6.2：重连超时挂起期间（等待 30 分钟退避或 /hbkng chs）不兑底重连
+                // 1.6.2：重连超时挂起期间（等待 30 分钟退避或 /hbkrg chs）不兑底重连
                 if (ReconnectManager.isSuspended()) continue
                 PluginFileLog.errorAndKeep(
                     "检测到 QQ 机器人连接已持续断开超过 1 分钟，尝试兑底重连…"
@@ -334,7 +334,16 @@ object QClient {
      * 失败，表现为「/执行命令 执行完没有任何回复」）；现在返回 false
      * 时调用方可自行回退 event.sendMessage。
      *
-     * @return true = 已提交发送；false = 客户端未启动 / 内容为空 / 发送异常
+     * 1.7.0：送达校验升级——SDK 的 HTTP 代理层对 4xx/5xx **只记日志、
+     * 不抛异常**（HttpStatusException 仅打印，仍正常返回解析结果），
+     * 因此「没有抛异常」不等于「消息送达」。QQ 平台成功送达时响应体
+     * 携带消息 id（{"id":"...","timestamp":...}），被拒收时（内容超长 /
+     * 含非法字符 / markdown 无权限等）返回错误体（无 id）。现按返回的
+     * V2Result.id 是否非空判定真实送达，拒收时如实返回 false，调用方
+     * 的纯文本回退分支这才真正可达。
+     *
+     * @return true = 平台已接收（响应含消息 id）；false = 客户端未启动 /
+     *   内容为空 / 发送异常 / 平台拒收（HTTP 4xx/5xx）
      */
     fun replyMarkdown(event: GroupMessageEvent, markdownContent: String, keyboard: Keyboard? = null): Boolean {
         val currentPlugin = plugin
@@ -356,8 +365,16 @@ object QClient {
         return try {
             val groupId = event.groupOpenId ?: event.groupId ?: return false
             val bot = session.bot ?: return false
-            bot.groupBaseV2.send(groupId, JSON.toJSONString(payload), Channel.SEND_MESSAGE_HEADERS)
-            true
+            val result = bot.groupBaseV2.send(groupId, JSON.toJSONString(payload), Channel.SEND_MESSAGE_HEADERS)
+            // 平台拒收（HTTP 4xx/5xx）时 SDK 不抛异常只返回无 id 的结果体，
+            // 以响应是否携带消息 id 判定真实送达
+            val delivered = result != null && !result.id.isNullOrEmpty()
+            if (!delivered) {
+                currentPlugin.log_error(
+                    "回复 Markdown 未被平台接收（result=${result?.id ?: "无消息ID"} ret=${result?.ret ?: "?"} msg=${result?.msg ?: "?"}），将回退纯文本"
+                )
+            }
+            delivered
         } catch (error: Exception) {
             currentPlugin.log_error("回复 Markdown 失败: ${error.message}")
             false
@@ -577,7 +594,7 @@ object QClient {
     }
 
     /**
-     * 1.6.2：恢复机器人连接（/hbkng chs 手动重试 / 重连退避结束后自动重试）。
+     * 1.6.2：恢复机器人连接（/hbkrg chs 手动重试 / 重连退避结束后自动重试）。
      *
      * 重新打开 SDK 自动重连（重连超时挂起期间会被关掉），并对当前 socket
      * 触发一次非阻塞重连——连接成功后服务端重新下发 Hello，SDK 自动重新鉴权，

@@ -9,7 +9,6 @@ import cn.kerong.penguin.spigot.render.OnlineListRenderer
 import cn.kerong.penguin.spigot.scheduler.FoliaCompat
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import org.bukkit.Bukkit
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.UUID
@@ -65,10 +64,9 @@ object OnlineListService {
     /** 用户冷却记录：OpenId → 上次触发时间。 */
     private val lastQueryAt = ConcurrentHashMap<String, Long>()
 
-    /** 在线玩家快照（主线程捕获）：名字 / UUID / 皮肤贴图 URL。 */
+    /** 在线玩家快照（主线程捕获）：名字 / UUID。 */
     private data class Snapshot(
-        val players: List<Triple<String, UUID?, String?>>,
-        val playerDataDir: File?,
+        val players: List<Pair<String, UUID?>>,
     )
 
     /** 渲染结果缓存条目（key = 在线名单哈希，名单变化自然失效；1.5.5 起存整组分页）。 */
@@ -189,28 +187,17 @@ object OnlineListService {
 
     /**
      * 主线程快照在线玩家（异步调用时自动切换；超时返回 null）。
-     * 皮肤 URL 与个人信息卡片同源：在线玩家 Profile（含 SkinsRestorer 等修改结果）。
      */
     private fun snapshotOnlinePlayers(): Snapshot? {
-        val playerDataDir = try {
-            Bukkit.getWorlds().firstOrNull()?.worldFolder?.resolve("playerdata")
-        } catch (_: Throwable) {
-            null
-        }
         val snapshot: () -> Snapshot = {
             val players = try {
                 Bukkit.getOnlinePlayers().map { player ->
-                    val skinUrl = try {
-                        player.playerProfile.textures.skin?.toString()
-                    } catch (_: Throwable) {
-                        null
-                    }
-                    Triple(player.name, player.uniqueId, skinUrl)
+                    player.name to player.uniqueId
                 }
             } catch (_: Throwable) {
                 emptyList()
             }
-            Snapshot(players, playerDataDir)
+            Snapshot(players)
         }
         if (Bukkit.isPrimaryThread()) return snapshot()
         val bukkitPlugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin") ?: return null
@@ -231,8 +218,6 @@ object OnlineListService {
                     InfoCardAssets.AvatarRequest(
                         uuid = player.second,
                         playerName = player.first,
-                        skinUrl = player.third,
-                        playerDataDir = snapshot.playerDataDir,
                     )
                 )
             }

@@ -37,7 +37,7 @@ import javax.imageio.ImageIO
  * 裁剪，见 [InfoCardAssets.drawBackground]），既保留随机背景效果又避免
  * 大画布背景栅格膨胀到数十 MB。
  *
- * 1.6.9.5：blur-mask 样式（render.background-style）时，卡片背后区域
+ * 卡片背后区域
  * 铺背景模糊副本（backdrop-filter 局部模糊，卡片外背景保持清晰）。
  *
  * 1.5.5：分段发送改造 —— 长图改为分页多张（每页 [MAX_PLAYERS_PER_PAGE] 人），
@@ -176,7 +176,7 @@ object OnlineListRenderer {
             g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
 
             // 1.6.9.5：背景统一走共享入口（cover 裁剪铺满，不再拉伸变形）；
-            // blur-mask 样式时返回卡片背后局部模糊上下文
+            // 返回卡片背后局部模糊上下文（毛玻璃，模糊度 render.blur-strength）
             val backdrop = InfoCardAssets.drawBackground(g, data.background, WIDTH, height)
             if (firstPage) {
                 drawHeader(g, backdrop, data.entries.size)
@@ -188,14 +188,13 @@ object OnlineListRenderer {
             g.dispose()
         }
         val output = ByteArrayOutputStream(384 * 1024)
-        // 全局透明度（render.global-opacity，默认 1.0 原样零开销）
-        ImageIO.write(GlobalOpacity.apply(image), "png", output)
+        ImageIO.write(image, "png", output)
         // PNG 已写出，立即释放单次画布的栅格内存（缓存中的背景/头像不受影响）
         image.flush()
         return output.toByteArray()
     }
 
-    /** 顶部标题区：眉题 + 主标题 + 右侧在线人数卡（1.6.9.5：blur-mask 时卡片背后铺局部模糊）。 */
+    /** 顶部标题区：眉题 + 主标题 + 右侧在线人数卡（卡片背后铺局部模糊）。 */
     private fun drawHeader(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, onlineCount: Int) {
         val top = MARGIN
 
@@ -227,7 +226,7 @@ object OnlineListRenderer {
         g.drawString(countText, (cardX + cardWidth - 28 - countWidth).toFloat(), (cardY + 100).toFloat())
     }
 
-    /** 状态栏：服务器 / 更新时间 / 状态 三张并排小卡（1.6.9.5：blur-mask 时卡片背后铺局部模糊）。 */
+    /** 状态栏：服务器 / 更新时间 / 状态 三张并排小卡（卡片背后铺局部模糊）。 */
     private fun drawStatusBar(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, serverName: String, updateTime: String) {
         val top = (MARGIN + HEADER_HEIGHT + HEADER_GAP).toFloat()
         val gap = 16f
@@ -242,7 +241,7 @@ object OnlineListRenderer {
         cells.forEachIndexed { index, (label, value) ->
             val x = MARGIN + index * (cardWidth + gap)
             backdrop?.paintCard(g, x, top, cardWidth, cardHeight, 14f)
-            g.color = Color(0x00, 0x00, 0x00, 120)
+            g.color = Color(0x00, 0x00, 0x00, 64)
             g.fill(RoundRectangle2D.Float(x, top, cardWidth, cardHeight, 14f, 14f))
             g.font = InfoCardRenderer.font(22f, false)
             g.color = COLOR_LABEL
@@ -272,7 +271,7 @@ object OnlineListRenderer {
     }
 
     /** 玩家网格：3 列，每格头像 + 玩家名；空列表画提示卡；网格整体套深色容器（与模板一致；
-     * 1.6.9.5：blur-mask 时容器背后铺局部模糊，容器内的单元格不再重复模糊）。 */
+     * 容器背后铺局部模糊，容器内的单元格不再重复模糊）。 */
     private fun drawPlayerGrid(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, entries: List<OnlineEntry>, firstPage: Boolean) {
         val gridTop = if (firstPage) {
             MARGIN + HEADER_HEIGHT + HEADER_GAP + STATUS_HEIGHT + STATUS_GAP +
@@ -283,7 +282,7 @@ object OnlineListRenderer {
         if (entries.isEmpty()) {
             val cardWidth = WIDTH - 2 * MARGIN
             backdrop?.paintCard(g, MARGIN.toFloat(), (gridTop - 14).toFloat(), cardWidth.toFloat(), (EMPTY_HEIGHT + 28).toFloat(), 18f)
-            g.color = Color(0x00, 0x00, 0x00, 120)
+            g.color = Color(0x00, 0x00, 0x00, 64)
             g.fill(RoundRectangle2D.Float(MARGIN.toFloat(), (gridTop - 14).toFloat(), cardWidth.toFloat(), (EMPTY_HEIGHT + 28).toFloat(), 18f, 18f))
             g.color = Color(0xFF, 0xFF, 0xFF, 16)
             g.fill(RoundRectangle2D.Float(MARGIN.toFloat(), gridTop.toFloat(), cardWidth.toFloat(), EMPTY_HEIGHT.toFloat(), 18f, 18f))
@@ -302,7 +301,7 @@ object OnlineListRenderer {
 
         // 网格深色容器（模板风格：整块列表区域裹一层半透明深色底）
         backdrop?.paintCard(g, MARGIN.toFloat(), (gridTop - 14).toFloat(), contentWidth.toFloat(), (gridHeight + 28).toFloat(), 18f)
-        g.color = Color(0x00, 0x00, 0x00, 120)
+        g.color = Color(0x00, 0x00, 0x00, 64)
         g.fill(RoundRectangle2D.Float(
             MARGIN.toFloat(), (gridTop - 14).toFloat(),
             contentWidth.toFloat(), (gridHeight + 28).toFloat(), 18f, 18f))

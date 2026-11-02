@@ -25,7 +25,10 @@ class HybridCommandExecutor(private val plugin: KERONGSpigot) : HExecution {
             try {
                 Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command)
                 completeAfterCommandOutput(result)
-            } catch (error: Exception) {
+            } catch (error: Throwable) {
+                // 1.7.0：捕获 Throwable 而非 Exception——命令抛 Error（如其他
+                // 插件类的 NoClassDefFoundError）时旧版不完成 future，
+                // QQ 侧表现为「执行完没有任何回复」
                 outputAppender.stopCapture()
                 result.completeExceptionally(error)
             }

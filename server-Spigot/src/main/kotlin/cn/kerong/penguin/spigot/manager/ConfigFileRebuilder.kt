@@ -10,45 +10,27 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
 /**
- * 配置文件版本重建器（1.6.7.2 新增，修复「配置版本号更新后配置并没有更新」）。
+ * 配置文件版本重建器：磁盘 config-version 低于 JAR 内置版本时，
+ * 以 JAR 的新版 config.yml 全文（注释完整）为底重建用户文件。
  *
- * 旧机制的问题：升级插件后磁盘 config.yml 只会经 fillMissing 追加裸键
- * （无注释、追加在段尾），JAR 内新版 config.yml 的注释、段落结构、默认
- * 值调整永远不会到达用户文件；NeoForge 端兼容层的 YAML 保存还会丢掉
- * 全部注释——用户看到的配置文件长期停留在旧版样貌。
- *
- * 新机制（[rebuildIfNeeded]）：磁盘 config-version 低于 JAR 内置版本时，
- * 以 JAR 的新版 config.yml 全文（注释完整）为底重建用户文件：
+ * 流程：
  * 1. 旧文件先备份为 config.yml.bak（每次升级覆盖一份，不留堆积）；
- * 2. 用户自定义值逐项回填：旧文件中与「JAR 新默认值」不同的项才回填
- *   （仍等于旧默认的项直接采用新默认——默认值调整得以生效），旧文件
- *   特有的自定义键（如 markdown.* 自定义模板、自定义 commands.* 开关）
- *   原样保留；
- * 3. 历史路径搬家与废弃键清理在回填前先行套用（等价旧版迁移逻辑）；
+ * 2. 历史路径搬家与废弃键清理先行套用；
+ * 3. 用户已有的值逐项回填（旧文件中与 JAR 默认不同的项 + 旧文件
+ *   特有的自定义键，如 markdown.* 自定义模板、自定义 commands.* 开关）；
  * 4. 回填走 [YamlTextMerge] 文本级合并——逐行替换值、保留全部注释与
  *   段落结构，不经 YAML 序列化重写，双端行为一致；
  * 5. 合并结果先试解析校验（解析失败 / 版本号不对则放弃重建走旧流程，
  *   用户旧文件不受影响），再原子替换落盘。
  *
- * 1.6.7.3：[YamlTextMerge.renderEntry] 回填格式对齐模板书写风格（列表与
- * 字符串统一行内双引号），修复升级重建后用户手写的 groups: ["xxx"] 等
- * 行内格式被改写成块状裸串、看着像值丢失的问题（配置版本 21 → 22，
- * 装过 1.6.7.2 覆盖版的用户重启即再次重建拿新格式）。
+ * 1.7.0：**旧默认值 → 新默认值的升级机制已移除**（用户要求）——
+ * 升级只重建文件结构与注释，用户文件里已有的值一律原样保留，
+ * 不再因「仍等于旧默认」而被换成新默认。
  *
  * 触发时机：ConfigManager.initialize() 在 saveDefaultConfig 之前调用；
  * 全新安装（无 config.yml）不触发，由 saveDefaultConfig 原样释放。
  */
 internal object ConfigFileRebuilder {
-
-    /** 1.6.7.2 调整的默认值：旧默认 = 待升级项（等于旧默认才替换为新默认）。 */
-    private const val OLD_FROM_GROUP_DEFAULT = "[QQ] {name}: {message}"
-    private const val NEW_FROM_GROUP_DEFAULT = "[§bQQ§r] {name}: {message}"
-
-    private const val OLD_IDLE_RELEASE_MINUTES = 5.0
-    private const val NEW_IDLE_RELEASE_MINUTES = 15.0
-
-    /** 1.6.7.2 覆盖版：性能数据缓存默认 5 → 60。 */
-    private const val OLD_PERFORMANCE_CACHE_SECONDS = 5
 
     /**
      * 磁盘版本低于 [currentVersion] 时以 JAR 新版 config.yml 重建用户配置。
@@ -109,25 +91,12 @@ internal object ConfigFileRebuilder {
             if (disk.contains(removed)) disk.set(removed, null)
         }
 
-        // 2. 默认值升级收敛：仍等于旧默认的项移除，让 JAR 新默认生效
-        //   （自定义过的值不动，与 1.6.5 from-game 默认升级同一策略）
-        if (OLD_FROM_GROUP_DEFAULT == disk.getString("chat-format.from-group")) {
-            disk.set("chat-format.from-group", null)
-        }
-        if (disk.isSet("render.idle-release-minutes") &&
-            disk.getDouble("render.idle-release-minutes", -1.0) == OLD_IDLE_RELEASE_MINUTES
-        ) {
-            disk.set("render.idle-release-minutes", null)
-        }
-        // 1.6.7.2 覆盖版：性能数据缓存默认 5 → 60（仍是旧默认 5 的配置删除后
-        // 由 JAR 新默认生效，用户自定义值不动）
-        if (disk.isSet("render.performance.cache-seconds") &&
-            disk.getInt("render.performance.cache-seconds", -1) == OLD_PERFORMANCE_CACHE_SECONDS
-        ) {
-            disk.set("render.performance.cache-seconds", null)
-        }
+        // 1.7.0：旧默认值→新默认值的升级收敛已移除（用户要求）——
+        // 用户文件里已有的值一律原样回填保留，不做「等于旧默认则换成
+        // 新默认」的识别（历史上有 from-group / idle-release-minutes /
+        // performance.cache-seconds 三处，现全部不再自动升级）
 
-        // 3. 收集用户自定义值：与 JAR 新默认不同的项 + JAR 不存在的自定义键
+        // 2. 收集用户已有值：与 JAR 新默认不同的项 + JAR 不存在的自定义键
         val diskLeaves = LinkedHashMap<String, Any?>()
         collectLeaves(disk, "", diskLeaves)
         diskLeaves.remove("config-version")
@@ -168,16 +137,8 @@ internal object ConfigFileRebuilder {
             return false
         }
         plugin.logger.info(
-            "配置文件已从 v$diskVersion 重建为 v$currentVersion（保留全部注释与自定义设置，旧文件备份为 config.yml.bak）"
+            "配置文件已从 v$diskVersion 重建为 v$currentVersion（保留全部注释与已有设置，旧文件备份为 config.yml.bak）"
         )
-        if (NEW_FROM_GROUP_DEFAULT == verify.getString("chat-format.from-group")) {
-            plugin.logger.info("聊天转发：群→游戏默认格式已升级为 $NEW_FROM_GROUP_DEFAULT（新默认，可自行修改）")
-        }
-        if (verify.getDouble("render.idle-release-minutes", -1.0) == NEW_IDLE_RELEASE_MINUTES &&
-            disk.getDouble("render.idle-release-minutes", -1.0) == OLD_IDLE_RELEASE_MINUTES
-        ) {
-            plugin.logger.info("渲染空闲内存释放：默认阈值已由 5 分钟调整为 15 分钟（新默认，可在 render.idle-release-minutes 改回）")
-        }
         return true
     }
 
