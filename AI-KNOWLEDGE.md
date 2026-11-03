@@ -2,7 +2,7 @@
 
 > **本文档的用途**：把本文件丢给一个对项目一无所知的 AI，它能立刻了解当前情况并接手工作。
 > 面向：接手开发/发版的 AI 助手。最后更新：2026-11-03（**主线 v1.7.2 发布**）。
-> 本版为 1.7.2 的**细化重写版**：新增 §2 完整构建指南（含常见报错与解法）、§3 部署流程、§4 官网发版流程、§8 历次踩坑记录（根因+解决步骤）、§9 1.7.2 逐项改动清单；功能全景 / 核心机制 / 历史坑表保留并按最新口径刷新。
+> 本版为 1.7.2 的**细化重写版**：新增 §2 完整构建指南（含常见报错与解法）、§3 部署流程、§4 官网发版流程、§8 历次踩坑记录（根因+解决步骤）、§9 1.7.2 逐项改动清单；功能全景 / 核心机制 / 历史坑表保留并按最新口径刷新（含头像批量并发重做与标题灰度默认 96 的最终口径、git push 完成状态）。
 > 自包含版本（发给本地无任何东西的 AI）见官网 `https://kerong.xin/penguin/AI-KNOWLEDGE.txt`。
 
 ## 0. 一句话概括与版本状态
@@ -11,7 +11,7 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 
 **版本规则**：插件版与模组版同步发号。当前版本 **1.7.2**（详见 §9 逐项改动清单）。config-version **29**。
 
-**git push 状态（重要）**：1.7.2 发版提交 `dd9ca25` 已本地提交（含 bpng/ 移出仓库）；远端 GitHub `SUZHE014/KERONGPenguin` main 仍停在 `c7d7b26`（1.7.1 知识库同步）——**push 需要写权限令牌**（fine-grained PAT 只读，见 §8 坑表）；中继路径：`git bundle create /tmp/x.bundle main` → 传服务器 → `/root/gitrelay/KERONGPenguin.git` fetch bundle 到 relay-main → 服务器上 `git push https://x-access-token:<写令牌>@github.com/SUZHE014/KERONGPenguin.git refs/heads/relay-main:refs/heads/main`（服务器可直连 GitHub）。1.7.1 的旧 bundle（/root/gitrelay-1711.bundle）与中继仓 relay-main 仍就绪可续传。
+**git push 状态**：✅ 已完成——经典写令牌（ghp_）经服务器中继推送成功，远端 GitHub `SUZHE014/KERONGPenguin` main = `b080241`（1.7.2 全量：发版 + 知识库重写 + 头像并发重做与灰度默认值调整）。中继路径（以后照此）：`git bundle create /tmp/x.bundle <远端main>..main` → 传服务器 → `/root/gitrelay/KERONGPenguin.git` fetch bundle 到 relay-main（`+main:relay-main`） → 服务器上 `git push https://x-access-token:<写令牌>@github.com/SUZHE014/KERONGPenguin.git refs/heads/relay-main:refs/heads/main`（服务器可直连 GitHub；令牌写 /root/.ghtoken chmod 600 用完即删，勿留 shell 历史）。注意：推送前远端 main 实际在 `b5f5cc6`（与旧记录的 c7d7b26 不符——以 `git ls-remote` 实测为准，bundle 基线选远端真实 HEAD）。fine-grained PAT 只读不可用（见 §8 坑表）。
 
 ## 1. 环境与位置（必读）
 
@@ -156,8 +156,8 @@ python3 scripts/verify_jar_<版>.py
 `ConfigManager.kt`（共享源码）：DEFAULT_VALUES 全量默认 + `ConfigUpgrader.fillMissing` 补缺失键（新键升级自动写入）+ REMOVED_CONFIG_KEYS 清废弃键。**1.7.0 定下的原则：升级只加新键+默认值，不做任何旧值迁移**。语法错误三级自愈（ConfigBrokenRecovery）。绝大多数配置 reload 即时生效；仅 bot.app-id/bot.secret 与 update-check 需重启。
 
 ### 6.3 渲染管线与头像获取（1.7.2 口径）
-- 渲染：CardRenderPool（核数一半 1~4 线程）→ 结果缓存 → 背景内置+img 随机 LRU（36MB 字节预算）；模糊度 render.blur-strength（0-100 默认 50，backdrop-filter 只模糊卡片背后）；灰度 render.title-card-gray（默认 142）/ render.item-card-gray（默认 106）。
-- 头像链路：内存缓存（10 分钟，128 条，只存 ≤10KB PNG）→ 磁盘缓存（默认 3 小时，render.avatar-cache-hours）→ **外部多线路**（MC-Heads → Minotar(helm) → MinePic(skin+裁脸) → Crafatar(overlay)）→ Mojang 官方兜底（429/超时 5 分钟全局冷却）。**1.7.2 超时修复**：头像 HTTP 走 httpGetAvatar（连接 5s / 读 25s 分离），任一线路超时本轮内立即换下一源，第一轮全败且超时型时对快线路补试一轮；超时型失败不写 60 秒冷却（下次查询立即重试），只有确定性失败（404）才写冷却。单飞 inFlightFetches 并发去重（等待 8s）。基岩玩家走 MC-Heads xuid 线路。
+- 渲染：CardRenderPool（核数一半 1~4 线程）→ 结果缓存 → 背景内置+img 随机 LRU（36MB 字节预算）；模糊度 render.blur-strength（0-100 默认 50，backdrop-filter 只模糊卡片背后）；灰度 render.title-card-gray（默认 96，比项目卡片略浅）/ render.item-card-gray（默认 106）。
+- 头像链路：内存缓存（10 分钟，128 条，只存 ≤10KB PNG）→ 磁盘缓存（默认 3 小时，render.avatar-cache-hours）→ **外部多线路**（MC-Heads → Minotar(helm) → MinePic(skin+裁脸) → Crafatar(overlay)）→ Mojang 官方兜底（429/超时 5 分钟全局冷却）。**1.7.2 超时修复**：头像 HTTP 走 httpGetAvatar（连接 5s / 读 25s 分离），任一线路超时本轮内立即换下一源，第一轮全败且超时型时对快线路补试一轮；超时型失败不写 60 秒冷却（下次查询立即重试），只有确定性失败（404）才写冷却。单飞 inFlightFetches 并发去重（等待 8s）。基岩玩家走 MC-Heads xuid 线路。**批量获取并发重做**：在线列表 / 排行榜 / 财富榜 / 查信息统一走 InfoCardAssets.fetchAvatarBatch（**8 线程共享池** PenguinAvatarFetch + **12 秒渲染等待预算**；超预算的玩家本轮占位块先回复、任务不取消——后台下载完成后进缓存下一轮即有真实头像；40 秒迟到硬上限由 PenguinAvatarReaper 兜底取消防慢源链路占满线程池；旧版各服务自建 4 线程池 + invokeAll(8s) 到点中断在途下载已全部移除；查信息单头像旧版在渲染线程无上限阻塞、QQ 可等一分多钟，也改走同入口有界等待）。
 - 失败分类日志（logs/qq 文件）：「获取失败（本次链路遇网络抖动，未写失败冷却…）」= 超时/网络型，正常降级；「获取失败（本地与外置链路均未命中，60 秒内不重试）」= 确定性失败。
 
 ### 6.4 QQ 绑定拦截
@@ -186,9 +186,9 @@ Paper 1.21+ 内置 spark 不注册插件表（bundledSparkClassLoader 探测）�
 
 **① 头像获取部分失败（用户判定"8 秒超时被直接中断"）**
 - 现象：批量报「获取失败（本次链路遇网络抖动，未写失败冷却，下次查询立即重试；本张渲染占位块）」，下一轮查询重试即成功（成功日志「头像 xxx ← Minotar（名字线路）」）。
-- 根因：头像下载 HTTP 的读超时过短（旧版连接/读同为 3 秒）——慢速可用的源流读到一半被 SO_TIMEOUT 切断；在线列表路径另有 8 秒预热预算（invokeAll）会中断整批，尾部玩家渲染占位块。SO_TIMEOUT 是**单次 read 阻塞**上限，数据在流动就不断重置，不是总时长——拉长只影响真正断流的连接。
-- 解决步骤：a) 新增 httpGetAvatar（连接 5s / 读 25s 分离，头像链路全走它）；b) 任一线路超时后本轮渲染内立即换下一头像源（elvis 链既有行为明确化）；c) 第一轮全败且属超时型（networkTrouble 标记）时对 MC-Heads / Minotar 快线路补试一轮（fetchExternalAvatarOnce(retryPass=true)）；d) 超时型失败继续不写 missCache 冷却（既有机制保持）；e) 真失败（HTTP 404 明确无此玩家）的 60 秒冷却不动。
-- 验证：门禁 AV 组 6 项（字节码常量 5000/25000、方法在位、旧三参方法移除、4 处调用点）。
+- 根因：头像下载 HTTP 的读超时过短（旧版连接/读同为 3 秒）——慢速可用的源流读到一半被 SO_TIMEOUT 切断；批量路径另有 8 秒预热预算（invokeAll）**到点中断在途下载**（用户实测「获取到一半就直接被截断，然后渲染发送」：invokeAll 超时会对任务 future.cancel(true)，线程在 inputStream.read 中被 interrupt，已下载字节全部作废），大名单尾部玩家还排队等不到线程。SO_TIMEOUT 是**单次 read 阻塞**上限，数据在流动就不断重置，不是总时长——拉长只影响真正断流的连接。
+- 解决步骤：a) 新增 httpGetAvatar（连接 5s / 读 25s 分离，头像链路全走它）；b) 任一线路超时后本轮渲染内立即换下一头像源（elvis 链既有行为明确化）；c) 第一轮全败且属超时型（networkTrouble 标记）时对 MC-Heads / Minotar 快线路补试一轮（fetchExternalAvatarOnce(retryPass=true)）；d) 超时型失败继续不写 missCache 冷却（既有机制保持）；e) 真失败（HTTP 404 明确无此玩家）的 60 秒冷却不动；f) **批量并发重做**——InfoCardAssets.fetchAvatarBatch 统一四服务入口（在线列表 / 排行榜 / 财富榜 / 查信息）：8 线程共享池并行收齐（大量头像几秒完成，QQ 回复不久等）、12 秒渲染等待预算内逐个收结果、超预算先渲染发送但**任务不取消**（后台下载完成后进缓存，下一轮查询即显示真实头像——这是根治「截断一半」的关键：预算与下载解耦）、40 秒迟到硬上限兜底取消（防慢源链路占满预热线程池，PenguinAvatarReaper 单守护线程调度）；查信息单头像同入口（旧版渲染线程无上限阻塞，慢链路时 QQ 等一分多钟）。
+- 验证：门禁 AV 组 11 项（字节码常量 5000/25000、方法在位、旧三参方法移除、AV3 批量并发 5 项：fetchAvatarBatch 双 JAR 在位 + 12000l/40000l 常量 + 线程名字面量 + 四服务接入 + invokeAll 反断言）；冒烟 AV 组 3 项（空列表秒回 / 100ms 预算到点即回实测 116ms / 返回 Map 非 null）。
 
 **② /执行命令 返回混入控制台噪音（[MediaSource] 刷屏、[Not Secure] 行）**
 - 现象：QQ 返回混入「[MediaSource] 布谷鸟时钟 BlockPos{…} 媒体=(空) mode=FIT …」高频刷屏与「[Not Secure] [Server] 1」。
@@ -226,7 +226,7 @@ Paper 1.21+ 内置 spark 不注册插件表（bundledSparkClassLoader 探测）�
 | MultiEdit 非原子 | 部分成功后报错"未执行" | 失败后先 rg 检查文件实际状态 |
 | drawImage 十参目标/源矩形序 | 写反时等尺寸静默正确、cover 时整画布空白 | 几何改动必须不同宽高比像素级端到端断言 |
 | javap 三坑 | 平铺放置常量池降级截断 / 两形态字符串 / Kotlin 模板 recipe 在 BootstrapMethods | 按包路径展开 + -v 常量池 + 字节双通道断言 |
-| internal 方法模块后缀 | cardHeight$common_Bot vs $server_NeoForge | 反射按前缀动态查找 |
+| internal 方法模块后缀 | cardHeight$common_Bot vs $server_NeoForge（fetchAvatarBatch 同坑：Java 冒烟编译报 cannot find symbol） | 反射按前缀动态查找；需要 Java 侧直调的入口直接声明 public（与 fetchAvatar 同风格），编译期消除后缀 |
 | Bukkit YAML 流重载 | paper-api 已删 InputStream 重载 | 双端共用源码解析流走 Reader |
 | snakeyaml 单元素列表单行 | dump 形态判断误当标量 | 序列化分支按输入类型分派 |
 | YamlConfiguration.loadConfiguration 吞异常 | 返回空配置不抛出 | 失败可感知场景用实例方法 yaml.load(reader) |
@@ -248,14 +248,14 @@ Paper 1.21+ 内置 spark 不注册插件表（bundledSparkClassLoader 探测）�
 |---|---|---|---|
 | 1 | 删除 git 图片包镜像下载线路 | ✅ | BackgroundPackService.DOWNLOAD_SOURCES 只留官网；git 仓库 bpng/ 移出 + .gitignore；make_bpng_manifest.py 清镜像表述 |
 | 2 | bpng 列表动态读取 | ✅ | manifest 新增 count/bytes；PackInfo.declaredCount/declaredBytes + 回退兼容；官网 wl1 清单已补（count=29/bytes=60926352） |
-| 3 | 头像 8 秒超时修复 | ✅ | httpGetAvatar 连接 5s/读 25s；超时换源 + 快线路补试轮；超时不写冷却保持；见 §8.1① |
+| 3 | 头像 8 秒超时修复 | ✅ | httpGetAvatar 连接 5s/读 25s；超时换源 + 快线路补试轮；超时不写冷却保持；批量并发重做 fetchAvatarBatch（8 线程 + 12 秒渲染预算 + 超预算不中断在途下载 + 40 秒迟到硬取消），四服务统一入口；见 §8.1① |
 | 4 | /执行命令 噪音 | ✅ | 双端派发自定义 Sender / withSource 包装；噪音黑名单 ConsoleNoiseFilter；见 §8.1② |
 | 5 | bpng_upload.py 上传工具 | ✅ | /home/z/my-project/scripts/bpng_upload.py（SFTP+服务器端解压+manifest 生成+chown+curl 验证） |
 | 6 | image-download.enabled 开关 | ✅ | 配置默认 true；双端 bpng 入口拦截；bpngsz 不受影响 |
 | 7 | 签到经济插件检测 | ✅ | EconomyRewardService（Vault/PlayerPoints/CoinsEngine 全反射+余额差值校验）；points-reward 配置；plugin.yml softdepend+CoinsEngine；⚠️ 用户实际 MC 服务器装了哪些经济插件未核实（服务器不在本机） |
 | 8 | QQ 绑定验证文案 | ✅ | kick-message「可以直接发送纯数字验证码：xxx」；bind-invalid 一句话 |
 | 9 | 项目卡片灰度 | ✅ | 64→106（(120+64)/2=92 偏旧值一侧）；render.item-card-gray |
-| 10 | 标题卡片灰度 | ✅ | 恢复旧值 142；render.title-card-gray |
+| 10 | 标题卡片灰度 | ✅ | 默认 96（比项目卡片 106 略浅、差距不大）；render.title-card-gray |
 | 11 | 灰度参数进配置 | ✅ | 双键 0-255 实时读取；四渲染器接入；硬编码清除 |
 | 12 | 设计来源统一标注「参考」 | ✅ | 四渲染器 KDoc + README + 官网节标题 |
 | 13 | 官网暗色调 | ✅ | style.css 深背景/深卡片/浅文字；index/tutorial 内联色同步；布局不动 |
@@ -263,10 +263,10 @@ Paper 1.21+ 内置 spark 不注册插件表（bundledSparkClassLoader 探测）�
 | 15 | 构建双端 JAR | ✅ | 门禁 verify_jar_172 63 项全过 + 冒烟 smoke172 20 项全绿 |
 | 16 | 部署 | ✅（官网）/ ⚠️（MC） | 双 JAR + 源码包 + 官网已上线 curl+md5 验证；**MC 服务端不在 156.233.228.248 上**，JAR 替换与重启需用户在实际服务器执行 |
 | 17 | 官网发版 + curl 验证 | ✅ | version.json/index（三处版本号）/tutorial/style 200；manifest count/bytes；外网域名复核 |
-| 18 | git 推送 | ⏸ | 发版提交 dd9ca25 已本地提交（不含图片包）；**push 待用户提供仓库写权限令牌**（中继流程见 §0） |
+| 18 | git 推送 | ✅ | 经典写令牌（ghp_）服务器中继推送成功；远端 main = b080241（含发版 + 知识库重写 + 头像并发重做与灰度调整全部提交）；中继流程与实测要点见 §0 |
 | 19 | 交接文档细化重写 | ✅ | 本文档（新增 §2 构建指南 / §3 部署 / §4 官网发版 / §8 踩坑根因 / §9 逐项清单） |
 
-**1.7.2 配置变更汇总**：config-version 28→29；新增 `image-download.enabled: true`、`render.title-card-gray: 142`、`render.item-card-gray: 106`、`qq-bind.checkin.points-reward: 0`（只加新键，不做旧值迁移）。
+**1.7.2 配置变更汇总**：config-version 28→29；新增 `image-download.enabled: true`、`render.title-card-gray: 96`、`render.item-card-gray: 106`、`qq-bind.checkin.points-reward: 0`（只加新键，不做旧值迁移；灰度默认值以本表为准：标题 96 略低于项目 106）。
 
 ## 10. Cross-posting 互转版（1.6.7_Cross-posting.3）
 
