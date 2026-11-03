@@ -12,10 +12,7 @@ import org.bukkit.Bukkit
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.UUID
-import java.util.concurrent.Callable
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import java.awt.image.BufferedImage
 
 /**
@@ -46,12 +43,6 @@ import java.awt.image.BufferedImage
  */
 object OnlineListService {
 
-    /** 头像预热线程数（网络 IO 密集，不占渲染 CPU 预算）。 */
-    private const val AVATAR_FETCH_THREADS = 4
-
-    /** 头像预热总预算（毫秒）：超时后未完成的玩家画占位块，不无限等待。 */
-    private const val AVATAR_FETCH_BUDGET_MILLIS = 8_000L
-
     /** 渲染结果缓存秒数（在线名单未变化时复用；名单变化即换 key 自然失效）。 */
     private const val RESULT_TTL_MILLIS = 20_000L
 
@@ -73,13 +64,6 @@ object OnlineListService {
     private data class CachedList(val pages: List<ByteArray>, val at: Long)
 
     private val resultCache = ConcurrentHashMap<Int, CachedList>()
-
-    /** 头像预热线程池（惰性创建，守护线程）。 */
-    private val avatarPool by lazy {
-        Executors.newFixedThreadPool(AVATAR_FETCH_THREADS) { runnable ->
-            Thread(runnable, "PenguinAvatarFetch").apply { isDaemon = true }
-        }
-    }
 
     /**
      * 渲染与发送全流程在共享渲染池执行（1.5.1：快照也移入池内），
@@ -121,7 +105,8 @@ object OnlineListService {
                         return@submit
                     }
 
-                    // 3. 并发预热头像（8 秒预算，超时的玩家画占位块）
+                    // 3. 并发预热头像（8 线程共享池 + 12 秒渲染等待预算：超预算的
+                    //    玩家本轮画占位块，但下载不中断，后台完成后进缓存）
                     val avatars = fetchAvatars(snapshot)
                     val entries = snapshot.players.map {
                         OnlineListRenderer.OnlineEntry(it.first, avatars[it.first])
@@ -206,37 +191,18 @@ object OnlineListService {
     }
 
     /**
-     * 并发预热头像：4 线程小池 + 总预算 8 秒。
-     * 超时未完成的玩家返回 null（渲染占位块）；后续查询命中头像缓存后展示真实头像。
-     * 头像获取本身带 TTL 缓存与失败负缓存（见 InfoCardAssets），网络失败不重试轰炸。
+     * 并发预热头像：统一走 [InfoCardAssets.fetchAvatarBatch]（1.7.2 重做并发
+     * 策略：8 线程共享池 + 12 秒渲染等待预算，超预算不中断在途下载——后台
+     * 完成后进缓存，下一轮查询即显示真实头像）；超预算/失败的玩家本轮画
+     * 占位块；头像获取本身带 TTL 缓存与失败负缓存（见 InfoCardAssets）。
      */
     private fun fetchAvatars(snapshot: Snapshot): Map<String, BufferedImage> {
         if (snapshot.players.isEmpty()) return emptyMap()
-        val tasks = snapshot.players.map { player ->
-            Callable {
-                player.first to InfoCardAssets.fetchAvatar(
-                    InfoCardAssets.AvatarRequest(
-                        uuid = player.second,
-                        playerName = player.first,
-                    )
-                )
+        return InfoCardAssets.fetchAvatarBatch(
+            snapshot.players.map {
+                InfoCardAssets.AvatarRequest(uuid = it.second, playerName = it.first)
             }
-        }
-        val result = mutableMapOf<String, BufferedImage>()
-        try {
-            val futures = avatarPool.invokeAll(tasks, AVATAR_FETCH_BUDGET_MILLIS, TimeUnit.MILLISECONDS)
-            for (future in futures) {
-                try {
-                    val pair = future.get() ?: continue
-                    pair.second?.let { face -> result[pair.first] = face }
-                } catch (_: Throwable) {
-                    // 单个玩家取头像失败/超时：跳过，渲染占位块
-                }
-            }
-        } catch (_: Throwable) {
-            // invokeAll 整体异常（如池已关闭）：全部占位块兜底
-        }
-        return result
+        )
     }
 
     /** 逐张发送分页图片（相邻间隔 [SEND_INTERVAL_MILLIS]）；返回是否全部发送成功。 */

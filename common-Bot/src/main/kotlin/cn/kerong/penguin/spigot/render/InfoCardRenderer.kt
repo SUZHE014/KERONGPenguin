@@ -18,11 +18,14 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Base64
 import java.util.UUID
+import java.util.concurrent.Callable
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import javax.imageio.ImageIO
 
 /**
@@ -239,8 +242,8 @@ object InfoCardRenderer {
         val h = (height - 24 - 336).toFloat()
 
         backdrop?.paintCard(g, x, y, w, h, 24f)
-        // 1.7.2：标题卡片底色黑度可配（render.title-card-gray，默认 142 =
-        // 恢复 1.7.0 之前的原始深度；1.7.0 曾调浅到 76 用户反馈太浅）
+        // 1.7.2：标题卡片底色黑度可配（render.title-card-gray，默认 96 =
+        // 比项目卡片 106 略浅一点，差距不大）
         g.color = Color(0x00, 0x00, 0x00, RenderSettings.titleCardGray())
         g.fill(RoundRectangle2D.Float(x, y, w, h, 24f, 24f))
 
@@ -857,6 +860,98 @@ object InfoCardAssets {
         } finally {
             inFlightFetches.remove(key, latch)
             latch.done.countDown()
+        }
+    }
+
+    // ---------- 头像批量预热（1.7.2：并发加速 + 不截断在途下载） ----------
+
+    /** 头像批量预热线程数（网络 IO 密集，不占渲染 CPU 预算；大名单并行收齐）。 */
+    private const val AVATAR_BATCH_THREADS = 8
+
+    /**
+     * 批量预热渲染等待预算（毫秒）：预算内尽量收齐头像再渲染发送；超预算的
+     * 玩家本轮渲染占位块，但其下载任务不取消——后台继续，完成后进缓存，
+     * 下一轮查询即显示真实头像。
+     */
+    internal const val AVATAR_BATCH_BUDGET_MILLIS = 12_000L
+
+    /** 批量预热迟到硬上限（毫秒）：预算过后仍在跑的任务到点取消（防慢源链路占满线程池）。 */
+    private const val AVATAR_BATCH_HARD_CANCEL_MILLIS = 40_000L
+
+    /** 头像批量预热共享线程池（在线列表 / 排行榜 / 财富榜 / 查信息共用，避免各建一池线程数翻倍）。 */
+    private val avatarBatchPool by lazy {
+        Executors.newFixedThreadPool(AVATAR_BATCH_THREADS) { runnable ->
+            Thread(runnable, "PenguinAvatarFetch").apply { isDaemon = true }
+        }
+    }
+
+    /** 批量预热迟到取消调度器（单守护线程）。 */
+    private val avatarBatchReaper by lazy {
+        Executors.newSingleThreadScheduledExecutor { runnable ->
+            Thread(runnable, "PenguinAvatarReaper").apply { isDaemon = true }
+        }
+    }
+
+    /**
+     * 批量预热头像（在线列表 / 排行榜 / 财富榜 / 查信息共用入口）。
+     *
+     * 1.7.2 重做并发策略。旧版各服务自建 4 线程小池 + invokeAll(8 秒) 硬预算，
+     * 到点会**中断**在途下载——慢速可用的源读到一半被切断，已下载字节全部
+     * 作废，本轮占位块；大名单尾部玩家还排队等不到线程。新版：
+     * - 8 线程共享池并行（网络 IO 密集），大名单也几秒内收齐，QQ 回复不久等；
+     * - 预算内逐个收结果，超预算先渲染发送，任务**不取消**：后台下载完成后
+     *   进内存/磁盘缓存，下一轮查询即有真实头像；
+     * - 迟到硬上限兜底取消，防个别玩家慢源链路长期占满预热线程池；
+     * - 返回 Map 只含获取成功的玩家（失败/超预算由调用方渲染占位块）。
+     */
+    fun fetchAvatarBatch(
+        requests: List<AvatarRequest>,
+        budgetMillis: Long = AVATAR_BATCH_BUDGET_MILLIS,
+    ): Map<String, BufferedImage> {
+        if (requests.isEmpty()) return emptyMap()
+        val futures = requests.map { request ->
+            avatarBatchPool.submit(Callable { request.playerName to fetchAvatar(request) })
+        }
+        val result = mutableMapOf<String, BufferedImage>()
+        val deadline = System.currentTimeMillis() + budgetMillis
+        for (future in futures) {
+            val remaining = deadline - System.currentTimeMillis()
+            if (remaining > 0) {
+                try {
+                    val pair = future.get(remaining, TimeUnit.MILLISECONDS)
+                    pair.second?.let { face -> result[pair.first] = face }
+                    continue
+                } catch (_: TimeoutException) {
+                    // 该玩家超渲染等待预算：本轮占位块（任务不取消，后台跑完进缓存）
+                } catch (_: Throwable) {
+                    continue
+                }
+            }
+            // 预算已尽：不阻塞收尾，但已完成的任务仍然捡回结果
+            if (future.isDone) {
+                try {
+                    val pair = future.get()
+                    pair.second?.let { face -> result[pair.first] = face }
+                } catch (_: Throwable) {
+                }
+            }
+        }
+        scheduleBatchHardCancel(futures)
+        return result
+    }
+
+    /** 安排迟到硬取消（已完成的任务 cancel 是空操作）。 */
+    private fun scheduleBatchHardCancel(futures: List<Future<*>>) {
+        try {
+            avatarBatchReaper.schedule({
+                for (future in futures) {
+                    try {
+                        future.cancel(true)
+                    } catch (_: Throwable) {
+                    }
+                }
+            }, AVATAR_BATCH_HARD_CANCEL_MILLIS, TimeUnit.MILLISECONDS)
+        } catch (_: Throwable) {
         }
     }
 

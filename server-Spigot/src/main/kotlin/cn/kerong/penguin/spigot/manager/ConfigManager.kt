@@ -315,7 +315,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
         // 1.7.2：升 29——新增四键（只加新键+默认值，不做任何旧值迁移）：
         // image-download.enabled（图片下载功能总开关，默认 true）、
-        // render.title-card-gray（标题卡片黑度，默认 142 = 1.7.0 前旧值）、
+        // render.title-card-gray（标题卡片黑度，默认 96 = 比项目卡片略浅）、
         // render.item-card-gray（项目卡片黑度，默认 106 = 中间偏深值）、
         // qq-bind.checkin.points-reward（签到点券奖励，默认 0 关闭）
         // 1.7.1：升 28——无新增键纯注释刷新（卡片背景图说明段补 /hbkrg bpng
@@ -507,8 +507,8 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 背后的背景，卡片外保持清晰）
             "render.blur-strength" to 50,
             // 1.7.2：卡片底色黑度（0-255 半透明黑 alpha；title = 查信息统计面板
-            // 恢复 1.7.0 前旧值 142；item = 六处容器取旧值 120 与浅值 64 中间偏深 106）
-            "render.title-card-gray" to 142,
+            // 默认 96 比项目卡片略浅；item = 六处容器取旧值 120 与浅值 64 中间偏深 106）
+            "render.title-card-gray" to 96,
             "render.item-card-gray" to 106,
             // 1.5.5：在线排行榜（1.6.0 从 qq-bind.leaderboard 迁至顶层）
             "leaderboard.top" to 15,

@@ -240,12 +240,18 @@ object QueryInfoService {
 
                     // 7. 拉取头像并渲染（1.6.9.3：卡片头部玩家名可被玩家名变量覆盖，
                     //    头像 / 统计 / 缓存仍按真实玩家，仅展示名变化）
-                    val avatar = InfoCardAssets.fetchAvatar(
-                        InfoCardAssets.AvatarRequest(
-                            uuid = playerUuid,
-                            playerName = playerName,
+                    // 1.7.2：改走 fetchAvatarBatch 有界等待（12 秒渲染预算）——
+                    //    旧版直接在渲染线程无上限阻塞，头像全链路慢时 QQ 要等
+                    //    一分多钟才收到卡片；超预算先渲染发送（占位头像），
+                    //    下载后台完成后进缓存，下一轮查询即有真实头像
+                    val avatar = InfoCardAssets.fetchAvatarBatch(
+                        listOf(
+                            InfoCardAssets.AvatarRequest(
+                                uuid = playerUuid,
+                                playerName = playerName,
+                            )
                         )
-                    )
+                    )[playerName]
                     val bytes = InfoCardRenderer.render(
                         InfoCardRenderer.CardData(
                             playerName = snapshot.vars.overrides.playerName ?: playerName,

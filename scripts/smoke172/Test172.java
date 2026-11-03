@@ -17,6 +17,7 @@ import cn.kerong.bot.provider.BotShared;
 import cn.kerong.bot.tools.ConsoleNoiseFilter;
 import cn.kerong.penguin.spigot.qqbind.EconomyRewardService;
 import cn.kerong.penguin.spigot.render.BackgroundPackService;
+import cn.kerong.penguin.spigot.render.InfoCardAssets;
 import cn.kerong.penguin.spigot.render.RenderSettings;
 
 /**
@@ -26,7 +27,8 @@ import cn.kerong.penguin.spigot.render.RenderSettings;
  *  S 组  manifest 动态字段（count / bytes 声明值优先，旧清单回退 files 统计）
  *  H 组  本地 HttpServer 端到端：listPacksLines 渲染声明张数与体积；单源下载
  *  ID 组 image-download.enabled 开关（默认开 / 关闭后 false + 拦截文案）
- *  GY 组 灰度配置（默认 142 / 106；配置覆盖生效）
+ *  GY 组 灰度配置（默认 96 / 106；配置覆盖生效）
+ *  AV 组 头像批量获取有界预算（fetchAvatarBatch：空列表秒回 / 超预算到点即回）
  *  EC 组 经济检测优雅跳过（无插件 JVM 全部 false 不抛异常）+ points-reward 配置读取
  *  NZ 组 ConsoleNoiseFilter 黑名单（MediaSource / Not Secure / 正常行放行）
  */
@@ -169,10 +171,29 @@ public final class Test172 {
         check("ID3 拦截文案在位", hasText);
         fake.getConfig().set("image-download.enabled", true);
 
+        System.out.println("== AV 组：头像批量获取有界预算 ==");
+
+        // AV1 空列表：立即返回空 Map（不触碰线程池）
+        java.util.Map<String, java.awt.image.BufferedImage> emptyBatch =
+                InfoCardAssets.INSTANCE.fetchAvatarBatch(java.util.Collections.emptyList(), 1000L);
+        check("AV1 空列表返回空 Map", emptyBatch != null && emptyBatch.isEmpty());
+
+        // AV2 100ms 预算 + 三个缓存必未命中的玩家：到点即回不等网络完成
+        //（旧版 invokeAll 硬预算会中断在途下载；新版超预算立即收尾返回）
+        long avT0 = System.currentTimeMillis();
+        java.util.Map<String, java.awt.image.BufferedImage> bounded =
+                InfoCardAssets.INSTANCE.fetchAvatarBatch(java.util.Arrays.asList(
+                        new InfoCardAssets.AvatarRequest(null, "smoke_no_such_a1"),
+                        new InfoCardAssets.AvatarRequest(null, "smoke_no_such_b2"),
+                        new InfoCardAssets.AvatarRequest(null, "smoke_no_such_c3")), 100L);
+        long avCost = System.currentTimeMillis() - avT0;
+        check("AV2 100ms 预算到点即回（实测 " + avCost + "ms < 3000ms）", avCost < 3000);
+        check("AV3 批量返回 Map 不为 null（允许空：占位块口径）", bounded != null);
+
         System.out.println("== GY 组：灰度配置 ==");
 
-        check("GY1 默认 title 142 / item 106",
-                RenderSettings.INSTANCE.titleCardGray() == 142 && RenderSettings.INSTANCE.itemCardGray() == 106,
+        check("GY1 默认 title 96 / item 106",
+                RenderSettings.INSTANCE.titleCardGray() == 96 && RenderSettings.INSTANCE.itemCardGray() == 106,
                 RenderSettings.INSTANCE.titleCardGray() + "/" + RenderSettings.INSTANCE.itemCardGray());
         fake.getConfig().set("render.title-card-gray", 200);
         fake.getConfig().set("render.item-card-gray", 30);

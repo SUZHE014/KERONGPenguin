@@ -15,10 +15,7 @@ import org.bukkit.OfflinePlayer
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.UUID
-import java.util.concurrent.Callable
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import java.awt.image.BufferedImage
 
 /**
@@ -56,12 +53,6 @@ class CoinsLeaderboardCommands : CommandSupport() {
         /** 多张图片相邻发送间隔（毫秒），对频控友好（与在线排行榜一致）。 */
         private const val SEND_INTERVAL_MILLIS = 400L
 
-        /** 头像预热线程数（网络 IO 密集，不占渲染 CPU 预算）。 */
-        private const val AVATAR_FETCH_THREADS = 4
-
-        /** 头像预热总预算（毫秒）。 */
-        private const val AVATAR_FETCH_BUDGET_MILLIS = 8_000L
-
         /** 渲染结果缓存秒数（余额变动不频繁，期间重复查询复用整组图片）。 */
         private const val RESULT_TTL_MILLIS = 60_000L
 
@@ -71,13 +62,6 @@ class CoinsLeaderboardCommands : CommandSupport() {
         /** 结果缓存（整组分页图片；单一全局条目，带生成时间）。 */
         private var cachedPages: List<ByteArray> = emptyList()
         private var cachedAt: Long = 0L
-
-        /** 头像预热线程池（惰性创建，守护线程）。 */
-        private val avatarPool by lazy {
-            Executors.newFixedThreadPool(AVATAR_FETCH_THREADS) { runnable ->
-                Thread(runnable, "PenguinCoinsAvatarFetch").apply { isDaemon = true }
-            }
-        }
     }
 
     /** 原始条目（扫描 + 余额查询后的数据）。 */
@@ -357,37 +341,24 @@ class CoinsLeaderboardCommands : CommandSupport() {
     }
 
     /**
-     * 并发预热头像（在线获取链路，见 InfoCardAssets.fetchAvatar）。
-     * 超时未取到的玩家渲染占位块；头像缓存 10 分钟，重复查询秒回。
+     * 并发预热头像：统一走 InfoCardAssets.fetchAvatarBatch（1.7.2 重做并发
+     * 策略：8 线程共享池 + 12 秒渲染等待预算，超预算不中断在途下载——后台
+     * 完成后进缓存，下一轮查询即显示真实头像）；超预算未取到的玩家本轮
+     * 渲染占位块；头像缓存 10 分钟，重复查询秒回。
      */
     private fun fetchAvatars(
         entries: List<RawEntry>,
         onlineUuids: Map<String, UUID?>,
     ): Map<String, BufferedImage> {
         if (entries.isEmpty()) return emptyMap()
-        val tasks = entries.map { entry ->
-            Callable {
-                entry.name to InfoCardAssets.fetchAvatar(
-                    InfoCardAssets.AvatarRequest(
-                        uuid = entry.uuid ?: onlineUuids[entry.name],
-                        playerName = entry.name,
-                    )
+        return InfoCardAssets.fetchAvatarBatch(
+            entries.map {
+                InfoCardAssets.AvatarRequest(
+                    uuid = it.uuid ?: onlineUuids[it.name],
+                    playerName = it.name,
                 )
             }
-        }
-        val result = mutableMapOf<String, BufferedImage>()
-        try {
-            val futures = avatarPool.invokeAll(tasks, AVATAR_FETCH_BUDGET_MILLIS, TimeUnit.MILLISECONDS)
-            for (future in futures) {
-                try {
-                    val pair = future.get() ?: continue
-                    pair.second?.let { face -> result[pair.first] = face }
-                } catch (_: Throwable) {
-                }
-            }
-        } catch (_: Throwable) {
-        }
-        return result
+        )
     }
 
     /** 逐张发送分页图片（相邻间隔 [SEND_INTERVAL_MILLIS]）；任一张失败提示重试。 */

@@ -31,10 +31,11 @@ object RenderSettings {
     /**
      * 标题卡片底色黑度默认值（1.7.2 新增 render.title-card-gray）。
      *
-     * 查信息卡片的「统计信息」面板（带标题 + 统计项目的大卡片）恢复到
-     * 1.7.0 之前的原始深度 142（1.7.0 曾调浅到 76，用户要求直接用旧值）。
+     * 查信息卡片的「统计信息」面板（带标题 + 统计项目的大卡片）：
+     * 96，比项目卡片（106）略浅一点但差距不大（用户指定口径：标题
+     * 卡片黑度略低于项目卡片，不要低太多）。
      */
-    const val DEFAULT_TITLE_CARD_GRAY = 142
+    const val DEFAULT_TITLE_CARD_GRAY = 96
 
     /**
      * 项目卡片底色黑度默认值（1.7.2 新增 render.item-card-gray）。
@@ -153,11 +154,12 @@ object RenderSettings {
     }
 
     /**
-     * 标题卡片底色黑度（render.title-card-gray，1.7.2 新增，默认 142）。
+     * 标题卡片底色黑度（render.title-card-gray，1.7.2 新增，默认 96）。
      *
      * - 作用于查信息卡片的「统计信息」面板（带标题的大卡片）；
      * - 取值 0 ~ 255（半透明黑 alpha；越大越深）；
-     * - 默认 142 = 1.7.0 之前的原始深度（1.7.0 曾调浅到 76，用户要求恢复）；
+     * - 默认 96 比项目卡片（[DEFAULT_ITEM_CARD_GRAY] = 106）略浅一点，
+     *   差距不大（标题卡片黑度略低于项目卡片，但不要低太多）；
      * - 实时读取（/hbkrg reload 后立即生效）。
      */
     fun titleCardGray(): Int {

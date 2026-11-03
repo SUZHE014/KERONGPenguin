@@ -9,6 +9,8 @@
       AV1  头像超时（connect 5000 / read 25000 常量 + httpGetAvatar 方法）
       AV2  超时换源重试（fetchExternalAvatarOnce / retryPass；旧三参
            fetchAvatarFromUrl(String,int,String) 已移除）
+      AV3  批量获取并发重做（fetchAvatarBatch 8 线程共享池 + 12 秒渲染
+           等待预算 + 40 秒迟到硬取消；四服务统一接入；invokeAll 移除）
       EX1  执行命令噪音（BukkitConsoleSender / HybridCommandExecutor 派发给
            自定义 Sender：字节码无 getConsoleSender + dispatchCommand 在位）
       EX2  NeoForgeConsoleExecutor：withSource 包装 + CollectingCommandSource
@@ -23,7 +25,7 @@
       ID1  image-download.enabled 开关（服务方法 + 配置键 + 双端 config.yml）
       ID2  bpng 入口拦截（双端命令类调 isImageDownloadEnabled）
   四、样式/文案
-      GY1  灰度配置（titleCardGray / itemCardGray + 默认 142 / 106 常量）
+      GY1  灰度配置（titleCardGray / itemCardGray + 默认 96 / 106 常量）
       GY2  四渲染器接配置（invokestatic RenderSettings.titleCardGray /
            itemCardGray；硬编码 76 / 64 反断言）
       TX1  设计参考标注（四渲染器 KDoc「设计参考」）
@@ -121,6 +123,10 @@ KCMD = "cn/kerong/penguin/spigot/commands/KERONGCommand.class"
 NFCMD = "cn/kerong/penguin/neoforge/NeoForgeCommands.class"
 CFGMGR = "cn/kerong/penguin/spigot/manager/ConfigManager.class"
 CHECKIN = "cn/kerong/bot/events/commands/CheckInCommands.class"
+OLS = "cn/kerong/penguin/spigot/stats/OnlineListService.class"
+LBC = "cn/kerong/bot/events/commands/LeaderboardCommands.class"
+CLC = "cn/kerong/bot/events/commands/CoinsLeaderboardCommands.class"
+QIS = "cn/kerong/penguin/spigot/stats/QueryInfoService.class"
 
 SRC_SVC = ROOT / "common-Bot/src/main/kotlin/cn/kerong/penguin/spigot/render/BackgroundPackService.kt"
 SRC_ASSETS = ROOT / "common-Bot/src/main/kotlin/cn/kerong/penguin/spigot/render/InfoCardRenderer.kt"
@@ -188,6 +194,29 @@ check("AV2c 皮肤下载与 Crafatar 均走 httpGetAvatar",
       assets_c.count("httpGetAvatar") >= 4,
       f"调用点 {assets_c.count('httpGetAvatar')} 处")
 
+# AV3 批量获取并发重做
+assets_c_nf2 = javap_c(NF_JAR, ASSETS)
+assets_p_nf2 = javap_p(NF_JAR, ASSETS)
+check("AV3a fetchAvatarBatch 方法在位（双 JAR）",
+      "fetchAvatarBatch" in assets_p and "fetchAvatarBatch" in assets_p_nf2)
+check("AV3b 渲染等待预算 12 秒 / 迟到硬取消 40 秒常量在位",
+      "long 12000l" in assets_c and "long 40000l" in assets_c)
+check("AV3c 共享预热线程池与迟到取消调度器（线程名字面量，双 JAR）",
+      class_contains_literals(SPIGOT_JAR, ASSETS, ["PenguinAvatarFetch", "PenguinAvatarReaper"]) and
+      class_contains_literals(NF_JAR, ASSETS, ["PenguinAvatarFetch", "PenguinAvatarReaper"]))
+check("AV3d 四服务统一接入 fetchAvatarBatch（在线列表/排行榜/财富榜/查信息）",
+      "fetchAvatarBatch" in javap_c(SPIGOT_JAR, OLS) and
+      "fetchAvatarBatch" in javap_c(SPIGOT_JAR, LBC) and
+      "fetchAvatarBatch" in javap_c(SPIGOT_JAR, CLC) and
+      "fetchAvatarBatch" in javap_c(SPIGOT_JAR, QIS))
+check("AV3e invokeAll 硬预算已移除（三批量类反断言，双 JAR）",
+      "invokeAll" not in javap_c(SPIGOT_JAR, OLS) and
+      "invokeAll" not in javap_c(SPIGOT_JAR, LBC) and
+      "invokeAll" not in javap_c(SPIGOT_JAR, CLC) and
+      "invokeAll" not in javap_c(NF_JAR, OLS) and
+      "invokeAll" not in javap_c(NF_JAR, LBC) and
+      "invokeAll" not in javap_c(NF_JAR, CLC))
+
 print("== EX 组：执行命令噪音修复 ==")
 
 # EX1 Spigot 派发自定义 Sender
@@ -243,7 +272,7 @@ src_cfgr = SRC_CFGR.read_text(encoding="utf-8")
 check("EC2a ConfigManager DEFAULT_VALUES 含 points-reward / image-download / 双灰度键",
       '"qq-bind.checkin.points-reward" to 0' in src_cfgr and
       '"image-download.enabled" to true' in src_cfgr and
-      '"render.title-card-gray" to 142' in src_cfgr and
+      '"render.title-card-gray" to 96' in src_cfgr and
       '"render.item-card-gray" to 106' in src_cfgr)
 yml_s = read_resource(SPIGOT_JAR, "config.yml")
 yml_n = read_resource(NF_JAR, "config.yml")
@@ -284,8 +313,8 @@ rs_c = javap_c(SPIGOT_JAR, RS)
 check("GY1a RenderSettings.titleCardGray / itemCardGray 方法",
       "titleCardGray" in rs_p and "itemCardGray" in rs_p)
 import re as _re
-check("GY1b 默认常量 142 / 106（titleCardGray 内联 sipush 142；itemCardGray bipush 106）",
-      bool(_re.search(r"sipush\s+142\b", rs_c)) and bool(_re.search(r"bipush\s+106\b", rs_c)))
+check("GY1b 默认常量 96 / 106（titleCardGray 内联 bipush 96；itemCardGray bipush 106）",
+      bool(_re.search(r"bipush\s+96\b", rs_c)) and bool(_re.search(r"bipush\s+106\b", rs_c)))
 check("GY1c 配置键字面量（双 JAR）",
       class_contains_literals(SPIGOT_JAR, RS, ["render.title-card-gray", "render.item-card-gray"]) and
       class_contains_literals(NF_JAR, RS, ["render.title-card-gray", "render.item-card-gray"]))
