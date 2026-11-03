@@ -4,7 +4,8 @@
 用法：
     python3 make_bpng_manifest.py <图片目录> <包ID> <包名> [输出路径]
 
-清单格式（官网 /wwwroot/penguin/bpng/manifest.json，与 git bpng/ 镜像同构）：
+清单格式（官网 /wwwroot/penguin/bpng/manifest.json；1.7.2 起每包新增
+count / bytes 两个展示字段，插件按清单动态渲染张数与体积）：
     {
       "packs": [
         {
@@ -53,6 +54,8 @@ def main() -> int:
             "id": pack_id,
             "name": pack_name,
             "description": desc,
+            "count": len(files),
+            "bytes": sum(f["size"] for f in files),
             "files": files,
         }]
     }

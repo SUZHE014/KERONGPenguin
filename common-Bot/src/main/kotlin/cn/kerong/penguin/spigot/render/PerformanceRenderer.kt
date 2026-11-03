@@ -11,7 +11,7 @@ import javax.imageio.ImageIO
 /**
  * 服务器性能监控卡片渲染器（/查性能 图片输出，1.6.7 新增）。
  *
- * 设计来源：图片渲染界面的参考设计来自 BaiZhouziYou / 新亭泪
+ * 设计参考：图片渲染界面参考自 BaiZhouziYou / 新亭泪
  * 发布在 EasyBot 资源市场的图片模板（https://xintinglei.cn/，
  * 模板合集 https://github.com/BaiizhouziYou/easybot-image-templates/）
  * ——性能卡片延续本项目整套深色卡片风格基调（与查信息 / 查在线 /
@@ -89,8 +89,12 @@ object PerformanceRenderer {
     /** 指标卡底色（半透明白，与查信息/查在线/排行榜单元格同款 alpha 16）。 */
     private val COLOR_CARD = Color(0xFF, 0xFF, 0xFF, 16)
 
-    /** 网格容器底色（半透明黑，与查在线/排行榜网格容器同款 alpha 64）。 */
-    private val COLOR_CONTAINER = Color(0x00, 0x00, 0x00, 64)
+    /**
+     * 网格容器底色（半透明黑）。1.7.2 起黑度可配（render.item-card-gray，
+     * 默认 106 = 旧值 120 与 1.7.0 浅值 64 的中间偏旧值一侧）；每次渲染
+     * 实时读取，与其他渲染器保持一致。
+     */
+    private val COLOR_CONTAINER: Color get() = Color(0x00, 0x00, 0x00, RenderSettings.itemCardGray())
 
     /** 状态胶囊底色（半透明白，与其他卡片徽标同款 alpha 30；语义色由文字承担）。 */
     private val COLOR_PILL_BG = Color(0xFF, 0xFF, 0xFF, 30)

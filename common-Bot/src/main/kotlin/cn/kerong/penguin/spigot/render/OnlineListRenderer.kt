@@ -12,7 +12,7 @@ import javax.imageio.ImageIO
 /**
  * 在线玩家列表卡片渲染器（/查在线 图片输出，1.5.0 覆盖更新新增）。
  *
- * 设计来源（issue #1）：图片渲染界面的参考设计来自 BaiZhouziYou / 新亭泪
+ * 设计参考（issue #1）：图片渲染界面参考自 BaiZhouziYou / 新亭泪
  * 发布在 EasyBot 资源市场的图片模板（https://xintinglei.cn/）——早期版本
  * 的毛玻璃深色风格模板是参照该模板图复刻的，其后的分页、背景、头像渲染
  * 等为本项目的独立改进。感谢原作者的设计。
@@ -241,7 +241,9 @@ object OnlineListRenderer {
         cells.forEachIndexed { index, (label, value) ->
             val x = MARGIN + index * (cardWidth + gap)
             backdrop?.paintCard(g, x, top, cardWidth, cardHeight, 14f)
-            g.color = Color(0x00, 0x00, 0x00, 64)
+            // 1.7.2：项目卡片底色黑度可配（render.item-card-gray，默认 106 =
+            // 旧值 120 与 1.7.0 浅值 64 的中间偏旧值一侧）
+            g.color = Color(0x00, 0x00, 0x00, RenderSettings.itemCardGray())
             g.fill(RoundRectangle2D.Float(x, top, cardWidth, cardHeight, 14f, 14f))
             g.font = InfoCardRenderer.font(22f, false)
             g.color = COLOR_LABEL
@@ -282,7 +284,7 @@ object OnlineListRenderer {
         if (entries.isEmpty()) {
             val cardWidth = WIDTH - 2 * MARGIN
             backdrop?.paintCard(g, MARGIN.toFloat(), (gridTop - 14).toFloat(), cardWidth.toFloat(), (EMPTY_HEIGHT + 28).toFloat(), 18f)
-            g.color = Color(0x00, 0x00, 0x00, 64)
+            g.color = Color(0x00, 0x00, 0x00, RenderSettings.itemCardGray())
             g.fill(RoundRectangle2D.Float(MARGIN.toFloat(), (gridTop - 14).toFloat(), cardWidth.toFloat(), (EMPTY_HEIGHT + 28).toFloat(), 18f, 18f))
             g.color = Color(0xFF, 0xFF, 0xFF, 16)
             g.fill(RoundRectangle2D.Float(MARGIN.toFloat(), gridTop.toFloat(), cardWidth.toFloat(), EMPTY_HEIGHT.toFloat(), 18f, 18f))
@@ -301,7 +303,7 @@ object OnlineListRenderer {
 
         // 网格深色容器（模板风格：整块列表区域裹一层半透明深色底）
         backdrop?.paintCard(g, MARGIN.toFloat(), (gridTop - 14).toFloat(), contentWidth.toFloat(), (gridHeight + 28).toFloat(), 18f)
-        g.color = Color(0x00, 0x00, 0x00, 64)
+        g.color = Color(0x00, 0x00, 0x00, RenderSettings.itemCardGray())
         g.fill(RoundRectangle2D.Float(
             MARGIN.toFloat(), (gridTop - 14).toFloat(),
             contentWidth.toFloat(), (gridHeight + 28).toFloat(), 18f, 18f))

@@ -7,8 +7,13 @@ import org.bukkit.Bukkit
 import java.util.concurrent.CompletableFuture
 
 /**
- * 混合端命令执行器（适用于 Mohist / CatServer / Arclight 等混合服务端）：
- * 由服务器自身的控制台通道执行命令，同时捕获 Sender 消息与 Log4j 日志双路输出。
+ * 混合端命令执行器（适用于 Mohist / CatServer / Arclight 等混合服务端）。
+ *
+ * 1.7.2 噪音修复：命令改派发给自定义 Sender（[BukkitConsoleSender]），
+ * 只有该 Sender 收到的行才进返回；Sender 无输出时才回退到窗口内
+ * 日志（Appender 已带 [MediaSource] / [Not Secure] 噪音黑名单）。
+ * 旧版把控制台全部窗口日志与 Sender 消息合并去重，混合端模组的周期
+ * 性日志整段混进 QQ 回复。
  */
 class HybridCommandExecutor(private val plugin: KERONGSpigot) : HExecution {
     private val sender = BukkitConsoleSender(plugin)
@@ -23,7 +28,9 @@ class HybridCommandExecutor(private val plugin: KERONGSpigot) : HExecution {
         outputAppender.startCapture()
         plugin.submit {
             try {
-                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command)
+                // 1.7.2：派发给自定义 Sender（收集 sendMessage 回调），
+                // 不再派发给真实控制台（那会只能靠日志全量捕获带回噪音）
+                Bukkit.dispatchCommand(sender, command)
                 completeAfterCommandOutput(result)
             } catch (error: Throwable) {
                 // 1.7.0：捕获 Throwable 而非 Exception——命令抛 Error（如其他
@@ -36,14 +43,19 @@ class HybridCommandExecutor(private val plugin: KERONGSpigot) : HExecution {
         return result
     }
 
-    /** 命令派发后延迟收集双路输出。 */
+    /** 命令派发后延迟收集输出（优先 Sender 行，无输出才用日志回退）。 */
     private fun completeAfterCommandOutput(result: CompletableFuture<HExecution>) {
         // 1.5.7.3：经 FoliaCompat 桥接（Folia 全局区域线程延迟）
         FoliaCompat.runSyncLater(plugin as org.bukkit.plugin.Plugin, COMMAND_OUTPUT_DELAY_TICKS) {
             val senderMessages = sender.getAndClearMessages()
-            val loggedMessages = outputAppender.stopCapture()
-            for (message in (senderMessages + loggedMessages).distinct()) {
-                sender.sendMessage(message)
+            if (senderMessages.isNotEmpty()) {
+                for (message in senderMessages) {
+                    sender.sendMessage(message)
+                }
+            } else {
+                for (line in outputAppender.stopCapture()) {
+                    sender.sendMessage(line)
+                }
             }
             result.complete(sender)
         }

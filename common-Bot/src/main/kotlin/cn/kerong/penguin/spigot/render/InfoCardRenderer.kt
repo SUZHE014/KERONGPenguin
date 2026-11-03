@@ -28,7 +28,7 @@ import javax.imageio.ImageIO
 /**
  * 玩家信息卡片渲染器（/查信息，1.5.2 前为 /个人信息）。
  *
- * 设计来源（issue #1）：图片渲染界面的参考设计来自 BaiZhouziYou / 新亭泪
+ * 设计参考（issue #1）：图片渲染界面参考自 BaiZhouziYou / 新亭泪
  * 发布在 EasyBot 资源市场的图片模板（https://xintinglei.cn/）——早期版本
  * 的毛玻璃深色风格模板是参照该模板图复刻的，其后的独立改进见各版本
  * 更新日志。感谢原作者的设计。
@@ -239,8 +239,9 @@ object InfoCardRenderer {
         val h = (height - 24 - 336).toFloat()
 
         backdrop?.paintCard(g, x, y, w, h, 24f)
-        // 1.7.0：毛玻璃底色调浅（黑 142 → 76，避免卡片发灰过深）
-        g.color = Color(0x00, 0x00, 0x00, 76)
+        // 1.7.2：标题卡片底色黑度可配（render.title-card-gray，默认 142 =
+        // 恢复 1.7.0 之前的原始深度；1.7.0 曾调浅到 76 用户反馈太浅）
+        g.color = Color(0x00, 0x00, 0x00, RenderSettings.titleCardGray())
         g.fill(RoundRectangle2D.Float(x, y, w, h, 24f, 24f))
 
         // 面板标题
@@ -1172,6 +1173,17 @@ object InfoCardAssets {
     /**
      * 外部头像服务回退链（在线头像获取的主链路）。
      *
+     * 1.7.2 超时重试修复（用户实测：头像下载流读到一部分后触发读超时，
+     * 连接被直接切断，本轮渲染占位块、下一轮查询重试即成功）：
+     * - 头像下载 HTTP 的读超时从旧版短超时延长到 25 秒（连接超时保持 5 秒
+     *   短平快——慢源连接不上就立刻换源，慢在传数据的源给足时间）；
+     * - 任一线路读超时（SocketTimeoutException）时本轮渲染内立即换下一个
+     *   头像源重试；第一轮全部失败且属超时/网络抖动型时，再对两条快线路
+     *   （MC-Heads / Minotar）补一轮换源重试（共 1-2 次），重试成功就不
+     *   渲染占位块；
+     * - 超时型失败继续不写 60 秒冷却（下次查询立即重试，现逻辑保持）；
+     *   只有确定性失败（HTTP 明确无此玩家，404 等）才写冷却。
+     *
      * 1.7.0 外层贴图（帽子层）修复：Minotar 的 /avatar 与 MinePic 的
      * /avatar 端点都只回内层皮肤（实测像素比对确认），玩家头像缺少
      * 外层纹理。现改为：Minotar 走 /helm（带帽子层）；MinePic 改走
@@ -1181,44 +1193,58 @@ object InfoCardAssets {
      * 生产实测可达性（2026-10）：MC-Heads ≈ 0.4s、Minotar ≈ 0.5s、
      * MinePic ≈ 1.7~6s（可用但波动大，偶发超时，见 [fetchMinePicAvatar]）、
      * Crafatar ≈ 5.8s（慢但可用）；线路顺序按实测速度排（快 → 慢），
-     * 任一成功即返回（在线列表 8 秒预热预算保护，不做四线全等）。
+     * 任一成功即返回。
      *
      * 注：本链路之后还有 Mojang 官方原生 API（会话服务器 + 名字反查，
-     * 见 [resolveMojangSkinUrl]）——1.6.8 起官方线路移到最后兜底
-     * （四条外部线路全部失败才尝试），不再优先于外部头像服务。
+     * 见 [resolveMojangSkinUrl]）——官方仅在四条外部线路全部失败后尝试。
      *
      * - 基岩玩家（Floodgate UUID，见 [floodgateXuid]）：MC-Heads 的
-     *   xuid 线路（实测 200，官方支持 Xbox 头像）；其余 Java 侧
-     *   CDN 只收录正版 Java 账号，基岩玩家此前永远拿不到外部头像；
-     * - 正版 UUID（v4）：MC-Heads → Minotar → MinePic → Crafatar
-     *   （均直接返回头部头像 PNG，含帽子层，与 cropFace 的裁剪结果
-     *   同观感）；
+     *   xuid 线路（实测 200，官方支持 Xbox 头像）；
+     * - 正版 UUID（v4）：MC-Heads → Minotar → MinePic → Crafatar；
      * - 仅玩家名（无 UUID / 离线 UUID）：名字线路（MC-Heads →
-     *   Minotar → MinePic；语义与「名字反查正版账号」一致——该名
-     *   被正版账号注册则返回其头像）；
+     *   Minotar → MinePic）；
      * - 404 / 网络失败 / 解码失败一律返回 null（渲染占位块，不假回退）。
      */
     private fun fetchExternalAvatar(request: AvatarRequest): FetchedFace? {
+        val first = fetchExternalAvatarOnce(request)
+        if (first != null) return first
+        // 1.7.2：第一轮全部失败且属网络抖动/超时型——立即换源补一轮快线路
+        // 重试（MC-Heads / Minotar 各一次）；确定性失败（404 无此玩家）
+        // 重试没有意义，不补
+        if (!networkTrouble.get()) return null
+        return fetchExternalAvatarOnce(request, retryPass = true)
+    }
+
+    /**
+     * 外部线路单轮尝试（[fetchExternalAvatar] 的本体；[retryPass] = true
+     * 时为超时后的换源补试轮，只走两条快线路）。基岩 xuid 线路不重试
+     * （无备选源）。
+     */
+    private fun fetchExternalAvatarOnce(request: AvatarRequest, retryPass: Boolean = false): FetchedFace? {
         val uuid = request.uuid
         if (uuid != null) {
             // 基岩玩家：Floodgate UUID（前 64 位全 0 + 标志段 0x0009）
             val xuid = floodgateXuid(uuid)
             if (xuid != null) {
-                return fetchAvatarFromUrl("https://mc-heads.net/avatar/xuid:$xuid/$FACE_SIZE", 3000, "MC-Heads（基岩xuid线路）")
+                if (retryPass) return null
+                return fetchAvatarFromUrl("https://mc-heads.net/avatar/xuid:$xuid/$FACE_SIZE", "MC-Heads（基岩xuid线路）")
             }
             if (uuid.version() == 4) {
                 // 正版账号：快线路优先，慢线路（MinePic / Crafatar）仅在前两者都失败后尝试
-                return fetchAvatarFromUrl("https://mc-heads.net/avatar/$uuid/$FACE_SIZE", 3000, "MC-Heads")
-                    ?: fetchAvatarFromUrl("https://minotar.net/helm/$uuid/$FACE_SIZE", 3000, "Minotar")
-                    ?: fetchMinePicAvatar(uuid.toString().replace("-", ""))
+                val face = fetchAvatarFromUrl("https://mc-heads.net/avatar/$uuid/$FACE_SIZE", "MC-Heads")
+                    ?: fetchAvatarFromUrl("https://minotar.net/helm/$uuid/$FACE_SIZE", "Minotar")
+                if (face != null) return face
+                if (retryPass) return null
+                return fetchMinePicAvatar(uuid.toString().replace("-", ""))
                     ?: fetchCrafatarAvatar(uuid)
             }
         }
-        // 仅玩家名（离线 UUID / 无 UUID）：名字线路
+        // 仅玩家名（离线 UUID / 无 UUID）：名字线路（补试轮只走两条快线路）
         if (request.playerName.isNotBlank()) {
-            return fetchAvatarFromUrl("https://mc-heads.net/avatar/${request.playerName}/$FACE_SIZE", 3000, "MC-Heads（名字线路）")
-                ?: fetchAvatarFromUrl("https://minotar.net/helm/${request.playerName}/$FACE_SIZE", 3000, "Minotar（名字线路）")
-                ?: fetchMinePicAvatar(request.playerName)
+            val face = fetchAvatarFromUrl("https://mc-heads.net/avatar/${request.playerName}/$FACE_SIZE", "MC-Heads（名字线路）")
+                ?: fetchAvatarFromUrl("https://minotar.net/helm/${request.playerName}/$FACE_SIZE", "Minotar（名字线路）")
+            if (face != null || retryPass) return face
+            return fetchMinePicAvatar(request.playerName)
         }
         return null
     }
@@ -1258,11 +1284,16 @@ object InfoCardAssets {
     /**
      * 通用外部头像下载（PNG 直出，无需裁剪）：尺寸不符时最近邻缩放到
      * [FACE_SIZE]（保持像素风），源图用后即 flush。
+     *
+     * 1.7.2：不再接收外部传入的统一超时（旧版连接/读同为 3 秒），改走
+     * [httpGetAvatar]——连接 5 秒 / 读 25 秒分开控制（见 KDoc）；读超时
+     * 抛出后由调用链立即换下一头像源。
+     *
      * 1.6.6.2：[method] 为线路名，随结果返回用于获取方式日志。
      */
-    private fun fetchAvatarFromUrl(url: String, timeoutMillis: Int, method: String): FetchedFace? {
+    private fun fetchAvatarFromUrl(url: String, method: String): FetchedFace? {
         return try {
-            val bytes = httpGet(url, timeoutMillis) ?: return null
+            val bytes = httpGetAvatar(url) ?: return null
             val image = ImageIO.read(ByteArrayInputStream(bytes)) ?: return null
             when {
                 image.width <= 0 || image.height <= 0 -> null
@@ -1612,8 +1643,9 @@ object InfoCardAssets {
     private fun fetchCrafatarAvatar(uuid: UUID?): FetchedFace? {
         if (uuid == null || uuid.version() != 4) return null
         return try {
-            // 1.6.6：实测 Crafatar 响应较慢（约 5.8s），超时放宽到 5 秒（末位线路）
-            val bytes = httpGet("https://crafatar.com/avatars/$uuid?size=$FACE_SIZE&overlay", 5000) ?: return null
+            // 1.6.6：实测 Crafatar 响应较慢（约 5.8s）；1.7.2 起与其他头像线路
+            // 同走 httpGetAvatar（连接 5s / 读 25s，末位线路给足读取时间）
+            val bytes = httpGetAvatar("https://crafatar.com/avatars/$uuid?size=$FACE_SIZE&overlay") ?: return null
             val image = ImageIO.read(ByteArrayInputStream(bytes)) ?: return null
             when {
                 image.width <= 0 || image.height <= 0 -> null
@@ -1641,9 +1673,9 @@ object InfoCardAssets {
         return result
     }
 
-    /** 下载皮肤贴图 PNG（64×64 / 64×32 / 高清皮肤）。 */
+    /** 下载皮肤贴图 PNG（64×64 / 64×32 / 高清皮肤；1.7.2 起走头像专用超时 5s/25s）。 */
     private fun downloadSkin(url: String): BufferedImage? = try {
-        val bytes = httpGet(url, 5000) ?: return null
+        val bytes = httpGetAvatar(url) ?: return null
         val skin = ImageIO.read(ByteArrayInputStream(bytes)) ?: return null
         if (skin.width >= 64 && skin.height >= 32) skin else null
     } catch (_: Throwable) {
@@ -2244,20 +2276,42 @@ object InfoCardAssets {
 
     // ---------- HTTP ----------
 
-    /** 简单 HTTP GET。 */
-    private fun httpGet(url: String, timeoutMillis: Int): ByteArray? {
+    /** 头像下载连接超时（毫秒，1.7.2：短平快——连不上立刻换源）。 */
+    private const val AVATAR_CONNECT_TIMEOUT = 5_000
+
+    /**
+     * 头像下载读超时（毫秒，1.7.2）：从旧版短超时延长到 25 秒。
+     *
+     * 根因（用户实测日志确认）：头像下载流读到一部分后触发读超时，
+     * 连接被直接切断，本轮渲染占位块（「获取失败（本次链路遇网络抖动…）」），
+     * 下一轮查询重试即成功（「头像 xxx ← Minotar（名字线路）」）。
+     * HttpURLConnection 的 readTimeout 是单次 read 阻塞上限（数据在流动
+     * 就会不断重置计时），不是总时长上限——拉长到 25 秒只影响真正断流的
+     * 连接，慢速可用的源得以完成下载。
+     */
+    private const val AVATAR_READ_TIMEOUT = 25_000
+
+    /**
+     * 头像专用 HTTP GET（连接 5 秒 / 读 25 秒分开控制，1.7.2 新增）。
+     *
+     * 读超时（SocketTimeoutException）同样标记 networkTrouble（不写冷却，
+     * 下次查询立即重试），调用链（fetchExternalAvatarOnce 的 ?: 换源 +
+     * fetchExternalAvatar 的补试轮）负责立即换下一个头像源重试。
+     */
+    private fun httpGetAvatar(url: String): ByteArray? {
         var connection: HttpURLConnection? = null
         return try {
             connection = URL(url).openConnection() as HttpURLConnection
-            connection.connectTimeout = timeoutMillis
-            connection.readTimeout = timeoutMillis
+            connection.connectTimeout = AVATAR_CONNECT_TIMEOUT
+            connection.readTimeout = AVATAR_READ_TIMEOUT
             connection.setRequestProperty("User-Agent", "KERONGPenguin")
             connection.instanceFollowRedirects = true
             val code = connection.responseCode
             if (code !in 200..299) return null
             connection.inputStream.use { it.readBytes() }
         } catch (_: Exception) {
-            // 1.6.6.2：网络级异常（超时 / 连接失败）标记本次尝试为网络抖动型
+            // 网络级异常（含读超时 SocketTimeoutException）标记网络抖动型：
+            // 不写失败冷却，下次查询立即重试；本轮内由调用链立即换源
             networkTrouble.set(true)
             null
         } finally {

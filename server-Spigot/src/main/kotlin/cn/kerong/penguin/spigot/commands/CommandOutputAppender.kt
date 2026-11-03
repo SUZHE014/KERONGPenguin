@@ -13,6 +13,20 @@ import org.apache.logging.log4j.core.layout.PatternLayout
  * Spigot 服务端日志走 Log4j，控制台 dispatchCommand 的输出不会进入
  * ConsoleCommandSender.sendMessage，因此通过本 Appender 捕获。
  *
+ * 1.7.2 噪音黑名单：捕获窗口内与命令无关的周期性日志（NeoForge 模组
+ * 的 [MediaSource] 媒体日志、未签名聊天的 [Not Secure] 行等）一律丢弃——
+ * 这些行曾整段混进 /执行命令 的 QQ 回复里刷屏。架构层同时改为自定义
+ * Sender 派发（BukkitConsoleSender / NeoForgeConsoleExecutor 只有该
+ * Sender 收到的行才进返回），本 Appender 仅作「命令没有 Sender 输出
+ * （只往 logger 打）」时的回退源，黑名单是第二道兜底。
+ *
+ * 1.7.2 噪音黑名单：捕获窗口内与命令无关的周期性日志（NeoForge 模组
+ * 的 [MediaSource] 媒体日志、未签名聊天的 [Not Secure] 行等）一律丢弃——
+ * 这些行曾整段混进 /执行命令 的 QQ 回复里刷屏。架构层同时改为
+ * 自定义 Sender 派发（BukkitConsoleSender / NeoForgeConsoleExecutor），
+ * 本 Appender 仅作「命令没有 Sender 输出（只往 logger 打）」时的回退源，
+ * 黑名单是第二道兜底。
+ *
  * 0.1.5.2 内存 / CPU 修复：
  * 旧实现存在两个问题：
  * 1. 使用 CopyOnWriteArrayList，捕获期间每追加一行都要复制整个数组（O(n) 分配），
@@ -54,6 +68,8 @@ class CommandOutputAppender private constructor() : AbstractAppender(
             capturing = false
             return
         }
+        // 1.7.2 噪音黑名单：与命令执行无关的周期性日志不进捕获缓冲
+        if (isNoiseLine(event)) return
         val line = event.message?.formattedMessage ?: return
         synchronized(lock) {
             if (!capturing) return
@@ -65,6 +81,14 @@ class CommandOutputAppender private constructor() : AbstractAppender(
             capturedChars += line.length
         }
     }
+
+    /**
+     * 1.7.2：已知噪音行判定（消息前缀 / logger 名黑名单，共享实现见
+     * [cn.kerong.bot.tools.ConsoleNoiseFilter]——Spigot 与 NeoForge 两个
+     * Appender 副本同一套名单，独立 JVM 冒烟可直接断言）。
+     */
+    private fun isNoiseLine(event: LogEvent): Boolean =
+        cn.kerong.bot.tools.ConsoleNoiseFilter.isNoise(event.loggerName, event.message?.formattedMessage)
 
     /** 开始捕获（清空旧数据）。 */
     fun startCapture() {
@@ -105,6 +129,7 @@ class CommandOutputAppender private constructor() : AbstractAppender(
 
         /** 捕获硬超时：无论命令是否收尾，超过即自动停止。 */
         private const val CAPTURE_HARD_TIMEOUT_MILLIS = 20_000L
+
 
         @Volatile
         private var instance: CommandOutputAppender? = null

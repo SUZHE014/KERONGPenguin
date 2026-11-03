@@ -28,6 +28,23 @@ object RenderSettings {
     /** 毛玻璃模糊度默认值（1.7.0 新增 render.blur-strength，50 = 轻模糊）。 */
     const val DEFAULT_BLUR_STRENGTH = 50
 
+    /**
+     * 标题卡片底色黑度默认值（1.7.2 新增 render.title-card-gray）。
+     *
+     * 查信息卡片的「统计信息」面板（带标题 + 统计项目的大卡片）恢复到
+     * 1.7.0 之前的原始深度 142（1.7.0 曾调浅到 76，用户要求直接用旧值）。
+     */
+    const val DEFAULT_TITLE_CARD_GRAY = 142
+
+    /**
+     * 项目卡片底色黑度默认值（1.7.2 新增 render.item-card-gray）。
+     *
+     * 查在线三状态卡 / 网格容器、排行榜行容器 / 空态容器、查性能网格容器
+     * 共六处：1.7.0 调浅到 64 后太浅，取 (旧值 120 + 当前 64) / 2 = 92
+     * 再偏旧值一侧 → 106（不越过旧值 120）。
+     */
+    const val DEFAULT_ITEM_CARD_GRAY = 106
+
     /** 图片渲染命令的用户冷却（毫秒；0 = 无冷却）。 */
     fun commandCooldownMillis(): Long {
         val seconds = try {
@@ -133,6 +150,48 @@ object RenderSettings {
             DEFAULT_BLUR_STRENGTH
         }
         return value.coerceIn(0, 100)
+    }
+
+    /**
+     * 标题卡片底色黑度（render.title-card-gray，1.7.2 新增，默认 142）。
+     *
+     * - 作用于查信息卡片的「统计信息」面板（带标题的大卡片）；
+     * - 取值 0 ~ 255（半透明黑 alpha；越大越深）；
+     * - 默认 142 = 1.7.0 之前的原始深度（1.7.0 曾调浅到 76，用户要求恢复）；
+     * - 实时读取（/hbkrg reload 后立即生效）。
+     */
+    fun titleCardGray(): Int {
+        val value = try {
+            (BotShared.instance as? JavaPlugin)?.config?.getInt(
+                "render.title-card-gray",
+                DEFAULT_TITLE_CARD_GRAY,
+            ) ?: DEFAULT_TITLE_CARD_GRAY
+        } catch (_: Throwable) {
+            DEFAULT_TITLE_CARD_GRAY
+        }
+        return value.coerceIn(0, 255)
+    }
+
+    /**
+     * 项目卡片底色黑度（render.item-card-gray，1.7.2 新增，默认 106）。
+     *
+     * - 作用于查在线三状态卡 / 玩家网格容器 / 空态容器、排行榜行容器 /
+     * 空态容器、查性能指标网格容器（六处容器底色）；
+     * - 取值 0 ~ 255（半透明黑 alpha；越大越深）；
+     * - 默认 106 = 旧值 120 与 1.7.0 浅值 64 的中间偏旧值一侧
+     *   （(120+64)/2=92，再向 120 方向取半 → 106）；
+     * - 实时读取（/hbkrg reload 后立即生效）。
+     */
+    fun itemCardGray(): Int {
+        val value = try {
+            (BotShared.instance as? JavaPlugin)?.config?.getInt(
+                "render.item-card-gray",
+                DEFAULT_ITEM_CARD_GRAY,
+            ) ?: DEFAULT_ITEM_CARD_GRAY
+        } catch (_: Throwable) {
+            DEFAULT_ITEM_CARD_GRAY
+        }
+        return value.coerceIn(0, 255)
     }
 
     /**

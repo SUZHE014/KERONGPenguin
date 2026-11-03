@@ -313,10 +313,14 @@ class ConfigManager(private val plugin: JavaPlugin) {
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
 
+        // 1.7.2：升 29——新增四键（只加新键+默认值，不做任何旧值迁移）：
+        // image-download.enabled（图片下载功能总开关，默认 true）、
+        // render.title-card-gray（标题卡片黑度，默认 142 = 1.7.0 前旧值）、
+        // render.item-card-gray（项目卡片黑度，默认 106 = 中间偏深值）、
+        // qq-bind.checkin.points-reward（签到点券奖励，默认 0 关闭）
         // 1.7.1：升 28——无新增键纯注释刷新（卡片背景图说明段补 /hbkrg bpng
         // 图片包下载与 /hbkrg bpngsz 一键切换的用法说明）
-        // 1.7.0：render.blur-strength 新增（毛玻璃模糊度，0-100 默认 50）等，见 git 历史
-        private const val CURRENT_CONFIG_VERSION = 28
+        private const val CURRENT_CONFIG_VERSION = 29
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -462,6 +466,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "admin.mode" to "qq",
             "admin.openids" to emptyList<Any>(),
             "features.full-amount" to false,
+            // 1.7.2：图片下载功能总开关（关闭后 /hbkrg bpng 列表与下载入口
+            // 直接回复「管理员已关闭图片下载功能」；bpngsz 不受影响）
+            "image-download.enabled" to true,
             "custom-commands" to emptyList<Any>(),
             "qq-bind.enabled" to false,
             "qq-bind.personal-info" to true,
@@ -470,6 +477,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "qq-bind.checkin.enabled" to false,
             "qq-bind.checkin.prefix" to "[签到]",
             "qq-bind.checkin.reward" to 100.0,
+            // 1.7.2：签到点券奖励（经 PlayerPoints 发放；0 = 不发点券，
+            // 未装 PlayerPoints 时优雅跳过）
+            "qq-bind.checkin.points-reward" to 0,
             // 1.6.0：渲染设置迁至顶层 render 段（查在线 / 卡片渲染不依赖 QQ 绑定）；
             // 1.6.5：gc-after-render 已移除（改确定性 flush 释放，见 CardRenderPool）
             "render.result-cache-seconds" to 60,
@@ -496,6 +506,10 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 1.7.0：毛玻璃模糊度（0-100，越大越模糊，0 = 不模糊；只模糊卡片
             // 背后的背景，卡片外保持清晰）
             "render.blur-strength" to 50,
+            // 1.7.2：卡片底色黑度（0-255 半透明黑 alpha；title = 查信息统计面板
+            // 恢复 1.7.0 前旧值 142；item = 六处容器取旧值 120 与浅值 64 中间偏深 106）
+            "render.title-card-gray" to 142,
+            "render.item-card-gray" to 106,
             // 1.5.5：在线排行榜（1.6.0 从 qq-bind.leaderboard 迁至顶层）
             "leaderboard.top" to 15,
             "leaderboard.builtin-background" to true,

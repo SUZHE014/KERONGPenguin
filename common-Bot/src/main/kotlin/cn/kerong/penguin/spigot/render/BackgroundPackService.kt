@@ -27,19 +27,24 @@ import java.util.Locale
  *   查性能 / 在线排行榜 / 财富榜）的背景开关切换为 img/ 自定义背景
  *   或恢复内置背景，写入配置后自动重载（等效 /hbkrg reload 的配置段）。
  *
- * 下载源（依次回退，1.7.1 实测三源全部可达）：
- * 1. 官网域名 https://kerong.xin/penguin/bpng/（主源）；
- * 2. git 仓库 raw 镜像（经 gh-proxy.com 中转，国内线路友好）；
- * 3. git 仓库 raw 直连（海外服务器线路）。
+ * 下载源（1.7.2 起单一官网线路）：
+ * https://kerong.xin/penguin/bpng/（官网主源；1.7.1 的 git 仓库 raw
+ * 双镜像（gh-proxy 中转 + 直连）已按用户要求删除——镜像与官网内容
+ * 无法保持同步时用户会下载到旧图，且 git 仓库不应背负 58MB 图片）。
  *
  * 说明：官网 IP 直连不做下载源——Java HttpURLConnection 连 IP 地址的
  * HTTPS URL 时不发送 SNI，本站 nginx 无 SNI 直接握手失败（且 Host 头
  * 属 JDK 受限头、setRequestProperty 会被静默忽略），该路径在 Java 客户端
  * 下不可达（详见 AI-KNOWLEDGE §6）。
  *
- * 清单格式（与 git 镜像目录 bpng/ 同构，由 scripts/make_bpng_manifest.py 生成）：
+ * 清单格式（由 scripts/make_bpng_manifest.py 或 bpng_upload.py 上传工具生成；
+ * 1.7.2 起每包新增 count（文件数）与 bytes（总字节数）两个展示字段，
+ * 旧清单无这两个字段时自动按 files 数组统计——向后兼容）：
  * {"packs":[{"id":"wl1","name":"蔚蓝档案","description":"…",
+ *   "count":29,"bytes":60900000,
  *   "files":[{"name":"xxx.jpg","size":123,"md5":"32位十六进制"}]}]}
+ * 插件拉取清单后动态渲染张数与体积（字节换算 MB 保留 1 位小数），
+ * 不再依赖任何硬编码数字。
  *
  * 完整性：每张图片按清单 md5 校验，校验失败换下一源重试，全部源失败
  * 才算该张失败（跳过）；落盘走临时文件 + 原子改名，不会出现半张图片
@@ -66,13 +71,11 @@ object BackgroundPackService {
     private val IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "bmp", "gif")
 
     /**
-     * 下载源列表（主源在前；构造为可注入形参便于独立 JVM 冒烟测试，
-     * 默认 [DOWNLOAD_SOURCES]）。
+     * 下载源列表（1.7.2 起仅官网单一来源；构造为可注入形参便于独立 JVM
+     * 冒烟测试，默认 [DOWNLOAD_SOURCES]）。
      */
     val DOWNLOAD_SOURCES = listOf(
         "https://kerong.xin/penguin/bpng/",
-        "https://gh-proxy.com/https://raw.githubusercontent.com/SUZHE014/KERONGPenguin/main/bpng/",
-        "https://raw.githubusercontent.com/SUZHE014/KERONGPenguin/main/bpng/",
     )
 
     /** bpngsz 一键切换的五张卡片背景开关键。 */
@@ -95,8 +98,16 @@ object BackgroundPackService {
         val name: String,
         val description: String,
         val files: List<PackFile>,
+        /** 清单里显式记录的文件数（1.7.2 新增；旧清单无此字段按 files 统计）。 */
+        val declaredCount: Int,
+        /** 清单里显式记录的总字节数（1.7.2 新增；旧清单无此字段按 files 统计）。 */
+        val declaredBytes: Long,
     ) {
-        val totalBytes: Long get() = files.sumOf { it.size }
+        /** 展示用张数：优先清单显式声明值，缺失回退按 files 统计（向后兼容）。 */
+        val count: Int get() = if (declaredCount > 0) declaredCount else files.size
+
+        /** 展示用总体积：优先清单显式声明值，缺失回退按 files 统计（向后兼容）。 */
+        val totalBytes: Long get() = if (declaredBytes > 0) declaredBytes else files.sumOf { it.size }
     }
 
     /** 一次下载的汇总结果。 */
@@ -108,6 +119,30 @@ object BackgroundPackService {
         val bytes: Long,
         val interrupted: Boolean,
         val failedFiles: List<String>,
+    )
+
+    // ---------- 图片下载功能开关（1.7.2 新增配置 image-download.enabled） ----------
+
+    /**
+     * 图片下载功能是否开启（image-download.enabled，默认 true）。
+     *
+     * 关闭时 /hbkrg bpng 与 /hbkrg bpng <包ID> 入口直接回复
+     * 「管理员已关闭图片下载功能」并中止；/hbkrg bpngsz 不受影响
+     * （只是切换背景开关、不下载文件）。实时读取（reload 即生效）。
+     */
+    fun isImageDownloadEnabled(): Boolean {
+        return try {
+            val javaPlugin = BotShared.instance as? JavaPlugin ?: return true
+            javaPlugin.config.getBoolean("image-download.enabled", true)
+        } catch (_: Throwable) {
+            true
+        }
+    }
+
+    /** bpng 入口的开关拦截提示行（双端命令层共用）。 */
+    fun imageDownloadDisabledLines(): List<String> = listOf(
+        "§c管理员已关闭图片下载功能。",
+        "§7如需下载背景图片包请联系服务器管理员（配置 image-download.enabled）。",
     )
 
     // ---------- 进行中状态（中断用） ----------
@@ -200,7 +235,11 @@ object BackgroundPackService {
                 files.add(PackFile(fileName, fileObj.getLongValue("size"), md5))
             }
             if (files.isNotEmpty()) {
-                result.add(PackInfo(id, name, description, files))
+                // 1.7.2：读取清单显式声明的张数与体积（展示用）；
+                // 旧清单（或非法值）自动回退按 files 统计——向后兼容
+                val declaredCount = obj.getIntValue("count")
+                val declaredBytes = obj.getLongValue("bytes")
+                result.add(PackInfo(id, name, description, files, declaredCount, declaredBytes))
             }
         }
         return result
@@ -215,14 +254,14 @@ object BackgroundPackService {
         val packs = fetchPacks(sources)
         if (packs == null) {
             return listOf(
-                "§c获取图片包清单失败（官网与镜像源均不可达）。",
+                "§c获取图片包清单失败（官网暂不可达）。",
                 "§7请检查服务器网络后重试；失败明细见 logs/qq 日志。",
             )
         }
         val lines = ArrayList<String>()
         lines.add("§6===== 可下载背景图片包 =====")
         for (pack in packs) {
-            lines.add("§e${pack.id} §f- ${pack.name} §7（${pack.files.size} 张，约 ${formatMb(pack.totalBytes)}）")
+            lines.add("§e${pack.id} §f- ${pack.name} §7（${pack.count} 张，约 ${formatMb(pack.totalBytes)}）")
             if (pack.description.isNotEmpty()) {
                 lines.add("§7  ${pack.description}")
             }
@@ -246,7 +285,7 @@ object BackgroundPackService {
     ) {
         val packs = fetchPacks(sources)
         if (packs == null) {
-            progress("§c获取图片包清单失败（官网与镜像源均不可达），本次未开始下载。")
+            progress("§c获取图片包清单失败（官网暂不可达），本次未开始下载。")
             progress("§7请检查服务器网络后重试；失败明细见 logs/qq 日志。")
             return
         }
@@ -352,7 +391,7 @@ object BackgroundPackService {
 
         try {
             progress(
-                "§e开始下载图片包「§f${pack.name}§e」§7（${pack.files.size} 张，约 ${formatMb(pack.totalBytes)}）" +
+                "§e开始下载图片包「§f${pack.name}§e」§7（${pack.count} 张，约 ${formatMb(pack.totalBytes)}）" +
                     "…中断: 再次执行本命令或 /hbkrg bpng stop",
             )
             for ((index, file) in pack.files.withIndex()) {

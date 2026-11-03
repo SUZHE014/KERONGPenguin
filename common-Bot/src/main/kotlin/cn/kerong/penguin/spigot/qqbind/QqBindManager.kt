@@ -508,12 +508,14 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             } catch (_: Throwable) {
             }
             if (lines.isEmpty()) {
+                // 1.7.2：验证消息写明「可以直接发送纯数字验证码」
+                //（纯数字发送是主路径，/绑定 命令作为备选）
                 lines.add("&c===== QQ 绑定验证 =====")
                 lines.add("&f你还未绑定 QQ，无法进入服务器。")
                 lines.add("")
-                lines.add("&e你的专属绑定码: &a&l{code}")
-                lines.add("&7请在 QQ 群发送: &f/绑定 {code}")
-                lines.add("&7（绑定码 {expire} 分钟内有效）")
+                lines.add("&e你的专属验证码: &a&l{code}")
+                lines.add("&7可以直接发送纯数字验证码: &f{code}")
+                lines.add("&7（也可发送 /绑定 {code}；验证码 {expire} 分钟内有效）")
             }
             return lines
         }

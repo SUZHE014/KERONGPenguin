@@ -139,12 +139,20 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
     /**
      * /hbkrg bpng [包ID|stop]：无参列出图片包；带包 ID 下载（再次执行同一
      * 命令或 stop 可中断）；下载中的进度行经主线程发回命令发送者。
+     *
+     * 1.7.2：image-download.enabled 关闭时，列表与下载入口直接回复
+     * 「管理员已关闭图片下载功能」并中止（bpng stop 不拦截——下载开关
+     * 关闭前已开始的下载仍可中断）。
      */
     private fun handleBpng(sender: CommandSender, args: Array<out String>) {
         val service = cn.kerong.penguin.spigot.render.BackgroundPackService
         val arg = args.drop(1).firstOrNull()?.trim()?.lowercase(Locale.ROOT).orEmpty()
         when {
             arg.isEmpty() -> {
+                if (!service.isImageDownloadEnabled()) {
+                    service.imageDownloadDisabledLines().forEach { sender.sendMessage(it) }
+                    return
+                }
                 sender.sendMessage("${ChatColor.YELLOW}正在获取图片包清单（异步）…")
                 plugin.submitAsync {
                     val lines = service.listPacksLines()
@@ -159,6 +167,10 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
                 }
             }
             else -> {
+                if (!service.isImageDownloadEnabled()) {
+                    service.imageDownloadDisabledLines().forEach { sender.sendMessage(it) }
+                    return
+                }
                 // 下载进行中：任何再次执行的下载命令都先中断当前任务（用户语义：下载过程可执行指令中断）
                 if (service.hasActiveDownload()) {
                     service.requestCancel()

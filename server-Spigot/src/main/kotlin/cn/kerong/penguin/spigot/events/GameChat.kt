@@ -40,29 +40,18 @@ class GameChat : Listener {
          * Vault 入账（反射，避免编译期依赖）。
          * 1.5.7.2：入账目标改用 [resolveOfflinePlayer] 按真实玩家 UUID 解析
          * （Geyser/Floodgate 基岩玩家兼容，见该方法注释）。
+         * 1.7.2：改经 EconomyRewardService.depositVaultVerified 发放——
+         * 增加「发放前后余额差值」到账校验（签到奖励发放检测的补发链路）。
          */
         @JvmStatic
-        fun depositToPlayer(playerName: String, amount: Double): Boolean = try {
-            val vault = Bukkit.getPluginManager().getPlugin("Vault") ?: return false
-            val offlinePlayer = resolveOfflinePlayer(playerName)
-            val economyClass = Class.forName("net.milkbowl.vault.economy.Economy")
-            val registeredServiceProviderClass = Class.forName("org.bukkit.plugin.RegisteredServiceProvider")
-            val servicesManager = Bukkit.getServer().javaClass.getMethod("getServicesManager").invoke(Bukkit.getServer())
-            val rsp = servicesManager.javaClass.getMethod("getRegistration", Class::class.java)
-                .invoke(servicesManager, economyClass) ?: return false
-            val economy = registeredServiceProviderClass.getMethod("getProvider").invoke(rsp) ?: return false
-            val result = economyClass
-                .getMethod("depositPlayer", org.bukkit.OfflinePlayer::class.java, Double::class.javaPrimitiveType)
-                .invoke(economy, offlinePlayer, amount) ?: return false
+        fun depositToPlayer(playerName: String, amount: Double): Boolean =
             try {
-                val success = result.javaClass.getMethod("transactionSuccess").invoke(result)
-                java.lang.Boolean.TRUE == success
+                cn.kerong.penguin.spigot.qqbind.EconomyRewardService.depositVaultVerified(
+                    playerName, amount, resolveOfflinePlayer(playerName)
+                )
             } catch (_: Throwable) {
-                true
+                false
             }
-        } catch (_: Throwable) {
-            false
-        }
 
         /**
          * 解析金币入账目标 OfflinePlayer（1.5.7.2：Geyser-Spigot / Floodgate

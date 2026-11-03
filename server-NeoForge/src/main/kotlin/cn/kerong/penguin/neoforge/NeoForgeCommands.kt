@@ -210,12 +210,19 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
     /**
      * /hbkrg bpng [包ID|stop]：无参列出图片包；带包 ID 下载（再次执行同一
      * 命令或 stop 可中断）；进度行转回服务器主线程发送。
+     *
+     * 1.7.2：image-download.enabled 关闭时，列表与下载入口直接回复
+     * 「管理员已关闭图片下载功能」并中止（bpng stop 不拦截）。
      */
     private fun handleBpng(source: net.minecraft.commands.CommandSourceStack, argRaw: String) {
         val service = cn.kerong.penguin.spigot.render.BackgroundPackService
         val arg = argRaw.trim().lowercase(Locale.ROOT)
         when {
             arg.isEmpty() -> {
+                if (!service.isImageDownloadEnabled()) {
+                    service.imageDownloadDisabledLines().forEach { source.sendSuccess({ Component.literal(it) }, false) }
+                    return
+                }
                 source.sendSuccess({ Component.literal("§e正在获取图片包清单（异步）…") }, false)
                 plugin.submitAsync {
                     val lines = service.listPacksLines()
@@ -233,6 +240,10 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
                 }
             }
             else -> {
+                if (!service.isImageDownloadEnabled()) {
+                    service.imageDownloadDisabledLines().forEach { source.sendSuccess({ Component.literal(it) }, false) }
+                    return
+                }
                 // 下载进行中：任何再次执行的下载命令都先中断当前任务（下载过程可执行指令中断）
                 if (service.hasActiveDownload()) {
                     service.requestCancel()

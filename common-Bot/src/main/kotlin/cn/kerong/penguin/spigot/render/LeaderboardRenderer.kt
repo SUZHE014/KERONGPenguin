@@ -12,7 +12,7 @@ import javax.imageio.ImageIO
 /**
  * 在线时长排行榜渲染器（/在线排行榜，1.5.5 新增）。
  *
- * 设计来源（issue #1）：图片渲染界面的参考设计来自 BaiZhouziYou / 新亭泪
+ * 设计参考（issue #1）：图片渲染界面参考自 BaiZhouziYou / 新亭泪
  * 发布在 EasyBot 资源市场的图片模板（https://xintinglei.cn/），本项目在其
  * 风格基础上做了独立改进。感谢原作者的设计。
  *
@@ -261,7 +261,8 @@ object LeaderboardRenderer {
         // 行容器深色底（整块列表区域裹一层半透明深色底，与在线列表统一）
         val gridHeight = entries.size * ROW_HEIGHT + (entries.size - 1) * ROW_GAP
         backdrop?.paintCard(g, MARGIN.toFloat(), (gridTop - 14).toFloat(), contentWidth.toFloat(), (gridHeight + 28).toFloat(), 18f)
-        g.color = Color(0x00, 0x00, 0x00, 64)
+        // 1.7.2：项目卡片底色黑度可配（render.item-card-gray，默认 106）
+        g.color = Color(0x00, 0x00, 0x00, RenderSettings.itemCardGray())
         g.fill(RoundRectangle2D.Float(
             MARGIN.toFloat(), (gridTop - 14).toFloat(),
             contentWidth.toFloat(), (gridHeight + 28).toFloat(), 18f, 18f))
@@ -331,7 +332,7 @@ object LeaderboardRenderer {
         }
         val cardWidth = WIDTH - 2 * MARGIN
         backdrop?.paintCard(g, MARGIN.toFloat(), (gridTop - 14).toFloat(), cardWidth.toFloat(), (EMPTY_HEIGHT + 28).toFloat(), 18f)
-        g.color = Color(0x00, 0x00, 0x00, 64)
+        g.color = Color(0x00, 0x00, 0x00, RenderSettings.itemCardGray())
         g.fill(RoundRectangle2D.Float(MARGIN.toFloat(), (gridTop - 14).toFloat(), cardWidth.toFloat(), (EMPTY_HEIGHT + 28).toFloat(), 18f, 18f))
         g.color = Color(0xFF, 0xFF, 0xFF, 16)
         g.fill(RoundRectangle2D.Float(MARGIN.toFloat(), gridTop.toFloat(), cardWidth.toFloat(), EMPTY_HEIGHT.toFloat(), 18f, 18f))

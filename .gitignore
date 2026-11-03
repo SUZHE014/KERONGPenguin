@@ -50,3 +50,8 @@ scripts/base/
 scripts/smoke169-out/
 scripts/smoke1711/out/
 scripts/smoke1711/classpath.txt
+
+# 1.7.2：图片包不再进 git 仓库（58MB 图片由官网分发，git 镜像下载线路已删除）
+bpng/
+scripts/smoke172/out/
+scripts/smoke172/classpath.txt

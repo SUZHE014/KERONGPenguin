@@ -21,6 +21,14 @@ import java.util.concurrent.CopyOnWriteArrayList
  * 模拟控制台执行器：
  * 包装一个 ConsoleCommandSender 捕获命令输出，配合 [CommandOutputAppender]
  * 捕获服务器日志，实现“执行命令并拿到输出文本”。
+ *
+ * 1.7.2 噪音修复（用户实测：/执行命令 的 QQ 回复里混入与命令无关的
+ * 周期性日志——[MediaSource] 媒体刷屏、[Not Secure] 聊天行等）：
+ * - 命令改派发给**本自定义 Sender**（旧版派发给真实控制台，输出只能靠
+ *   log4j 根 Appender 全量捕窗口内日志，窗口里所有异步日志都进了返回）；
+ * - 只有本 Sender 的 sendMessage 回调收到的行才进返回；
+ * - 命令没有 Sender 输出（只往 logger 打的命令）时，才回退到 Appender
+ *   捕获的日志行（已带噪音黑名单过滤）。
  */
 class BukkitConsoleSender(private val plugin: KERONGSpigot) : ConsoleCommandSender, HExecution {
 
@@ -138,10 +146,7 @@ class BukkitConsoleSender(private val plugin: KERONGSpigot) : ConsoleCommandSend
     // ---------- HExecution ----------
 
     override val rawString: String
-        get() {
-            val captured = outputAppender.getCaptured()
-            return if (captured.isNotEmpty()) captured.joinToString("\n") else messages.joinToString("\n")
-        }
+        get() = messages.joinToString("\n")
 
     override fun execute(command: String): CompletableFuture<HExecution> {
         val result = CompletableFuture<HExecution>()
@@ -149,7 +154,12 @@ class BukkitConsoleSender(private val plugin: KERONGSpigot) : ConsoleCommandSend
         outputAppender.startCapture()
         plugin.submit {
             try {
-                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command)
+                // 1.7.2：派发给本自定义 Sender——命令的 sendMessage 反馈
+                // 直接进 messages（只有本 Sender 收到的行才进返回）；
+                // 旧版派发给真实控制台，输出只能靠 log4j Appender 全量
+                // 捕窗口内日志，与命令无关的周期日志（[MediaSource] 等）
+                // 整段混进 QQ 回复
+                Bukkit.dispatchCommand(this, command)
                 completeAfterCommandOutput(result)
             } catch (error: Throwable) {
                 // 1.7.0：捕获 Throwable 而非 Exception——命令抛 Error（如其他
@@ -162,14 +172,27 @@ class BukkitConsoleSender(private val plugin: KERONGSpigot) : ConsoleCommandSend
         return result
     }
 
-    /** 命令派发后延迟 2 秒收集输出（等待异步日志落盘）。 */
+    /**
+     * 命令派发后延迟 2 秒收集输出（等待异步反馈落盘）。
+     *
+     * 1.7.2 优先级：Sender 收到的行 > Appender 日志行（仅 Sender 无输出时
+     * 才用日志回退，且日志已过噪音黑名单）。
+     */
     private fun completeAfterCommandOutput(result: CompletableFuture<HExecution>) {
         // 1.5.7.3：经 FoliaCompat 桥接（Folia 全局区域线程延迟，收集双路输出）
         FoliaCompat.runSyncLater(plugin as Plugin, COMMAND_OUTPUT_DELAY_TICKS) {
-            val captured = outputAppender.stopCapture()
             val senderMessages = getAndClearMessages()
-            for (message in (senderMessages + captured).distinct()) {
-                sendMessage(message)
+            if (senderMessages.isNotEmpty()) {
+                // 只有该 Sender 收到的行才进返回（1.7.2 架构修复主路径）
+                for (message in senderMessages) {
+                    sendMessage(message)
+                }
+            } else {
+                // 回退：命令只往 logger 打（无 sendMessage 反馈）时用窗口内
+                // 日志行（噪音已黑名单过滤）
+                for (line in outputAppender.stopCapture()) {
+                    sendMessage(line)
+                }
             }
             result.complete(this)
         }
