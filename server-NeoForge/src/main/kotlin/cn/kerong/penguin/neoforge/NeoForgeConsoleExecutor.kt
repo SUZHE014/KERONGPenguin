@@ -1,10 +1,14 @@
 package cn.kerong.penguin.neoforge
 
 import cn.kerong.bot.provider.HExecution
+import cn.kerong.bot.tools.ConsoleNoiseFilter
+import cn.kerong.bot.tools.PluginFileLog
 import cn.kerong.penguin.spigot.commands.CommandOutputAppender
 import net.minecraft.commands.CommandSource
 import net.minecraft.commands.CommandSourceStack
 import net.minecraft.network.chat.Component
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
@@ -30,10 +34,22 @@ import java.util.concurrent.CopyOnWriteArrayList
  *   （已带噪音黑名单过滤，与 Spigot 端同源）；
  * - withSource 在个别运行版本缺失时（NoSuchMethodError）自动回退到
  *   未包装源（行为退回旧版 + 黑名单兜底，不会让命令执行失败）。
+ *
+ * 1.7.2 控制台记录修复（用户实测：QQ 群远程执行的命令执行正确、返回
+ * 正常，但控制台与 latest.log 里没有任何记录）——旧版用真实控制台源时
+ * 输出自然落控制台；改用包装源后命令输出只进了 QQ 回复：
+ * - execute() 派发前先经 mod logger 记录命令本身（[QQ 远程命令] 执行: /xxx）；
+ * - CollectingCommandSource 收集行时同步转发 mod logger（与主类同名
+ *   KERONGPenguin logger，控制台 + latest.log 双写）；
+ * - 转发行带 [QQ 远程命令] 前缀且已入噪音黑名单（ConsoleNoiseFilter），
+ *   不会经 Appender 回退通道再混进 QQ 回复（避免同一行出现两次）。
  */
 class NeoForgeConsoleExecutor(private val plugin: KERONGNeoForge) : HExecution {
 
     private val outputAppender = CommandOutputAppender.Companion.getInstance()
+
+    /** 控制台转发 logger（与主类同名，控制台 + latest.log 双写）。 */
+    private val consoleLogger: Logger = LoggerFactory.getLogger("KERONGPenguin")
 
     /** 最近一次执行捕获到的输出（收集完成时定格，rawString 读取）。 */
     @Volatile
@@ -61,6 +77,11 @@ class NeoForgeConsoleExecutor(private val plugin: KERONGNeoForge) : HExecution {
                     base.withSource(collector)
                 } catch (_: Throwable) {
                     base
+                }
+                // 1.7.2 控制台记录修复：命令本身先落控制台再派发
+                try {
+                    consoleLogger.info("[QQ 远程命令] 执行: $command")
+                } catch (_: Throwable) {
                 }
                 server.commands.performPrefixedCommand(target, command)
                 // 延迟 2 秒收集异步输出（等价 Spigot 版 COMMAND_OUTPUT_DELAY_TICKS）
@@ -99,7 +120,17 @@ class NeoForgeConsoleExecutor(private val plugin: KERONGNeoForge) : HExecution {
 
         override fun sendSystemMessage(component: Component) {
             try {
-                messages.add(component.getString())
+                val line = component.getString()
+                messages.add(line)
+                // 1.7.2 控制台记录修复：收集的同时转发控制台 / latest.log
+                //（剥颜色码；[QQ 远程命令] 前缀已入噪音黑名单，不会经
+                // Appender 回退再混进 QQ 回复）
+                try {
+                    if (line.isNotBlank()) {
+                        LOGGER.info("[QQ 远程命令] " + PluginFileLog.stripColorCodes(line))
+                    }
+                } catch (_: Throwable) {
+                }
             } catch (_: Throwable) {
                 // 文本提取异常不至于让命令执行失败
             }
@@ -112,5 +143,10 @@ class NeoForgeConsoleExecutor(private val plugin: KERONGNeoForge) : HExecution {
         override fun shouldInformAdmins(): Boolean = false
 
         override fun alwaysAccepts(): Boolean = false
+
+        companion object {
+            /** 收集源的日志出口（与主类同名，控制台 + latest.log 双写）。 */
+            private val LOGGER: Logger = LoggerFactory.getLogger("KERONGPenguin")
+        }
     }
 }

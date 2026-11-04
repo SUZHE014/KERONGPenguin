@@ -141,7 +141,8 @@ class CoinsLeaderboardCommands : CommandSupport() {
                     val pages = ArrayList<ByteArray>(4)
                     var pageStart = 0
                     while (pageStart < topEntries.size) {
-                        val pageEnd = minOf(pageStart + LeaderboardRenderer.ROWS_PER_PAGE, topEntries.size)
+                        // 1.7.3：单页上限改走全局配置 leaderboard.page-size（默认 20）
+                        val pageEnd = minOf(pageStart + RenderSettings.leaderboardPageSize(), topEntries.size)
                         val pageEntries = topEntries.subList(pageStart, pageEnd).mapIndexed { offset, raw ->
                             LeaderboardRenderer.LeaderEntry(
                                 rank = pageStart + offset + 1,

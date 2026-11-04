@@ -14,14 +14,16 @@ import java.nio.file.StandardCopyOption
  * 以 JAR 的新版 config.yml 全文（注释完整）为底重建用户文件。
  *
  * 流程：
- * 1. 旧文件先备份为 config.yml.bak（每次升级覆盖一份，不留堆积）；
- * 2. 历史路径搬家与废弃键清理先行套用；
- * 3. 用户已有的值逐项回填（旧文件中与 JAR 默认不同的项 + 旧文件
+ * 1. 历史路径搬家与废弃键清理先行套用；
+ * 2. 用户已有的值逐项回填（旧文件中与 JAR 默认不同的项 + 旧文件
  *   特有的自定义键，如 markdown.* 自定义模板、自定义 commands.* 开关）；
- * 4. 回填走 [YamlTextMerge] 文本级合并——逐行替换值、保留全部注释与
+ * 3. 回填走 [YamlTextMerge] 文本级合并——逐行替换值、保留全部注释与
  *   段落结构，不经 YAML 序列化重写，双端行为一致；
- * 5. 合并结果先试解析校验（解析失败 / 版本号不对则放弃重建走旧流程，
+ * 4. 合并结果先试解析校验（解析失败 / 版本号不对则放弃重建走旧流程，
  *   用户旧文件不受影响），再原子替换落盘。
+ *
+ * 1.7.2 覆盖版：升级备份文件已移除（用户要求）——重建本身先校验后落盘，
+ * 失败时旧文件分毫不动，无需额外备份文件。
  *
  * 1.7.0：**旧默认值 → 新默认值的升级机制已移除**（用户要求）——
  * 升级只重建文件结构与注释，用户文件里已有的值一律原样保留，
@@ -91,6 +93,14 @@ internal object ConfigFileRebuilder {
             if (disk.contains(removed)) disk.set(removed, null)
         }
 
+        // 1.7.2 覆盖版：标题框接线改版的旧默认收敛（96 → 80）——四张卡片顶部
+        // 标题区从硬编码改接 render.title-card-gray，默认值 96 → 80；旧版
+        // 1.7.2 的 96 是默认写入而非用户意图，升级时自动收敛为新默认
+        // （自行改过该值的配置不受影响；重建仅在磁盘版本低于 30 时触发）
+        if (disk.getInt("render.title-card-gray", -1) == 96) {
+            disk.set("render.title-card-gray", 80)
+        }
+
         // 1.7.0：旧默认值→新默认值的升级收敛已移除（用户要求）——
         // 用户文件里已有的值一律原样回填保留，不做「等于旧默认则换成
         // 新默认」的识别（历史上有 from-group / idle-release-minutes /
@@ -126,9 +136,8 @@ internal object ConfigFileRebuilder {
             return false
         }
 
-        // 6. 备份旧文件 + 原子写入
+        // 6. 原子写入（1.7.2 覆盖版：不再另存升级备份文件）
         try {
-            file.copyTo(File(file.parentFile, "config.yml.bak"), overwrite = true)
             val tmp = File(file.parentFile, "config.yml.tmp")
             Files.write(tmp.toPath(), merged.toByteArray(StandardCharsets.UTF_8))
             Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
@@ -137,7 +146,7 @@ internal object ConfigFileRebuilder {
             return false
         }
         plugin.logger.info(
-            "配置文件已从 v$diskVersion 重建为 v$currentVersion（保留全部注释与已有设置，旧文件备份为 config.yml.bak）"
+            "配置文件已从 v$diskVersion 重建为 v$currentVersion（保留全部注释与已有设置）"
         )
         return true
     }
@@ -226,8 +235,18 @@ internal object YamlTextMerge {
      * @param templateText JAR 内新版 config.yml 全文（注释完整）
      * @param overrides 要回填的键值（路径 → 值）
      */
-    fun merge(templateText: String, overrides: Map<String, Any?>): String {
-        if (overrides.isEmpty()) return templateText
+    fun merge(templateText: String, overrides: Map<String, Any?>): String =
+        merge(templateText, overrides, emptySet())
+
+    /**
+     * 合并入口（1.7.2 覆盖版新增 removals）：在替换 / 插入之外，把指定
+     * 路径的键行连同块体与紧贴上方的注释块一并删除（供注释保留保存的
+     * 「内存树已删除键 → 文本同步删除」差分使用）。
+     *
+     * @param removals 要删除的键路径集合（与 overrides 不含同一键及其子键）
+     */
+    fun merge(templateText: String, overrides: Map<String, Any?>, removals: Set<String>): String {
+        if (overrides.isEmpty() && removals.isEmpty()) return templateText
         val text = if (templateText.startsWith("﻿")) templateText.substring(1) else templateText
         val lines = text.split('\n').toMutableList()
 
@@ -246,7 +265,7 @@ internal object YamlTextMerge {
             }
         }
 
-        // 第二遍：生成编辑（替换已有键 + 插入模板没有的自定义键）
+        // 第二遍：生成编辑（替换已有键 + 插入模板没有的自定义键 + 删除指定键）
         val edits = ArrayList<Edit>()
         val remaining = LinkedHashMap<String, Any?>(overrides)
 
@@ -269,6 +288,20 @@ internal object YamlTextMerge {
         // 2b. 插入模板中不存在的自定义键（挂到最深已存在祖先段末尾）
         for ((path, value) in remaining) {
             findInsertion(lines, kinds, pathIndex, path, value)?.let { edits.add(it) }
+        }
+
+        // 2c. 删除指定键（1.7.2 覆盖版）：键行 + 块体 + 紧贴上方无空行间隔的
+        // 注释块（那些注释属于该键）；被删键的子键若还在 overrides 里一律跳过
+        for (path in removals) {
+            val line = pathIndex[path] ?: continue
+            val keyLine = kinds[line] as KeyLine
+            var start = line
+            while (start > 0) {
+                val prev = lines[start - 1].trimStart()
+                if (prev.startsWith("#") && prev.isNotBlank()) start-- else break
+            }
+            val end = blockEndLine(kinds, line, keyLine.indent)
+            edits.add(Edit(start, end - start, emptyList()))
         }
 
         // 第三遍：按行号倒序应用（插入点取段尾行 +1，避免与同行替换冲突）

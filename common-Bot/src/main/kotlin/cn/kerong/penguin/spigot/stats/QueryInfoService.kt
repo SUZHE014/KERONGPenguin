@@ -252,12 +252,16 @@ object QueryInfoService {
                             )
                         )
                     )[playerName]
+                    // 1.7.3：副标题条（服务器 / 更新时间 / 状态）入参
+                    val updateTime = java.text.SimpleDateFormat("HH:mm").format(java.util.Date())
                     val bytes = InfoCardRenderer.render(
                         InfoCardRenderer.CardData(
                             playerName = snapshot.vars.overrides.playerName ?: playerName,
                             items = items,
                             avatar = avatar,
                             background = background,
+                            serverName = plugin.serverName,
+                            updateTime = updateTime,
                         )
                     )
 

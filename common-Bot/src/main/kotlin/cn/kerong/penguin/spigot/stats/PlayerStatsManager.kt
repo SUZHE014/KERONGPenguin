@@ -262,11 +262,16 @@ object PlayerStatsManager {
      * 线程安全：异步线程调用时自动切回主线程读取（Folia 上切到该玩家的
      * 实体线程——原版统计属实体状态）；该玩家尚未在内存时先懒加载他的
      * 数据文件（单个小文件，开销可忽略）。
+     *
+     * 1.7.3：修复今日在线跨天误报——玩家全天未上线时，磁盘存档里的
+     * todaySeconds 停留在最后一次上线的日期（离线路径没人触发跨天重置，
+     * 查询会照常展示旧日期的时长）；现在查询快照时按当前北京日期在
+     * 副本上归零（存档不动，玩家下次上线时正常重置）。
      */
     fun query(uuid: UUID): PlayerStats {
         val stored = ensureLoaded(uuid) ?: PlayerStats()
-        val session = sessions[uuid] ?: return copyOf(stored)
-        val bukkitPlugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin") ?: return copyOf(stored)
+        val session = sessions[uuid] ?: return rolledForToday(copyOf(stored))
+        val bukkitPlugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin") ?: return rolledForToday(copyOf(stored))
         return if (Bukkit.isPrimaryThread()) {
             queryOnMainThread(uuid, session, stored)
         } else {
@@ -275,9 +280,9 @@ object PlayerStatsManager {
             try {
                 FoliaCompat.callOnPlayerByUuid(bukkitPlugin, uuid, 3L) {
                     queryOnMainThread(uuid, session, stored)
-                } ?: copyOf(stored)
+                } ?: rolledForToday(copyOf(stored))
             } catch (_: Exception) {
-                copyOf(stored)
+                rolledForToday(copyOf(stored))
             }
         }
     }
@@ -285,7 +290,7 @@ object PlayerStatsManager {
     /** 在主线程计算实时快照（不落账，仅用于展示）。 */
     private fun queryOnMainThread(uuid: UUID, session: Session, stored: PlayerStats): PlayerStats {
         val stats = statsByUuid[uuid] ?: stored
-        val player = Bukkit.getPlayer(uuid) ?: return copyOf(stats)
+        val player = Bukkit.getPlayer(uuid) ?: return rolledForToday(copyOf(stats))
         val copy = copyOf(stats)
         val now = System.currentTimeMillis()
         val elapsed = (now - session.lastFlushAt).coerceAtLeast(0L) / 1000L
@@ -294,6 +299,22 @@ object PlayerStatsManager {
         copy.walkCm = stats.walkCm + (safeStatistic(player, Statistic.WALK_ONE_CM) - session.lastWalkCm).coerceAtLeast(0)
         copy.flyCm = stats.flyCm + (safeStatistic(player, Statistic.FLY_ONE_CM) - session.lastFlyCm).coerceAtLeast(0)
         copy.damageDealt = stats.damageDealt + (safeStatistic(player, Statistic.DAMAGE_DEALT) - session.lastDamage).coerceAtLeast(0)
+        return copy
+    }
+
+    /**
+     * 展示层跨天归零（1.7.3 修复今日在线误报）：存档日期不是今天时
+     * 把副本的今日在线归零——玩家全天未上线的场景旧版照常展示旧日期
+     * 的时长；只动副本不改存档（存档在下次上线 / 周期落账时正常重置）。
+     * 日期为空的旧记录（1.5.4 前无此键）同样归零——其 todaySeconds
+     * 本就无从证明是今天累积的。
+     */
+    private fun rolledForToday(copy: PlayerStats): PlayerStats {
+        val today = beijingToday()
+        if (copy.today != today) {
+            copy.today = today
+            copy.todaySeconds = 0L
+        }
         return copy
     }
 

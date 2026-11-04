@@ -1,6 +1,7 @@
 package cn.kerong.penguin.spigot.commands
 
 import cn.kerong.bot.provider.HExecution
+import cn.kerong.bot.tools.PluginFileLog
 import cn.kerong.penguin.spigot.KERONGSpigot
 import cn.kerong.penguin.spigot.scheduler.FoliaCompat
 import net.md_5.bungee.api.chat.BaseComponent
@@ -29,21 +30,30 @@ import java.util.concurrent.CopyOnWriteArrayList
  * - 只有本 Sender 的 sendMessage 回调收到的行才进返回；
  * - 命令没有 Sender 输出（只往 logger 打的命令）时，才回退到 Appender
  *   捕获的日志行（已带噪音黑名单过滤）。
+ *
+ * 1.7.2 控制台记录修复（用户实测：QQ 群远程执行的命令执行正确、
+ * 返回正常，但控制台与 latest.log 里没有任何记录）——旧版派发给真实
+ * 控制台时输出自然落控制台；改派发自定义 Sender 后命令输出只进了
+ * QQ 回复，运维在服务器侧完全看不到谁执行了什么：
+ * - execute() 派发前先记录命令本身（[QQ 远程命令] 执行: /xxx）；
+ * - 每个捕获入口同时把行转发到插件 logger（控制台 + latest.log 双写）；
+ * - 转发行带 [QQ 远程命令] 前缀且已入噪音黑名单，不会经 Appender
+ *   回退通道再混进 QQ 回复（避免同一行在回复里出现两次）。
  */
 class BukkitConsoleSender(private val plugin: KERONGSpigot) : ConsoleCommandSender, HExecution {
 
     private val messages = CopyOnWriteArrayList<String>()
     private val outputAppender = CommandOutputAppender.Companion.getInstance()
 
-    /** Spigot 富文本消息代理（转换为旧版文本）。 */
+    /** Spigot 富文本消息代理（转换为旧版文本，捕获时同步转发控制台）。 */
     private val spigotSender = object : CommandSender.Spigot() {
         override fun sendMessage(component: BaseComponent) {
-            messages.add(component.toLegacyText())
+            record(component.toLegacyText())
         }
 
         override fun sendMessage(vararg components: BaseComponent) {
             for (component in components) {
-                messages.add(component.toLegacyText())
+                record(component.toLegacyText())
             }
         }
     }
@@ -95,22 +105,22 @@ class BukkitConsoleSender(private val plugin: KERONGSpigot) : ConsoleCommandSend
     // ---------- 消息捕获 ----------
 
     override fun sendMessage(message: String) {
-        messages.add(message)
+        record(message)
     }
 
     override fun sendMessage(vararg messages: String) {
         for (message in messages.filterNotNull()) {
-            this.messages.add(message)
+            this.record(message)
         }
     }
 
     override fun sendMessage(sender: UUID?, message: String) {
-        messages.add(message)
+        record(message)
     }
 
     override fun sendMessage(sender: UUID?, vararg messages: String) {
         for (message in messages.filterNotNull()) {
-            this.messages.add(message)
+            this.record(message)
         }
     }
 
@@ -136,11 +146,37 @@ class BukkitConsoleSender(private val plugin: KERONGSpigot) : ConsoleCommandSend
     override fun abandonConversation(conversation: Conversation, details: ConversationAbandonedEvent) {}
 
     override fun sendRawMessage(message: String) {
-        messages.add(message)
+        record(message)
     }
 
     override fun sendRawMessage(sender: UUID?, message: String) {
+        record(message)
+    }
+
+    // ---------- 捕获与控制台转发 ----------
+
+    /**
+     * 捕获一行命令输出：记录到返回缓冲，并同步转发到控制台
+     * （QQ 远程执行的命令在控制台 / latest.log 也有完整记录）。
+     */
+    private fun record(message: String) {
         messages.add(message)
+        logToConsole(message)
+    }
+
+    /** 仅记录不转发控制台（收集窗口回放专用，避免重复转发；
+     * HybridCommandExecutor 的回放路径同样调用本方法）。 */
+    fun replayMessage(message: String) {
+        messages.add(message)
+    }
+
+    /** 控制台转发：剥 § 颜色码，带 [QQ 远程命令] 前缀。 */
+    private fun logToConsole(message: String) {
+        if (message.isBlank()) return
+        try {
+            plugin.logger.info("[QQ 远程命令] " + PluginFileLog.stripColorCodes(message))
+        } catch (_: Throwable) {
+        }
     }
 
     // ---------- HExecution ----------
@@ -158,7 +194,12 @@ class BukkitConsoleSender(private val plugin: KERONGSpigot) : ConsoleCommandSend
                 // 直接进 messages（只有本 Sender 收到的行才进返回）；
                 // 旧版派发给真实控制台，输出只能靠 log4j Appender 全量
                 // 捕窗口内日志，与命令无关的周期日志（[MediaSource] 等）
-                // 整段混进 QQ 回复
+                // 整段混进 QQ 回复。
+                // 1.7.2 控制台记录修复：命令本身先落控制台再派发
+                try {
+                    plugin.logger.info("[QQ 远程命令] 执行: $command")
+                } catch (_: Throwable) {
+                }
                 Bukkit.dispatchCommand(this, command)
                 completeAfterCommandOutput(result)
             } catch (error: Throwable) {
@@ -183,15 +224,17 @@ class BukkitConsoleSender(private val plugin: KERONGSpigot) : ConsoleCommandSend
         FoliaCompat.runSyncLater(plugin as Plugin, COMMAND_OUTPUT_DELAY_TICKS) {
             val senderMessages = getAndClearMessages()
             if (senderMessages.isNotEmpty()) {
-                // 只有该 Sender 收到的行才进返回（1.7.2 架构修复主路径）
+                // 只有该 Sender 收到的行才进返回（1.7.2 架构修复主路径）；
+                // 回放用 recordOnly：控制台转发已在捕获时刻做过，不重复
                 for (message in senderMessages) {
-                    sendMessage(message)
+                    replayMessage(message)
                 }
             } else {
                 // 回退：命令只往 logger 打（无 sendMessage 反馈）时用窗口内
-                // 日志行（噪音已黑名单过滤）
+                // 日志行（噪音已黑名单过滤，[QQ 远程命令] 自身转发行同样被
+                // 黑名单剔除，不会在回复里重复出现）
                 for (line in outputAppender.stopCapture()) {
-                    sendMessage(line)
+                    replayMessage(line)
                 }
             }
             result.complete(this)

@@ -8,7 +8,10 @@ package cn.kerong.bot.tools
  * 双通道剔除已知噪音：
  * - NeoForge 模组（如「布谷鸟时钟」）的 [MediaSource] 媒体日志高频刷屏
  *   （媒体=(空) mode=FIT …，周期输出，与命令无关）；
- * - 未签名聊天在控制台的 [Not Secure] 行（如 [Not Secure] [Server] 1）。
+ * - 未签名聊天在控制台的 [Not Secure] 行（如 [Not Secure] [Server] 1）；
+ * - 插件自己的 [QQ 远程命令] 控制台转发行（1.7.2 控制台记录修复引入：
+ *   执行器把命令输出同步转发到控制台留档，这些行只该出现在控制台 /
+ *   latest.log，若经 Appender 回退通道再捕回来会在 QQ 回复里重复出现）。
  *
  * 纯函数无依赖：Spigot / NeoForge 两个 CommandOutputAppender 副本共用，
  * 独立 JVM 冒烟直接调用断言。
@@ -20,6 +23,7 @@ object ConsoleNoiseFilter {
         "[MediaSource]",
         "[MediaSource ",
         "[Not Secure]",
+        "[QQ 远程命令]",
     )
 
     /** 噪音黑名单：logger 名关键字（命中即判噪音）。 */

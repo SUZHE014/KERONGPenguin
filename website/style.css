@@ -1,0 +1,51 @@
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans-serif;background:#12151a;color:#d7dde3;line-height:1.7}
+a{color:#4da3ff;text-decoration:none;transition:color .2s}
+a:hover{color:#7ab8ff}
+.container{max-width:900px;margin:0 auto;padding:0 20px}
+header{background:#1a1e24;border-bottom:1px solid #2a2f36;padding:15px 0;position:sticky;top:0;z-index:100;box-shadow:0 1px 5px rgba(0,0,0,0.4)}
+header .container{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap}
+header .logo{font-size:1.4em;font-weight:bold;color:#4da3ff}
+header nav{display:flex;gap:20px;flex-wrap:wrap}
+header nav a{color:#9aa4ae;font-size:0.95em}
+header nav a:hover{color:#4da3ff}
+section{padding:50px 0;border-bottom:1px solid #232830}
+section h2{color:#e8edf2;font-size:1.6em;margin-bottom:20px;padding-left:12px;border-left:4px solid #4da3ff}
+.dl-box{background:#1a1e24;border-radius:12px;padding:35px 20px;text-align:center;border:1px solid #2a2f36;max-width:600px;margin:0 auto}
+.dl-btn{display:inline-block;background:#2f7ef7;color:#fff;padding:15px 30px;border-radius:30px;font-weight:bold;font-size:1.1em;transition:transform .2s;max-width:90vw;word-break:break-all;text-align:center}
+.dl-btn:hover{transform:scale(1.03)}
+.dl-info{color:#7a848e;margin-top:15px;font-size:0.88em}
+.changelog{background:#1a1e24;border-radius:12px;padding:25px;border:1px solid #2a2f36}
+.version{margin-bottom:25px;padding-bottom:20px;border-bottom:1px solid #262c34}
+.version:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
+.version h3{color:#4da3ff;font-size:1.1em}
+.version .date{color:#6b7580;font-size:0.82em;margin-left:10px}
+.version ul{margin:10px 0 0 22px}
+.version li{margin-bottom:6px;color:#aab3bc;font-size:0.9em}
+table{width:100%;border-collapse:collapse;background:#1a1e24;border-radius:8px;overflow:hidden}
+th{background:#1f2731;color:#4da3ff;padding:12px;text-align:left;font-size:0.95em}
+td{padding:10px 12px;border-bottom:1px solid #262c34;color:#aab3bc;font-size:0.9em;overflow-wrap:anywhere}
+/* 1.7.2：兼容性卡片的核心列表（色块 + 名称）——逐项成组、组间可换行，
+   修手机端 &nbsp; 连排导致的整行不可换行、横向溢出屏幕 */
+.core-line{line-height:2.2;color:#9aa4ae;text-align:left}
+.core{display:inline-flex;align-items:center;white-space:nowrap;margin:3px 18px 3px 0}
+.core i{display:inline-block;width:13px;height:13px;border-radius:3px;margin-right:6px;flex:none}
+.tutorial-step{background:#1a1e24;border-radius:12px;padding:25px;margin-bottom:20px;border:1px solid #2a2f36}
+.tutorial-step h3{color:#4da3ff;margin-bottom:12px;font-size:1.15em}
+.tutorial-step .step-num{display:inline-block;background:#2f7ef7;color:#fff;width:28px;height:28px;border-radius:50%;text-align:center;line-height:28px;font-size:0.85em;margin-right:10px}
+.tutorial-step ol{margin-left:25px}
+.tutorial-step li{margin-bottom:8px;color:#aab3bc;font-size:0.92em}
+.tutorial-step .config{background:#0f1216;border-radius:8px;padding:15px;margin:15px 0;overflow-x:auto}
+.tutorial-step .config pre{color:#c9d2da;font-size:0.85em;font-family:monospace;white-space:pre}
+.tutorial-step .tip{background:#12263f;border-radius:8px;padding:12px 15px;margin:10px 0;color:#7ab8ff;font-size:0.9em}
+/* 教程「每个小配置一段展示 + 一段描述」条目（2026-11-04 起）：
+   每个配置项独立成条——自己的小 YAML 片段 + 一两句描述，
+   不再使用「一个总配置块 + 一大串文字」的写法 */
+.cfg-item{padding:14px 0 16px;border-bottom:1px dashed #262c34}
+.cfg-item:last-child{border-bottom:none;padding-bottom:4px}
+.cfg-item h4{color:#e8edf2;font-size:1em;margin-bottom:8px}
+.cfg-item h4 .key{color:#4da3ff;font-size:0.88em;font-family:monospace}
+.cfg-item .config{margin:10px 0;padding:12px 15px}
+.cfg-item p{color:#aab3bc;font-size:0.92em;margin:6px 0}
+footer{text-align:center;padding:40px 20px;color:#7a848e;font-size:0.85em;background:#1a1e24;border-top:1px solid #2a2f36}
+@media(max-width:600px){header nav{gap:12px;font-size:0.85em} section{padding:30px 0} .dl-btn{padding:12px 25px;font-size:1em} .core{margin-right:12px} td,th{padding:8px 8px;font-size:0.85em} .dl-box{padding:25px 14px} .tutorial-step .config pre,.cfg-item .config pre{white-space:pre-wrap;overflow-wrap:anywhere}}

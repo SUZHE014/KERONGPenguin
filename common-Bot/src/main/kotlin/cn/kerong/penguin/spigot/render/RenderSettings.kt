@@ -29,22 +29,36 @@ object RenderSettings {
     const val DEFAULT_BLUR_STRENGTH = 50
 
     /**
-     * 标题卡片底色黑度默认值（1.7.2 新增 render.title-card-gray）。
+     * 标题卡片底色黑度默认值（1.7.2 新增 render.title-card-gray，覆盖版 96 → 80）。
      *
-     * 查信息卡片的「统计信息」面板（带标题 + 统计项目的大卡片）：
-     * 96，比项目卡片（106）略浅一点但差距不大（用户指定口径：标题
-     * 卡片黑度略低于项目卡片，不要低太多）。
+     * 作用于四张卡片的顶部标题区：查信息顶部欢迎面板（你好, 玩家名）、
+     * 查在线在线人数卡、排行榜统计玩家卡、查性能更新时间卡。旧版这些
+     * 标题区硬编码半透明白（视觉上「透明」），改标题框黑度调不动——
+     * 覆盖版统一改接本键；默认 80 比项目卡片（106）略浅（用户口径：
+     * 标题框黑度略低于项目卡片，默认再调低一点）。
      */
-    const val DEFAULT_TITLE_CARD_GRAY = 96
+    const val DEFAULT_TITLE_CARD_GRAY = 80
 
     /**
      * 项目卡片底色黑度默认值（1.7.2 新增 render.item-card-gray）。
      *
-     * 查在线三状态卡 / 网格容器、排行榜行容器 / 空态容器、查性能网格容器
-     * 共六处：1.7.0 调浅到 64 后太浅，取 (旧值 120 + 当前 64) / 2 = 92
-     * 再偏旧值一侧 → 106（不越过旧值 120）。
+     * 列表容器底色：查信息统计面板、查在线三状态卡 / 网格容器 / 空态、
+     * 排行榜行容器 / 空态、查性能网格容器；1.7.0 调浅到 64 后太浅，
+     * 取 (旧值 120 + 当前 64) / 2 = 92 再偏旧值一侧 → 106（不越过旧值 120）。
      */
     const val DEFAULT_ITEM_CARD_GRAY = 106
+
+    /**
+     * 副标题卡底色黑度默认值（1.7.3 新增 render.subtitle-card-gray）。
+     *
+     * 作用于副标题类小卡：查信息玩家名称项与五张卡片的副标题条
+     * （服务器 / 更新时间 / 状态）。用户口径：副标题灰度要比项目卡片
+     * （106）和标题卡片（80）都低，且要低得明显 → 40（不到标题卡一半）。
+     */
+    const val DEFAULT_SUBTITLE_CARD_GRAY = 40
+
+    /** 排行榜单页最大行数默认值（1.7.3 新增 leaderboard.page-size，全局：在线排行榜 / 财富榜共用）。 */
+    const val DEFAULT_LEADERBOARD_PAGE_SIZE = 20
 
     /** 图片渲染命令的用户冷却（毫秒；0 = 无冷却）。 */
     fun commandCooldownMillis(): Long {
@@ -154,12 +168,13 @@ object RenderSettings {
     }
 
     /**
-     * 标题卡片底色黑度（render.title-card-gray，1.7.2 新增，默认 96）。
+     * 标题卡片底色黑度（render.title-card-gray，1.7.2 新增，覆盖版默认 80）。
      *
-     * - 作用于查信息卡片的「统计信息」面板（带标题的大卡片）；
+     * - 作用于四张卡片的顶部标题区：查信息顶部欢迎面板、查在线在线
+     *   人数卡、排行榜统计玩家卡、查性能更新时间卡（覆盖版前这些区域
+     *   硬编码半透明白，改本键不生效——标题框视觉上恒为透明）；
      * - 取值 0 ~ 255（半透明黑 alpha；越大越深）；
-     * - 默认 96 比项目卡片（[DEFAULT_ITEM_CARD_GRAY] = 106）略浅一点，
-     *   差距不大（标题卡片黑度略低于项目卡片，但不要低太多）；
+     * - 默认 80 比项目卡片（[DEFAULT_ITEM_CARD_GRAY] = 106）略浅；
      * - 实时读取（/hbkrg reload 后立即生效）。
      */
     fun titleCardGray(): Int {
@@ -177,8 +192,9 @@ object RenderSettings {
     /**
      * 项目卡片底色黑度（render.item-card-gray，1.7.2 新增，默认 106）。
      *
-     * - 作用于查在线三状态卡 / 玩家网格容器 / 空态容器、排行榜行容器 /
-     * 空态容器、查性能指标网格容器（六处容器底色）；
+     * - 作用于列表容器底色：查信息统计面板（覆盖版起并入）、查在线
+     *   三状态卡 / 玩家网格容器 / 空态容器、排行榜行容器 / 空态容器、
+     *   查性能指标网格容器；
      * - 取值 0 ~ 255（半透明黑 alpha；越大越深）；
      * - 默认 106 = 旧值 120 与 1.7.0 浅值 64 的中间偏旧值一侧
      *   （(120+64)/2=92，再向 120 方向取半 → 106）；
@@ -194,6 +210,49 @@ object RenderSettings {
             DEFAULT_ITEM_CARD_GRAY
         }
         return value.coerceIn(0, 255)
+    }
+
+    /**
+     * 副标题卡底色黑度（render.subtitle-card-gray，1.7.3 新增，默认 40）。
+     *
+     * - 作用于副标题类小卡：查信息玩家名称项（旧版硬编码半透明白 22，
+     *   灰度配置调不动——1.7.3 修复）与五张卡片的副标题条：
+     *   查在线 / 在线排行榜 / 财富榜（含经济别名自定义标题）/ 查性能 /
+     *   查信息的「服务器 / 更新时间 / 状态」三张小卡；
+     * - 取值 0 ~ 255（半透明黑 alpha；越大越深）；
+     * - 默认 40 明显低于项目卡片（106）与标题卡片（80）；
+     * - 实时读取（/hbkrg reload 后立即生效）。
+     */
+    fun subtitleCardGray(): Int {
+        val value = try {
+            (BotShared.instance as? JavaPlugin)?.config?.getInt(
+                "render.subtitle-card-gray",
+                DEFAULT_SUBTITLE_CARD_GRAY,
+            ) ?: DEFAULT_SUBTITLE_CARD_GRAY
+        } catch (_: Throwable) {
+            DEFAULT_SUBTITLE_CARD_GRAY
+        }
+        return value.coerceIn(0, 255)
+    }
+
+    /**
+     * 排行榜单页最大行数（leaderboard.page-size，1.7.3 新增，默认 20）。
+     *
+     * - 全局键：在线排行榜 / 财富榜（含经济别名自定义标题）共用；
+     * - 超出单页上限自动分多张图片发送（首页带标题，续页只画行）；
+     * - 取值 1 ~ 100；实时读取（/hbkrg reload 后立即生效）；
+     * - 旧版硬编码 15 行（ROWS_PER_PAGE 常量已删除）。
+     */
+    fun leaderboardPageSize(): Int {
+        val value = try {
+            (BotShared.instance as? JavaPlugin)?.config?.getInt(
+                "leaderboard.page-size",
+                DEFAULT_LEADERBOARD_PAGE_SIZE,
+            ) ?: DEFAULT_LEADERBOARD_PAGE_SIZE
+        } catch (_: Throwable) {
+            DEFAULT_LEADERBOARD_PAGE_SIZE
+        }
+        return value.coerceIn(1, 100)
     }
 
     /**

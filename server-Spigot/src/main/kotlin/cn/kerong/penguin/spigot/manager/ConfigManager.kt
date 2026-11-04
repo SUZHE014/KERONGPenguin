@@ -36,9 +36,10 @@ class ConfigManager(private val plugin: JavaPlugin) {
         } catch (_: Throwable) {
         }
         // 1.6.7.2：磁盘 config-version 低于 JAR 内置时，以 JAR 新版
-        // config.yml（注释完整）为底重建用户文件（保留自定义值，旧文件
-        // 备份 config.yml.bak）——修复旧版只追加裸键、注释与结构永不更新的
-        // 问题；全新安装不触发，由下方 saveDefaultConfig 原样释放
+        // config.yml（注释完整）为底重建用户文件（保留自定义值；重建
+        // 先校验后落盘，失败时旧文件不受影响）——修复旧版只追加裸键、
+        // 注释与结构永不更新的问题；全新安装不触发，由下方 saveDefaultConfig
+        // 原样释放
         ConfigFileRebuilder.rebuildIfNeeded(
             plugin,
             CURRENT_CONFIG_VERSION,
@@ -141,6 +142,18 @@ class ConfigManager(private val plugin: JavaPlugin) {
             config.getInt("render.performance.cache-seconds", -1) == 5
         ) {
             config.set("render.performance.cache-seconds", 60)
+            changed = true
+        }
+        // 1.7.2 覆盖版：标题框接线改版（四张卡片顶部标题区从硬编码改接
+        // render.title-card-gray，默认 96 → 80）——升级时旧默认 96 自动收敛
+        // 为新默认 80；自行改过该值的配置不受影响（重建器内同款收敛，
+        // 这里是重建失败兑底路径的双保险）
+        if (oldVersion in 1 until 30 &&
+            config.isSet("render.title-card-gray") &&
+            config.getInt("render.title-card-gray", -1) == 96
+        ) {
+            config.set("render.title-card-gray", 80)
+            plugin.logger.info("标题框黑度默认值调整：96 → 80（render.title-card-gray，可自行改回）")
             changed = true
         }
         // 清理已废弃的配置段
@@ -313,14 +326,24 @@ class ConfigManager(private val plugin: JavaPlugin) {
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
 
-        // 1.7.2：升 29——新增四键（只加新键+默认值，不做任何旧值迁移）：
+        // 1.7.3：升 31——新增三键（只加新键+默认值，不做任何旧值迁移）：
+        // render.subtitle-card-gray（副标题灰度，默认 40 = 查信息玩家名称项 +
+        // 五张卡片副标题条（服务器 / 更新时间 / 状态），明显低于标题卡 80 与
+        // 项目卡 106）、leaderboard.page-size（排行榜单页上限，全局：在线
+        // 排行榜 / 财富榜共用，默认 20，旧版硬编码 15）、同时标题卡改全宽化
+        // （模糊 + 灰度 + 圆角边缘）与今日在线跨天误报修复（无配置变化）；
+        // 1.7.2：升 29——新增四键（只加新键+默认值，不做任何旧值迁移）；
+        // 同版追加注释精简刷新：升 30——无新增键，仅以新版 config.yml
+        // 模板重写全部注释（删版本标注、简化表述），用户已改值一律原样保留；
+        // 仅标题框旧默认 96 → 80 一次性收敛（接线改版，见重建器与 reload）
         // image-download.enabled（图片下载功能总开关，默认 true）、
-        // render.title-card-gray（标题卡片黑度，默认 96 = 比项目卡片略浅）、
+        // render.title-card-gray（标题框黑度，默认 80 = 四张卡片顶部标题区，
+        // 比项目卡片略浅）、
         // render.item-card-gray（项目卡片黑度，默认 106 = 中间偏深值）、
         // qq-bind.checkin.points-reward（签到点券奖励，默认 0 关闭）
         // 1.7.1：升 28——无新增键纯注释刷新（卡片背景图说明段补 /hbkrg bpng
         // 图片包下载与 /hbkrg bpngsz 一键切换的用法说明）
-        private const val CURRENT_CONFIG_VERSION = 29
+        private const val CURRENT_CONFIG_VERSION = 31
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -506,12 +529,22 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 1.7.0：毛玻璃模糊度（0-100，越大越模糊，0 = 不模糊；只模糊卡片
             // 背后的背景，卡片外保持清晰）
             "render.blur-strength" to 50,
-            // 1.7.2：卡片底色黑度（0-255 半透明黑 alpha；title = 查信息统计面板
-            // 默认 96 比项目卡片略浅；item = 六处容器取旧值 120 与浅值 64 中间偏深 106）
-            "render.title-card-gray" to 96,
+            // 1.7.2 覆盖版：卡片底色黑度（0-255 半透明黑 alpha）；title =
+            // 四张卡片顶部标题区（默认 80 比项目卡片略浅，覆盖版前这些区域
+            // 硬编码半透明白调不动）；item = 列表容器（查信息统计面板 +
+            // 查在线 / 排行榜 / 查性能容器，默认 106 = 旧值 120 与浅值 64
+            // 中间偏深）
+            "render.title-card-gray" to 80,
             "render.item-card-gray" to 106,
+            // 1.7.3：副标题灰度（0-255 半透明黑 alpha）——查信息玩家名称项 +
+            // 五张卡片副标题条（服务器 / 更新时间 / 状态）；默认 40 明显低于
+            // 标题卡 80 与项目卡 106（用户口径：低得要明显）
+            "render.subtitle-card-gray" to 40,
             // 1.5.5：在线排行榜（1.6.0 从 qq-bind.leaderboard 迁至顶层）
             "leaderboard.top" to 15,
+            // 1.7.3：排行榜单页上限（全局：在线排行榜 / 财富榜共用；
+            // 超出自动分多张图发送；旧版硬编码 15）
+            "leaderboard.page-size" to 20,
             "leaderboard.builtin-background" to true,
             // 1.6.0：金币排行榜（配置与在线排行榜一致）
             "coins-leaderboard.top" to 15,

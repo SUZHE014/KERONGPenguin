@@ -271,6 +271,19 @@ object QClient {
         sendPayloadToGroupsSync(V2MsgData().setContent(content), action)
     }
 
+    /**
+     * 把一行重连过程里程碑发送到配置的 QQ 群（1.7.2：/hbkrg chs 手动
+     * 重连触发的轮次内由 ReconnectManager 调用，群里远程重连时过程可见）。
+     *
+     * 尽力而为：入队异步发送，连接断开期间发送失败的行自然丢弃
+     * （不重试不补发），不影响重连流程本身；控制台与文件留档不受影响。
+     */
+    fun broadcastReconnectLine(content: String) {
+        if (starter == null || shuttingDown) return
+        if (content.isBlank()) return
+        OutboxQueue.submit { sendTextToGroupsSync(content, "发送重连过程") }
+    }
+
     /** 同步发送内核：直接向所有群发送（仅由发送队列线程调用，不阻塞调用线程）。 */
     private fun sendPayloadToGroupsSync(payload: V2MsgData, action: String) {
         val currentPlugin = plugin

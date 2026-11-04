@@ -43,7 +43,9 @@ import java.awt.image.BufferedImage
  * 展示名与时长文本改为变量返回内容（主线程快照内批量解析，
  * 失败 / 留空回退插件自带数据；头像 / 排名仍按真实玩家）。
  *
- * 分段发送：超过 [LeaderboardRenderer.ROWS_PER_PAGE]（15）行时自动切页 ——
+ * 分段发送：超过单页上限时自动切页 —— 1.7.3 起单页上限走全局配置
+ * leaderboard.page-size（RenderSettings.leaderboardPageSize，默认 20；
+ * 旧版硬编码 15）——
  * 第一张带标题区，后续各张只绘制行内容；逐张发送间隔 [SEND_INTERVAL_MILLIS]
  * 避免触发平台频控。
  */
@@ -136,7 +138,8 @@ class LeaderboardCommands : CommandSupport() {
                     val pages = ArrayList<ByteArray>(4)
                     var pageStart = 0
                     while (pageStart < topEntries.size) {
-                        val pageEnd = minOf(pageStart + LeaderboardRenderer.ROWS_PER_PAGE, topEntries.size)
+                        // 1.7.3：单页上限改走全局配置 leaderboard.page-size（默认 20）
+                        val pageEnd = minOf(pageStart + RenderSettings.leaderboardPageSize(), topEntries.size)
                         val pageEntries = topEntries.subList(pageStart, pageEnd).mapIndexed { offset, raw ->
                             LeaderboardRenderer.LeaderEntry(
                                 rank = pageStart + offset + 1,

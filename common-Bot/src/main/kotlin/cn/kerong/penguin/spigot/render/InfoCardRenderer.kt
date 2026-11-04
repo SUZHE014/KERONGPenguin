@@ -123,19 +123,23 @@ object InfoCardRenderer {
         val avatar: BufferedImage? = null,
         /** 已预处理的背景（尺寸须为 WIDTH × cardHeight(items.size)，含暗色遮罩）；null 表示无背景。 */
         val background: BufferedImage? = null,
+        /** 服务器名称（1.7.3：副标题条「服务器」项展示）。 */
+        val serverName: String = "",
+        /** 更新时间（HH:mm，调用方格式化好传入；1.7.3 副标题条「更新时间」项展示）。 */
+        val updateTime: String = "",
     )
 
     /**
-     * 卡片高度（1.5.3：随统计项数自适应）：
-     * - 顶部欢迎区 + 身份条共 336px，底部留白 24px；
+     * 卡片高度（1.5.3：随统计项数自适应；1.7.3：插入副标题条后整体 +100）：
+     * - 顶部欢迎区 + 身份条 + 副标题条共 436px，底部留白 24px；
      * - 统计面板 = 面板头 84 + 网格行数 × 96 + 底垫 26；
      * - 网格列数与绘制逻辑一致（≥ 6 项 3 列，否则 2 列避免孤项）；
-     * - 满项（3 行）= 760 与历史版本像素一致，少一行减 96px，无底部留白。
+     * - 满项（3 行）= 860，少一行减 96px。
      */
     internal fun cardHeight(itemCount: Int): Int {
         val columns = if (itemCount >= 6) 3 else 2
         val rows = (itemCount + columns - 1) / columns
-        return 472 + 96 * rows
+        return 572 + 96 * rows
     }
 
     /**
@@ -156,6 +160,7 @@ object InfoCardRenderer {
             val backdrop = InfoCardAssets.drawBackground(g, data.background, WIDTH, height)
             drawTopPanel(g, data, backdrop)
             drawIdentityBar(g, data.playerName, backdrop)
+            drawSubtitle(g, data.serverName, data.updateTime, backdrop)
             drawStatsPanel(g, data.items, height, backdrop)
         } finally {
             g.dispose()
@@ -174,9 +179,11 @@ object InfoCardRenderer {
         val w = (WIDTH - 48).toFloat()
         val h = 200f
 
-        // 毛玻璃容器（浅色半透明；背后先铺模糊背景）
+        // 毛玻璃容器（背后先铺模糊背景）；1.7.2 覆盖版：标题框黑度
+        // 可配（render.title-card-gray，默认 80）——旧版硬编码半透明白，
+        // 视觉上「透明」且改配置调不动
         backdrop?.paintCard(g, x, y, w, h, 24f)
-        g.color = Color(0xFF, 0xFF, 0xFF, 38)
+        g.color = Color(0x00, 0x00, 0x00, RenderSettings.titleCardGray())
         g.fill(RoundRectangle2D.Float(x, y, w, h, 24f, 24f))
 
         // 头像（右上角，圆角描边；1.6.6.1 覆盖版：零中间图直接绘制——
@@ -210,7 +217,9 @@ object InfoCardRenderer {
         g.drawString("这是你的统计数据", 50f, 178f)
     }
 
-    /** 玩家身份条（先铺卡片背后的局部模糊背景，再叠半透明底色）。 */
+    /** 玩家身份条（先铺卡片背后的局部模糊背景，再叠半透明底色；
+     * 1.7.3：玩家名称项底色改接副标题灰度 render.subtitle-card-gray——
+     * 旧版硬编码半透明白 22，灰度配置调不动）。 */
     private fun drawIdentityBar(g: Graphics2D, playerName: String, backdrop: InfoCardAssets.CardBackdropContext?) {
         val x = 24f
         val y = 244f
@@ -218,7 +227,8 @@ object InfoCardRenderer {
         val h = 64f
 
         backdrop?.paintCard(g, x, y, w, h, 16f)
-        g.color = Color(0xFF, 0xFF, 0xFF, 22)
+        // 1.7.3：玩家名称项属副标题类小卡，接副标题灰度（默认 40）
+        g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
         g.fill(RoundRectangle2D.Float(x, y, w, h, 16f, 16f))
 
         g.font = font(21f, false)
@@ -231,20 +241,49 @@ object InfoCardRenderer {
         g.drawString(playerName, 190f, y + 42f)
     }
 
+    /** 副标题条：服务器 / 更新时间 / 状态 三张并排小卡（1.7.3 新增，与查在线
+     * 状态栏同款；底色接副标题灰度 render.subtitle-card-gray）。 */
+    private fun drawSubtitle(g: Graphics2D, serverName: String, updateTime: String, backdrop: InfoCardAssets.CardBackdropContext?) {
+        val y = 328f
+        val gap = 14f
+        val cardWidth = ((WIDTH - 48) - 2 * gap).toFloat() / 3f
+        val cardHeight = 84f
+
+        val cells = listOf(
+            "服务器" to serverName,
+            "更新时间" to updateTime,
+            "状态" to "正常",
+        )
+        cells.forEachIndexed { index, (label, value) ->
+            val x = 24f + index * (cardWidth + gap)
+            backdrop?.paintCard(g, x, y, cardWidth, cardHeight, 14f)
+            // 1.7.3：副标题条接副标题灰度（render.subtitle-card-gray，默认 40）
+            g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
+            g.fill(RoundRectangle2D.Float(x, y, cardWidth, cardHeight, 14f, 14f))
+            g.font = font(22f, false)
+            g.color = COLOR_LABEL
+            g.drawString(label, x + 24f, y + 34f)
+            g.font = font(30f, true)
+            g.color = COLOR_VALUE
+            g.drawString(clipToWidth(g, value, (cardWidth - 48).toInt()), x + 24f, y + 68f)
+        }
+    }
+
     /**
      * 生涯统计面板（1.5.2：9 项 → 3 列 × 3 行；4-5 项时 2 列避免孤项；
      * 1.5.3：高度随项数自适应，缺失依赖的项不渲染；
+     * 1.7.3：插入副标题条后下移 100px；
      * 先铺卡片背后的局部模糊背景，再叠半透明底色。 */
     private fun drawStatsPanel(g: Graphics2D, items: List<CardItem>, height: Int, backdrop: InfoCardAssets.CardBackdropContext?) {
         val x = 24f
-        val y = 336f
+        val y = 436f
         val w = (WIDTH - 48).toFloat()
-        val h = (height - 24 - 336).toFloat()
+        val h = (height - 24 - 436).toFloat()
 
         backdrop?.paintCard(g, x, y, w, h, 24f)
-        // 1.7.2：标题卡片底色黑度可配（render.title-card-gray，默认 96 =
-        // 比项目卡片 106 略浅一点，差距不大）
-        g.color = Color(0x00, 0x00, 0x00, RenderSettings.titleCardGray())
+        // 1.7.2 覆盖版：统计面板属列表容器，改走项目卡片黑度
+        // （render.item-card-gray，默认 106；标题框黑度让位给顶部欢迎区）
+        g.color = Color(0x00, 0x00, 0x00, RenderSettings.itemCardGray())
         g.fill(RoundRectangle2D.Float(x, y, w, h, 24f, 24f))
 
         // 面板标题

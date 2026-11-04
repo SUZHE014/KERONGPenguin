@@ -194,9 +194,17 @@ object OnlineListRenderer {
         return output.toByteArray()
     }
 
-    /** 顶部标题区：眉题 + 主标题 + 右侧在线人数卡（卡片背后铺局部模糊）。 */
+    /** 顶部标题区：眉题 + 主标题 + 右侧在线人数卡（1.7.3：整块标题卡 —— 背后铺
+     * 局部模糊 + 标题框黑度 + 圆角边缘，与查信息顶部欢迎区同款；旧版标题
+     * 文字直画在背景上，看不出卡片边界，灰度也只作用于右侧小方框）。 */
     private fun drawHeader(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, onlineCount: Int) {
         val top = MARGIN
+
+        // 1.7.3：全宽标题卡（模糊 + 灰度 + 圆角边缘一次到位）
+        val headerWidth = (WIDTH - 2 * MARGIN).toFloat()
+        backdrop?.paintCard(g, MARGIN.toFloat(), top.toFloat(), headerWidth, HEADER_HEIGHT.toFloat(), 24f)
+        g.color = Color(0x00, 0x00, 0x00, RenderSettings.titleCardGray())
+        g.fill(RoundRectangle2D.Float(MARGIN.toFloat(), top.toFloat(), headerWidth, HEADER_HEIGHT.toFloat(), 24f, 24f))
 
         // 英文眉题（字距拉宽）
         g.font = InfoCardRenderer.font(26f, true)
@@ -208,13 +216,15 @@ object OnlineListRenderer {
         g.color = COLOR_VALUE
         g.drawString("服务器在线列表", (MARGIN + 4).toFloat(), (top + 108).toFloat())
 
-        // 右侧在线人数卡
+        // 右侧在线人数卡（叠在标题卡上）
         val cardWidth = 240
         val cardHeight = HEADER_HEIGHT - 16
         val cardX = WIDTH - MARGIN - cardWidth
         val cardY = top + 8
         backdrop?.paintCard(g, cardX.toFloat(), cardY.toFloat(), cardWidth.toFloat(), cardHeight.toFloat(), 20f)
-        g.color = Color(0xFF, 0xFF, 0xFF, 34)
+        // 1.7.2 覆盖版：标题区卡底色改接标题框黑度（render.title-card-gray，
+        // 默认 80）——旧版硬编码半透明白，改配置调不动（视觉上「透明」）
+        g.color = Color(0x00, 0x00, 0x00, RenderSettings.titleCardGray())
         g.fill(RoundRectangle2D.Float(cardX.toFloat(), cardY.toFloat(), cardWidth.toFloat(), cardHeight.toFloat(), 20f, 20f))
         g.font = InfoCardRenderer.font(24f, false)
         g.color = COLOR_LABEL
@@ -226,7 +236,9 @@ object OnlineListRenderer {
         g.drawString(countText, (cardX + cardWidth - 28 - countWidth).toFloat(), (cardY + 100).toFloat())
     }
 
-    /** 状态栏：服务器 / 更新时间 / 状态 三张并排小卡（卡片背后铺局部模糊）。 */
+    /** 状态栏：服务器 / 更新时间 / 状态 三张并排小卡（卡片背后铺局部模糊；
+     * 1.7.3：副标题条改接副标题灰度 render.subtitle-card-gray，默认 40
+     * 明显低于项目卡与标题卡）。 */
     private fun drawStatusBar(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, serverName: String, updateTime: String) {
         val top = (MARGIN + HEADER_HEIGHT + HEADER_GAP).toFloat()
         val gap = 16f
@@ -241,9 +253,8 @@ object OnlineListRenderer {
         cells.forEachIndexed { index, (label, value) ->
             val x = MARGIN + index * (cardWidth + gap)
             backdrop?.paintCard(g, x, top, cardWidth, cardHeight, 14f)
-            // 1.7.2：项目卡片底色黑度可配（render.item-card-gray，默认 106 =
-            // 旧值 120 与 1.7.0 浅值 64 的中间偏旧值一侧）
-            g.color = Color(0x00, 0x00, 0x00, RenderSettings.itemCardGray())
+            // 1.7.3：副标题条接副标题灰度（render.subtitle-card-gray，默认 40）
+            g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
             g.fill(RoundRectangle2D.Float(x, top, cardWidth, cardHeight, 14f, 14f))
             g.font = InfoCardRenderer.font(22f, false)
             g.color = COLOR_LABEL

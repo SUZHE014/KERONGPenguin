@@ -105,6 +105,14 @@ abstract class JavaPlugin : Plugin {
     /** 当前配置（懒加载自 dataFolder/config.yml）。 */
     val config: org.bukkit.configuration.file.FileConfiguration = org.bukkit.configuration.file.YamlConfiguration()
 
+    /**
+     * 配置已从磁盘装载过（1.7.2 覆盖版）：saveConfig 的注释保留路径
+     * 只在装载后可用；装载抛异常（文件损坏）时保持 false，避免把
+     * 内存里的不完整树整盘覆盖用户文件。
+     */
+    @Volatile
+    private var configLoaded = false
+
     // ---------- 配置生命周期（对齐 Bukkit JavaPlugin） ----------
 
     /** 释放内置默认配置（不覆盖已有文件）。 */
@@ -135,11 +143,150 @@ abstract class JavaPlugin : Plugin {
 
     /** 从磁盘重载配置。 */
     fun reloadConfig() {
+        // 先复位装载标记：装载抛异常（文件损坏）时保持 false，
+        // saveConfig 会跳过写盘，不会把内存里的旧树覆盖用户文件
+        configLoaded = false
         (config as org.bukkit.configuration.file.YamlConfiguration).load(File(dataFolder, "config.yml"))
+        configLoaded = true
     }
 
-    /** 保存配置到磁盘。 */
+    /**
+     * 保存配置到磁盘（1.7.2 覆盖版：注释保留保存）。
+     *
+     * 旧版直接整树 dump，config.yml 里的注释全部丢失（bpngsz 一键切换 /
+     * 配置升级补齐后文件被剥成光杆键值，教程里按注释找配置无从下手）。
+     * 现改为：以当前磁盘文本为底做文本级差分合并（只重写有差异的行），
+     * 注释与段落结构原样保留；差分校验不通过时退回整树 dump（旧行为，
+     * 注释会丢但数据不丢）。从未装载过且磁盘已有文件时跳过写盘，
+     * 避免空树覆盖用户配置。
+     */
     fun saveConfig() {
-        (config as org.bukkit.configuration.file.YamlConfiguration).save(File(dataFolder, "config.yml"))
+        val file = File(dataFolder, "config.yml")
+        val yaml = config as org.bukkit.configuration.file.YamlConfiguration
+        if (!configLoaded) {
+            if (file.isFile) {
+                logger.warning("配置尚未从磁盘装载，跳过本次保存以避免覆盖 config.yml（请先 reloadConfig）")
+                return
+            }
+            yaml.save(file)
+            return
+        }
+        if (!ConfigCommentSaver.savePreservingComments(file, yaml)) {
+            try {
+                logger.warning("config.yml 注释保留保存未成功，本次退回整树写出（注释会丢失，配置值不受影响）")
+            } catch (_: Throwable) {
+            }
+            yaml.save(file)
+        }
+    }
+}
+
+/**
+ * config.yml 注释保留保存（1.7.2 覆盖版，仅本兼容层使用）。
+ *
+ * 差分思路与 ConfigFileRebuilder 同源：磁盘文本为底 → 快照树 vs 内存
+ * 树逐叶子比对 → 差异键走 [YamlTextMerge] 文本合并（替换 / 插入 / 删除）
+ * → 合并结果整树校验（可解析且每个键值与内存一致，数字按 double 宽松
+ * 比较）→ 原子写盘。任一环节不达标返回 false，调用方退回整树 dump。
+ */
+private object ConfigCommentSaver {
+
+    /** 差分合并保存；成功返回 true，失败返回 false（调用方走 dump 兑底）。 */
+    fun savePreservingComments(file: File, yaml: org.bukkit.configuration.file.YamlConfiguration): Boolean {
+        val raw = try {
+            if (!file.isFile) return false
+            val text = file.readText(Charsets.UTF_8)
+            if (text.isBlank()) return false
+            // BOM 剥除（snakeyaml 解析与合并均以无 BOM 文本为准）
+            if (text.startsWith("﻿")) text.substring(1) else text
+        } catch (_: Throwable) {
+            return false
+        }
+
+        // 快照树：磁盘文本重新解析一份（内存树从同一文本装载 + 本次改动，
+        // 两者差 = 本轮要落盘的改动）
+        val snapshot: Map<String, Any?> = try {
+            @Suppress("UNCHECKED_CAST")
+            org.yaml.snakeyaml.Yaml().load<Any?>(raw) as? Map<String, Any?> ?: return false
+        } catch (_: Throwable) {
+            return false
+        }
+
+        val liveLeaves = LinkedHashMap<String, Any?>()
+        collectLeaves(yaml.root, "", liveLeaves)
+        val snapLeaves = LinkedHashMap<String, Any?>()
+        collectLeaves(snapshot, "", snapLeaves)
+
+        val overrides = LinkedHashMap<String, Any?>()
+        for ((path, value) in liveLeaves) {
+            if (!snapLeaves.containsKey(path) || !valuesEqual(snapLeaves[path], value)) {
+                overrides[path] = value
+            }
+        }
+        val removals = HashSet<String>()
+        for (path in snapLeaves.keys) {
+            if (!liveLeaves.containsKey(path)) removals.add(path)
+        }
+
+        val merged = try {
+            cn.kerong.penguin.spigot.manager.YamlTextMerge.merge(raw, overrides, removals)
+        } catch (_: Throwable) {
+            return false
+        }
+
+        // 整树校验：合并结果可解析，且与内存树逐叶子一致、被删键确已消失
+        val verifyLeaves = LinkedHashMap<String, Any?>()
+        try {
+            @Suppress("UNCHECKED_CAST")
+            val parsed = org.yaml.snakeyaml.Yaml().load<Any?>(merged) as? Map<String, Any?> ?: return false
+            collectLeaves(parsed, "", verifyLeaves)
+        } catch (_: Throwable) {
+            return false
+        }
+        for ((path, value) in liveLeaves) {
+            if (!verifyLeaves.containsKey(path) || !valuesEqual(verifyLeaves[path], value)) return false
+        }
+        for (path in removals) {
+            if (verifyLeaves.containsKey(path)) return false
+        }
+
+        return try {
+            val tmp = File(file.parentFile, file.name + ".tmp")
+            java.nio.file.Files.write(tmp.toPath(), merged.toByteArray(Charsets.UTF_8))
+            java.nio.file.Files.move(tmp.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /** 递归收集叶子键值（嵌套映射下探；列表与标量均按叶子处理）。 */
+    private fun collectLeaves(node: Map<*, *>, prefix: String, out: LinkedHashMap<String, Any?>) {
+        for ((key, value) in node) {
+            val name = key.toString()
+            val path = if (prefix.isEmpty()) name else "$prefix.$name"
+            if (value is Map<*, *>) {
+                collectLeaves(value, path, out)
+            } else {
+                out[path] = value
+            }
+        }
+    }
+
+    /**
+     * 宽松等值（校验用）：数字按 double 比较（1 与 1.0 同值）；字符串 /
+     * 布尔精确；列表逐项；映射按键逐值。类型不可比一律判不等（保守落
+     * 到 dump 兑底，数据不丢）。
+     */
+    private fun valuesEqual(a: Any?, b: Any?): Boolean = when {
+        a == null && b == null -> true
+        a is Number && b is Number -> a.toDouble() == b.toDouble()
+        a is Boolean && b is Boolean -> a == b
+        a is String && b is String -> a == b
+        a is List<*> && b is List<*> ->
+            a.size == b.size && a.indices.all { valuesEqual(a[it], b[it]) }
+        a is Map<*, *> && b is Map<*, *> ->
+            a.size == b.size && a.keys.all { k -> b.containsKey(k) && valuesEqual(a[k], b[k]) }
+        else -> false
     }
 }

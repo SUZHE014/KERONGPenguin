@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>安装教程 - KERONG Penguin</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+<div class="container">
+<a href="index.html" class="logo">🤖 KERONG Penguin</a>
+<nav>
+<a href="index.html">下载</a>
+<a href="tutorial.html">教程</a>
+</nav>
+</div>
+</header>
+<div class="container">
+<section>
+<h2>安装教程</h2>
+
+<div class="tutorial-step">
+<h3><span class="step-num">1</span>创建机器人</h3>
+<ol>
+<li>在手机上安装 <strong>QQ 最新版本</strong>，点击 <strong>联系人 → 机器人 → 创建我的机器人</strong></li>
+<li>选择 <strong>其他服务</strong>，滚动到页面底部点击 <strong>"快速获取机器人 AppID 和 AppSecret"</strong></li>
+<li>设置头像、昵称和简介，把机器人的 <strong>ID</strong> 和 <strong>密钥</strong> 保存下来</li>
+</ol>
+<p>电脑版高级创建：<a href="https://q.qq.com" target="_blank" rel="noopener">q.qq.com</a>（QQ 机器人开放平台官网，与手机创建的机器人通用）</p>
+</div>
+
+<div class="tutorial-step">
+<h3><span class="step-num">2</span>安装并填写配置</h3>
+<ol>
+<li>从 <a href="index.html">下载页面</a> 下载最新的 .jar 文件（插件版放 <code>plugins/</code>，模组版放 <code>mods/</code>）</li>
+<li>启动服务器，会自动生成配置文件</li>
+<li>打开配置文件（插件版 <code>plugins/KERONGPenguin/config.yml</code>，模组版 <code>kerongpenguin/config.yml</code>），填入第 1 步保存的机器人信息：</li>
+</ol>
+<div class="config">
+<pre>bot:
+  app-id: '机器人ID'
+  secret: '机器人密钥'
+  name: '机器人名称'</pre>
+</div>
+<ol start="4">
+<li>保存配置文件，重启服务器</li>
+</ol>
+</div>
+
+<div class="tutorial-step">
+<h3><span class="step-num">3</span>邀请机器人进群</h3>
+<ol>
+<li>在 QQ 中把机器人邀请到你的群，点击机器人头像 → <strong>设置</strong></li>
+<li>把 <strong>机器人可获取的信息范围</strong> 调成 <strong>群内全部消息</strong>，打开<strong>主动发消息</strong>开关</li>
+<li>在群里发送 <strong>/查询open ID</strong>，机器人会回复你的群 OpenId</li>
+<li>把 OpenId 填入配置文件并重启服务器（<b>注意：每一项必须用双引号包裹</b>）：</li>
+</ol>
+<div class="config">
+<pre>bot:
+  groups: ["这里填获取到的群OpenId"]  # 留空 [] 表示不限制</pre>
+</div>
+</div>
+
+<div class="tutorial-step">
+<h3>完成</h3>
+<p>在群里发送 <code>/查信息</code>、<code>/查在线</code>、<code>/查性能</code> 试试。玩家进服会收到验证码，在群里<b>直接发送纯数字验证码</b>即可完成 QQ 绑定（也可以发送 <code>/绑定 验证码</code>）。</p>
+<p>首次填完机器人账号（AppID / 密钥）需重启服务器生效；之后改其他配置执行 <code>/hbkrg reload</code> 即可（绝大多数配置即时生效，仅机器人凭据与更新检查两项必须重启，详见下方技术细节）。</p>
+</div>
+</section>
+
+<section>
+<h2>常用设置</h2>
+<p style="color:#aab3bc">日常使用看完上面三步就够了。这一节是 config.yml 里各配置项的说明——<b>每个配置项一段示例加一段描述</b>，要改什么直接查对应项即可。</p>
+
+<div class="tutorial-step">
+<h3>机器人账号（bot 段）</h3>
+<p>bot.app-id 与 bot.secret 两个必填项见顶部安装教程第 2 步（改凭据必须重启服务器；每台服务器要用不同的机器人，同一 AppID 两台会互相挤掉线）。</p>
+
+<div class="cfg-item">
+<h4>允许响应的群 <span class="key">bot.groups</span></h4>
+<div class="config">
+<pre>bot:
+  groups: ["群的OpenId"]  # 每项双引号；留空 [] = 所有群都响应</pre>
+</div>
+<p>填「群 OpenId」，不是群号！获取：把机器人拉进群 → 群里发 <code>/查询open ID</code> → 回复里「群的 OpenId」就是要填的值。留空 [] 时所有群都能用命令，但聊天转发、进出服播报只发给列表里的群——建议至少填上你自己的群。改完 <code>/hbkrg reload</code> 生效。</p>
+</div>
+
+<div class="cfg-item">
+<h4>机器人名称 <span class="key">bot.name</span></h4>
+<div class="config">
+<pre>bot:
+  name: "KERONGPenguin"  # 仅用于显示</pre>
+</div>
+<p>消息与卡片上显示的机器人名，不影响功能。</p>
+</div>
+
+<div class="cfg-item">
+<h4>断线重连提示 <span class="key">bot.reconnect-notify</span></h4>
+<div class="config">
+<pre>bot:
+  reconnect-notify: true  # false = 过程提示只写日志文件不刷控制台</pre>
+</div>
+<p>控制台里断线重连的过程提示开关；机器人断线会自动重连，无需处理。</p>
+</div>
+</div>
+
+<div class="tutorial-step">
+<h3>QQ 绑定（qq-bind 段）</h3>
+
+<div class="cfg-item">
+<h4>绑定总开关 <span class="key">qq-bind.enabled</span></h4>
+<div class="config">
+<pre>qq-bind:
+  enabled: false  # true = 玩家进服必须先绑定 QQ 才能玩</pre>
+</div>
+<p>开启后老玩家进服前直接拦截（验证码显示在「无法连接到服务器」界面），新玩家先放行建档再踢出展示验证码。玩家在群里<b>直接发送纯数字验证码</b>即可绑定（也可以发送 <code>/绑定 验证码</code>）。相关命令：<code>/重新绑定</code>（换号重绑）、<code>/黑名单 @某人</code>（管理员拉黑）。</p>
+</div>
+
+<div class="cfg-item">
+<h4>查信息开关 <span class="key">qq-bind.personal-info</span></h4>
+<div class="config">
+<pre>qq-bind:
+  personal-info: true  # false = 群里不再响应 /查信息</pre>
+</div>
+<p><code>/查信息</code> 玩家统计卡片命令的总开关。</p>
+</div>
+
+<div class="cfg-item">
+<h4>验证码有效期与位数 <span class="key">code-expire-minutes / code-length</span></h4>
+<div class="config">
+<pre>qq-bind:
+  code-expire-minutes: 10  # 绑定码有效期（分钟）
+  code-length: 5           # 绑定码位数（4-8）</pre>
+</div>
+<p>绑定码多久过期、几位数字。</p>
+</div>
+
+<div class="cfg-item">
+<h4>未绑定拦截界面文案 <span class="key">qq-bind.kick-message</span></h4>
+<div class="config">
+<pre>qq-bind:
+  kick-message:
+    - "&c===== QQ 绑定验证 ====="
+    - "&e你的专属验证码: &a&l{code}"</pre>
+</div>
+<p>未绑定玩家进服看到的界面文案，一行一项（列表）；支持 <code>&amp;</code> 颜色代码，变量 <code>{code}</code> 验证码 / <code>{name}</code> 玩家名 / <code>{expire}</code> 有效期分钟。完整默认文案见 config.yml。</p>
+</div>
+</div>
+
+<div class="tutorial-step">
+<h3>每日签到（qq-bind.checkin 段）</h3>
+
+<div class="cfg-item">
+<h4>签到开关与前缀 <span class="key">checkin.enabled / prefix</span></h4>
+<div class="config">
+<pre>qq-bind:
+  checkin:
+    enabled: false   # 群里发 /签到
+    prefix: "[签到]" # 签到成功回复的前缀</pre>
+</div>
+<p>签到按天累计并记录连续天数；没装经济插件时照常累计、不发奖励。</p>
+</div>
+
+<div class="cfg-item">
+<h4>金币奖励 <span class="key">checkin.reward</span></h4>
+<div class="config">
+<pre>qq-bind:
+  checkin:
+    reward: 100.0  # 每次签到奖励的金币数</pre>
+</div>
+<p>经 Vault 发放；未装 Vault 但装了 CoinsEngine 时改走 CoinsEngine。发放后按「前后余额差」校验到账，没到账会在回复里提示，不会悄悄吞掉。</p>
+</div>
+
+<div class="cfg-item">
+<h4>点券奖励 <span class="key">checkin.points-reward</span></h4>
+<div class="config">
+<pre>qq-bind:
+  checkin:
+    points-reward: 0  # 0 = 不发</pre>
+</div>
+<p>经 PlayerPoints 发放，按 UUID 持久、离线玩家也能到账；装了才生效。</p>
+</div>
+</div>
+
+<div class="tutorial-step">
+<h3>图片渲染（render 段）</h3>
+<p>查信息 / 查在线 / 查性能 / 排行榜的图片默认用内置背景图（随 JAR 自带，零配置即用）。以下各项改完 <code>/hbkrg reload</code> 立即生效。</p>
+
+<div class="cfg-item">
+<h4>查询结果缓存 <span class="key">render.result-cache-seconds</span></h4>
+<div class="config">
+<pre>render:
+  result-cache-seconds: 60  # 同一玩家查询结果复用秒数（0 = 每次重渲染）</pre>
+</div>
+<p>多人频繁查询时避免重复渲染；0 = 不缓存。</p>
+</div>
+
+<div class="cfg-item">
+<h4>头像缓存时长 <span class="key">render.avatar-cache-hours</span></h4>
+<div class="config">
+<pre>render:
+  avatar-cache-hours: 3  # 头像缓存小时数（0 = 不缓存）</pre>
+</div>
+<p>玩家换皮肤想立即看到新头像就改小。渲染过的头像存在 <code>cache/avatars/</code>，重启不重复下载。</p>
+</div>
+
+<div class="cfg-item">
+<h4>毛玻璃模糊度 <span class="key">render.blur-strength</span></h4>
+<div class="config">
+<pre>render:
+  blur-strength: 50  # 0-100，越大越模糊，0 = 不模糊</pre>
+</div>
+<p>卡片背后背景的模糊程度（毛玻璃效果），默认 50 轻模糊。</p>
+</div>
+
+<div class="cfg-item">
+<h4>标题框黑度 <span class="key">render.title-card-gray</span></h4>
+<div class="config">
+<pre>render:
+  title-card-gray: 80  # 0-255，越大越深</pre>
+</div>
+<p>查信息 / 查在线 / 在线排行榜 / 查性能四张卡片<b>顶部标题区</b>的底色，默认 80 比项目卡片（106）略浅。</p>
+</div>
+
+<div class="cfg-item">
+<h4>副标题灰度 <span class="key">render.subtitle-card-gray</span></h4>
+<div class="config">
+<pre>render:
+  subtitle-card-gray: 40  # 0-255，越大越深</pre>
+</div>
+<p>查信息<b>玩家名称项</b>与五张卡片<b>副标题条</b>（服务器 / 更新时间 / 状态 三张小卡）的底色，默认 40 明显比标题框（80）和项目卡片（106）浅。</p>
+</div>
+
+<div class="cfg-item">
+<h4>项目卡片黑度 <span class="key">render.item-card-gray</span></h4>
+<div class="config">
+<pre>render:
+  item-card-gray: 106  # 0-255，越大越深</pre>
+</div>
+<p>查信息统计面板与查在线 / 排行榜 / 查性能的<b>列表容器</b>底色。</p>
+</div>
+
+<div class="cfg-item">
+<h4>缓存自动释放 <span class="key">render.idle-release-minutes</span></h4>
+<div class="config">
+<pre>render:
+  idle-release-minutes: 15  # 渲染停止多少分钟后释放缓存内存（0 = 不释放）</pre>
+</div>
+<p>空闲时自动回收图像缓存内存，一般不用动。</p>
+</div>
+
+<div class="cfg-item">
+<h4>图片命令冷却 <span class="key">render.command-cooldown-seconds</span></h4>
+<div class="config">
+<pre>render:
+  command-cooldown-seconds: 5  # 同一用户两次发图片命令的最小间隔（0 = 关闭）</pre>
+</div>
+<p>防刷屏：同一用户两次查询的最小间隔。</p>
+</div>
+
+<div class="cfg-item">
+<h4>卡片背景开关 <span class="key">builtin-background（五处）</span></h4>
+<div class="config">
+<pre>render:
+  info-card-builtin-background: true     # 查信息
+  online-list-builtin-background: true   # 查在线
+  performance:
+    builtin-background: true             # 查性能
+leaderboard:
+  builtin-background: true               # 在线排行榜
+coins-leaderboard:
+  builtin-background: true               # 财富榜</pre>
+</div>
+<p>true = 用内置背景图；false = 用 <code>img/</code> 文件夹里的随机图。想用自己的图片：把 jpg / png 放进 img/（插件版 <code>plugins/KERONGPenguin/img/</code>，模组版 <code>kerongpenguin/img/</code>，多张随机轮换），再把对应开关改成 false。img/ 里没图自动用回内置背景；图片等比缩放铺满，不会拉伸变形。</p>
+<p><b>一键切换</b>：<code>/hbkrg bpngsz yes</code> 全部卡片改用 img/ 图片，<code>no</code> 一键恢复内置背景，改完自动生效不用手改文件。</p>
+<p><b>没有现成图片</b>：控制台执行 <code>/hbkrg bpng</code> 查看官网图片包（如 wl1「蔚蓝档案」29 张超高清图），<code>/hbkrg bpng wl1</code> 自动下载到 img/——逐张显示进度，可中断、可续传、单张失败自动跳过。</p>
+</div>
+
+<div class="cfg-item">
+<h4>图片下载开关 <span class="key">image-download.enabled</span></h4>
+<div class="config">
+<pre>image-download:
+  enabled: true  # false = 关闭图片包下载功能</pre>
+</div>
+<p>不想让服务器联网下载图片就关掉；关闭后 /hbkrg bpng 相关命令只回复「管理员已关闭图片下载功能」，bpngsz 切换背景不受影响。</p>
+</div>
+
+<div class="cfg-item">
+<h4>性能数据缓存 <span class="key">render.performance.cache-seconds</span></h4>
+<div class="config">
+<pre>render:
+  performance:
+    cache-seconds: 60  # 性能数据缓存秒数（0 = 每次实时渲染）</pre>
+</div>
+<p>多人常查建议保持开启，避免重复采集。</p>
+</div>
+
+<div class="cfg-item">
+<h4>查性能最大人数来源 <span class="key">render.performance.max-players-source</span></h4>
+<div class="config">
+<pre>render:
+  performance:
+    max-players-source: "real"  # real = 真实值；motd = 展示人数</pre>
+</div>
+<p>/查性能 展示「当前 / 最大」。real = 服务器真实最大人数（默认）；motd = 其他插件改过的展示人数（服务器列表里显示的那个，取自最近一次玩家 ping 服务器；模组版恒用真实值）。</p>
+</div>
+</div>
+
+<div class="tutorial-step">
+<h3>变量获取信息（variable-fetch 段）</h3>
+<p>适合数据来自其他插件的服务器（比如在线时长用别的统计插件记录）。需要前置 <a href="https://modrinth.com/plugin/placeholderapi" target="_blank" rel="noopener">PlaceholderAPI</a>（仅插件版有效）；开启后下列项目优先读你填的变量。</p>
+
+<div class="cfg-item">
+<h4>总开关 <span class="key">variable-fetch.enabled</span></h4>
+<div class="config">
+<pre>variable-fetch:
+  enabled: false  # 默认关闭</pre>
+</div>
+<p>开启后下列项目才会读变量。</p>
+</div>
+
+<div class="cfg-item">
+<h4>自带项目变量 <span class="key">total-playtime 等七项</span></h4>
+<div class="config">
+<pre>variable-fetch:
+  total-playtime: ""  # 总在线时长（查信息 / 在线排行榜）
+  today-playtime: ""  # 今日在线时长（查信息）
+  coins: ""           # 金币（查信息 / 财富榜）
+  points: ""          # 点券（查信息）
+  title: ""           # 称号（查信息）
+  player-name: ""     # 玩家名（查信息卡片 / 两个排行榜的展示名）
+  tps: ""             # TPS（查性能）</pre>
+</div>
+<p>规则：留空 = 用插件自带数据；变量读取失败自动回退自带数据，卡片不会缺项。玩家名变量只改展示名，头像 / 统计 / 排名仍按真实玩家。变量可与文字混写（如 <code>%变量% 小时</code>）。</p>
+<p>改完 <code>/hbkrg reload</code> 生效；每次查询用了哪个值会写进插件日志（<code>logs/qq/</code>），填错了去那里看。</p>
+</div>
+
+<div class="cfg-item">
+<h4>自定义查信息项目 <span class="key">variable-fetch.custom-items</span></h4>
+<div class="config">
+<pre>variable-fetch:
+  custom-items:
+    vip:                       # 项目ID（仅区分用，不展示）
+      项目名称: "VIP等级"       # 卡片上显示的项目名
+      获取变量: "%vault_rank%"  # 读不到就不展示这项</pre>
+</div>
+<p>想加几个加几个，变量名以你装的插件文档为准。</p>
+</div>
+</div>
+
+<div class="tutorial-step">
+<h3>排行榜（leaderboard / coins-leaderboard 段）</h3>
+
+<div class="cfg-item">
+<h4>显示人数上限 <span class="key">leaderboard.top / coins-leaderboard.top</span></h4>
+<div class="config">
+<pre>leaderboard:
+  top: 15             # /在线排行榜 显示前 N 名（1-100）
+coins-leaderboard:
+  top: 15             # /财富榜 显示前 N 名</pre>
+</div>
+<p>/财富榜 需装 Vault（旧命令 /金币榜 仍可用）。背景开关见上文「卡片背景开关」。</p>
+</div>
+
+<div class="cfg-item">
+<h4>单页人数上限 <span class="key">leaderboard.page-size</span></h4>
+<div class="config">
+<pre>leaderboard:
+  page-size: 20  # 单张图最多显示多少名（全局，1-100）</pre>
+</div>
+<p>在线排行榜 / 财富榜<b>共用</b>（全局配置）：超出自动分多张图片发送（首页带标题，续页只画榜单）。旧版固定 15，默认 20。</p>
+</div>
+
+<div class="cfg-item">
+<h4>金币显示别名 <span class="key">economy-alias</span></h4>
+<div class="config">
+<pre>economy-alias: ""  # 填 "元宝" 后所有输出里的"金币"都显示为"元宝"</pre>
+</div>
+<p>作用于排行榜标题、查信息卡片、签到文案、/帮助、消息模板；命令名不受影响。</p>
+</div>
+</div>
+
+<div class="tutorial-step">
+<h3>服务器与更新</h3>
+
+<div class="cfg-item">
+<h4>服务器显示名称 <span class="key">serverName</span></h4>
+<div class="config">
+<pre>serverName: "KERONGPenguin"  # 消息转发、卡片、排行榜标题用</pre>
+</div>
+<p>留空自动使用 bot.name。</p>
+</div>
+
+<div class="cfg-item">
+<h4>更新检查 <span class="key">update-check.enabled</span></h4>
+<div class="config">
+<pre>update-check:
+  enabled: true  # 启动后自动联网检查新版本；false = 完全不联网</pre>
+</div>
+<p>有新版本会在控制台提示版本号与下载页；检查失败只提示一句话不影响运行。内网服务器可关闭。<b>改这段需重启生效</b>。</p>
+</div>
+</div>
+
+<div class="tutorial-step">
+<h3>消息模板（messages 段 → Markdown/ 文件）</h3>
+
+<div class="cfg-item">
+<h4>模板机制 <span class="key">messages.*</span></h4>
+<div class="config">
+<pre>messages:
+  bind-success: "bind-success.md"          # 绑定成功
+  checkin-success: "checkin-success.md"    # 签到成功
+  help: "help.md"                          # /帮助 命令手册
+  # …… 其余各项见 config.yml（每项注释标明对应回复与可用变量）</pre>
+</div>
+<p>机器人在群里发的<b>每条文本回复</b>都对应数据目录 <code>Markdown/</code> 下的一个 .md 模板文件（首次启动自动释放）。改文案直接编辑对应文件；删掉文件重启可恢复默认。</p>
+<p>模板里的变量会被替换成实际值，每个模板能用哪些变量是固定的，完整清单见 config.yml 的 messages 段注释。常用变量：</p>
+</div>
+<table style="width:100%;border-collapse:collapse;font-size:0.92em;margin:8px 0">
+<tr style="background:#1c261e"><th style="border:1px solid #2c3a2e;padding:5px 8px;text-align:left">变量</th><th style="border:1px solid #2c3a2e;padding:5px 8px;text-align:left">含义</th></tr>
+<tr><td style="border:1px solid #2c3a2e;padding:5px 8px"><code>{player}</code></td><td style="border:1px solid #2c3a2e;padding:5px 8px">玩家名</td></tr>
+<tr><td style="border:1px solid #2c3a2e;padding:5px 8px"><code>{name}</code></td><td style="border:1px solid #2c3a2e;padding:5px 8px">群昵称 / 玩家名（按模板场景）</td></tr>
+<tr><td style="border:1px solid #2c3a2e;padding:5px 8px"><code>{prefix}</code> / <code>{reward}</code></td><td style="border:1px solid #2c3a2e;padding:5px 8px">签到前缀 / 本次签到金币数</td></tr>
+<tr><td style="border:1px solid #2c3a2e;padding:5px 8px"><code>{streak}</code></td><td style="border:1px solid #2c3a2e;padding:5px 8px">连续签到天数</td></tr>
+<tr><td style="border:1px solid #2c3a2e;padding:5px 8px"><code>{openid}</code> / <code>{group}</code></td><td style="border:1px solid #2c3a2e;padding:5px 8px">用户 / 群的 OpenId</td></tr>
+<tr><td style="border:1px solid #2c3a2e;padding:5px 8px"><code>{version}</code></td><td style="border:1px solid #2c3a2e;padding:5px 8px">插件版本号</td></tr>
+<tr><td style="border:1px solid #2c3a2e;padding:5px 8px"><code>{online}</code> / <code>{players}</code></td><td style="border:1px solid #2c3a2e;padding:5px 8px">在线人数 / 玩家列表（查在线）</td></tr>
+</table>
+</div>
+
+<div class="tutorial-step">
+<h3>聊天转发（chat-format / features 段）</h3>
+
+<div class="cfg-item">
+<h4>转发格式 <span class="key">chat-format.from-game / from-group</span></h4>
+<div class="config">
+<pre>chat-format:
+  from-game: "[游戏] &lt;{name}&gt; {message}"     # 游戏消息转发到群
+  from-group: "[§bQQ§r] {name}: {message}"    # 群消息转发到游戏</pre>
+</div>
+<p><code>{name}</code> = 玩家名 / 发送者昵称，<code>{message}</code> = 消息内容（可简写 <code>{msg}</code>）；§ 是 Minecraft 颜色代码。</p>
+</div>
+
+<div class="cfg-item">
+<h4>转发总开关 <span class="key">chat-format.post-chat</span></h4>
+<div class="config">
+<pre>chat-format:
+  post-chat: true  # 双向聊天转发总开关</pre>
+</div>
+<p>关闭后仅命令可用，游戏与群消息互不转发。</p>
+</div>
+
+<div class="cfg-item">
+<h4>游戏内触发前缀 <span class="key">chat-format.start-with</span></h4>
+<div class="config">
+<pre>chat-format:
+  start-with: "#"  # 只有 # 开头的聊天才转发到群（"" = 全部转发）</pre>
+</div>
+<p>防止游戏闲聊全进群。</p>
+</div>
+
+<div class="cfg-item">
+<h4>全量转发 <span class="key">features.full-amount</span></h4>
+<div class="config">
+<pre>features:
+  full-amount: false  # QQ 群所有消息都转进游戏</pre>
+</div>
+<p>开启后不止命令、所有群消息都转进游戏；管理员也可在群里发 <code>/全量</code> 随时切换（按群独立记忆）。</p>
+<p>群友转发的<b>合并聊天记录</b>不会展开成几十行刷屏，游戏里只显示一行 <code>[合并聊天记录]</code>；图片 / 语音 / 视频同样单行占位，想看内容回 QQ 群点开即可。</p>
+</div>
+</div>
+
+<div class="tutorial-step">
+<h3>进出服播报（player-events 段）</h3>
+
+<div class="cfg-item">
+<h4>进服播报 <span class="key">player-events.join</span></h4>
+<div class="config">
+<pre>player-events:
+  join:
+    enabled: true                        # 玩家进服是否向群播报
+    format: "[游戏] {name} 加入了服务器"  # 播报文案</pre>
+</div>
+<p>变量 <code>{name}</code> 玩家名、<code>{server}</code> 服务器名、<code>{platform}</code> 平台；只发给 bot.groups 里的群。</p>
+</div>
+
+<div class="cfg-item">
+<h4>离服播报 <span class="key">player-events.quit</span></h4>
+<div class="config">
+<pre>player-events:
+  quit:
+    enabled: true
+    format: "[游戏] {name} 离开了服务器"</pre>
+</div>
+<p>同进服播报，控制玩家离服时是否播报与文案。</p>
+</div>
+</div>
+
+<div class="tutorial-step">
+<h3>查在线输出（motd / markdown 段）</h3>
+
+<div class="cfg-item">
+<h4>服务器地址 <span class="key">motd.server-ip / server-port</span></h4>
+<div class="config">
+<pre>motd:
+  server-ip: ""  # 服务器公网 IP（状态图 API 的 {ip} 替换用）
+  server-port: 0 # 服务器端口</pre>
+</div>
+<p>只用于状态图 API 地址替换；不用状态图可不填。</p>
+</div>
+
+<div class="cfg-item">
+<h4>状态图 API 与发送开关 <span class="key">motd.api / post-img</span></h4>
+<div class="config">
+<pre>motd:
+  api: "http://motd.txssb.cn/api/app_img?..."  # 状态图 API（不需要可留空）
+  post-img: true                               # 是否随消息发送状态图</pre>
+</div>
+<p>状态图只在 /查在线 文字列表模式下随消息发送；服务器地址建议直接在群里公告。</p>
+</div>
+
+<div class="cfg-item">
+<h4>查在线输出方式 <span class="key">motd.use-markdown</span></h4>
+<div class="config">
+<pre>motd:
+  use-markdown: false  # false = 渲染图片（默认）；true = 文字列表</pre>
+</div>
+<p>文字列表模式用 <code>Markdown/online.md</code> 模板（可用变量 <code>{online}</code> 在线人数 / <code>{players}</code> 玩家列表 / <code>{server}</code> 服务器名；缺文件自动回退图片）。</p>
+</div>
+
+<div class="cfg-item">
+<h4>查在线模板文件名 <span class="key">markdown.queryOnline</span></h4>
+<div class="config">
+<pre>markdown:
+  queryOnline: "online.md"  # 查在线文字列表的模板文件名</pre>
+</div>
+<p>模板在数据目录 Markdown/ 下，改文案直接编辑文件。</p>
+</div>
+</div>
+
+<div class="tutorial-step">
+<h3>命令与管理</h3>
+
+<div class="cfg-item">
+<h4>命令执行方式 <span class="key">command-sender</span></h4>
+<div class="config">
+<pre>command-sender: "Auto"  # Auto = 自动检测（推荐，保持默认即可）</pre>
+</div>
+<p>Hybrid = 强制混合控制台，仅 Mohist / CatServer 等混合端需要。</p>
+</div>
+
+<div class="cfg-item">
+<h4>管理员判定 <span class="key">admin.mode / admin.openids</span></h4>
+<div class="config">
+<pre>admin:
+  mode: qq      # qq = 群主与管理员（推荐）；config = 仅名单；both = 任一
+  openids: []   # 名单（填 OpenId，/查询open ID 获取，每项双引号）</pre>
+</div>
+<p>决定谁能在群里用管理员命令（/执行命令、/黑名单 等）。</p>
+</div>
+
+<div class="cfg-item">
+<h4>消息过滤 <span class="key">filter-regex</span></h4>
+<div class="config">
+<pre>filter-regex: []  # 命中正则的部分直接删除（双向生效）</pre>
+</div>
+<p>机器人收发的消息与命令回复都会过滤；示例 <code>["(?i)广告", "某敏感词"]</code>。</p>
+</div>
+
+<div class="cfg-item">
+<h4>命令开关 <span class="key">commands 段</span></h4>
+<div class="config">
+<pre>commands:
+  帮助: true          # /帮助 —— 查看所有命令
+  查询open ID: true   # /查询open ID —— 查 OpenId
+  查信息: true        # /查信息 —— 玩家统计卡片（可 @某人 查别人）
+  绑定: true          # /绑定 <绑定码>
+  重新绑定: true      # /重新绑定 —— 解绑换号用
+  查在线: true        # /查在线（别名 /在线）
+  查性能: true        # /查性能 —— 服务器性能卡片
+  在线排行榜: true    # /在线排行榜
+  财富榜: true        # /财富榜（旧命令 /金币榜 仍可用）
+  发信息: true        # /发信息 <内容> —— 发消息到游戏内
+  执行命令: true      # /执行命令 <命令> —— 管理员执行
+  执行: true          # /执行 <key> —— 自定义命令
+  管理员执行: true    # /管理员执行 <key>
+  全量: true          # /全量 —— 切换全量转发
+  AI对话上下文: true  # /AI对话上下文 开|关
+  清除当前上下文: true # /清除当前上下文
+  黑名单: true        # /黑名单 @QQ
+  解除黑名单: true    # /解除黑名单 @QQ
+  签到: true          # /签到 —— 每日签到</pre>
+</div>
+<p>每条群命令单独开关；关闭后不再响应，快捷菜单按钮与 /帮助 条目同步消失；改完 <code>/hbkrg reload</code> 生效。</p>
+</div>
+</div>
+
+<div class="tutorial-step">
+<h3>AI 对话（ai 段）</h3>
+<p>群里 @机器人 即可对话；服务器内也可开启（玩家输入前缀触发）。支持 DeepSeek / OpenAI 等兼容接口。</p>
+
+<div class="cfg-item">
+<h4>开关与游戏内前缀 <span class="key">ai.enabled / server-enabled / server-prefix</span></h4>
+<div class="config">
+<pre>ai:
+  enabled: false         # AI 对话总开关
+  server-enabled: false  # 游戏内 AI 开关（需总开关同时开启）
+  server-prefix: "ai"    # 游戏内呼出前缀："ai 你好" 即触发</pre>
+</div>
+<p>总开关关闭时群内与游戏内的 AI 对话都不可用。</p>
+</div>
+
+<div class="cfg-item">
+<h4>输出前缀 <span class="key">ai.server-output-prefix / qq-output-prefix</span></h4>
+<div class="config">
+<pre>ai:
+  server-output-prefix: "[AI]"  # 游戏内回复前缀
+  qq-output-prefix: "[AI]"      # 群内回复前缀</pre>
+</div>
+<p>AI 回复显示的前缀，便于区分机器人消息。</p>
+</div>
+
+<div class="cfg-item">
+<h4>接口参数 <span class="key">ai.base-url / api-key / model</span></h4>
+<div class="config">
+<pre>ai:
+  base-url: "https://api.deepseek.com"  # 接口地址
+  api-key: ""                           # API Key（服务商后台生成，注意保密）
+  model: "deepseek-chat"                # 模型名</pre>
+</div>
+<p>DeepSeek 填 <code>https://api.deepseek.com</code> + <code>deepseek-chat</code>；OpenAI 记得地址加 <code>/v1</code>、模型填 <code>gpt-4o-mini</code> 等。自动补地址后缀（url-auto-append）保持默认即可。</p>
+</div>
+
+<div class="cfg-item">
+<h4>角色设定 <span class="key">ai.system-prompt</span></h4>
+<div class="config">
+<pre>ai:
+  system-prompt: "你是一个友好的游戏群助手，请简洁回答。"</pre>
+</div>
+<p>决定 AI 的回复风格与身份，随口味改。</p>
+</div>
+
+<div class="cfg-item">
+<h4>对话记忆 <span class="key">ai.context-limit</span></h4>
+<div class="config">
+<pre>ai:
+  context-limit: 6  # 记住最近几轮对话（0 = 不记）</pre>
+</div>
+<p>全局一份记忆，所有群与游戏内共用。<code>/AI对话上下文 开</code> 开启记忆、<code>/清除当前上下文</code> 清空（管理员命令）。</p>
+</div>
+</div>
+
+<div class="tutorial-step">
+<h3>自定义指令（custom-commands）</h3>
+
+<div class="cfg-item">
+<h4>预设命令 <span class="key">custom-commands</span></h4>
+<div class="config">
+<pre>custom-commands: []
+# 示例（去掉每行开头的 # 即生效）：
+# - key: "公告"             # 群里发 /执行 公告 明天维护
+#   command: "say {params}" # {params} = 命令后面跟的内容
+#   permission: 1           # 0 = 所有人可用；其他值 = 仅管理员（/管理员执行）</pre>
+</div>
+<p>在群里通过 <code>/执行 &lt;key&gt;</code> 触发预设的服务器命令，每条三个字段：key 触发名称、command 实际命令、permission 权限。</p>
+</div>
+</div>
+</section>
+
+<section>
+<h2>技术细节与常见问题</h2>
+<p style="color:#aab3bc">这一节是给想深入了解或遇到问题的用户准备的，日常使用不需要看。</p>
+
+<div class="tutorial-step">
+<h3>配置自动升级与注释保留</h3>
+<p>插件更新后首次启动，若配置文件版本低于新版内置版本，会自动以新版 config.yml 为底重建配置——全部注释、新增配置项都会更新到位，你改过的值原样保留。无需手动对照新配置改文件，也不会额外生成备份文件。</p>
+<p>日常保存（如 <code>/hbkrg bpngsz</code> 一键切换背景写回配置）同样只改有变化的行，<b>文件里的注释不会丢</b>；万一某次保存无法安全保留注释，会退回整树写出（注释丢失但配置值不受影响，控制台会有提示）。</p>
+</div>
+
+<div class="tutorial-step">
+<h3>AppID / Secret 填了却鉴权失败</h3>
+<p>从网页或聊天窗口复制 AppID 常会把空格、零宽字符一起带进 config.yml（肉眼不可见），QQ 平台会直接拒绝（日志见 <code>{"code":100007,"message":"appid invalid"}</code>）。新版读取时会自动清洗首尾空白并提示；建议顺手把配置里的多余空白删掉。</p>
+</div>
+
+<div class="tutorial-step">
+<h3>机器人反复掉线 / 图片回复频繁失败</h3>
+<p>QQ 同一机器人只允许一条稳定连接。两台服务器填同一个 AppID 会互相挤占（轮流掉线、图片几乎必失败）。处理：关闭其中一台的机器人（bot.app-id 留空），或每台各申请一个机器人（免费）。机器人断线后自动重连，连续多次失败会暂停并在游戏内提示 <code>/hbkrg chs</code> 手动重试，或等 30 分钟自动重试。</p>
+<p>在 QQ 群里远程执行 <code>hbkrg chs</code>（经 <code>/执行命令</code>）时，重连过程的关键节点（开始 / 成功 / 超时）会同步发回群里，不必盯着服务器控制台；自动重连不广播，不打扰群。</p>
+</div>
+
+<div class="tutorial-step">
+<h3>查性能卡片的指标细节</h3>
+<p>共五项：TPS（每秒刻数，满值 20，超过按 20 展示）/ MSPT（每刻耗时毫秒）/ 内存 / CPU / 在线人数（展示「当前 / 最大」，最大人数来源见 render.performance.max-players-source——real = 真实值，motd = 其他插件修改过的展示人数，取自最近一次玩家 ping 服务器时显示的值，无人 ping 过回退真实值；模组端无此事件恒用真实值）。自动兼容 Spigot / Paper / Purpur / Folia / NeoForge 核心；Folia 多线程核心用插件内置采样器读取窗口均值。装了 Spark（插件 / 模组）时优先直接调用 Spark 取数（Paper 1.21+ 系核心已内置 spark，无需安装；想用自装版需加启动参数 <code>-Dpaper.preferSparkPlugin=true</code>，且 Modrinth 上的 spark 文件是模组变体、放 plugins 目录无效）；没装或读不到时回退自研采集，个别核心读不到时显示「--」。填了 TPS 变量时优先显示变量内容。<b>为什么没有"延迟"项</b>：玩家 Ping 反映的是客户端到服务器的连接往返，本地 / 同机 / 内网穿透部署下恒为 0ms，无监控意义。</p>
+</div>
+
+<div class="tutorial-step">
+<h3>头像显示与缓存</h3>
+<p>渲染过的头像保存在 <code>cache/avatars/</code> 文件夹（重启不重复下载，过期自动清理）。获取统一走在线线路（各线路均带外层贴图）：MC-Heads → Minotar → MinePic → Crafatar → Mojang 官方 API（国内普遍超时排最后）→ 全部失败用占位块。批量获取（在线列表 / 排行榜等）多线程并行收齐；单轮最多等待 12 秒，超时的玩家先显示占位块，其下载在后台继续——完成后进缓存，下一轮查询自动补全真实头像。某玩家头像一直不显示时，看插件日志（<code>logs/qq/</code>）里记录的获取方式就能定位原因。玩家换皮肤想立即更新：调小 <code>render.avatar-cache-hours</code>。</p>
+</div>
+
+<div class="tutorial-step">
+<h3>哪些配置不能用 /hbkrg reload（只能重启服务器）</h3>
+<p>绝大多数配置改完执行 <code>/hbkrg reload</code> 立即生效：命令开关、群列表（bot.groups）、聊天转发格式、进出服播报、消息模板（Markdown 文件）、图片渲染设置（模糊度 / 缓存 / 冷却）、变量获取、AI 参数、签到设置等。<b>只有以下两项 reload 不管用，改完必须重启服务器</b>：</p>
+<ul>
+<li><b>bot.app-id / bot.secret（QQ 机器人凭据）</b>——QQ 客户端只在启动时用当期凭据连接一次，reload 和 <code>/hbkrg chs</code> 重连都不会读取新凭据。</li>
+<li><b>update-check 段（更新检查）</b>——只在服务器启动后第 8 秒检查一次新版本，改开关 / 镜像地址要下次启动才生效。</li>
+</ul>
+<p><b>主命令</b>：游戏内管理命令为 <code>/hbkrg</code>（旧名 /kerong、/hbkng 均已移除不兼容，输入旧命令会提示未知指令）。reload 会在重载配置后<b>自动重新同步 QQ 快捷指令面板</b>（先删除旧面板再按新配置重建按钮），改完命令开关执行一次 <code>/hbkrg reload</code> 即可，无需其他操作。</p>
+
+<h3>变量获取信息的生效范围与回退规则</h3>
+<p>variable-fetch 每个项目独立判定：变量留空 → 用插件自带数据；变量读取失败（未装 PlaceholderAPI / 变量不存在返回原文 / 返回空白）→ 自动回退插件自带数据。自定义项目读不到时不展示。生效范围：查信息卡片（各项目 + 自定义项目）、在线排行榜（玩家名 / 总在线时长）、财富榜（玩家名 / 金币）、查性能（TPS）；玩家名变量只改展示名，头像 / 统计 / 排名仍按真实玩家。变量解析在服务器主线程内一次完成（保证线程安全），解析结果（采用 / 回退）写进插件日志。模组版无 PlaceholderAPI 生态，恒用自带数据。</p>
+</div>
+
+<div class="tutorial-step">
+<h3>配置文件写错了语法</h3>
+<p>config.yml 写了非法语法（最常见是冒号后漏了空格）也能自愈：能自动修复的笔误直接修好写回；修不了的把原文件备份成 <code>config.yml.error-时间戳</code> 并重建默认配置继续启动，不会再出现"机器人不启动"的情况。</p>
+</div>
+
+<div class="tutorial-step">
+<h3>群里远程执行命令，控制台有记录吗</h3>
+<p>有。经 <code>/执行命令</code> 执行的每条命令与它的输出，都会以 <code>[QQ 远程命令]</code> 前缀同步写进服务器控制台和 latest.log，服务器运维侧看得到谁执行了什么；这些转发行不会再混回 QQ 回复（回复里只有命令本身的输出）。</p>
+</div>
+
+<div class="tutorial-step">
+<h3>插件版和模组版怎么选</h3>
+<p><b>插件版</b>（Spigot）适用于 Spigot / Paper / Purpur / Folia / 混合端（Mohist、CatServer、Arclight 等）；<b>模组版</b>（NeoForge，MC 1.20.4+）放 <code>mods/</code>，需要 Java 21。两个版本二进制不通用；自带 Bukkit 的混合端请用插件版。查询类命令的金币（Vault）、称号（DeluxeTags 或 PlayerTitle）、点券（PlayerPoints）没装对应插件时对应项目自动隐藏；财富榜在模组版或未装 Vault 的服务器上会提示未安装经济插件。PlayerTitle 称号与变量获取信息需要另装 PlaceholderAPI。</p>
+</div>
+
+<div class="tutorial-step">
+<h3>玩家数据存储</h3>
+<p>一个玩家一份 <code>QUUID/&lt;编号&gt;.yml</code>（绑定、签到、统计同文件），同名不同 UUID 视为两个人互不串数据，定时异步保存对性能几乎零影响。</p>
+</div>
+
+<div class="tutorial-step">
+<h3>基岩版互通（Geyser）</h3>
+<p>装了 Geyser-Spigot / Floodgate 的服务器，基岩玩家和 Java 玩家一样拿绑定码、绑定、签到、查信息，全部按玩家 UUID 记录；同名不同 UUID 即两个独立账号（基岩 <code>.Steve</code> 与 Java <code>Steve</code> 各自独立）。</p>
+</div>
+
+<div class="tutorial-step">
+<h3>内存占用说明</h3>
+<p>面板显示的是 JVM 预留量，不代表插件占用。游戏内发送 <code>/hbkrg mem</code> 可查看插件实际占用；插件在渲染空闲后会自动释放图像素材缓存，一般无需处理。</p>
+</div>
+</section>
+</div>
+<footer>
+<p>KERONG Penguin Plugin | © 2026 KERONG</p>
+</footer>
+</body>
+</html>

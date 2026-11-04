@@ -26,6 +26,14 @@ import java.util.concurrent.atomic.AtomicInteger
  *    或等待 30 分钟后自动进行下一轮（最多 3 轮）；
  * 3. **手动重试**：/hbkrg chs 重置全部计数并立即恢复连接（也可在 30 分钟退避期间随时使用）。
  *
+ * ## 1.7.2 手动重连过程回显 QQ 群
+ *
+ * 用户在 QQ 群里远程执行重连（/执行命令 hbkrg chs）后，旧版 QQ 回复只有
+ * 一句「连接过程与结果见控制台」——过程只在控制台，远程操作的人看不到：
+ * 手动重连触发的一轮内，关键里程碑（第 1 次 / 最后一次重试、成功、超时）
+ * 同时发送到配置的 QQ 群；断线期间发送失败的行自然丢弃（不补发），
+ * 成功 / 超时结果在连接恢复后必达。自动重连与首次启动不广播（不打扰群）。
+ *
  * ## 计数模型
  *
  * - 每次 WebSocket 连接打开（[onOpen]）= 一次重试尝试（首次启动连接也计入，
@@ -92,11 +100,30 @@ object ReconnectManager {
     @Volatile
     private var lastSessionShort = false
 
+    /**
+     * 1.7.2：本轮是否把重连过程回显到 QQ 群——仅手动重连（/hbkrg chs）
+     * 触发的一轮内开启；成功或超时挂起后关闭，自动重连与首次启动不广播。
+     */
+    @Volatile
+    private var announceToGroups = false
+
     /** 当前重连尝试次数（第 N 次（1/5））。 */
     fun currentAttempt(): Int = attempt.get()
 
     /** 是否处于挂起状态（SDK 自动重连已关闭，等待退避或手动重试）。 */
     fun isSuspended(): Boolean = suspended
+
+    /**
+     * 把重连过程里程碑发送到配置的 QQ 群（1.7.2 手动重连回显）。
+     * 尽力而为：连接断开期间发送失败自然丢弃，不影响重连流程本身。
+     */
+    private fun announceToGroup(line: String) {
+        if (!announceToGroups) return
+        try {
+            QClient.broadcastReconnectLine(PluginFileLog.stripColorCodes(line))
+        } catch (_: Throwable) {
+        }
+    }
 
     // ---------- 回调（由 WssDiagnostics / QClient 调用） ----------
 
@@ -109,6 +136,7 @@ object ReconnectManager {
         lastOpenAt = 0L
         hadAnyClose = false
         lastSessionShort = false
+        announceToGroups = false
     }
 
     /**
@@ -132,12 +160,16 @@ object ReconnectManager {
         val n = attempt.incrementAndGet()
         if (n == 1) {
             if (notifyEnabled()) {
-                PluginFileLog.infoAndKeep("[重连] 第 $n/$SMALL_RETRY_MAX 次重试连接…（连接已打开，等待鉴权）")
+                val line = "[重连] 第 $n/$SMALL_RETRY_MAX 次重试连接…（连接已打开，等待鉴权）"
+                PluginFileLog.infoAndKeep(line)
+                announceToGroup(line)
             }
         } else if (n == SMALL_RETRY_MAX) {
-            PluginFileLog.infoAndKeep("[重连] 第 $n/$SMALL_RETRY_MAX 次重试连接…（本轮最后一次自动重连）")
+            val line = "[重连] 第 $n/$SMALL_RETRY_MAX 次重试连接…（本轮最后一次自动重连）"
+            PluginFileLog.infoAndKeep(line)
+            announceToGroup(line)
         } else if (notifyEnabled()) {
-            // 中间过程：仅文件留档，不刷控制台
+            // 中间过程：仅文件留档，不刷控制台；QQ 群回显同样只发里程碑
             PluginFileLog.write("[重连] 第 $n/$SMALL_RETRY_MAX 次重试连接…（连接已打开，等待鉴权）")
         }
     }
@@ -151,12 +183,14 @@ object ReconnectManager {
      */
     fun onSessionReady() {
         if (hadAnyClose && !lastSessionShort && !successAnnounced && attempt.get() > 0) {
-            PluginFileLog.infoAndKeep(
-                "[重连] QQ 机器人重连成功（第 ${attempt.get()}/$SMALL_RETRY_MAX 次尝试），消息收发已恢复"
-            )
+            val line = "[重连] QQ 机器人重连成功（第 ${attempt.get()}/$SMALL_RETRY_MAX 次尝试），消息收发已恢复"
+            PluginFileLog.infoAndKeep(line)
+            announceToGroup(line)
             successAnnounced = true
             // 计数器不在此清零：短命会话仍按 5 次上限计数（防重连风暴），
-            // 健康判定（存活≥90 秒）达成后再统一清零
+            // 健康判定（存活≥90 秒）达成后再统一清零；
+            // QQ 群回显到成功即止（后续健康判定不再重复发群）
+            announceToGroups = false
         }
     }
 
@@ -166,15 +200,16 @@ object ReconnectManager {
      */
     fun onHealthySession() {
         if (hadAnyClose && !successAnnounced && attempt.get() > 0) {
-            PluginFileLog.infoAndKeep(
-                "[重连] QQ 机器人重连成功（第 ${attempt.get()}/$SMALL_RETRY_MAX 次尝试），消息收发已恢复"
-            )
+            val line = "[重连] QQ 机器人重连成功（第 ${attempt.get()}/$SMALL_RETRY_MAX 次尝试），消息收发已恢复"
+            PluginFileLog.infoAndKeep(line)
+            announceToGroup(line)
         }
         successAnnounced = true
         lastSessionShort = false
         attempt.set(0)
         bigRound.set(0)
         suspended = false
+        announceToGroups = false
     }
 
     /**
@@ -228,6 +263,9 @@ object ReconnectManager {
             builder.append("自动重试的 $BIG_ROUND_MAX 轮已全部用尽，此后需要使用 /hbkrg chs 手动恢复。")
         }
         PluginFileLog.errorAndKeep(builder.toString())
+        // 1.7.2：手动重连触发的一轮里，超时结果同步发 QQ 群（之后本轮回显结束）
+        announceToGroup(builder.toString())
+        announceToGroups = false
 
         // 关闭 SDK 自动重连 + 断开当前 socket（给 QQ 网关降温）
         suspendConnection()
@@ -280,6 +318,9 @@ object ReconnectManager {
     /**
      * 手动重连（/hbkrg chs）：重置全部计数，立即恢复连接。
      *
+     * 1.7.2：本轮关键里程碑同步发到配置的 QQ 群（在群里远程执行重连时
+     * 过程可见，不必盯控制台；自动重连不广播）。
+     *
      * @return 给命令发送者的结果文本
      */
     fun manualReconnect(): String {
@@ -290,14 +331,17 @@ object ReconnectManager {
         bigRound.set(0)
         suspended = false
         successAnnounced = false
+        // 1.7.2：开启本轮 QQ 群过程回显
+        announceToGroups = true
         val launched = QClient.resumeConnection()
         return if (launched) {
             if (wasSuspended) {
-                "已重置重连计数（此前已完成 $usedRound 轮退避）并开始重新连接，连接过程与结果见控制台"
+                "已重置重连计数（此前已完成 $usedRound 轮退避）并开始重新连接，过程与结果将发送到配置的 QQ 群"
             } else {
-                "已开始重新连接，连接过程与结果见控制台"
+                "已开始重新连接，过程与结果将发送到配置的 QQ 群（同时见控制台）"
             }
         } else {
+            announceToGroups = false
             "QQ 客户端未启动（未配置 bot.app-id / bot.secret 或插件已停用），无法重连"
         }
     }

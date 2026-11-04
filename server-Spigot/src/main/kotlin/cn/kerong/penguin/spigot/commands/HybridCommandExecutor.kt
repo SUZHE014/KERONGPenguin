@@ -14,6 +14,10 @@ import java.util.concurrent.CompletableFuture
  * 日志（Appender 已带 [MediaSource] / [Not Secure] 噪音黑名单）。
  * 旧版把控制台全部窗口日志与 Sender 消息合并去重，混合端模组的周期
  * 性日志整段混进 QQ 回复。
+ *
+ * 1.7.2 控制台记录修复：派发给自定义 Sender 后命令输出只进 QQ 回复、
+ * 控制台无记录——现由 [BukkitConsoleSender] 在捕获时同步转发控制台，
+ * 本类回放路径改用 replayMessage（仅记录不转发，避免重复）。
  */
 class HybridCommandExecutor(private val plugin: KERONGSpigot) : HExecution {
     private val sender = BukkitConsoleSender(plugin)
@@ -49,12 +53,13 @@ class HybridCommandExecutor(private val plugin: KERONGSpigot) : HExecution {
         FoliaCompat.runSyncLater(plugin as org.bukkit.plugin.Plugin, COMMAND_OUTPUT_DELAY_TICKS) {
             val senderMessages = sender.getAndClearMessages()
             if (senderMessages.isNotEmpty()) {
+                // 回放仅记录不转发（控制台转发在捕获时刻已由 Sender 完成）
                 for (message in senderMessages) {
-                    sender.sendMessage(message)
+                    sender.replayMessage(message)
                 }
             } else {
                 for (line in outputAppender.stopCapture()) {
-                    sender.sendMessage(line)
+                    sender.replayMessage(line)
                 }
             }
             result.complete(sender)

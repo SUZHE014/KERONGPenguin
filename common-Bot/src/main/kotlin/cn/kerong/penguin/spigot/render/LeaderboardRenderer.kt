@@ -23,9 +23,10 @@ import javax.imageio.ImageIO
  * 零配置零素材）；qq-bind.leaderboard.builtin-background 关闭后改用插件
  * img/ 目录随机图（img 无可用图片时自动回退内置图）。
  *
- * 分段发送（1.5.5）：每页最多 [ROWS_PER_PAGE] 行（1.5.6 起 15 行）—— 第一页带
- * 完整标题区（眉题 + 主标题 + 右侧统计卡 + 列表头），后续页只绘制行内容不再
- * 绘制标题，由编排层逐张发送。
+ * 分段发送（1.5.5）：每页最多 leaderboard.page-size 行（1.7.3 起可配全局
+ * 上限，默认 20；旧版硬编码 15）—— 第一页带完整标题区（眉题 + 主标题 +
+ * 右侧统计卡 + 副标题条 + 列表头），后续页只绘制行内容不再绘制标题，
+ * 由编排层逐张发送。
  *
  * 字体 / 圆角头像 / 截断策略与 [OnlineListRenderer] / [InfoCardRenderer] 同源；
  * 画布 PNG 写出后立即 flush 释放栅格内存（与其他渲染器一致）。
@@ -40,9 +41,6 @@ object LeaderboardRenderer {
     /** 画布宽度。 */
     internal const val WIDTH = 1200
 
-    /** 每页最大行数（1.5.6：20 → 15，超出由编排层切页分段发送）。 */
-    const val ROWS_PER_PAGE = 15
-
     // ---------- 布局常量 ----------
 
     /** 页边距。 */
@@ -54,8 +52,14 @@ object LeaderboardRenderer {
     /** 第一页标题区高度（眉题 + 主标题 + 右侧统计卡）。 */
     private const val HEADER_HEIGHT = 150
 
-    /** 标题区与列表头间距。 */
+    /** 标题区与副标题条间距。 */
     private const val HEADER_GAP = 18
+
+    /** 副标题条高度（服务器 / 更新时间 / 状态 三张小卡，1.7.3 新增）。 */
+    private const val SUBTITLE_HEIGHT = 84
+
+    /** 副标题条与列表头间距。 */
+    private const val SUBTITLE_GAP = 18
 
     /** 列表头高度。 */
     private const val LIST_HEADER_HEIGHT = 56
@@ -131,7 +135,7 @@ object LeaderboardRenderer {
     )
 
     /**
-     * 按本页行数计算画布高度：第一页含标题区，续页只含行内容。
+     * 按本页行数计算画布高度：第一页含标题区与副标题条，续页只含行内容。
      * 必须在取背景（尺寸相关）与渲染前调用，两者共用本结果。
      */
     fun measurePageHeight(rowCount: Int, firstPage: Boolean): Int {
@@ -141,7 +145,8 @@ object LeaderboardRenderer {
             rowCount * ROW_HEIGHT + (rowCount - 1) * ROW_GAP
         }
         val total = if (firstPage) {
-            MARGIN + HEADER_HEIGHT + HEADER_GAP + LIST_HEADER_HEIGHT + LIST_HEADER_GAP + gridHeight + BOTTOM_PAD
+            MARGIN + HEADER_HEIGHT + HEADER_GAP + SUBTITLE_HEIGHT + SUBTITLE_GAP +
+                LIST_HEADER_HEIGHT + LIST_HEADER_GAP + gridHeight + BOTTOM_PAD
         } else {
             PAGE_TOP_PAD + gridHeight + BOTTOM_PAD
         }
@@ -163,6 +168,7 @@ object LeaderboardRenderer {
             val backdrop = InfoCardAssets.drawBackground(g, data.background, WIDTH, height)
             if (firstPage) {
                 drawHeader(g, backdrop, data.title, data.totalPlayers)
+                drawSubtitle(g, backdrop, data.serverName, data.updateTime)
                 drawListHeader(g, data.listHeader, data.topLimit, data.totalPlayers)
             }
             if (data.entries.isEmpty()) {
@@ -198,9 +204,18 @@ object LeaderboardRenderer {
     }
 
     /** 第一页标题区：眉题 + 主标题 + 右侧统计卡（1.6.0：主标题可自定义；
-     * 统计卡背后铺局部模糊）。 */
+     * 1.7.3：整块全宽标题卡——背后铺局部模糊 + 标题框黑度 + 圆角边缘，
+     * 与查在线 / 查性能头部同款；旧版标题文字直画在背景上，看不出卡片
+     * 边界，灰度也只作用于右侧统计小卡）。 */
     private fun drawHeader(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, title: String, totalPlayers: Long) {
         val top = MARGIN
+
+        // 1.7.3：全宽标题卡（模糊 + 灰度 + 圆角边缘一次到位）
+        val headerWidth = (WIDTH - 2 * MARGIN).toFloat()
+        backdrop?.paintCard(g, MARGIN.toFloat(), top.toFloat(), headerWidth, HEADER_HEIGHT.toFloat(), 24f)
+        // 标题卡底色接标题框黑度（render.title-card-gray，默认 80）
+        g.color = Color(0x00, 0x00, 0x00, RenderSettings.titleCardGray())
+        g.fill(RoundRectangle2D.Float(MARGIN.toFloat(), top.toFloat(), headerWidth, HEADER_HEIGHT.toFloat(), 24f, 24f))
 
         // 英文眉题（字距拉宽，与其他卡片统一风格）
         g.font = InfoCardRenderer.font(26f, true)
@@ -212,13 +227,14 @@ object LeaderboardRenderer {
         g.color = COLOR_VALUE
         g.drawString(title, (MARGIN + 4).toFloat(), (top + 108).toFloat())
 
-        // 右侧统计卡（参与排行玩家总数）
+        // 右侧统计卡（参与排行玩家总数；叠在标题卡上）
         val cardWidth = 260
         val cardHeight = HEADER_HEIGHT - 16
         val cardX = WIDTH - MARGIN - cardWidth
         val cardY = top + 8
         backdrop?.paintCard(g, cardX.toFloat(), cardY.toFloat(), cardWidth.toFloat(), cardHeight.toFloat(), 20f)
-        g.color = Color(0xFF, 0xFF, 0xFF, 34)
+        // 统计卡同接标题框黑度（render.title-card-gray，1.7.2 覆盖版起）
+        g.color = Color(0x00, 0x00, 0x00, RenderSettings.titleCardGray())
         g.fill(RoundRectangle2D.Float(cardX.toFloat(), cardY.toFloat(), cardWidth.toFloat(), cardHeight.toFloat(), 20f, 20f))
         g.font = InfoCardRenderer.font(24f, false)
         g.color = COLOR_LABEL
@@ -230,9 +246,37 @@ object LeaderboardRenderer {
         g.drawString(countText, (cardX + cardWidth - 28 - countWidth).toFloat(), (cardY + 100).toFloat())
     }
 
+    /** 副标题条：服务器 / 更新时间 / 状态 三张并排小卡（1.7.3 新增，与
+     * 查在线状态栏同款；底色接副标题灰度 render.subtitle-card-gray）。 */
+    private fun drawSubtitle(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, serverName: String, updateTime: String) {
+        val top = (MARGIN + HEADER_HEIGHT + HEADER_GAP).toFloat()
+        val gap = 16f
+        val cardWidth = (WIDTH - 2 * MARGIN - 2 * gap).toFloat() / 3f
+        val cardHeight = SUBTITLE_HEIGHT.toFloat()
+
+        val cells = listOf(
+            "服务器" to serverName,
+            "更新时间" to updateTime,
+            "状态" to "正常",
+        )
+        cells.forEachIndexed { index, (label, value) ->
+            val x = MARGIN + index * (cardWidth + gap)
+            backdrop?.paintCard(g, x, top, cardWidth, cardHeight, 14f)
+            // 1.7.3：副标题条接副标题灰度（render.subtitle-card-gray，默认 40）
+            g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
+            g.fill(RoundRectangle2D.Float(x, top, cardWidth, cardHeight, 14f, 14f))
+            g.font = InfoCardRenderer.font(22f, false)
+            g.color = COLOR_LABEL
+            g.drawString(label, x + 26f, top + 34f)
+            g.font = InfoCardRenderer.font(30f, true)
+            g.color = COLOR_VALUE
+            g.drawString(clip(g, value, (cardWidth - 52).toInt()), x + 26f, top + 68f)
+        }
+    }
+
     /** 第一页列表头：标题 + 右侧人数胶囊（1.6.0：列表头前缀可自定义）。 */
     private fun drawListHeader(g: Graphics2D, listHeader: String, topLimit: Int, totalPlayers: Long) {
-        val top = (MARGIN + HEADER_HEIGHT + HEADER_GAP).toFloat()
+        val top = (MARGIN + HEADER_HEIGHT + HEADER_GAP + SUBTITLE_HEIGHT + SUBTITLE_GAP).toFloat()
 
         g.font = InfoCardRenderer.font(34f, true)
         g.color = COLOR_VALUE
@@ -253,7 +297,7 @@ object LeaderboardRenderer {
     private fun drawRows(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, entries: List<LeaderEntry>, firstPage: Boolean) {
         val contentWidth = WIDTH - 2 * MARGIN
         val gridTop = if (firstPage) {
-            MARGIN + HEADER_HEIGHT + HEADER_GAP + LIST_HEADER_HEIGHT + LIST_HEADER_GAP
+            MARGIN + HEADER_HEIGHT + HEADER_GAP + SUBTITLE_HEIGHT + SUBTITLE_GAP + LIST_HEADER_HEIGHT + LIST_HEADER_GAP
         } else {
             PAGE_TOP_PAD
         }
@@ -326,7 +370,7 @@ object LeaderboardRenderer {
     /** 空数据提示卡（容器背后铺局部模糊）。 */
     private fun drawEmpty(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, firstPage: Boolean) {
         val gridTop = if (firstPage) {
-            MARGIN + HEADER_HEIGHT + HEADER_GAP + LIST_HEADER_HEIGHT + LIST_HEADER_GAP
+            MARGIN + HEADER_HEIGHT + HEADER_GAP + SUBTITLE_HEIGHT + SUBTITLE_GAP + LIST_HEADER_HEIGHT + LIST_HEADER_GAP
         } else {
             PAGE_TOP_PAD
         }

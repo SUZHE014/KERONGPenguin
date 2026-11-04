@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,6 +19,7 @@ import cn.kerong.bot.tools.ConsoleNoiseFilter;
 import cn.kerong.penguin.spigot.qqbind.EconomyRewardService;
 import cn.kerong.penguin.spigot.render.BackgroundPackService;
 import cn.kerong.penguin.spigot.render.InfoCardAssets;
+import cn.kerong.penguin.spigot.render.InfoCardRenderer;
 import cn.kerong.penguin.spigot.render.RenderSettings;
 
 /**
@@ -27,10 +29,12 @@ import cn.kerong.penguin.spigot.render.RenderSettings;
  *  S 组  manifest 动态字段（count / bytes 声明值优先，旧清单回退 files 统计）
  *  H 组  本地 HttpServer 端到端：listPacksLines 渲染声明张数与体积；单源下载
  *  ID 组 image-download.enabled 开关（默认开 / 关闭后 false + 拦截文案）
- *  GY 组 灰度配置（默认 96 / 106；配置覆盖生效）
+ *  GY 组 灰度配置（默认 80 / 106；配置覆盖生效 + 标题框/统计面板像素级接线）
  *  AV 组 头像批量获取有界预算（fetchAvatarBatch：空列表秒回 / 超预算到点即回）
  *  EC 组 经济检测优雅跳过（无插件 JVM 全部 false 不抛异常）+ points-reward 配置读取
- *  NZ 组 ConsoleNoiseFilter 黑名单（MediaSource / Not Secure / 正常行放行）
+ *  NZ 组 ConsoleNoiseFilter 黑名单（MediaSource / Not Secure / [QQ 远程命令] / 正常行放行）
+ *  CL 组 config.yml 注释保留保存（bpngsz 翻转 / 补键 / 删键 / 未装载跳过 / 损坏保护）
+ *  CF 组 v29 → v30 重建（注释保留 + 标题框旧默认 96→80 收敛 + 自定义值保留 + 无备份文件）
  */
 public final class Test172 {
 
@@ -61,6 +65,25 @@ public final class Test172 {
     static byte[] tinyPng() {
         return java.util.Base64.getDecoder().decode(
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==");
+    }
+
+    /** 统计文本里的注释行数。 */
+    static long commentLines(String text) {
+        return text.lines().filter(l -> l.trim().startsWith("#")).count();
+    }
+
+    /** 区域平均亮度（0-255，步长 4 采样）。 */
+    static double avgBrightness(java.awt.image.BufferedImage img, int x0, int y0, int w, int h) {
+        long sum = 0;
+        long n = 0;
+        for (int y = y0; y < y0 + h; y += 4) {
+            for (int x = x0; x < x0 + w; x += 4) {
+                int rgb = img.getRGB(x, y);
+                sum += (((rgb >> 16) & 0xFF) + ((rgb >> 8) & 0xFF) + (rgb & 0xFF)) / 3;
+                n++;
+            }
+        }
+        return n == 0 ? -1 : (double) sum / n;
     }
 
     public static void main(String[] args) throws Exception {
@@ -190,10 +213,10 @@ public final class Test172 {
         check("AV2 100ms 预算到点即回（实测 " + avCost + "ms < 3000ms）", avCost < 3000);
         check("AV3 批量返回 Map 不为 null（允许空：占位块口径）", bounded != null);
 
-        System.out.println("== GY 组：灰度配置 ==");
+        System.out.println("== GY 组：灰度配置（默认 80 / 106） ==");
 
-        check("GY1 默认 title 96 / item 106",
-                RenderSettings.INSTANCE.titleCardGray() == 96 && RenderSettings.INSTANCE.itemCardGray() == 106,
+        check("GY1 默认 title 80 / item 106",
+                RenderSettings.INSTANCE.titleCardGray() == 80 && RenderSettings.INSTANCE.itemCardGray() == 106,
                 RenderSettings.INSTANCE.titleCardGray() + "/" + RenderSettings.INSTANCE.itemCardGray());
         fake.getConfig().set("render.title-card-gray", 200);
         fake.getConfig().set("render.item-card-gray", 30);
@@ -235,6 +258,146 @@ public final class Test172 {
         check("NZ4 正常命令输出放行",
                 !ConsoleNoiseFilter.INSTANCE.isNoise("org.bukkit.craftbukkit.CommandDispatcher", "Set the time to 1000"));
         check("NZ5 null 消息放行", !ConsoleNoiseFilter.INSTANCE.isNoise("any.Logger", null));
+        check("NZ6 [QQ 远程命令] 转发行命中（控制台留档行不回混 QQ 回复）",
+                ConsoleNoiseFilter.INSTANCE.isNoise(null, "[QQ 远程命令] Set the time to 1000"));
+
+        System.out.println("== GY 像素组：标题框 / 统计面板接线 ==");
+
+        // 白底背景 + 关模糊：标题框与统计面板的黑度变化不被背景干扰
+        java.awt.image.BufferedImage whiteBg =
+                new java.awt.image.BufferedImage(900, 760, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D wg = whiteBg.createGraphics();
+        wg.setColor(java.awt.Color.WHITE);
+        wg.fillRect(0, 0, 900, 760);
+        wg.dispose();
+        java.util.List<InfoCardRenderer.CardItem> items = new java.util.ArrayList<>();
+        for (int i = 1; i <= 9; i++) {
+            items.add(new InfoCardRenderer.CardItem("项目" + i, String.valueOf(i)));
+        }
+        fake.getConfig().set("render.blur-strength", 0);
+        fake.getConfig().set("render.title-card-gray", 255);
+        fake.getConfig().set("render.item-card-gray", 0);
+        byte[] pngA = InfoCardRenderer.INSTANCE.render(
+                new InfoCardRenderer.CardData("Smoke", items, null, whiteBg));
+        java.awt.image.BufferedImage imgA =
+                javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(pngA));
+        double heroDark = avgBrightness(imgA, 24, 24, 460, 196);
+        double statsBright = avgBrightness(imgA, 24, 352, 850, 360);
+
+        fake.getConfig().set("render.title-card-gray", 0);
+        fake.getConfig().set("render.item-card-gray", 255);
+        byte[] pngB = InfoCardRenderer.INSTANCE.render(
+                new InfoCardRenderer.CardData("Smoke", items, null, whiteBg));
+        java.awt.image.BufferedImage imgB =
+                javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(pngB));
+        double heroBright = avgBrightness(imgB, 24, 24, 460, 196);
+        double statsDark = avgBrightness(imgB, 24, 352, 850, 360);
+        fake.getConfig().set("render.title-card-gray", null);
+        fake.getConfig().set("render.item-card-gray", null);
+        fake.getConfig().set("render.blur-strength", null);
+
+        check("GY4 标题框随 title-card-gray 变化（255 暗 " + String.format("%.0f", heroDark)
+                        + " / 0 亮 " + String.format("%.0f", heroBright) + "）",
+                heroDark < 80 && heroBright > 200);
+        check("GY5 统计面板随 item-card-gray 变化（0 亮 " + String.format("%.0f", statsBright)
+                        + " / 255 暗 " + String.format("%.0f", statsDark) + "）",
+                statsBright > 180 && statsDark < 80);
+
+        System.out.println("== CL 组：config.yml 注释保留保存 ==");
+
+        File cfgFile = new File(fake.getDataFolder(), "config.yml");
+        String template = new String(
+                FakeBpngRuntime.class.getClassLoader().getResourceAsStream("config.yml").readAllBytes(),
+                StandardCharsets.UTF_8);
+
+        // CL1 bpngsz 场景：翻转五个背景开关后保存——注释与值都在
+        Files.write(cfgFile.toPath(), template.getBytes(StandardCharsets.UTF_8));
+        fake.reloadConfig();
+        for (String key : new String[]{"render.info-card-builtin-background",
+                "render.online-list-builtin-background", "render.performance.builtin-background",
+                "leaderboard.builtin-background", "coins-leaderboard.builtin-background"}) {
+            fake.getConfig().set(key, false);
+        }
+        fake.saveConfig();
+        String after1 = Files.readString(cfgFile.toPath(), StandardCharsets.UTF_8);
+        check("CL1 bpngsz 保存后注释保留（" + commentLines(after1) + " 行 > 100）",
+                commentLines(after1) > 100);
+        check("CL1b 五个背景开关全部写回（builtin-background: false × 5）",
+                after1.split("builtin-background: false", -1).length - 1 == 5);
+        fake.reloadConfig();
+        check("CL1c 写回值可重新装载（roundtrip 一致）",
+                !fake.getConfig().getBoolean("render.info-card-builtin-background", true)
+                        && !fake.getConfig().getBoolean("coins-leaderboard.builtin-background", true)
+                        && "30".equals(String.valueOf(fake.getConfig().getInt("config-version", 0))));
+
+        // CL2 补键场景（fillMissing）：删掉 blur-strength 行，保存后补回
+        String trimmed = template.replace("  blur-strength: 50\n", "");
+        Files.write(cfgFile.toPath(), trimmed.getBytes(StandardCharsets.UTF_8));
+        fake.reloadConfig();
+        fake.getConfig().set("render.blur-strength", 77);
+        fake.saveConfig();
+        String after2 = Files.readString(cfgFile.toPath(), StandardCharsets.UTF_8);
+        check("CL2 补键保存后注释保留 + 键写入（" + commentLines(after2) + " 行注释）",
+                after2.contains("blur-strength: 77") && commentLines(after2) > 100);
+
+        // CL3 删键场景（废弃键清理）：附加旧段后整段置 null
+        String withAgent = template + "\nagent:\n  mode: \"on\"\n  # 旧段专属注释\n  key: \"v\"\n";
+        Files.write(cfgFile.toPath(), withAgent.getBytes(StandardCharsets.UTF_8));
+        fake.reloadConfig();
+        fake.getConfig().set("agent", null);
+        fake.saveConfig();
+        String after3 = Files.readString(cfgFile.toPath(), StandardCharsets.UTF_8);
+        check("CL3 删键保存后键与专属注释消失 + 其余注释保留",
+                !after3.contains("mode: \"on\"") && !after3.contains("旧段专属注释")
+                        && commentLines(after3) > 100);
+
+        // CL4 未装载保护：新实例从未 reloadConfig，文件存在时保存跳过
+        FakeBpngRuntime virgin = new FakeBpngRuntime();
+        String before4 = Files.readString(cfgFile.toPath(), StandardCharsets.UTF_8);
+        virgin.saveConfig();
+        check("CL4 未装载时跳过保存（文件分毫未动）",
+                Files.readString(cfgFile.toPath(), StandardCharsets.UTF_8).equals(before4));
+
+        // CL5 损坏保护：装载失败后保存跳过，坏文件不被内存旧树覆盖
+        Files.write(cfgFile.toPath(), "bot: \"unterminated\n".getBytes(StandardCharsets.UTF_8));
+        boolean loadThrew = false;
+        try {
+            fake.reloadConfig();
+        } catch (Throwable expected) {
+            loadThrew = true;
+        }
+        fake.saveConfig();
+        check("CL5 损坏文件装载抛出且保存跳过（原样保留）",
+                loadThrew && Files.readString(cfgFile.toPath(), StandardCharsets.UTF_8).contains("unterminated"));
+
+        System.out.println("== CF 组：v29 → v30 重建 ==");
+
+        // 旧版 1.7.2 磁盘配置：v29 + 旧默认 96 + 用户自定义值
+        String v29 = template.replace("config-version: 30", "config-version: 29")
+                .replace("title-card-gray: 80", "title-card-gray: 96")
+                .replace("item-card-gray: 106", "item-card-gray: 150")
+                .replace("serverName: \"KERONGPenguin\"", "serverName: \"MyCustomServer\"");
+        Files.write(cfgFile.toPath(), v29.getBytes(StandardCharsets.UTF_8));
+        // 清掉历史运行可能残留的备份文件，保证「无备份生成」断言干净
+        new File(fake.getDataFolder(), "config.yml.bak").delete();
+        Class<?> rebuilderCls = Class.forName("cn.kerong.penguin.spigot.manager.ConfigFileRebuilder");
+        Object rebuilder = rebuilderCls.getField("INSTANCE").get(null);
+        boolean rebuilt = (Boolean) rebuilderCls
+                .getMethod("rebuildIfNeeded", org.bukkit.plugin.java.JavaPlugin.class, int.class, List.class, List.class)
+                .invoke(rebuilder, fake, 30, java.util.Collections.emptyList(), java.util.Collections.emptyList());
+        check("CF1 v29→v30 重建执行成功", rebuilt);
+        String out = Files.readString(cfgFile.toPath(), StandardCharsets.UTF_8);
+        check("CF2 版本 30 + 注释完整（" + commentLines(out) + " 行 > 150）",
+                out.contains("config-version: 30") && commentLines(out) > 150);
+        check("CF3 标题框旧默认 96 自动收敛为 80", out.contains("title-card-gray: 80"));
+        check("CF4 用户自定义值保留（serverName / item-card-gray 150）",
+                out.contains("MyCustomServer") && out.contains("item-card-gray: 150"));
+        check("CF5 不再生成 config.yml.bak 备份文件",
+                !new File(fake.getDataFolder(), "config.yml.bak").exists());
+        fake.reloadConfig();
+        check("CF6 重建结果可装载（收敛值 80 可读）",
+                fake.getConfig().getInt("render.title-card-gray", 0) == 80
+                        && fake.getConfig().getInt("render.item-card-gray", 0) == 150);
 
         System.out.println();
         System.out.println("smoke172 总计 " + (pass + fail) + " 项，通过 " + pass + " 项，失败 " + fail + " 项");

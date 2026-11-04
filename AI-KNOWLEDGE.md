@@ -1,27 +1,29 @@
 # KERONGPenguin AI 交接知识库
 
 > **本文档的用途**：把本文件丢给一个对项目一无所知的 AI，它能立刻了解当前情况并接手工作。
-> 面向：接手开发/发版的 AI 助手。最后更新：2026-11-03（**主线 v1.7.2 发布**）。
-> 本版为 1.7.2 的**细化重写版**：新增 §2 完整构建指南（含常见报错与解法）、§3 部署流程、§4 官网发版流程、§8 历次踩坑记录（根因+解决步骤）、§9 1.7.2 逐项改动清单；功能全景 / 核心机制 / 历史坑表保留并按最新口径刷新（含头像批量并发重做与标题灰度默认 96 的最终口径、git push 完成状态）。
+> 面向：接手开发/发版的 AI 助手。最后更新：2026-11-04（**1.7.3 版**：标题卡全宽化 / 副标题灰度与副标题条 / 排行榜单页上限配置 / 今日在线跨天修复；同日官网互转版卡片重新上线）。前次 2026-11-04（官网清理轮：删 1.7.0 前历史版本 / 更新日志 / 下载本体、教程按小配置重构、设计来源全量口径、下载卡片去简介日志）。
+> 本轮覆盖版新增修复：①config.yml 注释保留保存（NeoForge 端 bpngsz/配置保存后注释全丢——兼容层整树 dump 剥注释，复现实测 231→0 行，见 §8.1④）；②图片标题框黑度调不动（四张卡片顶部标题区硬编码半透明白，改 render.title-card-gray 不生效，见 §8.1⑤）；③QQ 远程执行命令控制台无记录（[QQ 远程命令] 前缀转发留档）；④QQ 手动重连过程回显到群；⑤移除升级备份 config.yml.bak（损坏恢复的 .error 应急备份保留）。config-version 29→30（注释精简重写 + 标题框旧默认 96→80 一次性收敛）。门禁 89 项 + 冒烟 39 项全绿。
+> 本轮（2026-11-04 官网清理，用户五项，仅动官网与本文档）：①删 1.7.0 之前的历史版本（index 历史表 / 更新日志「更早版本一览」块 / version.json 1.6.9.5 条目）与下载本体（服务器 downloads/ 15 个 1.6.x JAR 移至 /root/penguin-archive-downloads/ 归档而非 rm，含互转版底座 JAR），官网只留 1.7.0/1.7.1/1.7.2 + 0.3AI 线；②更新日志简化（三版各 3-6 条短要点，version.json 同步 3 条）；③下载卡片去掉简介日志行（只留版本号 + 发布日期）；④教程「常用设置」重构为每个小配置独立条目（.cfg-item：2-8 行带父级上下文的 YAML 片段 + 一两句描述，共 49 条；style.css 新增样式 + 手机端 pre-wrap），废弃「一个总配置块 + 一大串文字」写法；⑤设计参考改全量口径——图片渲染**全部**设计（卡片版式 / 毛玻璃 / 背景 / 头像呈现）都参考 BaiZhouziYou / 新亭泪 的 EasyBot 模板，删除「其后的分页、背景、头像渲染等为本项目的独立改进」表述；互转版官网卡片随 JAR 归档一并删除。0.3AI 线三个 JAR 未动（不在「1.7.0 之前的历史版本」范围）。
+> 本轮（2026-11-04，v1.7.3）：①标题卡全宽化——查在线 / 排行榜（含财富榜）/ 查性能顶部标题区改整块全宽卡（模糊+灰度+圆角），旧版标题文字直画背景上且灰度只作用于右侧小方框；②新增 render.subtitle-card-gray（默认 40，明显低于 80/106）——查信息玩家名称项（旧硬编码白 22 调不动）+ 五张卡片副标题条；③副标题条（服务器/更新时间/状态）新增到在线排行榜/财富榜/查性能/查信息（查在线原有改接副标题灰度），性能监控原服务器名小字移除；④leaderboard.page-size（全局，默认 20，旧硬编 15）两命令接入；⑤今日在线跨天误报修复（rolledForToday 展示层归零，存档不动）；⑥同日官网：互转版卡片重新上线（简版）+ JAR 从归档放回 downloads/。门禁 92 项 + 冒烟 27 项全绿。
 > 自包含版本（发给本地无任何东西的 AI）见官网 `https://kerong.xin/penguin/AI-KNOWLEDGE.txt`。
 
 ## 0. 一句话概括与版本状态
 
 KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项目：玩家在 QQ 群里查数据/签到/聊天，插件在服务器内渲染统计卡片图片并回发。Kotlin 多模块：`common-Bot`（全部业务核心）+ `server-Spigot`（Bukkit 插件版，支持 Spigot/Paper/Folia/混合端）+ `server-NeoForge`（NeoForge 模组版 **MC 1.20.4+**：1.20.4 / 1.20.6 / 1.21.x 全区间，编译目标 20.4.253 面向最低版本、在更高版本运行；复用 common-Bot 全部源码 + Spigot 的 manager 源码；mods.toml + neoforge.mods.toml 双声明，BindLoginGate 跨版本事件桥，产物名 MC 段 = 1.20.4）。
 
-**版本规则**：插件版与模组版同步发号。当前版本 **1.7.2**（详见 §9 逐项改动清单）。config-version **29**。
+**版本规则**：插件版与模组版同步发号。当前版本 **1.7.3**（标题卡全宽化 / 副标题灰度与副标题条 / 排行榜分页配置 / 今日在线跨天修复，详见 §9）。config-version **31**（新增 render.subtitle-card-gray 与 leaderboard.page-size 两键，只加新键+默认值）。
 
-**git push 状态**：✅ 已完成——经典写令牌（ghp_）经服务器中继推送成功，远端 GitHub `SUZHE014/KERONGPenguin` main = `b080241`（1.7.2 全量：发版 + 知识库重写 + 头像并发重做与灰度默认值调整）。中继路径（以后照此）：`git bundle create /tmp/x.bundle <远端main>..main` → 传服务器 → `/root/gitrelay/KERONGPenguin.git` fetch bundle 到 relay-main（`+main:relay-main`） → 服务器上 `git push https://x-access-token:<写令牌>@github.com/SUZHE014/KERONGPenguin.git refs/heads/relay-main:refs/heads/main`（服务器可直连 GitHub；令牌写 /root/.ghtoken chmod 600 用完即删，勿留 shell 历史）。注意：推送前远端 main 实际在 `b5f5cc6`（与旧记录的 c7d7b26 不符——以 `git ls-remote` 实测为准，bundle 基线选远端真实 HEAD）。fine-grained PAT 只读不可用（见 §8 坑表）。
+**git push 状态**：⚠️ 待写令牌——GitHub 远端 main 停在 `41ffadb`；中继 `/root/gitrelay/KERONGPenguin.git` 的 relay-main 已推进到本轮官网清理提交（覆盖版 `718031c` → 注释找回实测 `323ae07` → 官网清理，见 git log）（bundle 基线 = 远端真实 HEAD `41ffadb`，实测 ls-remote 为准——1.7.2 首轮最终推送的是 41ffadb 含知识库同步提交，非旧记录的 b080241）。会话摘要里的 fine-grained PAT 实测**只读**（push 403 "Permission to SUZHE014/KERONGPenguin.git denied"——与 §8 坑表判定一致）。拿到写权限令牌（经典 ghp_ 或给 PAT 补 Contents:Read and write）后在服务器一条命令完成：`cd /root/gitrelay/KERONGPenguin.git && git push https://x-access-token:<写令牌>@github.com/SUZHE014/KERONGPenguin.git refs/heads/relay-main:refs/heads/main`（令牌写 /root/.ghtoken chmod 600 用完即删，勿留 shell 历史；若本地又有新提交需重新 bundle+fetch 刷新 relay-main）。
 
 ## 1. 环境与位置（必读）
 
 | 项 | 值 |
 |---|---|
-| 本地仓库 | `/home/z/my-project/penguin-git`（GitHub `SUZHE014/KERONGPenguin`，main 分支；新环境从服务器 `/root/gitrelay-1711.bundle` 克隆恢复全历史，或从 `/wwwroot/penguin-source/` 源码包重建） |
+| 本地仓库 | `/home/z/my-project/penguin-git`（GitHub `SUZHE014/KERONGPenguin`，main 分支；新环境从服务器中继仓恢复：`git -C /root/gitrelay/KERONGPenguin.git bundle create /tmp/x.bundle relay-main` → scp 拉回 → clone 后 checkout） |
 | 官网服务器 | `156.233.228.248`（宝塔 nginx，站点 kerong.xin；SSH root） |
 | ⚠️ MC 服务端 | **不在这台服务器上**（2026-11-03 实测：无 java 进程、无 25565 端口、无 MC 目录；此前"同机跑 MC"的说法不成立）——插件 JAR 的实际部署目标由用户提供，替换 JAR 后重启 MC 生效 |
-| 官网目录 | `/wwwroot/penguin/`（index.html 下载页 / tutorial.html 教程 / style.css / version.json 更新检查文件 / AI-KNOWLEDGE.txt 本文档网页版） |
-| 产物目录 | `/wwwroot/penguin/downloads/`（双端 JAR，保留约 8 个历史版本） |
+| 官网目录 | `/wwwroot/penguin/`（index.html 下载页 / tutorial.html 教程 / style.css / version.json 更新检查文件 / AI-KNOWLEDGE.txt 本文档网页版）；**四文件自 2026-11-04 起同时跟踪在仓库 `website/` 目录**（与线上保持同步，环境重置后从仓库恢复底稿；改前仍遵守「先拉线上当前版」铁律） |
+| 产物目录 | `/wwwroot/penguin/downloads/`（1.7.0 起双端 JAR + 0.3AI 线 + **互转版 KERONGPenguin_Spigot-1.6.7_Cross-posting.3.jar（2026-11-04 用户指令恢复，长期保留勿删）**；其余 1.7.0 前旧 JAR 归档在服务器 `/root/penguin-archive-downloads/`） |
 | 官网图片包目录 | `/wwwroot/penguin/bpng/`（manifest.json + <包ID>/ 图片；1.7.2 起每包记录 count/bytes；**git 镜像已删除**——仓库不再有 bpng/，.gitignore 排除） |
 | 源码包目录 | `/wwwroot/penguin-source/`（git archive 打的 zip，与仓库同结构；留最新 3 个） |
 | SSH/SFTP 脚本 | `/home/z/my-project/scripts/ssh.py`（paramiko；`python3 ssh.py "命令"` / `--put 本地 远程` / `--get 远程 本地`，凭据在文件内） |
@@ -109,7 +111,7 @@ python3 scripts/verify_jar_<版>.py
 2. 上传双 JAR 到 `/wwwroot/penguin/downloads/`：`python3 scripts/ssh.py --put build/dist/<Spigot JAR> /wwwroot/penguin/downloads/<名>`（NF 同理）。
 3. `chown www:www` + `chmod 644`，`md5sum` 本地与线上**往返核对**（防传输损坏）。
 4. **MC 服务端替换**：目标服务器不在 156.233.228.248 上（见 §1）——把 JAR 放到实际 MC 服务器的 plugins/（插件版）或 mods/（模组版），**重启 MC 生效**；数据目录：插件版 `plugins/KERONGPenguin/`、模组版 `kerongpenguin/`（同一绑定数据不互通迁移）。
-5. 配置升级自动进行：磁盘 config-version 低于 JAR 内置 29 时启动自动补齐新键（只加新键+默认值，用户已改值一律原样保留——1.7.0 起无旧值迁移机制，**不要恢复它**）。
+5. 配置升级自动进行：磁盘 config-version 低于 JAR 内置 30 时启动以新版 config.yml 为底重建（注释/结构全刷新、用户已改值原样保留；**不再生成备份文件**——1.7.2 覆盖版移除；仅标题框旧默认 96→80 一次性收敛，其余无旧值迁移——1.7.0 起该机制原则上不恢复，**不要顺手加回**）。
 
 ## 4. 官网发版流程（每次版本更新照此）
 
@@ -117,9 +119,10 @@ python3 scripts/verify_jar_<版>.py
 
 1. **拉底稿**：`curl -sk -H 'Host: kerong.xin' https://127.0.0.1/penguin/{index.html,tutorial.html,style.css,version.json} -o <本地>`。
 2. **改四个文件**：
-   - `version.json`：新版本号 + changelog 数组**置顶一条**（保持 4 条；这是更新检查的数据源，忘改则老用户收不到提示）；
-   - `index.html`：主下载框（版本/日期/副标题/两个按钮 href→新 JAR 名）→ 历史版本表加两行（新版本置顶，NF 在前 Spigot 在后）→ 更新日志加本版段落（**简化风格**：每版几条要点、每条 1-3 行；只保留最近 3 个版本详细块，更早的合并成「更早版本一览」一行一版）；
-   - `tutorial.html`：仅当功能/行为/命令/配置有变化时同步（教程与插件注释保持一致的原则）；
+   - `version.json`：新版本号 + changelog 数组**置顶一条**（只保留 1.7.0 起的条目，当前 3 条；1.7.0 前条目 2026-11-04 已删不再恢复；这是更新检查的数据源，忘改则老用户收不到提示）；
+   - `index.html`：主下载框（版本号 + 发布日期 + 两个按钮 href→新 JAR 名；**不放更新日志摘要**——2026-11-04 用户要求删除）→ 历史版本表加两行（新版本置顶，NF 在前 Spigot 在后；**只保留 1.7.0 及以后**）→ 更新日志加本版段落（**简化风格**：每版几条要点、每条 1-3 行；只保留 1.7.0 起各版本，「更早版本一览」块已删）；
+   - 历史版本本体：`downloads/` 只保留 1.7.0 起双端 JAR + 0.3AI 线；1.7.0 前的 15 个 JAR（含互转版底座）2026-11-04 起归档在服务器 `/root/penguin-archive-downloads/`（新版本发布后旧的 1.7.x 是否归档听用户指示）；
+   - `tutorial.html`：仅当功能/行为/命令/配置有变化时同步（教程与插件注释保持一致的原则）；**「常用设置」固定格式（2026-11-04 用户要求，长期有效）——每个小配置独立一条 `.cfg-item`：小标题（功能名 + 键路径）+ 自己的 2-8 行 YAML 片段（带父级上下文）+ 一两句描述；禁止「一个总配置块展示整段 + 后面跟一大串文字」的写法**。样式在 style.css（.cfg-item 系列 + 手机端 pre 自动换行）；
    - `style.css`：仅改版时动（2026-11-03 起为**暗色主题**：深背景 #12151a、卡片 #1a1e24、边框 #2a2f36、文字 #d7dde3/#aab3bc、链接 #4da3ff；改内容时注意 index/tutorial 里的**内联色**也要用暗色系）。
 3. **上传**：ssh.py --put → `chown www:www` + `chmod 644`（属主必须是 www:www）。
 4. **curl 验证清单**（服务器本机 + 外网域名双通道）：
@@ -152,11 +155,12 @@ python3 scripts/verify_jar_<版>.py
 ### 6.1 日志体系
 业务代码 → `PluginFileLog.infoAndKeep/warnAndKeep/errorAndKeep` → 平台适配器 → 控制台 + `logs/qq/qq-bind-日期.log` 双写；`PluginFileLog.write` 仅文件。控制台行不要再拼时间戳。SDK 日志经 LogSink 接管（重连噪声仅文件）。
 
-### 6.2 配置系统（config-version 29）
-`ConfigManager.kt`（共享源码）：DEFAULT_VALUES 全量默认 + `ConfigUpgrader.fillMissing` 补缺失键（新键升级自动写入）+ REMOVED_CONFIG_KEYS 清废弃键。**1.7.0 定下的原则：升级只加新键+默认值，不做任何旧值迁移**。语法错误三级自愈（ConfigBrokenRecovery）。绝大多数配置 reload 即时生效；仅 bot.app-id/bot.secret 与 update-check 需重启。
+### 6.2 配置系统（config-version 31）
+`ConfigManager.kt`（共享源码）：DEFAULT_VALUES 全量默认 + `ConfigUpgrader.fillMissing` 补缺失键（新键升级自动写入）+ REMOVED_CONFIG_KEYS 清废弃键。**1.7.0 定下的原则：升级只加新键+默认值，不做任何旧值迁移**（唯一现行例外：1.7.2 覆盖版标题框 96→80 收敛，因接线改版且旧值是默认写入而非用户意图）。语法错误三级自愈（ConfigBrokenRecovery，其 .error 应急备份保留）。绝大多数配置 reload 即时生效；仅 bot.app-id/bot.secret 与 update-check 需重启。
+**注释保留保存（1.7.2 覆盖版，NeoForge 端）**：兼容层 `JavaPlugin.saveConfig()` 不再整树 dump（会剥光注释，bpngsz 后 231→0 行实测），改走 `ConfigCommentSaver` 差分合并——磁盘文本为底，快照树 vs 内存树逐叶子比对（宽松等值：数字按 double），差异键交 `YamlTextMerge.merge(text, overrides, removals)`（新增删除能力：键行+块体+紧贴注释一并删）文本级合并，整树校验通过才原子落盘，否则退回 dump（注释丢但数据不丢）；从未装载（configLoaded=false）或装载失败时跳过写盘防覆盖。Spigot 端不改动——Paper/Spigot 1.18.1+ 平台 YamlConfiguration 自带注释往返（Bukkit 1.18.1 引入注释 API；仅 1.18.0 边缘版本会丢，接受）。
 
-### 6.3 渲染管线与头像获取（1.7.2 口径）
-- 渲染：CardRenderPool（核数一半 1~4 线程）→ 结果缓存 → 背景内置+img 随机 LRU（36MB 字节预算）；模糊度 render.blur-strength（0-100 默认 50，backdrop-filter 只模糊卡片背后）；灰度 render.title-card-gray（默认 96，比项目卡片略浅）/ render.item-card-gray（默认 106）。
+### 6.3 渲染管线与头像获取（1.7.3 口径）
+- 渲染：CardRenderPool（核数一半 1~4 线程）→ 结果缓存 → 背景内置+img 随机 LRU（36MB 字节预算）；模糊度 render.blur-strength（0-100 默认 50，backdrop-filter 只模糊卡片背后）；三档灰度（1.7.3 起全部实时读取 0-255）：render.title-card-gray（默认 80 = 全部五张卡片顶部标题区——1.7.3 起整块全宽卡：模糊+灰度+圆角）/ render.item-card-gray（默认 106 = 列表容器：查信息统计面板 + 查在线/排行榜/查性能容器）/ render.subtitle-card-gray（默认 40 = 副标题类：查信息玩家名称项 + 五张卡片副标题条（服务器/更新时间/状态三小卡），明显低于前两档）；副标题条（1.7.3）新增于在线排行榜/财富榜/查性能/查信息头部下方（查在线原有状态栏改接副标题灰度），性能监控原服务器名小字移除；排行榜单页行数 leaderboard.page-size（全局默认 20，1-100，两命令实时读取）。像素级验证（白底关模糊）：title 255/0 → 标题区 17/253；subtitle 255/0 → 玩家名称项 5/254 与副标题条 24/254；item 0/255 → 统计面板 254/13；首页高度 +102（副标题条 84+18）。
 - 头像链路：内存缓存（10 分钟，128 条，只存 ≤10KB PNG）→ 磁盘缓存（默认 3 小时，render.avatar-cache-hours）→ **外部多线路**（MC-Heads → Minotar(helm) → MinePic(skin+裁脸) → Crafatar(overlay)）→ Mojang 官方兜底（429/超时 5 分钟全局冷却）。**1.7.2 超时修复**：头像 HTTP 走 httpGetAvatar（连接 5s / 读 25s 分离），任一线路超时本轮内立即换下一源，第一轮全败且超时型时对快线路补试一轮；超时型失败不写 60 秒冷却（下次查询立即重试），只有确定性失败（404）才写冷却。单飞 inFlightFetches 并发去重（等待 8s）。基岩玩家走 MC-Heads xuid 线路。**批量获取并发重做**：在线列表 / 排行榜 / 财富榜 / 查信息统一走 InfoCardAssets.fetchAvatarBatch（**8 线程共享池** PenguinAvatarFetch + **12 秒渲染等待预算**；超预算的玩家本轮占位块先回复、任务不取消——后台下载完成后进缓存下一轮即有真实头像；40 秒迟到硬上限由 PenguinAvatarReaper 兜底取消防慢源链路占满线程池；旧版各服务自建 4 线程池 + invokeAll(8s) 到点中断在途下载已全部移除；查信息单头像旧版在渲染线程无上限阻塞、QQ 可等一分多钟，也改走同入口有界等待）。
 - 失败分类日志（logs/qq 文件）：「获取失败（本次链路遇网络抖动，未写失败冷却…）」= 超时/网络型，正常降级；「获取失败（本地与外置链路均未命中，60 秒内不重试）」= 确定性失败。
 
@@ -174,15 +178,18 @@ Paper 1.21+ 内置 spark 不注册插件表（bundledSparkClassLoader 探测）�
 
 ## 7. 书写与产品口径（用户明确要求过的风格）
 
-- 更新日志简化（每版几条要点、每条 1-3 行；官网只留最近 3 版详细 + 「更早版本一览」一行一版；README 同样最近三版）。
+- 更新日志简化（每版几条要点、每条 1-3 行；官网与 version.json 只保留 1.7.0 起的版本，「更早版本一览」与 1.7.0 前条目 2026-11-04 已删不再恢复；README 同样最近三版）。
 - 教程小白向（步骤化、命令代码块、技术细节收进末尾卡片）；改教程/下载页后插件版与模组版同步说明。
+- **教程「常用设置」按小配置粒度成条**（.cfg-item：片段 + 描述）——用户明确否决「总配置展示一个 + 剩下的写一大串」（2026-11-04），后续新增配置的教程段落必须照此格式写。
+- 主下载卡片不放更新日志摘要（只有版本号 + 发布日期；2026-11-04 用户要求）。
+- 官网历史版本与下载本体只保留 1.7.0 起；旧 JAR 归档服务器 /root/penguin-archive-downloads/（不 rm，互转版打包还要用底座）。
 - 主下载按钮在版本号下方（Spigot 在前 NF 在后，max-width 440px 居中）。
 - 官网 2026-11-03 起暗色主题（布局不动只换色板，见 §4）。
-- 渲染图片设计标注统一「设计参考」（BaiZhouziYou / 新亭泪，issue #1）。
+- 渲染图片设计标注统一「设计参考」（BaiZhouziYou / 新亭泪，issue #1）；**全部图片渲染设计（卡片版式 / 毛玻璃 / 背景 / 头像呈现）来源都是该模板——没有「早期独立设计 / 其后独立改进」，官网设计参考段按全量口径表述（2026-11-04 用户更正）。
 
 ## 8. 历次踩坑记录（根因 + 解决步骤）
 
-### 8.1 1.7.2 三大 case 全记录（本次发版修复）
+### 8.1 1.7.2 五大 case 全记录（首轮三项 + 覆盖版两项）
 
 **① 头像获取部分失败（用户判定"8 秒超时被直接中断"）**
 - 现象：批量报「获取失败（本次链路遇网络抖动，未写失败冷却，下次查询立即重试；本张渲染占位块）」，下一轮查询重试即成功（成功日志「头像 xxx ← Minotar（名字线路）」）。
@@ -200,6 +207,18 @@ Paper 1.21+ 内置 spark 不注册插件表（bundledSparkClassLoader 探测）�
 - 现象/判定：用户认定列表的张数与体积是硬编码。核查：插件端其实一直按 manifest 的 files 数组动态计算，但清单**没有显式的 count/bytes 字段**，且 description 文案里嵌了"29 张"字样——观感与维护口径都是硬编码。
 - 解决步骤：a) manifest 每包新增 count（文件数）/bytes（总字节数）展示字段；b) 插件 parseManifest 读取，PackInfo.count/totalBytes 优先声明值、缺失回退 files 统计（向后兼容）；c) 官网 wl1 清单补写 count=29 / bytes=60926352（=58.1MB，与旧显示一致）；d) 上传工具 bpng_upload.py 自动生成 count/bytes；e) make_bpng_manifest.py 同步输出新字段。
 - 验证：门禁 BP 组 + 冒烟 S/H 组（声明值优先、旧清单回退、列表行渲染声明张数体积）。
+
+**④ config.yml 注释全部丢失（覆盖版，用户实测「旧版 1.7.2 配置文件注释没有」）**
+- 现象：NeoForge 端使用 /hbkrg bpngsz（或任何触发 saveConfig 的路径）后，config.yml 被剥成光杆键值（复现实测：231 行注释 → 0 行）。
+- 根因：NF 兼容层 YamlConfiguration.save() 是 snakeyaml 整树 dump（其 KDoc 早已自认「重存会丢失注释」）；旧版靠 ConfigFileRebuilder 在**版本升级**时文本重建保注释，但 bpngsz 五键写回、reload 兜底补齐等**运行期保存**都直接 dump——注释一存即光。Spigot 端 1.18.1+ 由平台 YamlConfiguration 自带注释往返，无此问题。
+- 解决步骤：a) YamlTextMerge 新增 removals 三参重载（键行+块体+紧贴上方注释一并删除）；b) 兼容层 JavaPlugin 挂 configLoaded 装载标记（reloadConfig 先复位再置位——装载抛异常保持 false）；c) saveConfig() 改调 ConfigCommentSaver（同文件 private object）：磁盘文本→快照树→与内存树逐叶子差分（宽松等值）→文本合并→整树校验→原子写，任一环失败退回 dump 兜底；d) 未装载/装载失败 + 文件存在 → 跳过写盘（旧版会把空树 dump 覆盖用户配置/损坏文件，顺带修掉）；e) binds.yml 等自有 YamlConfiguration 实例不走此路径（仍 dump，本就无注释，零影响）。
+- 验证：复现脚本 scripts/repro_comment_loss（旧 JAR FAIL 231→0，新 JAR PASS 166→166）；冒烟 CL 组 7 项（bpngsz 翻转/补键/删键/未装载跳过/损坏保护/roundtrip）+ CF 组 6 项。
+
+**⑤ 图片标题框黑度调不动（覆盖版，用户实测「无论调成多少都是透明」）**
+- 现象：调 render.title-card-gray 看不出任何变化；四张卡片顶部标题区视觉恒为透明。
+- 根因：首轮 1.7.2 把该键接到了查信息「统计信息」面板，但用户说的「标题框」是四张卡片**顶部的标题区**（查信息欢迎面板/查在线人数卡/排行榜统计卡/查性能更新时间卡）——这些区域硬编码 `Color(0xFF,0xFF,0xFF,38/34)` 半透明白，改配置自然不动。
+- 解决步骤：a) 四处标题区全部改接 titleCardGray()（黑 alpha）；b) 查信息统计面板归类为列表容器改接 itemCardGray()（与其他卡片容器一致）；c) 默认 96→80（用户「再调低一点」）；d) **旧默认收敛**：v29 磁盘里的 96 是默认写入非用户意图——重建器 pre-step 与 reload 兜底双路径 `96→80`（自行改过的值不动；不做其他键的旧默认迁移）；e) 门禁 GY 组改双灰度断言 + 源码级 38/34 反断言。
+- 验证：冒烟 GY 像素组（白底关模糊渲染：title 255/0 → 标题框亮度 17/253；item 0/255 → 统计面板 254/15）+ CF3 收敛断言。
 
 ### 8.2 历史坑速查表（保留全部，避免重蹈覆辙）
 
@@ -223,6 +242,11 @@ Paper 1.21+ 内置 spark 不注册插件表（bundledSparkClassLoader 探测）�
 | 冒烟必须覆盖真实总线注册 | 只测 Class.forName 不测注册→分发 | FML 风格总线端到端 + 负向对照 |
 | Write 工具损坏 \uXXXX 转义 | 转义序列写成 NUL 字节 | 特殊序列用 Python 字节级写入 |
 | Kotlin 块注释嵌套 | 注释里 `/*` 相邻序列吞掉后面代码 | 注释里避免 glob/路径相邻 `/*` |
+| NF 兼容层 YamlConfiguration 整树 dump 剥注释 | save() 走 snakeyaml dump，注释一存即光（bpngsz 实测 231→0 行） | config.yml 一律走注释保留保存（ConfigCommentSaver 差分合并）；平台侧 Spigot 1.18.1+ 自带注释往返 |
+| 运行期改配置的保存链路绕过重建器 | ConfigFileRebuilder 只管版本升级；bpngsz/reload 补齐直接 saveConfig | 兼容层 saveConfig 已收敛为注释保留；新增保存入口时确认走 plugin.saveConfig() 而非 YamlConfiguration.save() |
+| javap 泛型签名断言写裸类型 | `merge(String, Map, Set)` 断言匹配不到（实际输出带泛型 `<java.lang.String, ? extends …>`） | 断言用泛型全形态或只匹配方法名+尾部 `Set<java.lang.String>)` |
+| 源码 KDoc 提及已删除文件名 | 反断言 `config.yml.bak not in source` 被自家注释误触发 FAIL | 反断言只查字节码 + 源码注释改用「升级备份文件」等不带文件名的表述 |
+| @Volatile 装载标记的复位时机 | reloadConfig 装载失败若不先复位标记，saveConfig 会拿旧树覆盖损坏文件 | 标记在 load 前复位、成功后置位（失败保持 false → 保存跳过） |
 | MultiEdit 非原子 | 部分成功后报错"未执行" | 失败后先 rg 检查文件实际状态 |
 | drawImage 十参目标/源矩形序 | 写反时等尺寸静默正确、cover 时整画布空白 | 几何改动必须不同宽高比像素级端到端断言 |
 | javap 三坑 | 平铺放置常量池降级截断 / 两形态字符串 / Kotlin 模板 recipe 在 BootstrapMethods | 按包路径展开 + -v 常量池 + 字节双通道断言 |
@@ -254,23 +278,63 @@ Paper 1.21+ 内置 spark 不注册插件表（bundledSparkClassLoader 探测）�
 | 6 | image-download.enabled 开关 | ✅ | 配置默认 true；双端 bpng 入口拦截；bpngsz 不受影响 |
 | 7 | 签到经济插件检测 | ✅ | EconomyRewardService（Vault/PlayerPoints/CoinsEngine 全反射+余额差值校验）；points-reward 配置；plugin.yml softdepend+CoinsEngine；⚠️ 用户实际 MC 服务器装了哪些经济插件未核实（服务器不在本机） |
 | 8 | QQ 绑定验证文案 | ✅ | kick-message「可以直接发送纯数字验证码：xxx」；bind-invalid 一句话 |
-| 9 | 项目卡片灰度 | ✅ | 64→106（(120+64)/2=92 偏旧值一侧）；render.item-card-gray |
-| 10 | 标题卡片灰度 | ✅ | 默认 96（比项目卡片 106 略浅、差距不大）；render.title-card-gray |
-| 11 | 灰度参数进配置 | ✅ | 双键 0-255 实时读取；四渲染器接入；硬编码清除 |
+| 9 | 项目卡片灰度 | ✅ | 64→106（(120+64)/2=92 偏旧值一侧）；render.item-card-gray；覆盖版起统一收口全部列表容器（含查信息统计面板） |
+| 10 | 标题卡片灰度 | ✅ | 覆盖版改口径：默认 80 = 四张卡片**顶部标题区**（首轮误接查信息统计面板，用户调不动——见 §8.1⑤）；旧默认 96 升级自动收敛 80 |
+| 11 | 灰度参数进配置 | ✅ | 双键 0-255 实时读取；四渲染器接入；硬编码清除；像素级验证标题框/统计面板分别随双键变化 |
 | 12 | 设计来源统一标注「参考」 | ✅ | 四渲染器 KDoc + README + 官网节标题 |
 | 13 | 官网暗色调 | ✅ | style.css 深背景/深卡片/浅文字；index/tutorial 内联色同步；布局不动 |
 | 14 | 版本号 1.7.2 + 更新日志 | ✅ | 六处版本号 + README + version.json + index 日志块 |
-| 15 | 构建双端 JAR | ✅ | 门禁 verify_jar_172 63 项全过 + 冒烟 smoke172 20 项全绿 |
+| 15 | 构建双端 JAR | ✅ | 覆盖版全量重编译重打包：门禁 verify_jar_172 **89 项**全过（新增 CL/RC/WEB 组 + GY 双灰度断言）+ 冒烟 smoke172 **39 项**全绿（新增 GY 像素/NZ6/CL/CF 组） |
 | 16 | 部署 | ✅（官网）/ ⚠️（MC） | 双 JAR + 源码包 + 官网已上线 curl+md5 验证；**MC 服务端不在 156.233.228.248 上**，JAR 替换与重启需用户在实际服务器执行 |
 | 17 | 官网发版 + curl 验证 | ✅ | version.json/index（三处版本号）/tutorial/style 200；manifest count/bytes；外网域名复核 |
-| 18 | git 推送 | ✅ | 经典写令牌（ghp_）服务器中继推送成功；远端 main = b080241（含发版 + 知识库重写 + 头像并发重做与灰度调整全部提交）；中继流程与实测要点见 §0 |
+| 18 | git 推送 | ✅ | 首轮：远端 main = b080241；覆盖版：本轮中继推送（bundle 基线选远端真实 HEAD，流程见 §0） |
 | 19 | 交接文档细化重写 | ✅ | 本文档（新增 §2 构建指南 / §3 部署 / §4 官网发版 / §8 踩坑根因 / §9 逐项清单） |
 
-**1.7.2 配置变更汇总**：config-version 28→29；新增 `image-download.enabled: true`、`render.title-card-gray: 96`、`render.item-card-gray: 106`、`qq-bind.checkin.points-reward: 0`（只加新键，不做旧值迁移；灰度默认值以本表为准：标题 96 略低于项目 106）。
+**1.7.2 覆盖版追加清单（本轮用户五项反馈）**：
+
+| # | 待办 | 状态 | 落点 |
+|---|---|---|---|
+| 20 | 旧版 1.7.2 配置注释丢失 | ✅ | 兼容层注释保留保存（ConfigCommentSaver + YamlTextMerge removals），见 §8.1④；复现脚本前后对照 231→0 修复为 166→166 |
+| 21 | 图片标题框黑度调不动 | ✅ | 四处标题区接 titleCardGray；统计面板归 itemCardGray；默认 80；96→80 收敛，见 §8.1⑤ |
+| 22 | 标题框默认灰度再调低 | ✅ | 96 → 80（含升级收敛） |
+| 23 | 移除配置备份功能 | ✅ | 重建器不再生成 config.yml.bak（损坏恢复 .error 应急备份保留——语法损坏重建默认前保用户设置的最后保险；如也要删需用户再确认） |
+| 24 | QQ 远程命令控制台无记录 | ✅ | 双执行器 [QQ 远程命令] 前缀转发控制台/latest.log + 噪音黑名单收录防回混 |
+| 25 | QQ 重连过程不显示 | ✅ | 手动重连（/hbkrg chs）一轮内里程碑回显到配置群（announceToGroups + broadcastReconnectLine）；自动重连不广播 |
+| 26 | 官网教程小白化 + 溢出修复 | ✅ | tutorial 常用设置只留功能开关、技术细节归末节；index 兼容性卡片 &nbsp; 连排改 .core-line 可换行结构（375px 视口 0px 溢出实测） |
+
+**2026-11-04 官网清理（用户五项，仅官网 + 本文档，插件未动）**：
+
+| # | 待办 | 状态 | 落点 |
+|---|---|---|---|
+| 27 | 删 1.7.0 前历史版本 / 更新日志 / 本体 | ✅ | index 历史表与「更早版本一览」、version.json 1.6.9.5 条目删除；服务器 15 个 1.6.x JAR 归档 /root/penguin-archive-downloads/（含互转版底座）；互转版官网卡片删除（**1.7.3 日同日恢复上线，见 #40**）；0.3AI 线未动 |
+| 28 | 更新日志简化 | ✅ | index 三版各 3-6 条短要点；version.json 同步精简为 3 条 |
+| 29 | 下载卡片去简单更新日志 | ✅ | 主下载框只留「版本 1.7.2 + 发布于 2026-11-03」 |
+| 30 | 教程按小配置重构 | ✅ | 常用设置 49 个 .cfg-item（片段 + 描述）；style.css 新增条目样式；手机端长注释行 pre-wrap 自动换行（375px 实测 0 溢出）；安装「完成」步生效说明改准确（凭据重启 / 其余 reload） |
+| 31 | 设计来源全量口径 | ✅ | 设计参考段改为「全部设计均参考该模板」，删「独立改进」句（footer 口径本就一致未动） |
+| 32 | AI 交接文档同步 | ✅ | 本块 + §4 发版流程 + §7 口径四条新规则 + §10/§12 归档说明 |
+
+**1.7.3 逐项清单（2026-11-04，用户十一项）**：
+
+| # | 待办 | 状态 | 落点 |
+|---|---|---|---|
+| 33 | 标题卡：模糊 + 卡片边缘 + 整卡灰度（三张列表卡头部） | ✅ | OnlineList/Leaderboard/Performance.drawHeader 全部先 paintCard（模糊）再 titleCardGray 填充全宽圆角卡；门禁 HD1-4 + 冒烟 LB4/LB6/PF3/PF5（左侧无卡区域随灰度变暗） |
+| 34 | 查信息玩家名称项卡片不可调 | ✅ | drawIdentityBar 硬编码白 22 → subtitleCardGray；冒烟 PX7（255→5 可调） |
+| 35 | 新增副标题灰度（明显低于项目卡与标题卡） | ✅ | render.subtitle-card-gray 默认 40（用户口径「低得要明显」）；RenderSettings.subtitleCardGray 实时读取 |
+| 36 | 副标题：服务器/更新时间/状态（五张卡） | ✅ | Leaderboard/Performance/InfoCard 新增 drawSubtitle（三小卡）；查在线原状态栏改接副标题灰度；InfoCard.CardData 新增 serverName/updateTime 字段，QueryInfoService 传入 |
+| 37 | 性能监控原服务器名显示去掉 | ✅ | drawHeader 删 serverName 小字（签名改三参）；服务器名改由副标题条展示 |
+| 38 | 配置说明服务器名显示在图片上 | ✅ | 双端 config.yml serverName 注释改「显示在图片卡片的副标题与进出服播报里」 |
+| 39 | 排行榜单页项上限（全局，默认 20） | ✅ | leaderboard.page-size；ROWS_PER_PAGE 常量删除；两命令接入 RenderSettings.leaderboardPageSize（1-100 收敛）；查在线/财富榜（自定义标题）共用 |
+| 40 | 互转版官网卡片重新上线（简版） | ✅ | index.html「其他版本」区新增简版卡片 + JAR 从归档放回 downloads/（2026-11-04 用户指令：不要删） |
+| 41 | 今日在线跨天误报修复 | ✅ | PlayerStatsManager.query 三处离线回退路径 rolledForToday（展示层归零，存档不动）；门禁 TD1/TD2 |
+| 42 | 版本 1.7.3 + 构建 + 部署 | ✅ | 六处版本号 + config-version 31；门禁 verify_jar_173 **92 项**全过 + 冒烟 smoke173 **27 项**全绿（ST/PX/LB/PF 四组） |
+
+**1.7.3 配置变更汇总**：config-version 30 → 31（新增 `render.subtitle-card-gray: 40`、`leaderboard.page-size: 20`，只加新键+默认值，不做旧值迁移）。
+
+**1.7.2 配置变更汇总**：config-version 28→29→30（覆盖版再升 1，无新增键，注释全文精简重写）；新增 `image-download.enabled: true`、`render.title-card-gray: 80`、`render.item-card-gray: 106`、`qq-bind.checkin.points-reward: 0`（只加新键，不做旧值迁移；唯一例外：标题框旧默认 96 升级收敛 80）。升级不再生成备份文件。
 
 ## 10. Cross-posting 互转版（1.6.7_Cross-posting.3）
 
-多群互通分支，仅 Spigot 插件形态，**源码不进公开仓库**、永不 push、用户要求才更新。1.6.7.10 起工作流为「精准覆写打包」（scripts/package_crossposting_16710.py，以线上互转版 JAR 为底座仅覆写 MenuManager+KERONGCommand 类）；前提是 MenuManager 保持 void 兼容桥（互转版旧产物按旧描述符链接）。主版改动若触及 QClient/GroupMessageHandler/ConfigManager/KERONG/CrossPosting 三件套，精准覆写不可用。官网「其他版本」卡片展示，教程全部内置在 config.yml 注释。
+多群互通分支，仅 Spigot 插件形态，**源码不进公开仓库**、永不 push、用户要求才更新。**2026-11-04 官网清理时曾随 1.7.0 前版本清理下线（卡片删除 + JAR 归档），同日用户指令恢复：官网「其他版本」卡片重新上线（简版：二选一安装 + 独立产品线两条要点）+ JAR KERONGPenguin_Spigot-1.6.7_Cross-posting.3.jar 已从 /root/penguin-archive-downloads/ 放回 downloads/（长期保留，勿再清理）。**1.6.7.10 起工作流为「精准覆写打包」（scripts/package_crossposting_16710.py，以线上互转版 JAR 为底座仅覆写 MenuManager+KERONGCommand 类）；前提是 MenuManager 保持 void 兼容桥（互转版旧产物按旧描述符链接）。主版改动若触及 QClient/GroupMessageHandler/ConfigManager/KERONG/CrossPosting 三件套，精准覆写不可用。教程全部内置在 config.yml 注释。
 
 ## 11. 0.3AI 专属版（v0.5）
 
@@ -278,8 +342,11 @@ Paper 1.21+ 内置 spark 不注册插件表（bundledSparkClassLoader 探测）�
 
 ---
 
-## 12. 历史版本归档（要点版，详细日志见 git log 与官网）
+## 12. 历史版本归档（要点版，详细日志见 git log；**1.7.0 前版本官网条目与下载本体 2026-11-04 删除归档，其中互转版同日经用户指令恢复上线（见 §10），其余仍归档在服务器 /root/penguin-archive-downloads/，本节仅知识留档**）
 
+- **1.7.3（2026-11-04）**：标题卡全宽化（模糊+灰度+圆角）/ 副标题灰度 render.subtitle-card-gray + 五张卡副标题条 / leaderboard.page-size / 今日在线跨天修复；互转版官网卡片恢复上线；门禁 92 + 冒烟 27。
+
+- **1.7.2（2026-11-03，同名覆盖版）**：注释保留保存（ConfigCommentSaver）/ 标题框接线 / 远程命令留档 / 重连回显 / 升级备份移除；门禁 89 + 冒烟 39。
 - **1.7.1（2026-11-02）**：背景图片包系统（bpng 下载/bpngsz 一键切换/中断标志残留修复）；官网 bpng/ 目录 + git 镜像（1.7.2 已删除）；门禁 48 + 冒烟 36；push 受阻于只读 PAT（bundle + 中继就绪）。
 - **1.7.0（2026-11-02）**：头像统一在线获取 + 外层纹理修复（Minotar /helm、MinePic /skin 裁脸）；毛玻璃统一（blur-strength 可配，gray-mask/global-opacity 删除）；/hbkng→/hbkrg；/执行命令 真根因修复（SDK 4xx 不抛异常按 V2Result.id 判送达 + 控制字符清洗 + NF 定格 bug）；配置精简（旧默认值迁移机制删除）；门禁 119 + 冒烟 24。
 - **1.6.9.5（2026-11-01）**：blur-mask 改 backdrop-filter 局部模糊；背景 cover 裁剪（十参 drawImage 参数序 bug 冒烟抓出）；[合并聊天记录] 占位；/kerong→/hbkng；/执行命令 回复修复（1200 字符裁剪 + Boolean 回退）；reload 一并同步面板。

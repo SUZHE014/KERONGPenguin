@@ -22,8 +22,12 @@ import javax.imageio.ImageIO
  * 胶囊白 30，无面板描边）；字体 / 布局 / 指标口径不变。
  *
  * 半透明卡片风格（1.6.7.5 覆盖版，1350 宽，固定版式单页图）：
- * - 顶部标题区：英文眉题 MINECRAFT SERVER + 主标题「服务器性能监控」
- *   + 右侧「更新时间」卡；
+ * - 顶部标题区（1.7.3：整块全宽标题卡——模糊 + 标题框黑度 + 圆角边缘；
+ *   旧版标题文字直画在背景上，看不出卡片边界）：英文眉题
+ *   MINECRAFT SERVER + 主标题「服务器性能监控」+ 右侧「更新时间」卡
+ *   （1.7.3：标题下方原服务器名小字移除，改由副标题条展示）；
+ * - 副标题条（1.7.3 新增）：服务器 / 更新时间 / 状态 三张小卡，
+ *   副标题灰度 render.subtitle-card-gray；
  * - 指标卡网格（2 列网格，1.6.7.8 起固定五项：TPS / MSPT / 内存 / CPU /
  *   在线人数，末行单卡整行通栏）：
  *   每卡 = 标签 + 状态胶囊 + 大数值 + 进度条（或「--」表示核心
@@ -58,8 +62,14 @@ object PerformanceRenderer {
     /** 顶部标题区高度（眉题 + 主标题 + 右侧时间卡）。 */
     private const val HEADER_HEIGHT = 150
 
-    /** 标题区与指标卡区间距。 */
+    /** 标题区与副标题条间距。 */
     private const val HEADER_GAP = 18
+
+    /** 副标题条高度（服务器 / 更新时间 / 状态 三张小卡，1.7.3 新增）。 */
+    private const val SUBTITLE_HEIGHT = 84
+
+    /** 副标题条与指标卡区间距。 */
+    private const val SUBTITLE_GAP = 18
 
     /** 单张指标卡高度。 */
     private const val CARD_HEIGHT = 250
@@ -83,8 +93,12 @@ object PerformanceRenderer {
     private val COLOR_VALUE = Color.WHITE
     private val COLOR_SUB = Color(0x8A, 0x9B, 0xAE)
 
-    /** 头部「更新时间」卡底色（半透明白，与查在线/排行榜头部卡同款 alpha 34）。 */
-    private val COLOR_HEADER_CARD = Color(0xFF, 0xFF, 0xFF, 34)
+    /**
+     * 头部「更新时间」卡底色（半透明黑）。1.7.2 覆盖版起接标题框黑度
+     * （render.title-card-gray，默认 80）——旧版硬编码半透明白 alpha 34，
+     * 改配置调不动（视觉上「透明」）；与其他卡片头部卡同源。
+     */
+    private val COLOR_HEADER_CARD: Color get() = Color(0x00, 0x00, 0x00, RenderSettings.titleCardGray())
 
     /** 指标卡底色（半透明白，与查信息/查在线/排行榜单元格同款 alpha 16）。 */
     private val COLOR_CARD = Color(0xFF, 0xFF, 0xFF, 16)
@@ -109,7 +123,7 @@ object PerformanceRenderer {
 
     /** 渲染入参。 */
     data class PerformanceData(
-        /** 服务器名称（标题区展示）。 */
+        /** 服务器名称（1.7.3：副标题条「服务器」项展示；标题区原小字已移除）。 */
         val serverName: String,
         /** 更新时间（HH:mm，调用方格式化好传入）。 */
         val updateTime: String,
@@ -145,13 +159,13 @@ object PerformanceRenderer {
 
     /**
      * 计算画布高度（固定五项指标：TPS / MSPT / 内存 / CPU / 在线人数；
-     * 五项仍占三行，末行通栏，高度与旧六项版一致不变）。
+     * 五项仍占三行，末行通栏；1.7.3：新增副标题条高度）。
      * 必须在取背景（尺寸相关）与渲染前调用，两者共用本结果。
      */
     fun measureHeight(): Int {
         val rows = (CARD_COUNT + COLUMNS - 1) / COLUMNS
         val gridHeight = rows * CARD_HEIGHT + (rows - 1) * CARD_GAP
-        return MARGIN + HEADER_HEIGHT + HEADER_GAP + gridHeight + BOTTOM_PAD
+        return MARGIN + HEADER_HEIGHT + HEADER_GAP + SUBTITLE_HEIGHT + SUBTITLE_GAP + gridHeight + BOTTOM_PAD
     }
 
     /** 渲染性能卡片并返回 PNG 字节（单页固定版式）。 */
@@ -168,7 +182,8 @@ object PerformanceRenderer {
             // 1.6.9.5：背景统一走共享入口（cover 裁剪铺满，不再拉伸变形）；
             // 返回卡片背后局部模糊上下文（毛玻璃，模糊度 render.blur-strength）
             val backdrop = InfoCardAssets.drawBackground(g, data.background, WIDTH, height)
-            drawHeader(g, backdrop, data.serverName, data.updateTime)
+            drawHeader(g, backdrop, data.updateTime)
+            drawSubtitle(g, backdrop, data.serverName, data.updateTime)
             drawMetricGrid(g, backdrop, cards)
         } finally {
             g.dispose()
@@ -385,21 +400,31 @@ object PerformanceRenderer {
         g.fill(RoundRectangle2D.Float(x, y, w, h, radius, radius))
     }
 
-    /** 顶部标题区：眉题 + 主标题 + 右侧更新时间卡（时间卡背后铺局部模糊）。 */
-    private fun drawHeader(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, serverName: String, updateTime: String) {
+    /** 顶部标题区：眉题 + 主标题 + 右侧更新时间卡（1.7.3：整块全宽标题卡
+     * ——模糊 + 标题框黑度 + 圆角边缘；标题下方原服务器名小字已移除，
+     * 服务器名改由副标题条展示）。 */
+    private fun drawHeader(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, updateTime: String) {
         val top = MARGIN
+
+        // 1.7.3：全宽标题卡（模糊 + 灰度 + 圆角边缘一次到位）
+        val headerWidth = (WIDTH - 2 * MARGIN).toFloat()
+        backdrop?.paintCard(g, MARGIN.toFloat(), top.toFloat(), headerWidth, HEADER_HEIGHT.toFloat(), 24f)
+        paintPanel(
+            g, MARGIN.toFloat(), top.toFloat(), headerWidth, HEADER_HEIGHT.toFloat(),
+            COLOR_HEADER_CARD, 24f,
+        )
 
         // 英文眉题（字距拉宽）
         g.font = InfoCardRenderer.font(26f, true)
         g.color = COLOR_EYEBROW
         g.drawString("M I N E C R A F T   S E R V E R", (MARGIN + 8).toFloat(), (top + 38).toFloat())
 
-        // 主标题（服务器名随副题展示，主标题固定）
+        // 主标题（固定；服务器名在副标题条展示）
         g.font = InfoCardRenderer.font(58f, true)
         g.color = COLOR_VALUE
         g.drawString("服务器性能监控", (MARGIN + 4).toFloat(), (top + 108).toFloat())
 
-        // 右侧更新时间卡（半透明白头部卡，与查在线/排行榜头部卡同款）
+        // 右侧更新时间卡（叠在标题卡上；与查在线/排行榜头部卡同款）
         val cardWidth = 240
         val cardHeight = HEADER_HEIGHT - 16
         val cardX = WIDTH - MARGIN - cardWidth
@@ -416,11 +441,34 @@ object PerformanceRenderer {
         g.color = COLOR_VALUE
         val timeWidth = g.getFontMetrics().stringWidth(updateTime)
         g.drawString(updateTime, (cardX + cardWidth - 28 - timeWidth).toFloat(), (cardY + 100).toFloat())
+    }
 
-        // 服务器名（标题下方小字）
-        g.font = InfoCardRenderer.font(24f, false)
-        g.color = COLOR_SUB
-        g.drawString(serverName, (MARGIN + 6).toFloat(), (top + 138).toFloat())
+    /** 副标题条：服务器 / 更新时间 / 状态 三张并排小卡（1.7.3 新增，与
+     * 查在线状态栏同款；底色接副标题灰度 render.subtitle-card-gray）。 */
+    private fun drawSubtitle(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, serverName: String, updateTime: String) {
+        val top = (MARGIN + HEADER_HEIGHT + HEADER_GAP).toFloat()
+        val gap = 16f
+        val cardWidth = (WIDTH - 2 * MARGIN - 2 * gap).toFloat() / 3f
+        val cardHeight = SUBTITLE_HEIGHT.toFloat()
+
+        val cells = listOf(
+            "服务器" to serverName,
+            "更新时间" to updateTime,
+            "状态" to "正常",
+        )
+        cells.forEachIndexed { index, (label, value) ->
+            val x = MARGIN + index * (cardWidth + gap)
+            backdrop?.paintCard(g, x, top, cardWidth, cardHeight, 14f)
+            // 1.7.3：副标题条接副标题灰度（render.subtitle-card-gray，默认 40）
+            g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
+            g.fill(RoundRectangle2D.Float(x, top, cardWidth, cardHeight, 14f, 14f))
+            g.font = InfoCardRenderer.font(22f, false)
+            g.color = COLOR_LABEL
+            g.drawString(label, x + 26f, top + 34f)
+            g.font = InfoCardRenderer.font(30f, true)
+            g.color = COLOR_VALUE
+            g.drawString(clip(g, value, (cardWidth - 52).toInt()), x + 26f, top + 68f)
+        }
     }
 
     /**
@@ -430,7 +478,7 @@ object PerformanceRenderer {
      */
     private fun drawMetricGrid(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, cards: List<MetricCard>) {
         if (cards.isEmpty()) return
-        val gridTop = MARGIN + HEADER_HEIGHT + HEADER_GAP
+        val gridTop = MARGIN + HEADER_HEIGHT + HEADER_GAP + SUBTITLE_HEIGHT + SUBTITLE_GAP
         val contentWidth = WIDTH - 2 * MARGIN
         val cardWidth = (contentWidth - (COLUMNS - 1) * CARD_GAP) / COLUMNS
         val rows = (cards.size + COLUMNS - 1) / COLUMNS
@@ -516,5 +564,15 @@ object PerformanceRenderer {
         g.font = InfoCardRenderer.font(22f, false)
         g.color = COLOR_SUB
         g.drawString(card.note, (barX).toFloat(), (y + 228).toFloat())
+    }
+
+    /** 截取不超给定宽度的最长前缀（与其他卡片一致的截断策略；1.7.3 副标题条用）。 */
+    private fun clip(g: Graphics2D, text: String, maxWidth: Int): String {
+        if (maxWidth <= 4) return "…"
+        val metrics = g.getFontMetrics()
+        if (metrics.stringWidth(text) <= maxWidth) return text
+        var end = text.length
+        while (end > 0 && metrics.stringWidth(text.substring(0, end)) > maxWidth) end--
+        return if (end == 0) "…" else text.substring(0, end).dropLast(1) + "…"
     }
 }
