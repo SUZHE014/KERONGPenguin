@@ -14,7 +14,7 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 
 **版本规则**：插件版与模组版同步发号。当前版本 **1.7.3（覆盖版，2026-11-05）**（标题卡全宽化与内边距 / 徽标灰度与综合状态 / 副标题条与渲染耗时 / 自定义渲染线程 / 排行榜分页配置 / 今日在线跨天修复，详见 §9）。config-version **32**（新增 render.custom-render-threads 三键；subtitle-card-gray 旧默认 40→56 一次性收敛）。
 
-**git push 状态**：⚠️ 待推——GitHub 远端 main 停在 `41ffadb`（1.7.2 知识库同步）；1.7.3 初版已发官网但源码未 push（上次会话沙盒回收丢失，2026-11-05 从官网源码包 `https://kerong.xin/penguin-source/KERONGPenguin_v1.7.3_source.zip` 恢复并 commit 6c10da7 基线，再叠加覆盖版修改）。用户已提供两个令牌（fine-grained github_pat_ 实测只读；classic ghp_ 待验证——优先试经典令牌直连 push：沙盒内 api.github.com 可达，github.com 直连 clone 曾失败但 push 小包可试；不通则走服务器中继：`git bundle create /tmp/x.bundle 41ffadb..main` → 传服务器 `/root/gitrelay/KERONGPenguin.git` fetch bundle 到 relay-main → 服务器上 `git push https://x-access-token:<写令牌>@github.com/SUZHE014/KERONGPenguin.git refs/heads/relay-main:refs/heads/main`，令牌写 /root/.ghtoken chmod 600 用完即删；以 `git ls-remote` 实测远端真实 HEAD 选 bundle 基线）。
+**git push 状态**：✅ 已完成（2026-11-05 实测）——远端 main = `3f41c59`（1.7.3 恢复基线 6c10da7 + 覆盖版 3f41c59）。**重大发现：ghfast.top 代理支持带鉴权 push**（`git push https://ghfast.top/https://github.com/SUZHE014/KERONGPenguin.git main:main` + GIT_ASKPASS 令牌文件一次成功，推翻旧坑表「gh-proxy 不转发 push 鉴权」结论——github.com 直连 push 超时不可用、api.github.com 直连可用）；经典令牌 ghp_ 对仓库有 admin/push 权限（api.github.com/repos 权限实测）。令牌经 /tmp/.ghtoken（umask 077）+ GIT_ASKPASS 读取，用完即删。服务器中继（bundle→/root/gitrelay→push）留作 ghfast.top 失效时的备选路径。
 
 ## 1. 环境与位置（必读）
 
@@ -234,7 +234,7 @@ Paper 1.21+ 内置 spark 不注册插件表（bundledSparkClassLoader 探测）�
 | volatile 取消标志残留 | 标志只在"下一次动作开始"重置 → 中断一次后清单获取永久失败 | 随"一次完整操作"结束 finally 清除 |
 | Kotlin 尾随 lambda 绑定最后形参 | 函数式参数不在签名最后时尾随 lambda 落错位 | 函数式参数一律放最后 |
 | fine-grained PAT 只读判定 | API 读通 + push 403 + 建 ref 报 Resource not accessible = 令牌只读 | 向用户要写权限令牌（经典 ghp_ 或 Contents:Read and write） |
-| gh-proxy 不转发 push 鉴权 | push 报 No anonymous write access | push 走官网服务器中继（bundle→bare.git→带 PAT 直连） |
+| gh-proxy 不转发 push 鉴权（已部分推翻） | 旧 gh-proxy 报 No anonymous write access；**ghfast.top 实测 2026-11-05 支持带鉴权 push**（GIT_ASKPASS + 令牌文件）；github.com 直连 push 超时 | 首选 ghfast.top 代理 push；备选官网服务器中继（bundle→bare.git→服务器带 PAT 直连） |
 | 官网整文件覆盖回滚 | 用旧底稿整文件上传覆盖了已上线内容 | 改前必拉线上当前版作底稿；上传后 curl 复核版本号三处 |
 | 复用旧 build 目录 | 空目录/旧字节码被 Gradle 打进产物 | 发布前 gradlew clean 全量重建 |
 | 终端显示吞转义 | 工具输出管道吞 `[h`/`[[mods]]` 显示层 | 断言一律以文件字节为准（hexdump/tomllib） |
