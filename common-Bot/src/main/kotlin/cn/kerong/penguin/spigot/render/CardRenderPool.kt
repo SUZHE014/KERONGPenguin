@@ -6,18 +6,24 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * 卡片渲染共享线程池（1.5.0 覆盖更新：CPU 上限硬编码，不走配置文件）。
+ * 卡片渲染共享线程池。
  *
  * 设计取舍（两轮反馈的折中）：
  * - 单线程限流会导致多张图片排队堆积、出图变慢反而卡服 → 不能只有 1 线程；
  * - 完全不限核在高并发查询时占满 CPU → 需要上限。
- * 故硬编码为：**主机 CPU 核数的一半，至少 1 线程、至多 4 线程**
- * （例：8 核服务器 4 线程、4 核 2 线程、2 核 1 线程），不提供配置项。
+ * 故默认为：**主机 CPU 核数的一半，至少 1 线程、至多 4 线程**
+ * （例：8 核服务器 4 线程、4 核 2 线程、2 核 1 线程）。
+ *
+ * 1.7.3 覆盖版：新增「自定义图片渲染线程」配置（render.custom-render-threads
+ * 段）：开关开启后线程数改用 render.custom-render-threads.render-threads
+ * （1~16）。⚠ 线程数越大同时渲染的图片越多、CPU 争抢越强，核数少的
+ * 服务器上可能影响游戏 tick——不建议超过物理核数的一半。线程池在首次
+ * 渲染时创建，修改配置需重启服务器生效。
  *
  * 线程为守护线程（不阻止 JVM 退出），空闲 60 秒自动回收（无渲染时不占资源）；
  * 队列不设上限（配合各命令的查询冷却与结果缓存，任务量天然有界，
- * 不会触发拒绝），多个命令（/查信息、/查在线 等，查信息 1.5.2 前为 /个人信息）共用本池，
- * 全部图片渲染合计占用不超过上述硬编码上限。
+ * 不会触发拒绝），多个命令（/查信息、/查在线 等）共用本池，
+ * 全部图片渲染合计占用不超过上述上限。
  *
  * 1.6.5：移除「渲染后 System.gc() 提示」（原 render.gc-after-render 开关一并废除）。
  * - System.gc 在默认 JVM 参数下触发一次 Full GC（全停顿标记-压缩，几十到几百毫秒），
@@ -34,9 +40,13 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 object CardRenderPool {
 
-    /** 硬编码渲染线程上限：主机核数一半，夹在 1..4（配置文件不暴露）。 */
+    /** 自动模式渲染线程上限：主机核数一半，夹在 1..4。 */
     internal val MAX_THREADS: Int =
         (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
+
+    /** 实际生效的渲染线程数（自定义开关开启时用配置值，否则自动值；池创建时定格）。 */
+    internal val THREADS: Int =
+        RenderSettings.customRenderThreads().takeIf { it > 0 } ?: MAX_THREADS
 
     /** 渲染队列（不设上限：任务量受查询冷却与结果缓存约束）。 */
     private val queue = LinkedBlockingQueue<Runnable>()
@@ -72,13 +82,13 @@ object CardRenderPool {
         }
     }
 
-    /** 渲染线程池（固定 [MAX_THREADS] 线程，守护线程，空闲 60 秒回收）。 */
+    /** 渲染线程池（固定 [THREADS] 线程，守护线程，空闲 60 秒回收）。 */
     private fun pool(): ThreadPoolExecutor {
         pool?.let { return it }
         synchronized(this) {
             pool?.let { return it }
             val created = ThreadPoolExecutor(
-                MAX_THREADS, MAX_THREADS,
+                THREADS, THREADS,
                 60L, TimeUnit.SECONDS,
                 queue,
             ) { runnable ->

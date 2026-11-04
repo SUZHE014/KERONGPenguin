@@ -52,13 +52,23 @@ object RenderSettings {
      * 副标题卡底色黑度默认值（1.7.3 新增 render.subtitle-card-gray）。
      *
      * 作用于副标题类小卡：查信息玩家名称项与五张卡片的副标题条
-     * （服务器 / 更新时间 / 状态）。用户口径：副标题灰度要比项目卡片
-     * （106）和标题卡片（80）都低，且要低得明显 → 40（不到标题卡一半）。
+     * （服务器 / 更新时间 / 渲染耗时）。用户口径：副标题灰度要比项目卡片
+     * （106）和标题卡片（80）都低；1.7.3 初版 40 被反馈「太浅看不出框」，
+     * 覆盖版调深到 56——仍明显低于标题卡 80，但已有可见的卡片底色。
      */
-    const val DEFAULT_SUBTITLE_CARD_GRAY = 40
+    const val DEFAULT_SUBTITLE_CARD_GRAY = 56
 
     /** 排行榜单页最大行数默认值（1.7.3 新增 leaderboard.page-size，全局：在线排行榜 / 财富榜共用）。 */
     const val DEFAULT_LEADERBOARD_PAGE_SIZE = 20
+
+    /** 图片渲染线程数上限（1.7.3 覆盖版新增自定义线程配置的安全上限）。 */
+    const val MAX_RENDER_THREADS = 16
+
+    /** 头像批量下载线程数默认值（网络 IO 型，1.7.2 起 8 线程共享池）。 */
+    const val DEFAULT_AVATAR_THREADS = 8
+
+    /** 右上角小方框（头部徽标卡）比标题框加深的固定增量（1.7.3 覆盖版）。 */
+    private const val HEADER_BADGE_GRAY_DELTA = 36
 
     /** 图片渲染命令的用户冷却（毫秒；0 = 无冷却）。 */
     fun commandCooldownMillis(): Long {
@@ -233,6 +243,82 @@ object RenderSettings {
             DEFAULT_SUBTITLE_CARD_GRAY
         }
         return value.coerceIn(0, 255)
+    }
+
+    /**
+     * 头部右上角小方框（徽标卡）底色黑度（1.7.3 覆盖版新增派生键）。
+     *
+     * - 查在线「在线 N」、排行榜「玩家 N」、查性能「综合状态」三张卡的
+     *   右上角小方框；1.7.3 初版与标题框同灰度，叠在同色标题卡上视觉
+     *   融合看不出边界——覆盖版改为**永远比标题框深一点**（固定 +36，
+     *   随 render.title-card-gray 联动，上限 255）；
+     * - 无独立配置键：改 render.title-card-gray 即同步增减。
+     */
+    fun headerBadgeCardGray(): Int {
+        return (titleCardGray() + HEADER_BADGE_GRAY_DELTA).coerceAtMost(255)
+    }
+
+    /**
+     * 自定义图片渲染线程开关（render.custom-render-threads.enabled，默认 false）。
+     *
+     * - false = 自动模式：渲染池取 CPU 核数一半（1~4 线程）、头像批量下载池
+     *   8 线程——对绝大多数服务器是最优解；
+     * - true = 自定义模式：线程数改用下方 render-threads / avatar-threads；
+     * - 线程池在首次渲染时创建，**修改本段配置需重启服务器生效**（非实时）。
+     */
+    fun customRenderThreadsEnabled(): Boolean {
+        return try {
+            (BotShared.instance as? JavaPlugin)?.config?.getBoolean(
+                "render.custom-render-threads.enabled",
+                false,
+            ) ?: false
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /**
+     * 图片渲染线程数（render.custom-render-threads.render-threads，开关开启时生效）。
+     *
+     * - 渲染池负责五张卡片的 CPU 绘制（查信息 / 查在线 / 排行榜 / 财富榜 /
+     *   查性能）；自动值为 CPU 核数一半夹在 1~4；
+     * - ⚠ 线程数越大同时渲染的图片越多、CPU 争抢越强，核数少的服务器
+     *   上可能影响游戏 tick——不建议超过物理核数的一半；
+     * - 取值 1~16（越界收敛）；重启生效。
+     */
+    fun customRenderThreads(): Int {
+        if (!customRenderThreadsEnabled()) return 0
+        val value = try {
+            (BotShared.instance as? JavaPlugin)?.config?.getInt(
+                "render.custom-render-threads.render-threads",
+                (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4),
+            ) ?: (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
+        } catch (_: Throwable) {
+            (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
+        }
+        return value.coerceIn(1, MAX_RENDER_THREADS)
+    }
+
+    /**
+     * 头像批量下载线程数（render.custom-render-threads.avatar-threads，开关开启时生效）。
+     *
+     * - 下载池是网络 IO 型（等外部头像接口响应，不占 CPU）：在线列表 /
+     *   排行榜 / 财富榜 / 查信息批量拉取头像时并行下载；默认 8；
+     * - ⚠ 调大会增加对外部头像接口的并发压力（可能触发限流），调小则
+     *   大名单收齐变慢（12 秒预算内收不齐的玩家本轮显示占位块）；
+     * - 与 MC 主线程无关，不影响游戏 tick；取值 1~16（越界收敛）；重启生效。
+     */
+    fun customAvatarThreads(): Int {
+        if (!customRenderThreadsEnabled()) return 0
+        val value = try {
+            (BotShared.instance as? JavaPlugin)?.config?.getInt(
+                "render.custom-render-threads.avatar-threads",
+                DEFAULT_AVATAR_THREADS,
+            ) ?: DEFAULT_AVATAR_THREADS
+        } catch (_: Throwable) {
+            DEFAULT_AVATAR_THREADS
+        }
+        return value.coerceIn(1, MAX_RENDER_THREADS)
     }
 
     /**

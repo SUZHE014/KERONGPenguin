@@ -227,9 +227,21 @@
 <h4>副标题灰度 <span class="key">render.subtitle-card-gray</span></h4>
 <div class="config">
 <pre>render:
-  subtitle-card-gray: 40  # 0-255，越大越深</pre>
+  subtitle-card-gray: 56  # 0-255，越大越深</pre>
 </div>
-<p>查信息<b>玩家名称项</b>与五张卡片<b>副标题条</b>（服务器 / 更新时间 / 状态 三张小卡）的底色，默认 40 明显比标题框（80）和项目卡片（106）浅。</p>
+<p>查信息<b>玩家名称项</b>与五张卡片<b>副标题条</b>（服务器 / 更新时间 / 渲染耗时 三张小卡）的底色，默认 56 比标题框（80）和项目卡片（106）都浅。</p>
+</div>
+
+<div class="cfg-item">
+<h4>自定义图片渲染线程 <span class="key">render.custom-render-threads</span>（高级）</h4>
+<div class="config">
+<pre>render:
+  custom-render-threads:
+    enabled: false        # 自定义开关（false = 自动模式，忽略下面两键）
+    render-threads: 2     # 图片渲染线程数（1-16）
+    avatar-threads: 8     # 头像批量下载线程数（1-16）</pre>
+</div>
+<p>默认关闭（自动模式）：渲染线程按 CPU 核数自动取一半（1~4 条），头像批量下载 8 条——对绝大多数服务器是最优解。<b>⚠ 警告</b>：开启后线程数由你指定——渲染线程数越大，同时绘制的图片越多、CPU 争抢越强，核数少的服务器上可能影响游戏 tick，<b>不建议超过物理核数的一半</b>；头像下载线程是网络 IO 型（不占 CPU、不影响游戏 tick），调大主要是对外部头像接口的并发压力，调小则大名单收齐变慢。线程池在首次渲染时创建，<b>修改本段后需重启服务器生效</b>。</p>
 </div>
 
 <div class="cfg-item">

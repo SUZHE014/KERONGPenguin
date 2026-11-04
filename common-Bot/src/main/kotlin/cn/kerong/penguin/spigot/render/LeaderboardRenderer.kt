@@ -153,8 +153,13 @@ object LeaderboardRenderer {
         return total.coerceAtLeast(if (firstPage) 640 else 200)
     }
 
-    /** 渲染单页并返回 PNG 字节（首页带标题区，续页只画行内容）。 */
+    /** 渲染单页并返回 PNG 字节（首页带标题区，续页只画行内容；1.7.3 覆盖版：
+     * 首页副标题条第三格改「渲染耗时」——从开始渲染到本页全部面板绘制
+     * 完成的毫秒数，绘制完成后补画；从开始渲染图片起算，不含接收指令后的
+     * 取数 / 头像预热 / 排队环节）。 */
     fun renderPage(data: LeaderboardData, firstPage: Boolean): ByteArray {
+        // 1.7.3 覆盖版：渲染耗时计时起点（全部面板绘制完成后补画进副标题条）
+        val renderStart = System.nanoTime()
         val height = measurePageHeight(data.entries.size, firstPage)
         val image = BufferedImage(WIDTH, height, BufferedImage.TYPE_INT_RGB)
         val g = image.createGraphics()
@@ -175,6 +180,12 @@ object LeaderboardRenderer {
                 drawEmpty(g, backdrop, firstPage)
             } else {
                 drawRows(g, backdrop, data.entries, firstPage)
+            }
+
+            // 1.7.3 覆盖版：补画渲染耗时（全部面板已画完；PNG 编码与发送不预先包含）
+            if (firstPage) {
+                val elapsedMs = (System.nanoTime() - renderStart) / 1_000_000L
+                drawRenderElapsed(g, elapsedMs)
             }
         } finally {
             g.dispose()
@@ -217,15 +228,15 @@ object LeaderboardRenderer {
         g.color = Color(0x00, 0x00, 0x00, RenderSettings.titleCardGray())
         g.fill(RoundRectangle2D.Float(MARGIN.toFloat(), top.toFloat(), headerWidth, HEADER_HEIGHT.toFloat(), 24f, 24f))
 
-        // 英文眉题（字距拉宽，与其他卡片统一风格）
+        // 英文眉题（字距拉宽，与其他卡片统一风格；1.7.3 覆盖版：距卡左缘 28px）
         g.font = InfoCardRenderer.font(26f, true)
         g.color = COLOR_EYEBROW
-        g.drawString("M I N E C R A F T   S E R V E R", (MARGIN + 8).toFloat(), (top + 38).toFloat())
+        g.drawString("M I N E C R A F T   S E R V E R", (MARGIN + 32).toFloat(), (top + 38).toFloat())
 
-        // 主标题
+        // 主标题（距卡左缘 24px）
         g.font = InfoCardRenderer.font(58f, true)
         g.color = COLOR_VALUE
-        g.drawString(title, (MARGIN + 4).toFloat(), (top + 108).toFloat())
+        g.drawString(title, (MARGIN + 28).toFloat(), (top + 108).toFloat())
 
         // 右侧统计卡（参与排行玩家总数；叠在标题卡上）
         val cardWidth = 260
@@ -233,8 +244,9 @@ object LeaderboardRenderer {
         val cardX = WIDTH - MARGIN - cardWidth
         val cardY = top + 8
         backdrop?.paintCard(g, cardX.toFloat(), cardY.toFloat(), cardWidth.toFloat(), cardHeight.toFloat(), 20f)
-        // 统计卡同接标题框黑度（render.title-card-gray，1.7.2 覆盖版起）
-        g.color = Color(0x00, 0x00, 0x00, RenderSettings.titleCardGray())
+        // 1.7.3 覆盖版：右上角小方框灰度永远比标题框深一点（render.title-card-gray +36）
+        // ——旧版与标题框同灰度，叠在同色标题卡上视觉融合看不出边界
+        g.color = Color(0x00, 0x00, 0x00, RenderSettings.headerBadgeCardGray())
         g.fill(RoundRectangle2D.Float(cardX.toFloat(), cardY.toFloat(), cardWidth.toFloat(), cardHeight.toFloat(), 20f, 20f))
         g.font = InfoCardRenderer.font(24f, false)
         g.color = COLOR_LABEL
@@ -246,8 +258,10 @@ object LeaderboardRenderer {
         g.drawString(countText, (cardX + cardWidth - 28 - countWidth).toFloat(), (cardY + 100).toFloat())
     }
 
-    /** 副标题条：服务器 / 更新时间 / 状态 三张并排小卡（1.7.3 新增，与
-     * 查在线状态栏同款；底色接副标题灰度 render.subtitle-card-gray）。 */
+    /** 副标题条：服务器 / 更新时间 / 渲染耗时 三张并排小卡（1.7.3 新增，与
+     * 查在线状态栏同款；底色接副标题灰度 render.subtitle-card-gray；
+     * 1.7.3 覆盖版：第三格改「渲染耗时」——数值在全部面板绘制完成后由
+     * [drawRenderElapsed] 补画（从开始渲染到绘制完成的毫秒数，非从接收指令起算）。 */
     private fun drawSubtitle(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, serverName: String, updateTime: String) {
         val top = (MARGIN + HEADER_HEIGHT + HEADER_GAP).toFloat()
         val gap = 16f
@@ -257,12 +271,12 @@ object LeaderboardRenderer {
         val cells = listOf(
             "服务器" to serverName,
             "更新时间" to updateTime,
-            "状态" to "正常",
+            "渲染耗时" to null as String?,
         )
         cells.forEachIndexed { index, (label, value) ->
             val x = MARGIN + index * (cardWidth + gap)
             backdrop?.paintCard(g, x, top, cardWidth, cardHeight, 14f)
-            // 1.7.3：副标题条接副标题灰度（render.subtitle-card-gray，默认 40）
+            // 副标题条接副标题灰度（render.subtitle-card-gray，覆盖版默认 56）
             g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
             g.fill(RoundRectangle2D.Float(x, top, cardWidth, cardHeight, 14f, 14f))
             g.font = InfoCardRenderer.font(22f, false)
@@ -270,8 +284,21 @@ object LeaderboardRenderer {
             g.drawString(label, x + 26f, top + 34f)
             g.font = InfoCardRenderer.font(30f, true)
             g.color = COLOR_VALUE
-            g.drawString(clip(g, value, (cardWidth - 52).toInt()), x + 26f, top + 68f)
+            value?.let { g.drawString(clip(g, it, (cardWidth - 52).toInt()), x + 26f, top + 68f) }
         }
+    }
+
+    /**
+     * 补画副标题条「渲染耗时」数值（1.7.3 覆盖版）：全部面板绘制完成后、
+     * PNG 编码前写入——从开始渲染到此刻的毫秒数（不含取数 / 排队环节）。 */
+    private fun drawRenderElapsed(g: Graphics2D, elapsedMs: Long) {
+        val gap = 16f
+        val cardWidth = (WIDTH - 2 * MARGIN - 2 * gap).toFloat() / 3f
+        val x = MARGIN + 2 * (cardWidth + gap)
+        val top = (MARGIN + HEADER_HEIGHT + HEADER_GAP).toFloat()
+        g.font = InfoCardRenderer.font(30f, true)
+        g.color = COLOR_VALUE
+        g.drawString(clip(g, "$elapsedMs ms", (cardWidth - 52).toInt()), x + 26f, top + 68f)
     }
 
     /** 第一页列表头：标题 + 右侧人数胶囊（1.6.0：列表头前缀可自定义）。 */

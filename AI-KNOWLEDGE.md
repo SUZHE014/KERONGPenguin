@@ -1,19 +1,20 @@
 # KERONGPenguin AI 交接知识库
 
 > **本文档的用途**：把本文件丢给一个对项目一无所知的 AI，它能立刻了解当前情况并接手工作。
-> 面向：接手开发/发版的 AI 助手。最后更新：2026-11-04（**1.7.3 版**：标题卡全宽化 / 副标题灰度与副标题条 / 排行榜单页上限配置 / 今日在线跨天修复；同日官网互转版卡片重新上线）。前次 2026-11-04（官网清理轮：删 1.7.0 前历史版本 / 更新日志 / 下载本体、教程按小配置重构、设计来源全量口径、下载卡片去简介日志）。
+> 面向：接手开发/发版的 AI 助手。最后更新：2026-11-05（**1.7.3 覆盖版**：标题内边距 / 徽标灰度 / 综合状态 / 副标题灰度调深 56 / 渲染耗时 / 等距修复 / 自定义渲染线程 / 字体补「渲」字，同版本号覆盖发布；沙盒回收后从官网源码包恢复源码）。前次 2026-11-04（1.7.3 版：标题卡全宽化 / 副标题灰度与副标题条 / 排行榜单页上限 / 今日在线跨天修复；同日官网互转版卡片重新上线）。前次 2026-11-04（官网清理轮：删 1.7.0 前历史版本 / 更新日志 / 下载本体、教程按小配置重构、设计来源全量口径、下载卡片去简介日志）。
 > 本轮覆盖版新增修复：①config.yml 注释保留保存（NeoForge 端 bpngsz/配置保存后注释全丢——兼容层整树 dump 剥注释，复现实测 231→0 行，见 §8.1④）；②图片标题框黑度调不动（四张卡片顶部标题区硬编码半透明白，改 render.title-card-gray 不生效，见 §8.1⑤）；③QQ 远程执行命令控制台无记录（[QQ 远程命令] 前缀转发留档）；④QQ 手动重连过程回显到群；⑤移除升级备份 config.yml.bak（损坏恢复的 .error 应急备份保留）。config-version 29→30（注释精简重写 + 标题框旧默认 96→80 一次性收敛）。门禁 89 项 + 冒烟 39 项全绿。
 > 本轮（2026-11-04 官网清理，用户五项，仅动官网与本文档）：①删 1.7.0 之前的历史版本（index 历史表 / 更新日志「更早版本一览」块 / version.json 1.6.9.5 条目）与下载本体（服务器 downloads/ 15 个 1.6.x JAR 移至 /root/penguin-archive-downloads/ 归档而非 rm，含互转版底座 JAR），官网只留 1.7.0/1.7.1/1.7.2 + 0.3AI 线；②更新日志简化（三版各 3-6 条短要点，version.json 同步 3 条）；③下载卡片去掉简介日志行（只留版本号 + 发布日期）；④教程「常用设置」重构为每个小配置独立条目（.cfg-item：2-8 行带父级上下文的 YAML 片段 + 一两句描述，共 49 条；style.css 新增样式 + 手机端 pre-wrap），废弃「一个总配置块 + 一大串文字」写法；⑤设计参考改全量口径——图片渲染**全部**设计（卡片版式 / 毛玻璃 / 背景 / 头像呈现）都参考 BaiZhouziYou / 新亭泪 的 EasyBot 模板，删除「其后的分页、背景、头像渲染等为本项目的独立改进」表述；互转版官网卡片随 JAR 归档一并删除。0.3AI 线三个 JAR 未动（不在「1.7.0 之前的历史版本」范围）。
 > 本轮（2026-11-04，v1.7.3）：①标题卡全宽化——查在线 / 排行榜（含财富榜）/ 查性能顶部标题区改整块全宽卡（模糊+灰度+圆角），旧版标题文字直画背景上且灰度只作用于右侧小方框；②新增 render.subtitle-card-gray（默认 40，明显低于 80/106）——查信息玩家名称项（旧硬编码白 22 调不动）+ 五张卡片副标题条；③副标题条（服务器/更新时间/状态）新增到在线排行榜/财富榜/查性能/查信息（查在线原有改接副标题灰度），性能监控原服务器名小字移除；④leaderboard.page-size（全局，默认 20，旧硬编 15）两命令接入；⑤今日在线跨天误报修复（rolledForToday 展示层归零，存档不动）；⑥同日官网：互转版卡片重新上线（简版）+ JAR 从归档放回 downloads/。门禁 92 项 + 冒烟 27 项全绿。
-> 自包含版本（发给本地无任何东西的 AI）见官网 `https://kerong.xin/penguin/AI-KNOWLEDGE.txt`。
+> 本轮覆盖版（2026-11-05，用户 7 项视觉/功能修复 + 复核）：①标题卡文字内边距（三列表卡眉题/主标题距卡缘 4/8px → 28/24px，对齐查信息欢迎面板）；②右上角小方框永远比标题框灰度深一点（headerBadgeCardGray = titleGray+36，旧同灰度叠加融合看不出）；③性能卡副标题条与标题框/指标容器等距（SUBTITLE_GAP 18→32，旧版与容器只隔 4px）；④查性能右上角「更新时间」→「综合状态」（TPS/MSPT/内存/CPU 四项各评三级取最差，不含人数，绿/黄/红）；⑤副标题灰度调深 40→56（仍低于标题 80/项目 106；旧默认自动收敛）；⑥副标题第三格「状态」→「渲染耗时」（render 入口 nanoTime → 全部面板绘制完成后补画 ms → PNG 编码；非从接收指令起算；VLM 实测 29~253ms）；⑦render.custom-render-threads 段（enabled/render-threads/avatar-threads，线程池创建时定格需重启，⚠ 警告注释双端）。字体子集缺「渲」字由 VLM 视觉复核抓出（图上「渲染耗时」显示成「染耗时」三字——历史图片从未上过该字；fonttools 从系统 NotoSansSC 重新子集化 3889→3890 字符）。门禁 68 项 + 冒烟 40 项 + VLM 四卡视觉复核全过。config-version 31→32。
+> 自包含版本（发给本地无任何东西的 AI）见官网 `https://kerong.xin/penguin/AI-KNOWLEDGE.txt`；服务器根目录 `/SUZHE014/` 另存一份交接副本（2026-11-05 用户指令）。
 
 ## 0. 一句话概括与版本状态
 
 KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项目：玩家在 QQ 群里查数据/签到/聊天，插件在服务器内渲染统计卡片图片并回发。Kotlin 多模块：`common-Bot`（全部业务核心）+ `server-Spigot`（Bukkit 插件版，支持 Spigot/Paper/Folia/混合端）+ `server-NeoForge`（NeoForge 模组版 **MC 1.20.4+**：1.20.4 / 1.20.6 / 1.21.x 全区间，编译目标 20.4.253 面向最低版本、在更高版本运行；复用 common-Bot 全部源码 + Spigot 的 manager 源码；mods.toml + neoforge.mods.toml 双声明，BindLoginGate 跨版本事件桥，产物名 MC 段 = 1.20.4）。
 
-**版本规则**：插件版与模组版同步发号。当前版本 **1.7.3**（标题卡全宽化 / 副标题灰度与副标题条 / 排行榜分页配置 / 今日在线跨天修复，详见 §9）。config-version **31**（新增 render.subtitle-card-gray 与 leaderboard.page-size 两键，只加新键+默认值）。
+**版本规则**：插件版与模组版同步发号。当前版本 **1.7.3（覆盖版，2026-11-05）**（标题卡全宽化与内边距 / 徽标灰度与综合状态 / 副标题条与渲染耗时 / 自定义渲染线程 / 排行榜分页配置 / 今日在线跨天修复，详见 §9）。config-version **32**（新增 render.custom-render-threads 三键；subtitle-card-gray 旧默认 40→56 一次性收敛）。
 
-**git push 状态**：⚠️ 待写令牌——GitHub 远端 main 停在 `41ffadb`；中继 `/root/gitrelay/KERONGPenguin.git` 的 relay-main 已推进到本轮官网清理提交（覆盖版 `718031c` → 注释找回实测 `323ae07` → 官网清理，见 git log）（bundle 基线 = 远端真实 HEAD `41ffadb`，实测 ls-remote 为准——1.7.2 首轮最终推送的是 41ffadb 含知识库同步提交，非旧记录的 b080241）。会话摘要里的 fine-grained PAT 实测**只读**（push 403 "Permission to SUZHE014/KERONGPenguin.git denied"——与 §8 坑表判定一致）。拿到写权限令牌（经典 ghp_ 或给 PAT 补 Contents:Read and write）后在服务器一条命令完成：`cd /root/gitrelay/KERONGPenguin.git && git push https://x-access-token:<写令牌>@github.com/SUZHE014/KERONGPenguin.git refs/heads/relay-main:refs/heads/main`（令牌写 /root/.ghtoken chmod 600 用完即删，勿留 shell 历史；若本地又有新提交需重新 bundle+fetch 刷新 relay-main）。
+**git push 状态**：⚠️ 待推——GitHub 远端 main 停在 `41ffadb`（1.7.2 知识库同步）；1.7.3 初版已发官网但源码未 push（上次会话沙盒回收丢失，2026-11-05 从官网源码包 `https://kerong.xin/penguin-source/KERONGPenguin_v1.7.3_source.zip` 恢复并 commit 6c10da7 基线，再叠加覆盖版修改）。用户已提供两个令牌（fine-grained github_pat_ 实测只读；classic ghp_ 待验证——优先试经典令牌直连 push：沙盒内 api.github.com 可达，github.com 直连 clone 曾失败但 push 小包可试；不通则走服务器中继：`git bundle create /tmp/x.bundle 41ffadb..main` → 传服务器 `/root/gitrelay/KERONGPenguin.git` fetch bundle 到 relay-main → 服务器上 `git push https://x-access-token:<写令牌>@github.com/SUZHE014/KERONGPenguin.git refs/heads/relay-main:refs/heads/main`，令牌写 /root/.ghtoken chmod 600 用完即删；以 `git ls-remote` 实测远端真实 HEAD 选 bundle 基线）。
 
 ## 1. 环境与位置（必读）
 
@@ -155,12 +156,12 @@ python3 scripts/verify_jar_<版>.py
 ### 6.1 日志体系
 业务代码 → `PluginFileLog.infoAndKeep/warnAndKeep/errorAndKeep` → 平台适配器 → 控制台 + `logs/qq/qq-bind-日期.log` 双写；`PluginFileLog.write` 仅文件。控制台行不要再拼时间戳。SDK 日志经 LogSink 接管（重连噪声仅文件）。
 
-### 6.2 配置系统（config-version 31）
-`ConfigManager.kt`（共享源码）：DEFAULT_VALUES 全量默认 + `ConfigUpgrader.fillMissing` 补缺失键（新键升级自动写入）+ REMOVED_CONFIG_KEYS 清废弃键。**1.7.0 定下的原则：升级只加新键+默认值，不做任何旧值迁移**（唯一现行例外：1.7.2 覆盖版标题框 96→80 收敛，因接线改版且旧值是默认写入而非用户意图）。语法错误三级自愈（ConfigBrokenRecovery，其 .error 应急备份保留）。绝大多数配置 reload 即时生效；仅 bot.app-id/bot.secret 与 update-check 需重启。
+### 6.2 配置系统（config-version 32）
+`ConfigManager.kt`（共享源码）：DEFAULT_VALUES 全量默认 + `ConfigUpgrader.fillMissing` 补缺失键（新键升级自动写入）+ REMOVED_CONFIG_KEYS 清废弃键。**1.7.0 定下的原则：升级只加新键+默认值，不做任何旧值迁移**（例外仅两处「旧默认收敛」：标题框 96→80、副标题 40→56——旧默认是插件写入而非用户意图，等于旧默认才自动换新默认，自改值不动）。语法错误三级自愈（ConfigBrokenRecovery）。绝大多数配置 reload 即时生效；仅 bot.app-id/bot.secret、update-check 与 render.custom-render-threads（线程池首次渲染时创建后定格）需重启。
 **注释保留保存（1.7.2 覆盖版，NeoForge 端）**：兼容层 `JavaPlugin.saveConfig()` 不再整树 dump（会剥光注释，bpngsz 后 231→0 行实测），改走 `ConfigCommentSaver` 差分合并——磁盘文本为底，快照树 vs 内存树逐叶子比对（宽松等值：数字按 double），差异键交 `YamlTextMerge.merge(text, overrides, removals)`（新增删除能力：键行+块体+紧贴注释一并删）文本级合并，整树校验通过才原子落盘，否则退回 dump（注释丢但数据不丢）；从未装载（configLoaded=false）或装载失败时跳过写盘防覆盖。Spigot 端不改动——Paper/Spigot 1.18.1+ 平台 YamlConfiguration 自带注释往返（Bukkit 1.18.1 引入注释 API；仅 1.18.0 边缘版本会丢，接受）。
 
-### 6.3 渲染管线与头像获取（1.7.3 口径）
-- 渲染：CardRenderPool（核数一半 1~4 线程）→ 结果缓存 → 背景内置+img 随机 LRU（36MB 字节预算）；模糊度 render.blur-strength（0-100 默认 50，backdrop-filter 只模糊卡片背后）；三档灰度（1.7.3 起全部实时读取 0-255）：render.title-card-gray（默认 80 = 全部五张卡片顶部标题区——1.7.3 起整块全宽卡：模糊+灰度+圆角）/ render.item-card-gray（默认 106 = 列表容器：查信息统计面板 + 查在线/排行榜/查性能容器）/ render.subtitle-card-gray（默认 40 = 副标题类：查信息玩家名称项 + 五张卡片副标题条（服务器/更新时间/状态三小卡），明显低于前两档）；副标题条（1.7.3）新增于在线排行榜/财富榜/查性能/查信息头部下方（查在线原有状态栏改接副标题灰度），性能监控原服务器名小字移除；排行榜单页行数 leaderboard.page-size（全局默认 20，1-100，两命令实时读取）。像素级验证（白底关模糊）：title 255/0 → 标题区 17/253；subtitle 255/0 → 玩家名称项 5/254 与副标题条 24/254；item 0/255 → 统计面板 254/13；首页高度 +102（副标题条 84+18）。
+### 6.3 渲染管线与头像获取（1.7.3 覆盖版口径）
+- 渲染：CardRenderPool（**默认核数一半 1~4 线程；1.7.3 覆盖版可配** render.custom-render-threads 段：enabled 开关（默认 false=自动）+ render-threads 1-16 + avatar-threads 1-16，线程池首次渲染时创建后定格、改后需重启——⚠ 调大渲染线程会争抢 CPU 可能影响 tick）→ 结果缓存 → 背景内置+img 随机 LRU（36MB 字节预算）；模糊度 render.blur-strength（0-100 默认 50，backdrop-filter 只模糊卡片背后）；三档灰度（实时读取 0-255）：render.title-card-gray（默认 80 = 全部五张卡片顶部标题区——整块全宽卡：模糊+灰度+圆角）/ render.item-card-gray（默认 106 = 列表容器：查信息统计面板 + 查在线/排行榜/查性能容器）/ render.subtitle-card-gray（**覆盖版默认 56** = 副标题类：查信息玩家名称项 + 五张卡片副标题条（服务器/更新时间/渲染耗时三小卡），低于标题 80；初版 40 太浅已收敛）；**右上角小方框（徽标卡）灰度 = 标题框 +36**（RenderSettings.headerBadgeCardGray 派生键，随 title-card-gray 联动，无独立配置——旧版同灰度叠加融合看不出边界）；标题卡内文字 padding 统一距卡左缘 24~28px（眉题 28 / 主标题 24，对齐查信息欢迎面板）；性能卡 SUBTITLE_GAP 32 = 标题↔副标题视觉 18px = 副标题↔容器视觉 18px（等距；容器上垫 14 补偿），查信息四卡间距统一 20px（统计面板 436→432）；**查性能右上角小方框 = 「综合状态」**（buildOverallStatus：TPS/MSPT/内存/CPU 四项各评三级取最差，不含人数；运行良好(绿)/轻度负载(黄)/负载过高(红)/暂不可读(灰)）；**五卡副标题条第三格 = 「渲染耗时」**（render() 入口 nanoTime → 全部面板绘制完成后 drawRenderElapsed 补画毫秒数 → PNG 编码；不含取数/排队/冷却——用户口径非从接收指令起算；PNG 编码与上传无法预先包含在图内，属物理限制）；副标题条新增于在线排行榜/财富榜/查性能/查信息头部下方（查在线原有状态栏改接副标题灰度），性能监控原服务器名小字移除；排行榜单页行数 leaderboard.page-size（全局默认 20，1-100，两命令实时读取）。像素级验证（白底关模糊）：title 255/0 → 标题区 17/253；subtitle 255/0 → 玩家名称项 5/254 与副标题条 24/254；item 0/255 → 统计面板 254/13；徽标区比标题卡深 108<179；副标题 203>标题 179；首页高度 +102（副标题条 84+18）+性能卡等距补偿 +14。
 - 头像链路：内存缓存（10 分钟，128 条，只存 ≤10KB PNG）→ 磁盘缓存（默认 3 小时，render.avatar-cache-hours）→ **外部多线路**（MC-Heads → Minotar(helm) → MinePic(skin+裁脸) → Crafatar(overlay)）→ Mojang 官方兜底（429/超时 5 分钟全局冷却）。**1.7.2 超时修复**：头像 HTTP 走 httpGetAvatar（连接 5s / 读 25s 分离），任一线路超时本轮内立即换下一源，第一轮全败且超时型时对快线路补试一轮；超时型失败不写 60 秒冷却（下次查询立即重试），只有确定性失败（404）才写冷却。单飞 inFlightFetches 并发去重（等待 8s）。基岩玩家走 MC-Heads xuid 线路。**批量获取并发重做**：在线列表 / 排行榜 / 财富榜 / 查信息统一走 InfoCardAssets.fetchAvatarBatch（**8 线程共享池** PenguinAvatarFetch + **12 秒渲染等待预算**；超预算的玩家本轮占位块先回复、任务不取消——后台下载完成后进缓存下一轮即有真实头像；40 秒迟到硬上限由 PenguinAvatarReaper 兜底取消防慢源链路占满线程池；旧版各服务自建 4 线程池 + invokeAll(8s) 到点中断在途下载已全部移除；查信息单头像旧版在渲染线程无上限阻塞、QQ 可等一分多钟，也改走同入口有界等待）。
 - 失败分类日志（logs/qq 文件）：「获取失败（本次链路遇网络抖动，未写失败冷却…）」= 超时/网络型，正常降级；「获取失败（本地与外置链路均未命中，60 秒内不重试）」= 确定性失败。
 
@@ -261,6 +262,7 @@ Paper 1.21+ 内置 spark 不注册插件表（bundledSparkClassLoader 探测）�
 | Python set 的 in 是成员判定 | `"子串" in set` 是精确匹配 | 常量池断言用 any(sub in c for c in consts) |
 | 快速守卫与新语法脱节 | 入口 contains 守卫挡住新形态 | 守卫放宽到公共前缀 + 冒烟覆盖每种形态 |
 | 双端资源副本 | NF resources 有自己的 Markdown/ 全量副本 | 删改模板资源双份都要动 |
+| 内置字体子集缺字 | 图片新文案用了子集外的字（如「渲」）→ drawString 静默缺字形，图上「渲染耗时」显示成「染耗时」；字节码断言只查常量池字面量查不出 | 新增图片文字必须过 VLM/像素级视觉复核；缺字用 fonttools 从系统完整 NotoSansSC 按旧子集字符集+新字重新子集化（scripts 无常备脚本，当场 python subset.main），双端四 ttf 同步替换 |
 | JVM 已提交≠存活 | 已提交堆是 JVM 预留量 | /hbkrg mem 诊断；不要 System.gc 归还 |
 | 停机 zip closed | 停机阶段提前关插件 jar ZipFile | onEnable 预热 CommandOutputAppender；onDisable 每步独立 try-catch |
 | Kloping 线程池不退出 | 50+ 非守护线程 | SptCompat 清扫 + 5 秒 halt(0) |
@@ -327,6 +329,18 @@ Paper 1.21+ 内置 spark 不注册插件表（bundledSparkClassLoader 探测）�
 | 40 | 互转版官网卡片重新上线（简版） | ✅ | index.html「其他版本」区新增简版卡片 + JAR 从归档放回 downloads/（2026-11-04 用户指令：不要删） |
 | 41 | 今日在线跨天误报修复 | ✅ | PlayerStatsManager.query 三处离线回退路径 rolledForToday（展示层归零，存档不动）；门禁 TD1/TD2 |
 | 42 | 版本 1.7.3 + 构建 + 部署 | ✅ | 六处版本号 + config-version 31；门禁 verify_jar_173 **92 项**全过 + 冒烟 smoke173 **27 项**全绿（ST/PX/LB/PF 四组） |
+| 43 | 标题卡文字内边距（参考查信息最上框距离） | ✅（覆盖版） | 三列表卡眉题 x=MARGIN+8→+32、主标题 +4→+28（距卡左缘 28/24px）；门禁 padding 常量 72.0f/68.0f 断言 |
+| 44 | 右上角小方框永远比标题框灰度深一点 | ✅（覆盖版） | RenderSettings.headerBadgeCardGray() = titleCardGray()+36 clamp 255；三渲染器徽标卡接入；冒烟 RC1/RC2（116/255）+ RC7 像素（徽标区比标题卡深 108<179） |
+| 45 | 性能卡副标题与标题框/项目框等距 | ✅（覆盖版） | SUBTITLE_GAP 18→32（= HEADER_GAP 18 + 容器上垫 14，视觉两侧均 18px）；查信息统计面板 436→432（四卡统一 20px）；冒烟 RC11/RC12 |
+| 46 | 查性能右上角小方框改「综合状态」（不含人数） | ✅（覆盖版） | buildOverallStatus：TPS/MSPT/内存/CPU 各评三级取最差；运行良好/轻度负载/负载过高/暂不可读；语义色；冒烟 RC10 绿色像素 |
+| 47 | 副标题灰度再调深（不比标题/项目框高） | ✅（覆盖版） | DEFAULT_SUBTITLE_CARD_GRAY 40→56；ConfigManager+Rebuilder 双路收敛；冒烟 RC8 像素（副标题 203 > 标题 179） |
+| 48 | 副标题「状态」框改「渲染耗时」 | ✅（覆盖版） | 四渲染器 render() nanoTime 起点 → drawRenderElapsed 补画（全部面板绘制完成后、PNG 编码前）；非从接收指令起算；冒烟 RC9/RC13 |
+| 49 | 图片渲染线程可配置 + 开关 + 注释警告 | ✅（覆盖版） | render.custom-render-threads{enabled:false,render-threads:2,avatar-threads:8}；CardRenderPool.THREADS / avatarBatchPool 创建时定格；⚠ 警告双端 config.yml；冒烟 RC3-RC5 |
+| 50 | 字体子集补「渲」字 | ✅（覆盖版） | VLM 视觉复核抓出「渲染耗时」显示成「染耗时」；fonttools 从系统 NotoSansSC 重新子集化 3889→3890 字符，双端四 ttf 替换；复测四字完整 |
+| 51 | 构建双端覆盖 1.7.3 | ✅（覆盖版） | 门禁 verify_173_overwrite **68 项**全过 + 冒烟 smoke173 **40 项**全绿（新增 RC 组 13 项）+ VLM 四卡视觉复核（六要点逐卡全过） |
+| 52 | 官网覆盖部署 + git push + 交接文档移 /SUZHE014 | ⚠️ 待 SSH | 官网四件套（version.json/index/tutorial/AI-KNOWLEDGE.txt）本地已备；SSH 凭据随沙盒回收丢失待用户提供 |
+
+**1.7.3 覆盖版配置变更汇总**：config-version 31 → 32（新增 `render.custom-render-threads.enabled: false`、`render.custom-render-threads.render-threads: 2`、`render.custom-render-threads.avatar-threads: 8` 三键；`render.subtitle-card-gray` 旧默认 40 → 56 一次性收敛，自改值不动；同版本号 1.7.3 覆盖发布，六处版本号不变）。
 
 **1.7.3 配置变更汇总**：config-version 30 → 31（新增 `render.subtitle-card-gray: 40`、`leaderboard.page-size: 20`，只加新键+默认值，不做旧值迁移）。
 

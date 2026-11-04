@@ -130,22 +130,27 @@ object InfoCardRenderer {
     )
 
     /**
-     * 卡片高度（1.5.3：随统计项数自适应；1.7.3：插入副标题条后整体 +100）：
-     * - 顶部欢迎区 + 身份条 + 副标题条共 436px，底部留白 24px；
+     * 卡片高度（1.5.3：随统计项数自适应；1.7.3：插入副标题条后整体 +100；
+     * 1.7.3 覆盖版：统计面板上移 4px（等距微调），高度同步 -4）：
+     * - 顶部欢迎区 + 身份条 + 副标题条共 428px，底部留白 24px；
      * - 统计面板 = 面板头 84 + 网格行数 × 96 + 底垫 26；
      * - 网格列数与绘制逻辑一致（≥ 6 项 3 列，否则 2 列避免孤项）；
-     * - 满项（3 行）= 860，少一行减 96px。
+     * - 满项（3 行）= 856，少一行减 96px。
      */
     internal fun cardHeight(itemCount: Int): Int {
         val columns = if (itemCount >= 6) 3 else 2
         val rows = (itemCount + columns - 1) / columns
-        return 572 + 96 * rows
+        return 568 + 96 * rows
     }
 
     /**
      * 渲染卡片并返回 PNG 字节。
      */
     fun render(data: CardData): ByteArray {
+        // 1.7.3 覆盖版：渲染耗时计时起点（副标题条第三格展示从开始渲染到
+        // 全部面板绘制完成的毫秒数——从开始渲染图片起算，不含接收指令后的
+        // 取数 / 头像获取 / 排队环节；全部绘制完成后补画，再编码 PNG）
+        val renderStart = System.nanoTime()
         val height = cardHeight(data.items.size)
         val image = BufferedImage(WIDTH, height, BufferedImage.TYPE_INT_RGB)
         val g = image.createGraphics()
@@ -162,6 +167,10 @@ object InfoCardRenderer {
             drawIdentityBar(g, data.playerName, backdrop)
             drawSubtitle(g, data.serverName, data.updateTime, backdrop)
             drawStatsPanel(g, data.items, height, backdrop)
+
+            // 1.7.3 覆盖版：补画渲染耗时（全部面板已画完；PNG 编码与发送不预先包含）
+            val elapsedMs = (System.nanoTime() - renderStart) / 1_000_000L
+            drawRenderElapsed(g, elapsedMs)
         } finally {
             g.dispose()
         }
@@ -241,8 +250,10 @@ object InfoCardRenderer {
         g.drawString(playerName, 190f, y + 42f)
     }
 
-    /** 副标题条：服务器 / 更新时间 / 状态 三张并排小卡（1.7.3 新增，与查在线
-     * 状态栏同款；底色接副标题灰度 render.subtitle-card-gray）。 */
+    /** 副标题条：服务器 / 更新时间 / 渲染耗时 三张并排小卡（1.7.3 新增，与
+     * 其他卡片状态栏同款；底色接副标题灰度 render.subtitle-card-gray；
+     * 1.7.3 覆盖版：第三格改「渲染耗时」——数值在全部面板绘制完成后由
+     * [drawRenderElapsed] 补画，从开始渲染到绘制完成的毫秒数）。 */
     private fun drawSubtitle(g: Graphics2D, serverName: String, updateTime: String, backdrop: InfoCardAssets.CardBackdropContext?) {
         val y = 328f
         val gap = 14f
@@ -252,12 +263,12 @@ object InfoCardRenderer {
         val cells = listOf(
             "服务器" to serverName,
             "更新时间" to updateTime,
-            "状态" to "正常",
+            "渲染耗时" to null as String?,
         )
         cells.forEachIndexed { index, (label, value) ->
             val x = 24f + index * (cardWidth + gap)
             backdrop?.paintCard(g, x, y, cardWidth, cardHeight, 14f)
-            // 1.7.3：副标题条接副标题灰度（render.subtitle-card-gray，默认 40）
+            // 副标题条接副标题灰度（render.subtitle-card-gray，覆盖版默认 56）
             g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
             g.fill(RoundRectangle2D.Float(x, y, cardWidth, cardHeight, 14f, 14f))
             g.font = font(22f, false)
@@ -265,20 +276,35 @@ object InfoCardRenderer {
             g.drawString(label, x + 24f, y + 34f)
             g.font = font(30f, true)
             g.color = COLOR_VALUE
-            g.drawString(clipToWidth(g, value, (cardWidth - 48).toInt()), x + 24f, y + 68f)
+            value?.let { g.drawString(clipToWidth(g, it, (cardWidth - 48).toInt()), x + 24f, y + 68f) }
         }
+    }
+
+    /**
+     * 补画副标题条「渲染耗时」数值（1.7.3 覆盖版）：全部面板绘制完成后、
+     * PNG 编码前写入——从开始渲染（进入 [render]）到此刻的毫秒数；
+     * 不含取数 / 头像获取 / 排队环节（用户口径：不是从接收指令开始算）。 */
+    private fun drawRenderElapsed(g: Graphics2D, elapsedMs: Long) {
+        val y = 328f
+        val gap = 14f
+        val cardWidth = ((WIDTH - 48) - 2 * gap).toFloat() / 3f
+        val x = 24f + 2 * (cardWidth + gap)
+        g.font = font(30f, true)
+        g.color = COLOR_VALUE
+        g.drawString(clipToWidth(g, "$elapsedMs ms", (cardWidth - 48).toInt()), x + 24f, y + 68f)
     }
 
     /**
      * 生涯统计面板（1.5.2：9 项 → 3 列 × 3 行；4-5 项时 2 列避免孤项；
      * 1.5.3：高度随项数自适应，缺失依赖的项不渲染；
-     * 1.7.3：插入副标题条后下移 100px；
+     * 1.7.3：插入副标题条后下移；1.7.3 覆盖版：436 → 432，与上方三张卡
+     * （欢迎面板 / 身份条 / 副标题条）的 20px 间距全卡等距；
      * 先铺卡片背后的局部模糊背景，再叠半透明底色。 */
     private fun drawStatsPanel(g: Graphics2D, items: List<CardItem>, height: Int, backdrop: InfoCardAssets.CardBackdropContext?) {
         val x = 24f
-        val y = 436f
+        val y = 432f
         val w = (WIDTH - 48).toFloat()
-        val h = (height - 24 - 436).toFloat()
+        val h = (height - 24 - 432).toFloat()
 
         backdrop?.paintCard(g, x, y, w, h, 24f)
         // 1.7.2 覆盖版：统计面板属列表容器，改走项目卡片黑度
@@ -904,8 +930,12 @@ object InfoCardAssets {
 
     // ---------- 头像批量预热（1.7.2：并发加速 + 不截断在途下载） ----------
 
-    /** 头像批量预热线程数（网络 IO 密集，不占渲染 CPU 预算；大名单并行收齐）。 */
+    /** 头像批量预热线程数（网络 IO 密集，不占渲染 CPU 预算；大名单并行收齐；自动模式默认 8）。 */
     private const val AVATAR_BATCH_THREADS = 8
+
+    /** 实际生效的头像批量预热线程数（render.custom-render-threads 开关开启时用 avatar-threads，否则默认 8；池创建时定格）。 */
+    private val AVATAR_THREADS: Int =
+        RenderSettings.customAvatarThreads().takeIf { it > 0 } ?: AVATAR_BATCH_THREADS
 
     /**
      * 批量预热渲染等待预算（毫秒）：预算内尽量收齐头像再渲染发送；超预算的
@@ -917,9 +947,10 @@ object InfoCardAssets {
     /** 批量预热迟到硬上限（毫秒）：预算过后仍在跑的任务到点取消（防慢源链路占满线程池）。 */
     private const val AVATAR_BATCH_HARD_CANCEL_MILLIS = 40_000L
 
-    /** 头像批量预热共享线程池（在线列表 / 排行榜 / 财富榜 / 查信息共用，避免各建一池线程数翻倍）。 */
+    /** 头像批量预热共享线程池（在线列表 / 排行榜 / 财富榜 / 查信息共用，避免各建一池线程数翻倍；
+     * 1.7.3 覆盖版：线程数可经 render.custom-render-threads.avatar-threads 自定义（重启生效））。 */
     private val avatarBatchPool by lazy {
-        Executors.newFixedThreadPool(AVATAR_BATCH_THREADS) { runnable ->
+        Executors.newFixedThreadPool(AVATAR_THREADS) { runnable ->
             Thread(runnable, "PenguinAvatarFetch").apply { isDaemon = true }
         }
     }

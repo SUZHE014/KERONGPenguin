@@ -32,6 +32,51 @@ public final class Test173 {
     private static int pass = 0;
     private static int fail = 0;
 
+    private static double regionVariance(java.awt.image.BufferedImage img, int x, int y, int w, int h) {
+        double sum = 0, sum2 = 0;
+        int n = 0;
+        for (int yy = y; yy < y + h; yy += 2) {
+            for (int xx = x; xx < x + w; xx += 4) {
+                int rgb = img.getRGB(xx, yy);
+                int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+                double lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                sum += lum;
+                sum2 += lum * lum;
+                n++;
+            }
+        }
+        if (n == 0) return -1;
+        double mean = sum / n;
+        return sum2 / n - mean * mean;
+    }
+
+    private static double maxBrightness(java.awt.image.BufferedImage img, int x, int y, int w, int h) {
+        double max = -1;
+        for (int yy = y; yy < y + h; yy++) {
+            for (int xx = x; xx < x + w; xx++) {
+                int rgb = img.getRGB(xx, yy);
+                int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+                double lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                if (lum > max) max = lum;
+            }
+        }
+        return max;
+    }
+
+    private static boolean hasColorNear(java.awt.image.BufferedImage img, int x, int y, int w, int h,
+                                        int[] target, int tol) {
+        for (int yy = y; yy < y + h; yy += 2) {
+            for (int xx = x; xx < x + w; xx += 2) {
+                int rgb = img.getRGB(xx, yy);
+                int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+                if (Math.abs(r - target[0]) <= tol && Math.abs(g - target[1]) <= tol && Math.abs(b - target[2]) <= tol) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private static void check(String name, boolean cond, Object detail) {
         if (cond) {
             pass++;
@@ -85,8 +130,8 @@ public final class Test173 {
 
         System.out.println("== ST 组：副标题灰度与排行榜分页配置 ==");
 
-        check("ST1 默认 subtitle 40 / page-size 20",
-                RenderSettings.INSTANCE.subtitleCardGray() == 40
+        check("ST1 默认 subtitle 56 / page-size 20（1.7.3 覆盖版调深 40 → 56）",
+                RenderSettings.INSTANCE.subtitleCardGray() == 56
                         && RenderSettings.INSTANCE.leaderboardPageSize() == 20,
                 RenderSettings.INSTANCE.subtitleCardGray() + "/" + RenderSettings.INSTANCE.leaderboardPageSize());
 
@@ -122,11 +167,11 @@ public final class Test173 {
             items.add(new InfoCardRenderer.CardItem("项目" + i, String.valueOf(i)));
         }
 
-        check("PX1 cardHeight 公式（9 项 3 行 = 572+96*3 = 860）",
-                cardHeight(9) == 860,
+        check("PX1 cardHeight 公式（9 项 3 行 = 568+96*3 = 856，覆盖版等距微调 -4）",
+                cardHeight(9) == 856,
                 cardHeight(9));
-        check("PX2 cardHeight 公式（2 项 1 行 = 668）",
-                cardHeight(2) == 668,
+        check("PX2 cardHeight 公式（2 项 1 行 = 664）",
+                cardHeight(2) == 664,
                 cardHeight(2));
 
         // 标题卡 255 / 副标题 0 / 项目 0：玩家名称项与副标题条应为亮（白底透出）
@@ -134,10 +179,10 @@ public final class Test173 {
         fake.getConfig().set("render.subtitle-card-gray", 0);
         fake.getConfig().set("render.item-card-gray", 0);
         byte[] pngA = InfoCardRenderer.INSTANCE.render(
-                new InfoCardRenderer.CardData("Smoke", items, null, whiteBg(900, 860),
+                new InfoCardRenderer.CardData("Smoke", items, null, whiteBg(900, 856),
                         "SmokeServer", "12:34"));
         java.awt.image.BufferedImage imgA = decode(pngA);
-        check("PX3 渲染高度 860 + PNG 魔数", imgA != null && imgA.getHeight() == 860,
+        check("PX3 渲染高度 856 + PNG 魔数", imgA != null && imgA.getHeight() == 856,
                 imgA == null ? "null" : imgA.getWidth() + "x" + imgA.getHeight());
         double titleDark = avgBrightness(imgA, 24, 24, 460, 196);      // 顶部标题卡
         double idBright = avgBrightness(imgA, 24, 244, 852, 60);       // 玩家名称项
@@ -152,7 +197,7 @@ public final class Test173 {
         // 副标题 255：玩家名称项与副标题条都应变暗（这是「玩家名称项可调」的直接证据）
         fake.getConfig().set("render.subtitle-card-gray", 255);
         byte[] pngB = InfoCardRenderer.INSTANCE.render(
-                new InfoCardRenderer.CardData("Smoke", items, null, whiteBg(900, 860),
+                new InfoCardRenderer.CardData("Smoke", items, null, whiteBg(900, 856),
                         "SmokeServer", "12:34"));
         java.awt.image.BufferedImage imgB = decode(pngB);
         double idDark = avgBrightness(imgB, 24, 244, 852, 60);
@@ -166,7 +211,7 @@ public final class Test173 {
         fake.getConfig().set("render.title-card-gray", 0);
         fake.getConfig().set("render.subtitle-card-gray", 0);
         byte[] pngC = InfoCardRenderer.INSTANCE.render(
-                new InfoCardRenderer.CardData("Smoke", items, null, whiteBg(900, 860),
+                new InfoCardRenderer.CardData("Smoke", items, null, whiteBg(900, 856),
                         "SmokeServer", "12:34"));
         java.awt.image.BufferedImage imgC = decode(pngC);
         double titleBright = avgBrightness(imgC, 24, 24, 460, 196);
@@ -176,7 +221,7 @@ public final class Test173 {
         // 项目卡 255：统计面板变暗
         fake.getConfig().set("render.item-card-gray", 255);
         byte[] pngD = InfoCardRenderer.INSTANCE.render(
-                new InfoCardRenderer.CardData("Smoke", items, null, whiteBg(900, 860),
+                new InfoCardRenderer.CardData("Smoke", items, null, whiteBg(900, 856),
                         "SmokeServer", "12:34"));
         java.awt.image.BufferedImage imgD = decode(pngD);
         double statsDark = avgBrightness(imgD, 24, 436, 852, 300);
@@ -250,7 +295,8 @@ public final class Test173 {
 
         int pfOld = 40 + 150 + 18 + (3 * 250 + 2 * 18) + 40; // 旧版 1034
         int pfNew = PerformanceRenderer.INSTANCE.measureHeight();
-        check("PF1 高度比旧版多 102（" + pfOld + " → " + pfNew + "）", pfNew - pfOld == 102, null);
+        check("PF1 高度比旧版多 116（" + pfOld + " → " + pfNew + "，1.7.3 覆盖版等距补偿 +14）",
+                pfNew - pfOld == 116, null);
 
         fake.getConfig().set("render.blur-strength", 0);
         fake.getConfig().set("render.title-card-gray", 255);
@@ -286,6 +332,95 @@ public final class Test173 {
         fake.getConfig().set("render.title-card-gray", null);
         fake.getConfig().set("render.subtitle-card-gray", null);
         fake.getConfig().set("render.item-card-gray", null);
+        fake.getConfig().set("render.blur-strength", null);
+
+        System.out.println("== RC 组：1.7.3 覆盖版（徽标灰度 / 渲染耗时 / 综合状态 / 等距 / 自定义线程） ==");
+
+        // 徽标灰度：永远比标题框深 +36（clamp 255）
+        fake.getConfig().set("render.title-card-gray", 80);
+        check("RC1 徽标灰度 = 标题 + 36（80 → 116）",
+                RenderSettings.INSTANCE.headerBadgeCardGray() == 116,
+                RenderSettings.INSTANCE.headerBadgeCardGray());
+        fake.getConfig().set("render.title-card-gray", 250);
+        check("RC2 徽标灰度上限 255（250 + 36 收敛）",
+                RenderSettings.INSTANCE.headerBadgeCardGray() == 255,
+                RenderSettings.INSTANCE.headerBadgeCardGray());
+        fake.getConfig().set("render.title-card-gray", null);
+
+        // 自定义线程：默认关闭 = 自动（0 哨兵）
+        check("RC3 线程开关默认关（customRenderThreads=0 / customAvatarThreads=0）",
+                RenderSettings.INSTANCE.customRenderThreads() == 0
+                        && RenderSettings.INSTANCE.customAvatarThreads() == 0,
+                RenderSettings.INSTANCE.customRenderThreads() + "/" + RenderSettings.INSTANCE.customAvatarThreads());
+        fake.getConfig().set("render.custom-render-threads.enabled", true);
+        fake.getConfig().set("render.custom-render-threads.render-threads", 7);
+        fake.getConfig().set("render.custom-render-threads.avatar-threads", 3);
+        check("RC4 开关开后线程数生效（7 / 3）",
+                RenderSettings.INSTANCE.customRenderThreads() == 7
+                        && RenderSettings.INSTANCE.customAvatarThreads() == 3,
+                RenderSettings.INSTANCE.customRenderThreads() + "/" + RenderSettings.INSTANCE.customAvatarThreads());
+        fake.getConfig().set("render.custom-render-threads.render-threads", 99);
+        fake.getConfig().set("render.custom-render-threads.avatar-threads", 0);
+        check("RC5 线程数越界收敛（99→16 / 0→1）",
+                RenderSettings.INSTANCE.customRenderThreads() == 16
+                        && RenderSettings.INSTANCE.customAvatarThreads() == 1,
+                RenderSettings.INSTANCE.customRenderThreads() + "/" + RenderSettings.INSTANCE.customAvatarThreads());
+        fake.getConfig().set("render.custom-render-threads.enabled", null);
+        fake.getConfig().set("render.custom-render-threads.render-threads", null);
+        fake.getConfig().set("render.custom-render-threads.avatar-threads", null);
+
+        // 性能卡端到端（默认灰度 + 白底 + 不模糊）：徽标区比标题卡深、副标题比标题浅、
+        // 渲染耗时格有文字、综合状态文字（语义色像素）在右上角卡、等距（副标题条底到容器顶 18px）
+        fake.getConfig().set("render.blur-strength", 0);
+        int pfH = PerformanceRenderer.INSTANCE.measureHeight();
+        PerformanceSnapshot snap = new PerformanceSnapshot(19.6, 12.4, 4096L, 8192L, 0.15, 3, 20);
+        byte[] rcPng = PerformanceRenderer.INSTANCE.render(new PerformanceRenderer.PerformanceData(
+                "SmokeServer", "12:34", snap, whiteBg(PerformanceRenderer.WIDTH, pfH), 20, false, null));
+        java.awt.image.BufferedImage rcImg = decode(rcPng);
+        check("RC6 性能卡渲染成功（" + PerformanceRenderer.WIDTH + "x" + pfH + "）", rcImg != null, null);
+        // 标题卡中段（避开文字与小方框）与右上角小方框中段亮度对比
+        double rcTitleMid = avgBrightness(rcImg, 400, 50, 300, 120);
+        double rcBadgeMid = avgBrightness(rcImg, PerformanceRenderer.WIDTH - 40 - 240 + 40, 50, 160, 100);
+        check("RC7 徽标区比标题卡深（" + String.format("%.0f < %.0f", rcBadgeMid, rcTitleMid) + "）",
+                rcBadgeMid < rcTitleMid - 12, null);
+        // 副标题条（56）比标题卡（80）浅
+        double rcSubMid = avgBrightness(rcImg, 200, 214, 300, 60);
+        check("RC8 副标题条比标题卡浅（" + String.format("%.0f > %.0f", rcSubMid, rcTitleMid) + "）",
+                rcSubMid > rcTitleMid + 10, null);
+        // 渲染耗时格（第三格）有数值文字：白字亮度 > 235（纯背景区域 ~200）
+        double elapsedMax = maxBrightness(rcImg, 990, 214, 300, 60);
+        check("RC9 渲染耗时格有文字（最大亮度 " + String.format("%.0f", elapsedMax) + " > 235）",
+                elapsedMax > 235, null);
+        // 综合状态：右上角卡存在语义色（绿 0x3EC96B 附近）像素
+        boolean hasGreen = hasColorNear(rcImg, PerformanceRenderer.WIDTH - 40 - 240 + 20, 48, 200, 90,
+                new int[]{0x3E, 0xC9, 0x6B}, 40);
+        check("RC10 综合状态文字为绿色（运行良好）", hasGreen, null);
+        // 等距：副标题条底（40+150+18+84=292）→ 容器顶（40+150+18+84+32-14=310）= 18px 背景
+        // 与 标题卡底（190+……40+150=190）→ 副标题条顶（40+150+18=208）= 18px 一致：
+        // 采样两条间隙都是纯背景（白），亮度都 > 200
+        double gap1 = avgBrightness(rcImg, 300, 191, 60, 16);
+        double gap2 = avgBrightness(rcImg, 300, 293, 60, 16);
+        check("RC11 等距：两段间隙均为背景亮（" + String.format("%.0f/%.0f", gap1, gap2) + "）",
+                gap1 > 200 && gap2 > 200, null);
+
+        // 查信息等距微调：身份条底 308 → 副标题顶 328（20px）与 副标题底 412 → 统计面板顶 432（20px）
+        List<InfoCardRenderer.CardItem> rcItems = new ArrayList<>();
+        for (int i = 1; i <= 9; i++) {
+            rcItems.add(new InfoCardRenderer.CardItem("项目" + i, String.valueOf(i)));
+        }
+        byte[] rcInfo = InfoCardRenderer.INSTANCE.render(
+                new InfoCardRenderer.CardData("Smoke", rcItems, null, whiteBg(900, 856),
+                        "SmokeServer", "12:34"));
+        java.awt.image.BufferedImage rcInfoImg = decode(rcInfo);
+        double infoGap1 = avgBrightness(rcInfoImg, 100, 309, 60, 16);
+        double infoGap2 = avgBrightness(rcInfoImg, 100, 413, 60, 16);
+        check("RC12 查信息等距（" + String.format("%.0f/%.0f", infoGap1, infoGap2) + " > 200）",
+                infoGap1 > 200 && infoGap2 > 200, null);
+        // 查信息渲染耗时格（第三格 x≈658 起）有文字
+        double infoMax = maxBrightness(rcInfoImg, 700, 328, 190, 84);
+        check("RC13 查信息渲染耗时格有文字（最大亮度 " + String.format("%.0f", infoMax) + " > 235）",
+                infoMax > 235, null);
+
         fake.getConfig().set("render.blur-strength", null);
 
         System.out.println();
