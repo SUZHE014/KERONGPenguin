@@ -53,9 +53,11 @@ object OnlineListRenderer {
     /** 页边距。 */
     private const val MARGIN = 40
 
-    /** 顶部标题区高度（眉题 + 主标题 + 右侧人数卡；1.7.3 覆盖版二轮：150 → 164，
-     * 标题框上边缘与眉题文字的间距加大——旧版眉题视觉顶边距仅约 18px 太贴边）。 */
-    private const val HEADER_HEIGHT = 164
+    /** 顶部标题区高度（眉题 + 主标题 + 右侧人数卡；1.7.3 覆盖版二轮：150 → 164；
+     * 1.7.3 覆盖版三轮：164 → 182，眉题视觉顶边距 27 → 45px——对齐查信息
+     * 欢迎面板（最上框参照标准，实测 45px），用户反馈二轮 27px 仍太贴边；
+     * +18 全部给顶部，底边距 42px 与眉题→主标题间距保持不变）。 */
+    private const val HEADER_HEIGHT = 182
 
     /** 标题区与状态栏间距。 */
     private const val HEADER_GAP = 18
@@ -100,6 +102,11 @@ object OnlineListRenderer {
 
     private val COLOR_EYEBROW = Color(0x8A, 0x9B, 0xAE)
     private val COLOR_LABEL = Color(0x9F, 0xB3, 0xC8)
+
+    /** 副标题条灰色小标签色（1.7.3 覆盖版三轮：0x9FB3C8 → 0x8296AA，
+     * 亮度 175 → 146——用户要求副标题灰色小文字调深一点；只作用于副标题条
+     * 标签，眉题 / 徽标标签 / 行内数值等其他标签色不变）。 */
+    private val COLOR_SUB_LABEL = Color(0x82, 0x96, 0xAA)
     private val COLOR_VALUE = Color.WHITE
     private val COLOR_BADGE = Color(0xA8, 0xBA, 0xCC)
 
@@ -210,7 +217,9 @@ object OnlineListRenderer {
      * 局部模糊 + 标题框黑度 + 圆角边缘，与查信息顶部欢迎区同款；旧版标题
      * 文字直画在背景上，看不出卡片边界，灰度也只作用于右侧小方框；
      * 1.7.3 覆盖版二轮：眉题 / 主标题基线下移 8px（上边缘间距加大），
-     * 右上角小方框与标题框四周留 14px 可见间距——旧版 8/8/0 太贴边）。 */
+     * 右上角小方框与标题框四周留 14px 可见间距——旧版 8/8/0 太贴边；
+     * 1.7.3 覆盖版三轮：眉题 / 主标题基线再下移 18px（顶边距 27 → 45px
+     * 对齐查信息最上框），副标题框零改动——用户口径：间距调的是主标题框）。 */
     private fun drawHeader(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, onlineCount: Int) {
         val top = MARGIN
 
@@ -221,15 +230,17 @@ object OnlineListRenderer {
         g.fill(RoundRectangle2D.Float(MARGIN.toFloat(), top.toFloat(), headerWidth, HEADER_HEIGHT.toFloat(), 24f, 24f))
 
         // 英文眉题（字距拉宽；1.7.3 覆盖版：距卡左缘 28px，与查信息欢迎面板一致；
-        // 1.7.3 覆盖版二轮：基线 38 → 46，上边缘视觉间距约 18 → 26px）
+        // 1.7.3 覆盖版三轮：基线 46 → 64，上边缘视觉间距 27 → 45px，
+        // 对齐查信息欢迎面板眉题顶边距——二轮 27px 用户反馈仍偏贴）
         g.font = InfoCardRenderer.font(26f, true)
         g.color = COLOR_EYEBROW
-        g.drawString("M I N E C R A F T   S E R V E R", (MARGIN + 32).toFloat(), (top + 46).toFloat())
+        g.drawString("M I N E C R A F T   S E R V E R", (MARGIN + 32).toFloat(), (top + 64).toFloat())
 
-        // 主标题（距卡左缘 24px；1.7.3 覆盖版二轮：基线 108 → 118）
+        // 主标题（距卡左缘 24px；1.7.3 覆盖版三轮：基线 118 → 136，与眉题
+        // 同步 +18——眉题→主标题间距与底边距 42px 均保持不变）
         g.font = InfoCardRenderer.font(58f, true)
         g.color = COLOR_VALUE
-        g.drawString("服务器在线列表", (MARGIN + 28).toFloat(), (top + 118).toFloat())
+        g.drawString("服务器在线列表", (MARGIN + 28).toFloat(), (top + 136).toFloat())
 
         // 右侧在线人数卡（叠在标题卡上；1.7.3 覆盖版二轮：与标题框四周留
         // 14px 可见间距——旧版上/下 8px、右侧 0px 贴边）
@@ -245,12 +256,14 @@ object OnlineListRenderer {
         g.fill(RoundRectangle2D.Float(cardX.toFloat(), cardY.toFloat(), cardWidth.toFloat(), cardHeight.toFloat(), 20f, 20f))
         g.font = InfoCardRenderer.font(24f, false)
         g.color = COLOR_LABEL
-        g.drawString("在线", (cardX + 28).toFloat(), (cardY + 42).toFloat())
+        // 1.7.3 覆盖版三轮：标题框加高后卡内容整体下移 9px（卡高 136 → 154，
+        // 四周 14px 间距不变），保持标签 / 数值在卡内视觉居中
+        g.drawString("在线", (cardX + 28).toFloat(), (cardY + 51).toFloat())
         g.font = InfoCardRenderer.font(64f, true)
         g.color = COLOR_VALUE
         val countText = onlineCount.toString()
         val countWidth = g.getFontMetrics().stringWidth(countText)
-        g.drawString(countText, (cardX + cardWidth - 28 - countWidth).toFloat(), (cardY + 100).toFloat())
+        g.drawString(countText, (cardX + cardWidth - 28 - countWidth).toFloat(), (cardY + 109).toFloat())
     }
 
     /** 状态栏：服务器 / 更新时间 / 渲染耗时 三张并排小卡（卡片背后铺局部模糊；
@@ -275,7 +288,8 @@ object OnlineListRenderer {
             g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
             g.fill(RoundRectangle2D.Float(x, top, cardWidth, cardHeight, 14f, 14f))
             g.font = InfoCardRenderer.font(22f, false)
-            g.color = COLOR_LABEL
+            // 1.7.3 覆盖版三轮：副标题标签接专用深色（0x8296AA）
+            g.color = COLOR_SUB_LABEL
             g.drawString(label, x + 26f, top + 34f)
             g.font = InfoCardRenderer.font(30f, true)
             g.color = COLOR_VALUE

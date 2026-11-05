@@ -17,9 +17,10 @@ import cn.kerong.penguin.spigot.render.RenderSettings;
  * 覆盖：
  *  ST 组 副标题灰度与排行榜分页配置（默认值 / 覆盖 / 越界收敛）
  *  PX 组 查信息像素（标题卡 / 玩家名称项 / 副标题条 / 统计面板分别随三键变化 + 高度公式）
- *  LB 组 排行榜（副标题条高度 +116（覆盖版二轮头部 +14）/ 全宽标题卡灰度 / 副标题条灰度 / PNG 端到端）
- *  PF 组 查性能（副标题条高度 +130 / 全宽标题卡灰度 / 副标题条灰度 / PNG 端到端）
+ *  LB 组 排行榜（副标题条高度 +134（二轮头部 +14 + 三轮头部 +18）/ 全宽标题卡灰度 / 副标题条灰度 / PNG 端到端）
+ *  PF 组 查性能（副标题条高度 +148 / 全宽标题卡灰度 / 副标题条灰度 / PNG 端到端）
  *  R2 组 覆盖版二轮（标题框上边距留白 / 徽标四周间距 / 排行榜展示玩家 + 渲染确定性）
+ *  R3 组 覆盖版三轮（主标题框顶边距 27 → 45px 对齐查信息最上框，副标题框零改动）
  *
  * 用法（在仓库根目录）：
  *   export J=/home/z/my-project/tooling/jdk21/bin
@@ -238,8 +239,8 @@ public final class Test173 {
 
         int oldFirst = 40 + 150 + 18 + 56 + 14 + (15 * 84 + 14 * 12) + 40; // 旧版（无副标题，头 150）
         int newFirst = LeaderboardRenderer.INSTANCE.measurePageHeight(15, true);
-        check("LB1 首页高度比旧版多 116（副标题条 84+18 + 二轮头部 +14；" + oldFirst + " → " + newFirst + "）",
-                newFirst - oldFirst == 116, null);
+        check("LB1 首页高度比旧版多 134（副标题条 84+18 + 二轮头部 +14 + 三轮头部 +18；" + oldFirst + " → " + newFirst + "）",
+                newFirst - oldFirst == 134, null);
         int contOld = 24 + (10 * 84 + 9 * 12) + 40;
         int contNew = LeaderboardRenderer.INSTANCE.measurePageHeight(10, false);
         check("LB2 续页高度不变（" + contNew + " = " + contOld + "）", contNew == contOld, null);
@@ -264,8 +265,8 @@ public final class Test173 {
                 lbImg != null && lbImg.getHeight() == lbHeight && lbImg.getWidth() == LeaderboardRenderer.WIDTH, null);
         // 全宽标题卡：标题区左侧（原来无卡的区域）应随 titleCardGray 255 变暗
         double lbTitleDark = avgBrightness(lbImg, 60, 50, 500, 130);
-        // 副标题条：y = 40+164+18 = 222 起 84 高（二轮头部 +14 后）
-        double lbSubBright = avgBrightness(lbImg, 60, 226, 500, 76);
+        // 副标题条：y = 40+182+18 = 240 起 84 高（三轮头部 182 后）
+        double lbSubBright = avgBrightness(lbImg, 60, 244, 500, 76);
         check("LB4 全宽标题卡（左侧标题文字区随 255 变暗，" + String.format("%.0f", lbTitleDark) + "）",
                 lbTitleDark < 100, null);
         check("LB5 副标题条随 subtitle 0 亮（" + String.format("%.0f", lbSubBright) + "）",
@@ -281,7 +282,7 @@ public final class Test173 {
                 true);
         java.awt.image.BufferedImage lbImg2 = decode(lbPng2);
         double lbTitleBright = avgBrightness(lbImg2, 60, 50, 500, 130);
-        double lbSubDark = avgBrightness(lbImg2, 60, 226, 500, 76);
+        double lbSubDark = avgBrightness(lbImg2, 60, 244, 500, 76);
         check("LB6 标题卡随 0 变亮（" + String.format("%.0f", lbTitleBright) + "）",
                 lbTitleBright > 150, null);
         check("LB7 副标题条随 255 变暗（" + String.format("%.0f", lbSubDark) + "）",
@@ -296,8 +297,8 @@ public final class Test173 {
 
         int pfOld = 40 + 150 + 18 + (3 * 250 + 2 * 18) + 40; // 旧版 1034（头 150）
         int pfNew = PerformanceRenderer.INSTANCE.measureHeight();
-        check("PF1 高度比旧版多 130（" + pfOld + " → " + pfNew + "，副标题条 84+32 + 二轮头部 +14）",
-                pfNew - pfOld == 130, null);
+        check("PF1 高度比旧版多 148（" + pfOld + " → " + pfNew + "，副标题条 84+32 + 二轮头部 +14 + 三轮头部 +18）",
+                pfNew - pfOld == 148, null);
 
         fake.getConfig().set("render.blur-strength", 0);
         fake.getConfig().set("render.title-card-gray", 255);
@@ -311,7 +312,7 @@ public final class Test173 {
         check("PF2 端到端 PNG 高度 = " + pfNew,
                 pfImg != null && pfImg.getHeight() == pfNew, null);
         double pfTitleDark = avgBrightness(pfImg, 60, 50, 500, 130);
-        double pfSubBright = avgBrightness(pfImg, 60, 226, 500, 76);
+        double pfSubBright = avgBrightness(pfImg, 60, 244, 500, 76);
         check("PF3 全宽标题卡随 255 变暗（" + String.format("%.0f", pfTitleDark) + "）",
                 pfTitleDark < 100, null);
         check("PF4 副标题条随 0 亮（" + String.format("%.0f", pfSubBright) + "）",
@@ -324,7 +325,7 @@ public final class Test173 {
                 20, false, null));
         java.awt.image.BufferedImage pfImg2 = decode(pfPng2);
         double pfTitleBright = avgBrightness(pfImg2, 60, 50, 500, 130);
-        double pfSubDark = avgBrightness(pfImg2, 60, 226, 500, 76);
+        double pfSubDark = avgBrightness(pfImg2, 60, 244, 500, 76);
         check("PF5 标题卡随 0 变亮（" + String.format("%.0f", pfTitleBright) + "）",
                 pfTitleBright > 150, null);
         check("PF6 副标题条随 255 变暗（" + String.format("%.0f", pfSubDark) + "）",
@@ -384,23 +385,24 @@ public final class Test173 {
         double rcBadgeMid = avgBrightness(rcImg, 1090, 62, 150, 100);
         check("RC7 徽标区比标题卡深（" + String.format("%.0f < %.0f", rcBadgeMid, rcTitleMid) + "）",
                 rcBadgeMid < rcTitleMid - 12, null);
-        // 副标题条（56）比标题卡（80）浅
-        double rcSubMid = avgBrightness(rcImg, 200, 226, 300, 60);
+        // 副标题条（56）比标题卡（80）浅（三轮副标题条顶 y240）
+        double rcSubMid = avgBrightness(rcImg, 200, 244, 300, 60);
         check("RC8 副标题条比标题卡浅（" + String.format("%.0f > %.0f", rcSubMid, rcTitleMid) + "）",
                 rcSubMid > rcTitleMid + 10, null);
         // 渲染耗时格（第三格）有数值文字：白字亮度 > 235（纯背景区域 ~200）
-        double elapsedMax = maxBrightness(rcImg, 920, 258, 300, 50);
+        // （三轮：副标题条顶 240，数值基线 240+68=308）
+        double elapsedMax = maxBrightness(rcImg, 920, 270, 300, 50);
         check("RC9 渲染耗时格有文字（最大亮度 " + String.format("%.0f", elapsedMax) + " > 235）",
                 elapsedMax > 235, null);
         // 综合状态：右上角卡存在语义色（绿 0x3EC96B 附近）像素
         boolean hasGreen = hasColorNear(rcImg, 1080, 120, 200, 60,
                 new int[]{0x3E, 0xC9, 0x6B}, 40);
         check("RC10 综合状态文字为绿色（运行良好）", hasGreen, null);
-        // 等距：副标题条底（40+164+18+84=306）→ 容器顶（40+164+18+84+32-14=324）= 18px 背景
-        // 与 标题卡底（40+164=204）→ 副标题条顶（40+164+18=222）= 18px 一致：
+        // 等距：副标题条底（40+182+18+84=324）→ 容器顶（40+182+18+84+32-14=342）= 18px 背景
+        // 与 标题卡底（40+182=222）→ 副标题条顶（40+182+18=240）= 18px 一致：
         // 采样两条间隙都是纯背景（白），亮度都 > 200
-        double gap1 = avgBrightness(rcImg, 300, 206, 60, 14);
-        double gap2 = avgBrightness(rcImg, 300, 308, 60, 14);
+        double gap1 = avgBrightness(rcImg, 300, 224, 60, 14);
+        double gap2 = avgBrightness(rcImg, 300, 326, 60, 14);
         check("RC11 等距：两段间隙均为背景亮（" + String.format("%.0f/%.0f", gap1, gap2) + "）",
                 gap1 > 200 && gap2 > 200, null);
 
@@ -424,16 +426,20 @@ public final class Test173 {
 
         System.out.println("== R2 组：覆盖版二轮（上边距 / 徽标四周间距 / 展示玩家） ==");
 
-        // R2a 标题框上边缘间距：眉题基线 46（旧 38）后文字顶 ≈ 67px——顶部 41..63px 条带
-        // 应为纯标题卡底色（255 黑卡时最大亮度 ≈ 0；旧版眉题顶 ≈ 59px 会落入条带）
+        // R2a 标题框上边缘间距：三轮眉题基线 64 后文字顶 ≈ 85px——顶部 41..80px 条带
+        // （40px）应为纯标题卡底色（255 黑卡时最大亮度 ≈ 0；二轮文字顶 ≈ 67px 会落入条带）
         fake.getConfig().set("render.title-card-gray", 255);
         int pfH2 = PerformanceRenderer.INSTANCE.measureHeight();
         byte[] r2aPng = PerformanceRenderer.INSTANCE.render(new PerformanceRenderer.PerformanceData(
                 "SmokeServer", "12:34", snap, whiteBg(PerformanceRenderer.WIDTH, pfH2), 20, false, null));
         java.awt.image.BufferedImage r2aImg = decode(r2aPng);
-        double topStripMax = maxBrightness(r2aImg, 100, 41, 400, 22);
-        check("R2a 标题框顶部 22px 无文字（最大亮度 " + String.format("%.0f", topStripMax) + " < 10）",
+        double topStripMax = maxBrightness(r2aImg, 100, 41, 400, 40);
+        check("R2a 标题框顶部 40px 无文字（最大亮度 " + String.format("%.0f", topStripMax) + " < 10）",
                 topStripMax < 10, null);
+        // 眉题确实还在：y83..106 条带内有眉题文字（白底黑卡下亮度高）
+        double eyebrowMax = maxBrightness(r2aImg, 100, 83, 400, 24);
+        check("R2a2 眉题文字在 45px 顶边距位置（y83..106 有文字，最大亮度 " + String.format("%.0f", eyebrowMax) + " > 50）",
+                eyebrowMax > 50, null);
 
         // R2b/c 徽标卡四周间距：title 80（底 ≈ 175）时徽标 116（底 ≈ 139）
         // 右侧间距条带（x 1298..1308，徽标右缘 1296 与标题卡右缘 1310 之间）：
@@ -449,9 +455,9 @@ public final class Test173 {
         double topRow = avgBrightness(r2bImg, 1100, 50, 150, 2);
         check("R2c 徽标上方留白为标题卡底色（" + String.format("%.0f", topRow) + " > 160）",
                 topRow > 160, null);
-        // 下方间距：行 y=196（新徽标底 190 与标题卡底 204 之间 = 标题卡底 175；
-        // 旧标题卡底 190，该行已是卡外背景白 255）
-        double bottomRow = avgBrightness(r2bImg, 1100, 196, 150, 2);
+        // 下方间距：行 y=210（三轮徽标底 208 与标题卡底 222 之间 = 标题卡底 175；
+        // 二轮时该行 y196 已在徽标卡内——三轮徽标卡随框加高至 154）
+        double bottomRow = avgBrightness(r2bImg, 1100, 210, 150, 2);
         check("R2c2 徽标下方留白为标题卡底色（" + String.format("%.0f", bottomRow) + " < 200）",
                 bottomRow < 200, null);
 
@@ -471,11 +477,95 @@ public final class Test173 {
         check("R2d 排行榜两次渲染字节一致（无计时文字，展示玩家 5TOP 固定）",
                 java.util.Arrays.equals(r2d1, r2d2), null);
         java.awt.image.BufferedImage r2dImg = decode(r2d1);
-        double topMax = maxBrightness(r2dImg, 820, 258, 300, 46);
+        double topMax = maxBrightness(r2dImg, 820, 270, 300, 50);
         check("R2e 展示玩家格有数值文字（最大亮度 " + String.format("%.0f", topMax) + " > 235）",
                 topMax > 235, null);
 
         fake.getConfig().set("render.title-card-gray", null);
+        fake.getConfig().set("render.blur-strength", null);
+
+        System.out.println("== R3 组：覆盖版三轮（主标题框顶边距 45px，副标题框零改动） ==");
+
+        // R3a 三列表卡眉题视觉顶边距 = 45px（对齐查信息欢迎面板实测 45px）：
+        // 白底 + title 255 黑卡 + blur 0 渲染查性能，眉题首行亮像素应在 y85（=40+45）
+        fake.getConfig().set("render.title-card-gray", 255);
+        fake.getConfig().set("render.blur-strength", 0);
+        byte[] r3aPng = PerformanceRenderer.INSTANCE.render(new PerformanceRenderer.PerformanceData(
+                "SmokeServer", "12:34", snap, whiteBg(PerformanceRenderer.WIDTH, pfH2), 20, false, null));
+        java.awt.image.BufferedImage r3aImg = decode(r3aPng);
+        int eyebrowTop = -1;
+        outer:
+        for (int y = 41; y < 130; y++) {
+            for (int x = 60; x < 560; x += 2) {
+                int rgb = r3aImg.getRGB(x, y);
+                int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+                if (0.299 * r + 0.587 * g + 0.114 * b >= 110) { eyebrowTop = y; break outer; }
+            }
+        }
+        check("R3a 眉题视觉顶边距 = 45px（首行亮像素 y" + eyebrowTop + " - 框顶 40 = " + (eyebrowTop - 40) + "）",
+                eyebrowTop - 40 == 45, null);
+
+        // R3b 主标题底边距保持 ≥40px（三轮基线 136，框底 222）：
+        int titleBottom = -1;
+        for (int y = 221; y > 120; y--) {
+            for (int x = 60; x < 700; x += 2) {
+                int rgb = r3aImg.getRGB(x, y);
+                int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+                if (0.299 * r + 0.587 * g + 0.114 * b >= 150) { titleBottom = y; y = 0; break; }
+            }
+        }
+        check("R3b 主标题底边距 ≥ 40px（视觉底 y" + titleBottom + " → 框底 222 = " + (222 - titleBottom) + "）",
+                222 - titleBottom >= 40, null);
+
+        // R3c 副标题框零改动：SUBTITLE_HEIGHT 仍 84、与标题框间距仍 18px——
+        // 副标题条顶 = 40+182+18 = 240（黑卡 255 白底下边缘清晰）：
+        // y223..239 间隙带应纯白（若副标题条上移到标题框底 222 会现黑像素）、
+        // y244..320 条内应有黑卡（min < 50）且三格白字（亮像素 > 100 个）
+        fake.getConfig().set("render.title-card-gray", 0);
+        fake.getConfig().set("render.subtitle-card-gray", 255);
+        byte[] r3cPng = PerformanceRenderer.INSTANCE.render(new PerformanceRenderer.PerformanceData(
+                "SmokeServer", "12:34", snap, whiteBg(PerformanceRenderer.WIDTH, pfH2), 20, false, null));
+        java.awt.image.BufferedImage r3cImg = decode(r3cPng);
+        int gapMin = 255, subMin = 255, subTextPix = 0;
+        for (int y = 223; y <= 320; y++) {
+            boolean inGap = y <= 239;
+            for (int x = 60; x < 1290; x += 2) {
+                int rgb = r3cImg.getRGB(x, y);
+                int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+                double lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                if (inGap) { if (lum < gapMin) gapMin = (int) lum; }
+                else {
+                    if (lum < subMin) subMin = (int) lum;
+                    if (lum > 200) subTextPix++;
+                }
+            }
+        }
+        check("R3c 副标题框几何不变（间隙带 min " + gapMin + " > 240，条内黑卡 min " + subMin + " < 50，白字 " + subTextPix + " > 100）",
+                gapMin > 240 && subMin < 50 && subTextPix > 100, null);
+
+        // R3d 副标题灰色小标签调深：0x9FB3C8（亮度 175）→ 0x8296AA（亮度 146）。
+        // 判定取标签区最暗像素 = 标签字色核心（22px 字有充足整色像素）：
+        // 新色 ≈ 146 < 160；旧色 ≈ 175 > 160。不用旧色像素计数——Java2D 抗锯齿
+        // 经 gamma 校正的非线性混叠色（实测 #A5B3C2）会假命中旧色附近。
+        // 标签区取第一格 x66..180 / y258..290（值文本在 y300+，不干扰）
+        fake.getConfig().set("render.subtitle-card-gray", 0);
+        byte[] r3dPng = PerformanceRenderer.INSTANCE.render(new PerformanceRenderer.PerformanceData(
+                "SmokeServer", "12:34", snap, whiteBg(PerformanceRenderer.WIDTH, pfH2), 20, false, null));
+        java.awt.image.BufferedImage r3dImg = decode(r3dPng);
+        int labelMin = 255;
+        for (int y = 258; y <= 290; y++) {
+            for (int x = 66; x <= 180; x++) {
+                int rgb = r3dImg.getRGB(x, y);
+                int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+                int lum = (int) (0.299 * r + 0.587 * g + 0.114 * b);
+                if (lum < labelMin) labelMin = lum;
+            }
+        }
+        check("R3d 副标题标签调深（标签核心亮度 " + labelMin + " < 160；旧色 175 / 新色 146）",
+                labelMin < 160, null);
+
+        fake.getConfig().set("render.title-card-gray", null);
+        fake.getConfig().set("render.subtitle-card-gray", null);
         fake.getConfig().set("render.blur-strength", null);
 
         System.out.println();

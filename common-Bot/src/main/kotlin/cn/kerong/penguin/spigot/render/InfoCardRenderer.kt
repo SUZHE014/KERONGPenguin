@@ -87,6 +87,11 @@ object InfoCardRenderer {
     /** 配色（毛玻璃深色系）。 */
     private val COLOR_EYEBROW = Color(0x93, 0xA7, 0xBC)
     private val COLOR_LABEL = Color(0x9F, 0xB3, 0xC8)
+
+    /** 副标题条灰色小标签色（1.7.3 覆盖版三轮：0x9FB3C8 → 0x8296AA，
+     * 亮度 175 → 146——用户要求副标题灰色小文字调深一点；只作用于副标题条
+     * 标签，眉题 / 身份条等其他标签色不变）。 */
+    private val COLOR_SUB_LABEL = Color(0x82, 0x96, 0xAA)
     private val COLOR_VALUE = Color.WHITE
     private val COLOR_BADGE = Color(0xA8, 0xBA, 0xCC)
     private val COLOR_HINT = Color(0xB8, 0xC8, 0xD8)
@@ -272,7 +277,8 @@ object InfoCardRenderer {
             g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
             g.fill(RoundRectangle2D.Float(x, y, cardWidth, cardHeight, 14f, 14f))
             g.font = font(22f, false)
-            g.color = COLOR_LABEL
+            // 1.7.3 覆盖版三轮：副标题标签接专用深色（0x8296AA）
+            g.color = COLOR_SUB_LABEL
             g.drawString(label, x + 24f, y + 34f)
             g.font = font(30f, true)
             g.color = COLOR_VALUE
