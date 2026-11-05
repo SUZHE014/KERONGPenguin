@@ -61,8 +61,9 @@ object PerformanceRenderer {
     /** 页边距。 */
     private const val MARGIN = 40
 
-    /** 顶部标题区高度（眉题 + 主标题 + 右侧时间卡）。 */
-    private const val HEADER_HEIGHT = 150
+    /** 顶部标题区高度（眉题 + 主标题 + 右侧时间卡；1.7.3 覆盖版二轮：150 → 164，
+     * 标题框上边缘与眉题文字的间距加大——旧版眉题视觉顶边距仅约 18px 太贴边）。 */
+    private const val HEADER_HEIGHT = 164
 
     /** 标题区与副标题条间距。 */
     private const val HEADER_GAP = 18
@@ -490,7 +491,9 @@ object PerformanceRenderer {
      * ——模糊 + 标题框黑度 + 圆角边缘；1.7.3 覆盖版：标题文字 padding 对齐
      * 查信息欢迎面板（眉题距卡左缘 28px、主标题 24px，旧版 8/4px 太贴边）；
      * 右上角小方框改「综合状态」——四项指标综合评级不含人数，灰度永远
-     * 比标题框深一点防融合）。 */
+     * 比标题框深一点防融合；1.7.3 覆盖版二轮：眉题 / 主标题基线下移 8px
+     * （上边缘间距加大），小方框与标题框四周留 14px 可见间距——旧 8/8/0
+     * 太贴边看不出内嵌层次）。 */
     private fun drawHeader(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, status: OverallStatus) {
         val top = MARGIN
 
@@ -502,22 +505,26 @@ object PerformanceRenderer {
             COLOR_HEADER_CARD, 24f,
         )
 
-        // 英文眉题（字距拉宽；1.7.3 覆盖版：距卡左缘 28px，与查信息欢迎面板一致）
+        // 英文眉题（字距拉宽；1.7.3 覆盖版：距卡左缘 28px，与查信息欢迎面板一致；
+        // 1.7.3 覆盖版二轮：基线 38 → 46，上边缘视觉间距约 18 → 26px）
         g.font = InfoCardRenderer.font(26f, true)
         g.color = COLOR_EYEBROW
-        g.drawString("M I N E C R A F T   S E R V E R", (MARGIN + 32).toFloat(), (top + 38).toFloat())
+        g.drawString("M I N E C R A F T   S E R V E R", (MARGIN + 32).toFloat(), (top + 46).toFloat())
 
-        // 主标题（固定；服务器名在副标题条展示；距卡左缘 24px）
+        // 主标题（固定；服务器名在副标题条展示；距卡左缘 24px；
+        // 1.7.3 覆盖版二轮：基线 108 → 118）
         g.font = InfoCardRenderer.font(58f, true)
         g.color = COLOR_VALUE
-        g.drawString("服务器性能监控", (MARGIN + 28).toFloat(), (top + 108).toFloat())
+        g.drawString("服务器性能监控", (MARGIN + 28).toFloat(), (top + 118).toFloat())
 
         // 右上角综合状态卡（叠在标题卡上；1.7.3 覆盖版：更新时间→综合状态，
-        // 灰度永远比标题框深一点——同灰度叠加视觉融合看不出边界）
+        // 灰度永远比标题框深一点——同灰度叠加视觉融合看不出边界；
+        // 1.7.3 覆盖版二轮：与标题框四周留 14px 可见间距——旧 8/8/0 贴边）
         val cardWidth = 240
-        val cardHeight = HEADER_HEIGHT - 16
-        val cardX = WIDTH - MARGIN - cardWidth
-        val cardY = top + 8
+        val cardInset = 14
+        val cardHeight = HEADER_HEIGHT - 2 * cardInset
+        val cardX = WIDTH - MARGIN - cardInset - cardWidth
+        val cardY = top + cardInset
         backdrop?.paintCard(g, cardX.toFloat(), cardY.toFloat(), cardWidth.toFloat(), cardHeight.toFloat(), 20f)
         paintPanel(
             g, cardX.toFloat(), cardY.toFloat(), cardWidth.toFloat(), cardHeight.toFloat(),

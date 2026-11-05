@@ -53,8 +53,9 @@ object OnlineListRenderer {
     /** 页边距。 */
     private const val MARGIN = 40
 
-    /** 顶部标题区高度（眉题 + 主标题 + 右侧人数卡）。 */
-    private const val HEADER_HEIGHT = 150
+    /** 顶部标题区高度（眉题 + 主标题 + 右侧人数卡；1.7.3 覆盖版二轮：150 → 164，
+     * 标题框上边缘与眉题文字的间距加大——旧版眉题视觉顶边距仅约 18px 太贴边）。 */
+    private const val HEADER_HEIGHT = 164
 
     /** 标题区与状态栏间距。 */
     private const val HEADER_GAP = 18
@@ -207,7 +208,9 @@ object OnlineListRenderer {
 
     /** 顶部标题区：眉题 + 主标题 + 右侧在线人数卡（1.7.3：整块标题卡 —— 背后铺
      * 局部模糊 + 标题框黑度 + 圆角边缘，与查信息顶部欢迎区同款；旧版标题
-     * 文字直画在背景上，看不出卡片边界，灰度也只作用于右侧小方框）。 */
+     * 文字直画在背景上，看不出卡片边界，灰度也只作用于右侧小方框；
+     * 1.7.3 覆盖版二轮：眉题 / 主标题基线下移 8px（上边缘间距加大），
+     * 右上角小方框与标题框四周留 14px 可见间距——旧版 8/8/0 太贴边）。 */
     private fun drawHeader(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, onlineCount: Int) {
         val top = MARGIN
 
@@ -217,21 +220,24 @@ object OnlineListRenderer {
         g.color = Color(0x00, 0x00, 0x00, RenderSettings.titleCardGray())
         g.fill(RoundRectangle2D.Float(MARGIN.toFloat(), top.toFloat(), headerWidth, HEADER_HEIGHT.toFloat(), 24f, 24f))
 
-        // 英文眉题（字距拉宽；1.7.3 覆盖版：距卡左缘 28px，与查信息欢迎面板一致）
+        // 英文眉题（字距拉宽；1.7.3 覆盖版：距卡左缘 28px，与查信息欢迎面板一致；
+        // 1.7.3 覆盖版二轮：基线 38 → 46，上边缘视觉间距约 18 → 26px）
         g.font = InfoCardRenderer.font(26f, true)
         g.color = COLOR_EYEBROW
-        g.drawString("M I N E C R A F T   S E R V E R", (MARGIN + 32).toFloat(), (top + 38).toFloat())
+        g.drawString("M I N E C R A F T   S E R V E R", (MARGIN + 32).toFloat(), (top + 46).toFloat())
 
-        // 主标题（距卡左缘 24px）
+        // 主标题（距卡左缘 24px；1.7.3 覆盖版二轮：基线 108 → 118）
         g.font = InfoCardRenderer.font(58f, true)
         g.color = COLOR_VALUE
-        g.drawString("服务器在线列表", (MARGIN + 28).toFloat(), (top + 108).toFloat())
+        g.drawString("服务器在线列表", (MARGIN + 28).toFloat(), (top + 118).toFloat())
 
-        // 右侧在线人数卡（叠在标题卡上）
+        // 右侧在线人数卡（叠在标题卡上；1.7.3 覆盖版二轮：与标题框四周留
+        // 14px 可见间距——旧版上/下 8px、右侧 0px 贴边）
         val cardWidth = 240
-        val cardHeight = HEADER_HEIGHT - 16
-        val cardX = WIDTH - MARGIN - cardWidth
-        val cardY = top + 8
+        val cardInset = 14
+        val cardHeight = HEADER_HEIGHT - 2 * cardInset
+        val cardX = WIDTH - MARGIN - cardInset - cardWidth
+        val cardY = top + cardInset
         backdrop?.paintCard(g, cardX.toFloat(), cardY.toFloat(), cardWidth.toFloat(), cardHeight.toFloat(), 20f)
         // 1.7.3 覆盖版：右上角小方框灰度永远比标题框深一点（render.title-card-gray +36）
         // ——旧版与标题框同灰度，叠在同色标题卡上视觉融合看不出边界
