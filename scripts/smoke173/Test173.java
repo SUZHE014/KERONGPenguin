@@ -112,6 +112,16 @@ public final class Test173 {
         return bg;
     }
 
+    /** 五轮：深色背景（验证深卡变浅色标签的自适应分支）。 */
+    private static java.awt.image.BufferedImage darkBg(int w, int h) {
+        java.awt.image.BufferedImage bg = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = bg.createGraphics();
+        g.setColor(new java.awt.Color(18, 22, 28));
+        g.fillRect(0, 0, w, h);
+        g.dispose();
+        return bg;
+    }
+
     private static java.awt.image.BufferedImage decode(byte[] png) throws Exception {
         return javax.imageio.ImageIO.read(new ByteArrayInputStream(png));
     }
@@ -474,7 +484,7 @@ public final class Test173 {
                         "SmokeServer", "12:34", entries, 5L, 15,
                         whiteBg(LeaderboardRenderer.WIDTH, lbHeight),
                         "在线排行榜", "总在线时长"), true);
-        check("R2d 排行榜两次渲染字节一致（无计时文字，展示玩家 5TOP 固定）",
+        check("R2d 排行榜两次渲染字节一致（无计时文字，展示玩家 TOP 5 固定）",
                 java.util.Arrays.equals(r2d1, r2d2), null);
         java.awt.image.BufferedImage r2dImg = decode(r2d1);
         double topMax = maxBrightness(r2dImg, 820, 270, 300, 50);
@@ -561,8 +571,80 @@ public final class Test173 {
                 if (lum < labelMin) labelMin = lum;
             }
         }
-        check("R3d 副标题标签调深（标签核心亮度 " + labelMin + " < 160；旧色 175 / 新色 146）",
+        check("R3d 副标题标签调深（标签核心亮度 " + labelMin + " < 160；旧色 175 / 五轮亮卡深色变体 ~110）",
                 labelMin < 160, null);
+
+        System.out.println("== R5 组：覆盖版五轮（小标签自适应配色 + TOP x） ==");
+
+        // R5a 浅色背景可读性（用户核心诉求）：白底 + 默认灰度 56 → 卡底 199 亮卡 →
+        // 标签自动切深蓝灰 0x5C7288（亮度 ~110）——取标签区最暗像素应 < 160
+        //（旧固定色 0xB8C8D8 ~200 在此场景下最暗像素仅描边混叠色 ~190+，必 FAIL）
+        fake.getConfig().set("render.subtitle-card-gray", null);
+        fake.getConfig().set("render.blur-strength", 0);
+        int lbH5 = LeaderboardRenderer.INSTANCE.measurePageHeight(entries.size(), true);
+        byte[] r5aPng = LeaderboardRenderer.INSTANCE.renderPage(
+                new LeaderboardRenderer.LeaderboardData("SmokeServer", "12:34", entries, 5L, 15,
+                        whiteBg(LeaderboardRenderer.WIDTH, lbH5), "在线排行榜", "总在线时长"), true);
+        java.awt.image.BufferedImage r5aImg = decode(r5aPng);
+        int r5aLabelMin = 255;
+        for (int y = 256; y <= 292; y++) {
+            for (int x = 60; x <= 200; x++) {
+                int rgb = r5aImg.getRGB(x, y);
+                int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+                int lum = (int) (0.299 * r + 0.587 * g + 0.114 * b);
+                if (lum < r5aLabelMin) r5aLabelMin = lum;
+            }
+        }
+        check("R5a 浅色背景自适应→深色标签（最暗像素 " + r5aLabelMin + " < 160，深蓝灰在亮卡上可读）",
+                r5aLabelMin < 160, null);
+
+        // R5b 深色背景自适应→浅色标签：深底（亮度 ~22）→ 卡底 ~17 深卡 →
+        // 标签用浅蓝灰 0xB8C8D8（~200）——标签区最亮像素应 ≥ 190
+        byte[] r5bPng = LeaderboardRenderer.INSTANCE.renderPage(
+                new LeaderboardRenderer.LeaderboardData("SmokeServer", "12:34", entries, 5L, 15,
+                        darkBg(LeaderboardRenderer.WIDTH, lbH5), "在线排行榜", "总在线时长"), true);
+        java.awt.image.BufferedImage r5bImg = decode(r5bPng);
+        int r5bLabelPix = 0;
+        // 计数法（最亮像素法会被数值字形顶部的 4 个 AA 杂散像素假命中）：
+        // 浅蓝灰标签整片像素 ≥ 190 应有大量；数值顶部杂散只有个位数
+        for (int y = 256; y <= 284; y++) {
+            for (int x = 60; x <= 200; x++) {
+                int rgb = r5bImg.getRGB(x, y);
+                int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+                int lum = (int) (0.299 * r + 0.587 * g + 0.114 * b);
+                if (lum >= 190) r5bLabelPix++;
+            }
+        }
+        check("R5b 深色背景自适应→浅色标签（≥190 亮像素 " + r5bLabelPix + " ≥ 60，四字标签整片在）",
+                r5bLabelPix >= 60, null);
+
+        // R5c 自适应不破坏排版几何：亮卡与深卡两张图同区域逐像素对比，
+        // 只有标签文字颜色不同——两图尺寸一致且副标题条位置一致（高度抽样）
+        check("R5c 亮/深两版尺寸一致（" + r5aImg.getWidth() + "x" + r5aImg.getHeight() + "）",
+                r5aImg.getWidth() == r5bImg.getWidth() && r5aImg.getHeight() == r5bImg.getHeight(), null);
+
+        // R5d 查信息副标题条同接自适应（浅底 → 深色标签）：
+        // InfoCard 副标题条 y328..412，第一格标签 x48..170 / y345..365
+        List<InfoCardRenderer.CardItem> r5Items = new ArrayList<>();
+        for (int i = 1; i <= 9; i++) {
+            r5Items.add(new InfoCardRenderer.CardItem("项目" + i, String.valueOf(i)));
+        }
+        int r5InfoH = cardHeight(r5Items.size());
+        byte[] r5dPng = InfoCardRenderer.INSTANCE.render(
+                new InfoCardRenderer.CardData("Smoke", r5Items, null,
+                        whiteBg(InfoCardRenderer.WIDTH, r5InfoH), "SmokeServer", "12:34"));
+        java.awt.image.BufferedImage r5dImg = decode(r5dPng);
+        int r5dLabelMin = 255;
+        for (int y = 345; y <= 365; y++) {
+            for (int x = 40; x <= 170; x++) {
+                int rgb = r5dImg.getRGB(x, y);
+                int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+                int lum = (int) (0.299 * r + 0.587 * g + 0.114 * b);
+                if (lum < r5dLabelMin) r5dLabelMin = lum;
+            }
+        }
+        check("R5d 查信息浅底自适应→深色标签（最暗像素 " + r5dLabelMin + " < 160）",
+                r5dLabelMin < 160, null);
 
         fake.getConfig().set("render.title-card-gray", null);
         fake.getConfig().set("render.subtitle-card-gray", null);

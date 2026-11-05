@@ -103,10 +103,6 @@ object OnlineListRenderer {
     private val COLOR_EYEBROW = Color(0x8A, 0x9B, 0xAE)
     private val COLOR_LABEL = Color(0x9F, 0xB3, 0xC8)
 
-    /** 副标题条灰色小标签色（1.7.3 覆盖版三轮：0x9FB3C8 → 0x8296AA，
-     * 亮度 175 → 146——用户要求副标题灰色小文字调深一点；只作用于副标题条
-     * 标签，眉题 / 徽标标签 / 行内数值等其他标签色不变）。 */
-    private val COLOR_SUB_LABEL = Color(0x82, 0x96, 0xAA)
     private val COLOR_VALUE = Color.WHITE
     private val COLOR_BADGE = Color(0xA8, 0xBA, 0xCC)
 
@@ -193,7 +189,7 @@ object OnlineListRenderer {
             val backdrop = InfoCardAssets.drawBackground(g, data.background, WIDTH, height)
             if (firstPage) {
                 drawHeader(g, backdrop, data.entries.size)
-                drawStatusBar(g, backdrop, data.serverName, data.updateTime)
+                drawStatusBar(g, image, backdrop, data.serverName, data.updateTime)
                 drawListHeader(g, data.entries.size)
             }
             drawPlayerGrid(g, backdrop, pageEntries, firstPage)
@@ -270,7 +266,7 @@ object OnlineListRenderer {
      * 1.7.3：副标题条改接副标题灰度 render.subtitle-card-gray；1.7.3 覆盖版：
      * 第三格改「渲染耗时」——数值在全部面板绘制完成后由 [drawRenderElapsed]
      * 补画（从开始渲染到绘制完成的毫秒数，非从接收指令起算）。 */
-    private fun drawStatusBar(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, serverName: String, updateTime: String) {
+    private fun drawStatusBar(g: Graphics2D, image: BufferedImage, backdrop: InfoCardAssets.CardBackdropContext?, serverName: String, updateTime: String) {
         val top = (MARGIN + HEADER_HEIGHT + HEADER_GAP).toFloat()
         val gap = 16f
         val cardWidth = (WIDTH - 2 * MARGIN - 2 * gap).toFloat() / 3f
@@ -283,14 +279,14 @@ object OnlineListRenderer {
         )
         cells.forEachIndexed { index, (label, value) ->
             val x = MARGIN + index * (cardWidth + gap)
+            // 1.7.3 覆盖版五轮：绘制前采样画布底色（背景原样）→ 自适应配色
+            val brightCard = InfoCardRenderer.subtitleCardBright(image, x, top, cardWidth, cardHeight)
             backdrop?.paintCard(g, x, top, cardWidth, cardHeight, 14f)
             // 副标题条接副标题灰度（render.subtitle-card-gray，覆盖版默认 56）
             g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
             g.fill(RoundRectangle2D.Float(x, top, cardWidth, cardHeight, 14f, 14f))
-            g.font = InfoCardRenderer.font(22f, false)
-            // 1.7.3 覆盖版三轮：副标题标签接专用深色（0x8296AA）
-            g.color = COLOR_SUB_LABEL
-            g.drawString(label, x + 26f, top + 34f)
+            // 1.7.3 覆盖版四轮起：小标签统一走 InfoCardRenderer.drawSubLabel
+            InfoCardRenderer.drawSubLabel(g, label, x + 26f, top + 34f, brightCard)
             g.font = InfoCardRenderer.font(30f, true)
             g.color = COLOR_VALUE
             value?.let { g.drawString(clip(g, it, (cardWidth - 52).toInt()), x + 26f, top + 68f) }

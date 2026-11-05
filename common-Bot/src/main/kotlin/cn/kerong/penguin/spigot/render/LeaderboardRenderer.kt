@@ -90,10 +90,6 @@ object LeaderboardRenderer {
     private val COLOR_EYEBROW = Color(0x8A, 0x9B, 0xAE)
     private val COLOR_LABEL = Color(0x9F, 0xB3, 0xC8)
 
-    /** 副标题条灰色小标签色（1.7.3 覆盖版三轮：0x9FB3C8 → 0x8296AA，
-     * 亮度 175 → 146——用户要求副标题灰色小文字调深一点；只作用于副标题条
-     * 标签，眉题 / 徽标标签 / 行内数值等其他标签色不变）。 */
-    private val COLOR_SUB_LABEL = Color(0x82, 0x96, 0xAA)
     private val COLOR_VALUE = Color.WHITE
     private val COLOR_BADGE = Color(0xA8, 0xBA, 0xCC)
 
@@ -163,8 +159,9 @@ object LeaderboardRenderer {
 
     /** 渲染单页并返回 PNG 字节（首页带标题区，续页只画行内容；1.7.3 覆盖版二轮：
      * 首页副标题条第三格改「展示玩家」——展示 min(玩家总数, 显示上限) 名
-     * 玩家，显示「xTOP」（如 20TOP）；覆盖版一轮的「渲染耗时」格移除，
-     * 渲染计时补画逻辑同步删除——查在线 / 查性能 / 查信息三卡保留该格）。 */
+     * 玩家；覆盖版四轮：数值格式 xTOP → TOP x（TOP 在前，如 TOP 8）；
+     * 覆盖一轮的「渲染耗时」格移除，渲染计时补画逻辑同步删除——
+     * 查在线 / 查性能 / 查信息三卡保留该格）。 */
     fun renderPage(data: LeaderboardData, firstPage: Boolean): ByteArray {
         val height = measurePageHeight(data.entries.size, firstPage)
         val image = BufferedImage(WIDTH, height, BufferedImage.TYPE_INT_RGB)
@@ -181,7 +178,7 @@ object LeaderboardRenderer {
                 drawHeader(g, backdrop, data.title, data.totalPlayers)
                 // 展示玩家数 = min(统计玩家总数, 显示上限)（实际进入排行的行数）
                 val displayedTop = minOf(data.totalPlayers, data.topLimit.toLong())
-                drawSubtitle(g, backdrop, data.serverName, data.updateTime, displayedTop)
+                drawSubtitle(g, image, backdrop, data.serverName, data.updateTime, displayedTop)
                 drawListHeader(g, data.listHeader, data.topLimit, data.totalPlayers)
             }
             if (data.entries.isEmpty()) {
@@ -274,9 +271,10 @@ object LeaderboardRenderer {
     /** 副标题条：服务器 / 更新时间 / 展示玩家 三张并排小卡（1.7.3 新增，与
      * 查在线状态栏同款；底色接副标题灰度 render.subtitle-card-gray；
      * 1.7.3 覆盖版二轮：第三格改「展示玩家」——本榜实际展示
-     * min(统计玩家总数, 显示上限) 名玩家，数值显示「xTOP」（如 20TOP）；
+     * min(统计玩家总数, 显示上限) 名玩家；覆盖版四轮：数值格式
+     * xTOP → TOP x（TOP 在前，如 TOP 8；旧 xTOP 废弃）；
      * 覆盖版一轮的「渲染耗时」格移除（渲染计时补画逻辑同步删除）。 */
-    private fun drawSubtitle(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, serverName: String, updateTime: String, displayedTop: Long) {
+    private fun drawSubtitle(g: Graphics2D, image: BufferedImage, backdrop: InfoCardAssets.CardBackdropContext?, serverName: String, updateTime: String, displayedTop: Long) {
         val top = (MARGIN + HEADER_HEIGHT + HEADER_GAP).toFloat()
         val gap = 16f
         val cardWidth = (WIDTH - 2 * MARGIN - 2 * gap).toFloat() / 3f
@@ -285,18 +283,18 @@ object LeaderboardRenderer {
         val cells = listOf(
             "服务器" to serverName,
             "更新时间" to updateTime,
-            "展示玩家" to "${displayedTop}TOP",
+            "展示玩家" to "TOP $displayedTop",
         )
         cells.forEachIndexed { index, (label, value) ->
             val x = MARGIN + index * (cardWidth + gap)
+            // 1.7.3 覆盖版五轮：绘制前采样画布底色（背景原样）→ 自适应配色
+            val brightCard = InfoCardRenderer.subtitleCardBright(image, x, top, cardWidth, cardHeight)
             backdrop?.paintCard(g, x, top, cardWidth, cardHeight, 14f)
             // 副标题条接副标题灰度（render.subtitle-card-gray，覆盖版默认 56）
             g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
             g.fill(RoundRectangle2D.Float(x, top, cardWidth, cardHeight, 14f, 14f))
-            g.font = InfoCardRenderer.font(22f, false)
-            // 1.7.3 覆盖版三轮：副标题标签接专用深色（0x8296AA）
-            g.color = COLOR_SUB_LABEL
-            g.drawString(label, x + 26f, top + 34f)
+            // 1.7.3 覆盖版四轮起：小标签统一走 InfoCardRenderer.drawSubLabel
+            InfoCardRenderer.drawSubLabel(g, label, x + 26f, top + 34f, brightCard)
             g.font = InfoCardRenderer.font(30f, true)
             g.color = COLOR_VALUE
             value?.let { g.drawString(clip(g, it, (cardWidth - 52).toInt()), x + 26f, top + 68f) }

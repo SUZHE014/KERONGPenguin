@@ -88,10 +88,17 @@ object InfoCardRenderer {
     private val COLOR_EYEBROW = Color(0x93, 0xA7, 0xBC)
     private val COLOR_LABEL = Color(0x9F, 0xB3, 0xC8)
 
-    /** 副标题条灰色小标签色（1.7.3 覆盖版三轮：0x9FB3C8 → 0x8296AA，
-     * 亮度 175 → 146——用户要求副标题灰色小文字调深一点；只作用于副标题条
-     * 标签，眉题 / 身份条等其他标签色不变）。 */
-    private val COLOR_SUB_LABEL = Color(0x82, 0x96, 0xAA)
+    /** 副标题条小标签填充色——深色卡变体（1.7.3 覆盖版五轮自适应配色：
+     * 0x8296AA → 0xB8C8D8。三轮纯调深在浅色背景下仍看不清；四轮改近白
+     * 0xD9E2EC + 22f 加粗 + 黑 55% 描边——用户反馈「不美观、太突兀」；
+     * 五轮改为自适应：亮底自动切深色标签（[COLOR_SUB_LABEL_DARK]），
+     * 深底用柔和浅蓝灰，描边机制整个移除，字号 20f 常规字重。
+     * 只作用于副标题条标签，眉题 / 身份条等其他标签色不变）。 */
+    private val COLOR_SUB_LABEL = Color(0xB8, 0xC8, 0xD8)
+
+    /** 副标题条小标签填充色——亮色卡变体（1.7.3 覆盖版五轮新增）：深蓝灰
+     * 0x5C7288，浅色背景（亮底 × 副标题灰度叠加后仍亮的卡）上清晰可读。 */
+    private val COLOR_SUB_LABEL_DARK = Color(0x5C, 0x72, 0x88)
     private val COLOR_VALUE = Color.WHITE
     private val COLOR_BADGE = Color(0xA8, 0xBA, 0xCC)
     private val COLOR_HINT = Color(0xB8, 0xC8, 0xD8)
@@ -170,7 +177,7 @@ object InfoCardRenderer {
             val backdrop = InfoCardAssets.drawBackground(g, data.background, WIDTH, height)
             drawTopPanel(g, data, backdrop)
             drawIdentityBar(g, data.playerName, backdrop)
-            drawSubtitle(g, data.serverName, data.updateTime, backdrop)
+            drawSubtitle(g, image, data.serverName, data.updateTime, backdrop)
             drawStatsPanel(g, data.items, height, backdrop)
 
             // 1.7.3 覆盖版：补画渲染耗时（全部面板已画完；PNG 编码与发送不预先包含）
@@ -259,7 +266,7 @@ object InfoCardRenderer {
      * 其他卡片状态栏同款；底色接副标题灰度 render.subtitle-card-gray；
      * 1.7.3 覆盖版：第三格改「渲染耗时」——数值在全部面板绘制完成后由
      * [drawRenderElapsed] 补画，从开始渲染到绘制完成的毫秒数）。 */
-    private fun drawSubtitle(g: Graphics2D, serverName: String, updateTime: String, backdrop: InfoCardAssets.CardBackdropContext?) {
+    private fun drawSubtitle(g: Graphics2D, image: BufferedImage, serverName: String, updateTime: String, backdrop: InfoCardAssets.CardBackdropContext?) {
         val y = 328f
         val gap = 14f
         val cardWidth = ((WIDTH - 48) - 2 * gap).toFloat() / 3f
@@ -272,18 +279,59 @@ object InfoCardRenderer {
         )
         cells.forEachIndexed { index, (label, value) ->
             val x = 24f + index * (cardWidth + gap)
+            // 1.7.3 覆盖版五轮：先在卡体绘制前采样画布底色（此刻该区域是背景原样），
+            // 亮卡 → 深色标签，深卡 → 浅色标签（采样若在绘制后会把灰度叠加两遍误判深卡）
+            val brightCard = subtitleCardBright(image, x, y, cardWidth, cardHeight)
             backdrop?.paintCard(g, x, y, cardWidth, cardHeight, 14f)
             // 副标题条接副标题灰度（render.subtitle-card-gray，覆盖版默认 56）
             g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
             g.fill(RoundRectangle2D.Float(x, y, cardWidth, cardHeight, 14f, 14f))
-            g.font = font(22f, false)
-            // 1.7.3 覆盖版三轮：副标题标签接专用深色（0x8296AA）
-            g.color = COLOR_SUB_LABEL
-            g.drawString(label, x + 24f, y + 34f)
+            // 1.7.3 覆盖版四轮起：小标签统一走 drawSubLabel；五轮：自适应配色
+            drawSubLabel(g, label, x + 24f, y + 34f, brightCard)
             g.font = font(30f, true)
             g.color = COLOR_VALUE
             value?.let { g.drawString(clipToWidth(g, it, (cardWidth - 48).toInt()), x + 24f, y + 68f) }
         }
+    }
+
+    /** 副标题条小标签绘制（1.7.3 覆盖版四轮新增共享入口、五轮自适应配色）：
+     * 20f 常规字重（四轮 22f 加粗过重——观感「不美观、太突兀」的根源之一）；
+     * 配色由 [subtitleCardBright] 按卡底亮度自动切换——亮色卡用
+     * [COLOR_SUB_LABEL_DARK]（浅色背景下看不清的根治：深色小字直接立于亮卡），
+     * 深色卡用 [COLOR_SUB_LABEL]（柔和浅蓝灰，层级弱于白色加粗数值，不再突兀）；
+     * 四轮的八向描边环整个移除（描边叠加正是突兀感的另一半根源）。
+     * 五张卡片副标题条标签共用，其他标签色不走此入口。 */
+    internal fun drawSubLabel(g: Graphics2D, text: String, x: Float, y: Float, brightCard: Boolean) {
+        g.font = font(20f, false)
+        g.color = if (brightCard) COLOR_SUB_LABEL_DARK else COLOR_SUB_LABEL
+        g.drawString(text, x, y)
+    }
+
+    /** 副标题小卡亮暗判定（1.7.3 覆盖版五轮：自适应配色的开关）：
+     * 卡片实际亮度 = 画布底色 × (1 - 副标题灰度 / 255)，≥ 150 判亮卡。
+     * 采样时机在卡体绘制前，画布该区域此刻就是背景原样（模糊副本与原图
+     * 亮度几乎一致，模糊与否、有无背景均可用同一机制）；无背景时画布为
+     * 深色兑底 → 判深色卡 → 浅色标签，与实际观感一致。 */
+    internal fun subtitleCardBright(image: BufferedImage, x: Float, y: Float, w: Float, h: Float): Boolean {
+        val gray = RenderSettings.subtitleCardGray()
+        return canvasLuminance(image, x, y, w, h) * (255 - gray) / 255f >= 150f
+    }
+
+    /** 画布区域平均亮度（0-255，8×4 网格采样；1.7.3 覆盖版五轮：
+     * 副标题小标签自适应配色判定用）。 */
+    internal fun canvasLuminance(image: BufferedImage, x: Float, y: Float, w: Float, h: Float): Float {
+        var sum = 0f
+        var n = 0
+        for (i in 0 until 8) {
+            for (j in 0 until 4) {
+                val px = (x + w * (i + 0.5f) / 8f).toInt().coerceIn(0, image.width - 1)
+                val py = (y + h * (j + 0.5f) / 4f).toInt().coerceIn(0, image.height - 1)
+                val rgb = image.getRGB(px, py)
+                sum += 0.299f * ((rgb shr 16) and 0xFF) + 0.587f * ((rgb shr 8) and 0xFF) + 0.114f * (rgb and 0xFF)
+                n++
+            }
+        }
+        return sum / n
     }
 
     /**
