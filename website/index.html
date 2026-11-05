@@ -20,10 +20,10 @@
 <section>
 <h2>下载</h2>
 <div class="dl-box">
-<p style="font-size:1.3em;font-weight:bold;color:#e8edf2;margin-bottom:5px">版本 1.7.3</p>
-<p style="color:#7a848e;margin-bottom:20px">发布于 2026-11-05</p>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.3.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.3.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
+<p style="font-size:1.3em;font-weight:bold;color:#e8edf2;margin-bottom:5px">版本 1.7.3.1</p>
+<p style="color:#7a848e;margin-bottom:20px">发布于 2026-11-06</p>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.3.1.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.3.1.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
 <div class="dl-info">支持 MC 的版本请详见下方「支持的插件与兼容性 → 支持的服务端核心」</div>
 </div>
 </section>
@@ -56,6 +56,8 @@
 <h2>历史版本</h2>
 <table>
 <tr><th>版本</th><th>发布日期</th><th>下载</th></tr>
+<tr><td>NeoForge 1.7.3.1</td><td>2026-11-06</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.3.1.jar">下载</a></td></tr>
+<tr><td>Spigot 1.7.3.1</td><td>2026-11-06</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.3.1.jar">下载</a></td></tr>
 <tr><td>NeoForge 1.7.3</td><td>2026-11-05</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.3.jar">下载</a></td></tr>
 <tr><td>Spigot 1.7.3</td><td>2026-11-05</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.3.jar">下载</a></td></tr>
 <tr><td>NeoForge 1.7.2</td><td>2026-11-03</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.2.jar">下载</a></td></tr>
@@ -75,6 +77,11 @@
 <section>
 <h2>更新日志</h2>
 <div class="changelog">
+<div class="version"><h3>v1.7.3.1</h3><span class="date">2026-11-06</span><ul>
+<li><b>修复：副标题灰色小文字在图片稍大时显示不清晰</b>——在线人数多、画布更高时，背景裁剪会把更亮的区域铺到副标题条背后，旧版自适应配色的切换阈值恰落在中间亮度：两侧对比度都只有 1.8~2.2:1，灰色标签发灰发虚。改为连续对比度配色：深色标签按卡底实际亮度同色相等比压暗，任何背景亮度下对比度保证 ≥ 3:1；纯白与深色背景上观感与上一版完全一致。</li>
+<li><b>修复：查信息卡「玩家名称」标签浅色背景下几乎看不见</b>——旧版固定浅色（1.15:1 对比度），现同接副标题自适应配色，与副标题条一致清晰。</li>
+<li>无配置变更（配置版本 32 不变），升级后无需改配置。</li>
+</ul></div>
 <div class="version"><h3>v1.7.3</h3><span class="date">2026-11-05</span><ul>
 <li><b>修复：标题卡没有模糊和卡片边缘、灰度只作用于右侧小方框</b>——查在线 / 排行榜（含财富榜）/ 查性能顶部标题区改为整块全宽标题卡：背景模糊 + 灰度 + 圆角边缘一次到位；标题文字内边距对齐查信息欢迎面板（旧版距卡边仅 4~8px 过于贴边）。</li>
 <li><b>修复：右上角小方框与标题框融合看不出边界</b>——小方框灰度永远比标题框深一点（随 title-card-gray 联动）；查性能右上角改「综合状态」：TPS / MSPT / 内存 / CPU 四项综合评级（不含人数），绿 / 黄 / 红展示运行良好 / 轻度负载 / 负载过高。</li>

@@ -566,14 +566,15 @@ object PerformanceRenderer {
         )
         cells.forEachIndexed { index, (label, value) ->
             val x = MARGIN + index * (cardWidth + gap)
-            // 1.7.3 覆盖版五轮：绘制前采样画布底色（背景原样）→ 自适应配色
-            val brightCard = InfoCardRenderer.subtitleCardBright(image, x, top, cardWidth, cardHeight)
+            // 1.7.3 覆盖版五轮：绘制前采样画布底色（背景原样）→ 自适应配色；
+            // 1.7.3.1：连续对比度配色（传入卡底亮度）
+            val baseLum = InfoCardRenderer.subtitleBaseLum(image, x, top, cardWidth, cardHeight)
             backdrop?.paintCard(g, x, top, cardWidth, cardHeight, 14f)
             // 副标题条接副标题灰度（render.subtitle-card-gray，覆盖版默认 56）
             g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
             g.fill(RoundRectangle2D.Float(x, top, cardWidth, cardHeight, 14f, 14f))
             // 1.7.3 覆盖版四轮起：小标签统一走 InfoCardRenderer.drawSubLabel
-            InfoCardRenderer.drawSubLabel(g, label, x + 26f, top + 34f, brightCard)
+            InfoCardRenderer.drawSubLabel(g, label, x + 26f, top + 34f, baseLum)
             g.font = InfoCardRenderer.font(30f, true)
             g.color = COLOR_VALUE
             value?.let { g.drawString(clip(g, it, (cardWidth - 52).toInt()), x + 26f, top + 68f) }

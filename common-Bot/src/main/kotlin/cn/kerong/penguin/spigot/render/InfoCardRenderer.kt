@@ -91,13 +91,17 @@ object InfoCardRenderer {
     /** 副标题条小标签填充色——深色卡变体（1.7.3 覆盖版五轮自适应配色：
      * 0x8296AA → 0xB8C8D8。三轮纯调深在浅色背景下仍看不清；四轮改近白
      * 0xD9E2EC + 22f 加粗 + 黑 55% 描边——用户反馈「不美观、太突兀」；
-     * 五轮改为自适应：亮底自动切深色标签（[COLOR_SUB_LABEL_DARK]），
-     * 深底用柔和浅蓝灰，描边机制整个移除，字号 20f 常规字重。
-     * 只作用于副标题条标签，眉题 / 身份条等其他标签色不变）。 */
+     * 五轮改为自适应：亮底自动切深色标签，深底用柔和浅蓝灰，描边机制
+     * 整个移除，字号 20f 常规字重。只作用于副标题类标签，眉题等其他
+     * 标签色不变。1.7.3.1 起深色卡（底亮度 ≤ [SUB_LABEL_LIGHT_MAX_LUM]）
+     * 继续固定用本色；亮色卡改走 [subLabelColorFor] 连续配色）。 */
     private val COLOR_SUB_LABEL = Color(0xB8, 0xC8, 0xD8)
 
-    /** 副标题条小标签填充色——亮色卡变体（1.7.3 覆盖版五轮新增）：深蓝灰
-     * 0x5C7288，浅色背景（亮底 × 副标题灰度叠加后仍亮的卡）上清晰可读。 */
+    /** 副标题条小标签填充色——最亮卡变体（1.7.3 覆盖版五轮新增）：深蓝灰
+     * 0x5C7288（亮度恰 110，对纯白卡正好 3:1 对比度）。1.7.3.1 起是
+     * 亮色卡连续配色的上限基准：卡底越亮，深色标签越接近本值（纯白背景
+     * 仍精确还原五轮已验收的观感）；卡底越是中间亮度，标签按同色相
+     * 等比压暗保住对比度，见 [subLabelColorFor]。 */
     private val COLOR_SUB_LABEL_DARK = Color(0x5C, 0x72, 0x88)
     private val COLOR_VALUE = Color.WHITE
     private val COLOR_BADGE = Color(0xA8, 0xBA, 0xCC)
@@ -176,7 +180,7 @@ object InfoCardRenderer {
             // （backdrop-filter，模糊度 render.blur-strength），由各卡片绘制前自取
             val backdrop = InfoCardAssets.drawBackground(g, data.background, WIDTH, height)
             drawTopPanel(g, data, backdrop)
-            drawIdentityBar(g, data.playerName, backdrop)
+            drawIdentityBar(g, image, data.playerName, backdrop)
             drawSubtitle(g, image, data.serverName, data.updateTime, backdrop)
             drawStatsPanel(g, data.items, height, backdrop)
 
@@ -240,20 +244,24 @@ object InfoCardRenderer {
 
     /** 玩家身份条（先铺卡片背后的局部模糊背景，再叠半透明底色；
      * 1.7.3：玩家名称项底色改接副标题灰度 render.subtitle-card-gray——
-     * 旧版硬编码半透明白 22，灰度配置调不动）。 */
-    private fun drawIdentityBar(g: Graphics2D, playerName: String, backdrop: InfoCardAssets.CardBackdropContext?) {
+     * 旧版硬编码半透明白 22，灰度配置调不动；1.7.3.1：「玩家名称」标签
+     * 同接副标题自适应配色——身份条同属副标题类小卡，五轮只改了五张卡
+     * 的副标题条，亮色背景下身份条标签仍是固定浅色看不清）。 */
+    private fun drawIdentityBar(g: Graphics2D, image: BufferedImage, playerName: String, backdrop: InfoCardAssets.CardBackdropContext?) {
         val x = 24f
         val y = 244f
         val w = (WIDTH - 48).toFloat()
         val h = 64f
 
+        // 1.7.3.1：卡体绘制前采样画布底色（背景原样）→ 自适应标签色
+        val baseLum = subtitleBaseLum(image, x, y, w, h)
         backdrop?.paintCard(g, x, y, w, h, 16f)
         // 1.7.3：玩家名称项属副标题类小卡，接副标题灰度（默认 40）
         g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
         g.fill(RoundRectangle2D.Float(x, y, w, h, 16f, 16f))
 
         g.font = font(21f, false)
-        g.color = COLOR_LABEL
+        g.color = subLabelColorFor(baseLum)
         g.drawString("玩家名称", 52f, y + 41f)
 
         g.font = font(26f, true)
@@ -281,40 +289,96 @@ object InfoCardRenderer {
             val x = 24f + index * (cardWidth + gap)
             // 1.7.3 覆盖版五轮：先在卡体绘制前采样画布底色（此刻该区域是背景原样），
             // 亮卡 → 深色标签，深卡 → 浅色标签（采样若在绘制后会把灰度叠加两遍误判深卡）
-            val brightCard = subtitleCardBright(image, x, y, cardWidth, cardHeight)
+            val baseLum = subtitleBaseLum(image, x, y, cardWidth, cardHeight)
             backdrop?.paintCard(g, x, y, cardWidth, cardHeight, 14f)
             // 副标题条接副标题灰度（render.subtitle-card-gray，覆盖版默认 56）
             g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
             g.fill(RoundRectangle2D.Float(x, y, cardWidth, cardHeight, 14f, 14f))
-            // 1.7.3 覆盖版四轮起：小标签统一走 drawSubLabel；五轮：自适应配色
-            drawSubLabel(g, label, x + 24f, y + 34f, brightCard)
+            // 1.7.3 覆盖版四轮起：小标签统一走 drawSubLabel；五轮：自适应配色；
+            // 1.7.3.1：连续对比度配色（传入卡底亮度）
+            drawSubLabel(g, label, x + 24f, y + 34f, baseLum)
             g.font = font(30f, true)
             g.color = COLOR_VALUE
             value?.let { g.drawString(clipToWidth(g, it, (cardWidth - 48).toInt()), x + 24f, y + 68f) }
         }
     }
 
-    /** 副标题条小标签绘制（1.7.3 覆盖版四轮新增共享入口、五轮自适应配色）：
-     * 20f 常规字重（四轮 22f 加粗过重——观感「不美观、太突兀」的根源之一）；
-     * 配色由 [subtitleCardBright] 按卡底亮度自动切换——亮色卡用
-     * [COLOR_SUB_LABEL_DARK]（浅色背景下看不清的根治：深色小字直接立于亮卡），
-     * 深色卡用 [COLOR_SUB_LABEL]（柔和浅蓝灰，层级弱于白色加粗数值，不再突兀）；
+    /** 副标题条小标签绘制（1.7.3 覆盖版四轮新增共享入口、五轮自适应配色、
+     * 1.7.3.1 连续对比度配色）：20f 常规字重（四轮 22f 加粗过重——观感
+     * 「不美观、太突兀」的根源之一）；配色由 [subLabelColorFor] 按
+     * [subtitleBaseLum] 采样的卡底亮度决定——深色卡用 [COLOR_SUB_LABEL]
+     * （柔和浅蓝灰，层级弱于白色加粗数值，不突兀），亮色卡用按同色相
+     * 连续压暗的深蓝灰（中间亮度背景上对比度 ≥ 3:1，见 [subLabelColorFor]）。
      * 四轮的八向描边环整个移除（描边叠加正是突兀感的另一半根源）。
      * 五张卡片副标题条标签共用，其他标签色不走此入口。 */
-    internal fun drawSubLabel(g: Graphics2D, text: String, x: Float, y: Float, brightCard: Boolean) {
+    internal fun drawSubLabel(g: Graphics2D, text: String, x: Float, y: Float, baseLum: Float) {
         g.font = font(20f, false)
-        g.color = if (brightCard) COLOR_SUB_LABEL_DARK else COLOR_SUB_LABEL
+        g.color = subLabelColorFor(baseLum)
         g.drawString(text, x, y)
     }
 
-    /** 副标题小卡亮暗判定（1.7.3 覆盖版五轮：自适应配色的开关）：
-     * 卡片实际亮度 = 画布底色 × (1 - 副标题灰度 / 255)，≥ 150 判亮卡。
-     * 采样时机在卡体绘制前，画布该区域此刻就是背景原样（模糊副本与原图
-     * 亮度几乎一致，模糊与否、有无背景均可用同一机制）；无背景时画布为
-     * 深色兑底 → 判深色卡 → 浅色标签，与实际观感一致。 */
-    internal fun subtitleCardBright(image: BufferedImage, x: Float, y: Float, w: Float, h: Float): Boolean {
+    /** 亮色卡上改用深色标签的卡底亮度分界（1.7.3.1）：五轮阈值 150 的
+     * 反直觉之处——浅蓝灰标签（0xB8C8D8）亮度 197，在亮度 110~150 的
+     * 中间亮度卡上对比度只剩 1.9~2.7:1，而 150 恰好落在背景图中间亮度的
+     * 主力区；分界下移到 110 = 浅蓝灰标签对比度跌破 3:1 的临界。 */
+    internal const val SUB_LABEL_LIGHT_MAX_LUM = 110f
+
+    /** 亮色卡深色标签的对比度目标（1.7.3.1）：WCAG 相对亮度比 ≥ 3:1
+     * （文本可读下限；20px 常规字重接近「大文本」档）。3.05 留半分余量
+     * 抵抗抗锯齿混叠。 */
+    private const val SUB_LABEL_CONTRAST_TARGET = 3.05f
+
+    /** 亮色卡深色标签的最暗压暗比例（1.7.3.1）：再暗就发黑发死，
+     * 极端中间亮度下允许略低于 3:1 而不发黑。 */
+    private const val SUB_LABEL_MIN_SCALE = 0.30f
+
+    /** 副标题小标签配色（1.7.3.1 连续对比度配色）：
+     * 深色卡（[subtitleBaseLum] ≤ [SUB_LABEL_LIGHT_MAX_LUM]）→ 固定
+     * [COLOR_SUB_LABEL]（五轮已验收观感，深底上 ≥ 3:1）；
+     * 亮色卡 → 以 [COLOR_SUB_LABEL_DARK]（0x5C7288，亮度恰 110，对纯白
+     * 正好 3:1）为上限基准、按卡底实际亮度等比压暗（92/114/136 同色相
+     * 等比缩放）：解「亮度多少的深标签才能对这张卡达到 3.05:1」的反函数
+     * 得目标亮度，再除以 110 得缩放比。卡底越暗（越接近分界 110）标签越
+     * 深、卡底越亮（纯白背景叠默认灰度 56 → 199）标签越接近 0x5C7288，
+     * 纯白时精确还原五轮观感。根治五轮二值切换的模糊区：150 阈值两侧
+     * 均是 1.8~2.2:1 的低对比（用户反馈「图片稍微大一点（画布更高，
+     * cover 裁剪把背景更亮区域铺到副标题条背后）灰色文字不清晰」）。 */
+    internal fun subLabelColorFor(baseLum: Float): Color {
+        if (baseLum <= SUB_LABEL_LIGHT_MAX_LUM) return COLOR_SUB_LABEL
+        val cardLin = wcagLinear(baseLum / 255f)
+        val reqLin = (cardLin + 0.05f) / SUB_LABEL_CONTRAST_TARGET - 0.05f
+        val targetLum = if (reqLin <= 0f) 26f else wcagSrgb(reqLin) * 255f
+        // 目标亮度贴着基准色（≥109，距 110 一步之遥）时直接取基准色 0x5C7288：
+        // 纯白背景（默认灰度 56 → 卡底 199）精确还原五轮观感，也避免 ±1 通道舍入漂移；
+        // 只贴 1 档——基准色对 195 左右的卡只有 ~2.85:1，扩大贴底区会把对比度拖下 3
+        val scale = if (targetLum >= 109f) 1f else (targetLum / 110f).coerceIn(SUB_LABEL_MIN_SCALE, 1f)
+        return Color(
+            Math.round(92 * scale).coerceIn(0, 255),
+            Math.round(114 * scale).coerceIn(0, 255),
+            Math.round(136 * scale).coerceIn(0, 255),
+        )
+    }
+
+    /** WCAG 相对亮度公式：sRGB 伽马解码（0.04045 分段阈值）。 */
+    private fun wcagLinear(c: Float): Float {
+        return if (c <= 0.04045f) c / 12.92f else Math.pow(((c + 0.055f) / 1.055f).toDouble(), 2.4).toFloat()
+    }
+
+    /** WCAG 相对亮度的反函数：线性亮度 → sRGB 伽马编码（0.0031308 分段阈值）。 */
+    private fun wcagSrgb(l: Float): Float {
+        if (l <= 0.0031308f) return l * 12.92f
+        return (1.055f * Math.pow(l.toDouble(), 1.0 / 2.4).toFloat() - 0.055f)
+    }
+
+    /** 副标题小卡卡底亮度预测（1.7.3 覆盖版五轮新增、1.7.3.1 改返回连续值）：
+     * 卡片实际亮度 = 画布底色 × (1 - 副标题灰度 / 255)。采样时机在卡体
+     * 绘制前，画布该区域此刻就是背景原样（模糊副本与原图亮度几乎一致，
+     * 模糊与否、有无背景均可用同一机制）；无背景时画布为深色兑底 →
+     * 低亮度 → 浅色标签，与实际观感一致。五轮 threshold 150 二值判定
+     * 在 1.7.3.1 起由 [subLabelColorFor] 连续配色取代。 */
+    internal fun subtitleBaseLum(image: BufferedImage, x: Float, y: Float, w: Float, h: Float): Float {
         val gray = RenderSettings.subtitleCardGray()
-        return canvasLuminance(image, x, y, w, h) * (255 - gray) / 255f >= 150f
+        return canvasLuminance(image, x, y, w, h) * (255 - gray) / 255f
     }
 
     /** 画布区域平均亮度（0-255，8×4 网格采样；1.7.3 覆盖版五轮：
