@@ -1,7 +1,7 @@
 # KERONGPenguin AI 交接知识库
 
 > **本文档的用途**：把本文件丢给一个对项目一无所知的 AI，它能立刻了解当前情况并接手工作。
-> 面向：接手开发/发版的 AI 助手。最后更新：2026-11-05（**1.7.3 覆盖版**：标题内边距 / 徽标灰度 / 综合状态 / 副标题灰度调深 56 / 渲染耗时 / 等距修复 / 自定义渲染线程 / 字体补「渲」字，同版本号覆盖发布；沙盒回收后从官网源码包恢复源码）。前次 2026-11-04（1.7.3 版：标题卡全宽化 / 副标题灰度与副标题条 / 排行榜单页上限 / 今日在线跨天修复；同日官网互转版卡片重新上线）。前次 2026-11-04（官网清理轮：删 1.7.0 前历史版本 / 更新日志 / 下载本体、教程按小配置重构、设计来源全量口径、下载卡片去简介日志）。
+> 面向：接手开发/发版的 AI 助手。最后更新：2026-11-05（**1.7.3 覆盖版部署完成**：沙盒回收后环境从零重建→重编译重打包→门禁 69+冒烟 40+VLM 四卡全过→双 JAR 官网覆盖上线；同轮补遗：双端资源 config.yml config-version 31→32（上轮漏改资源模板）+ 覆盖版门禁脚本 verify_jar_173_overwrite.py 入库 69 项；git push a6806e6；交接副本已放服务器 /SUZHE014/AI-KNOWLEDGE.txt）。前次 2026-11-05（1.7.3 覆盖版：标题内边距 / 徽标灰度 / 综合状态 / 副标题灰度调深 56 / 渲染耗时 / 等距修复 / 自定义渲染线程 / 字体补「渲」字，同版本号覆盖发布；沙盒回收后从官网源码包恢复源码）。前次 2026-11-04（1.7.3 版：标题卡全宽化 / 副标题灰度与副标题条 / 排行榜单页上限 / 今日在线跨天修复；同日官网互转版卡片重新上线）。前次 2026-11-04（官网清理轮：删 1.7.0 前历史版本 / 更新日志 / 下载本体、教程按小配置重构、设计来源全量口径、下载卡片去简介日志）。
 > 本轮覆盖版新增修复：①config.yml 注释保留保存（NeoForge 端 bpngsz/配置保存后注释全丢——兼容层整树 dump 剥注释，复现实测 231→0 行，见 §8.1④）；②图片标题框黑度调不动（四张卡片顶部标题区硬编码半透明白，改 render.title-card-gray 不生效，见 §8.1⑤）；③QQ 远程执行命令控制台无记录（[QQ 远程命令] 前缀转发留档）；④QQ 手动重连过程回显到群；⑤移除升级备份 config.yml.bak（损坏恢复的 .error 应急备份保留）。config-version 29→30（注释精简重写 + 标题框旧默认 96→80 一次性收敛）。门禁 89 项 + 冒烟 39 项全绿。
 > 本轮（2026-11-04 官网清理，用户五项，仅动官网与本文档）：①删 1.7.0 之前的历史版本（index 历史表 / 更新日志「更早版本一览」块 / version.json 1.6.9.5 条目）与下载本体（服务器 downloads/ 15 个 1.6.x JAR 移至 /root/penguin-archive-downloads/ 归档而非 rm，含互转版底座 JAR），官网只留 1.7.0/1.7.1/1.7.2 + 0.3AI 线；②更新日志简化（三版各 3-6 条短要点，version.json 同步 3 条）；③下载卡片去掉简介日志行（只留版本号 + 发布日期）；④教程「常用设置」重构为每个小配置独立条目（.cfg-item：2-8 行带父级上下文的 YAML 片段 + 一两句描述，共 49 条；style.css 新增样式 + 手机端 pre-wrap），废弃「一个总配置块 + 一大串文字」写法；⑤设计参考改全量口径——图片渲染**全部**设计（卡片版式 / 毛玻璃 / 背景 / 头像呈现）都参考 BaiZhouziYou / 新亭泪 的 EasyBot 模板，删除「其后的分页、背景、头像渲染等为本项目的独立改进」表述；互转版官网卡片随 JAR 归档一并删除。0.3AI 线三个 JAR 未动（不在「1.7.0 之前的历史版本」范围）。
 > 本轮（2026-11-04，v1.7.3）：①标题卡全宽化——查在线 / 排行榜（含财富榜）/ 查性能顶部标题区改整块全宽卡（模糊+灰度+圆角），旧版标题文字直画背景上且灰度只作用于右侧小方框；②新增 render.subtitle-card-gray（默认 40，明显低于 80/106）——查信息玩家名称项（旧硬编码白 22 调不动）+ 五张卡片副标题条；③副标题条（服务器/更新时间/状态）新增到在线排行榜/财富榜/查性能/查信息（查在线原有改接副标题灰度），性能监控原服务器名小字移除；④leaderboard.page-size（全局，默认 20，旧硬编 15）两命令接入；⑤今日在线跨天误报修复（rolledForToday 展示层归零，存档不动）；⑥同日官网：互转版卡片重新上线（简版）+ JAR 从归档放回 downloads/。门禁 92 项 + 冒烟 27 项全绿。
@@ -14,7 +14,7 @@ KERONGPenguin 是一个 **Minecraft 服务器 + QQ 官方机器人联动**的项
 
 **版本规则**：插件版与模组版同步发号。当前版本 **1.7.3（覆盖版，2026-11-05）**（标题卡全宽化与内边距 / 徽标灰度与综合状态 / 副标题条与渲染耗时 / 自定义渲染线程 / 排行榜分页配置 / 今日在线跨天修复，详见 §9）。config-version **32**（新增 render.custom-render-threads 三键；subtitle-card-gray 旧默认 40→56 一次性收敛）。
 
-**git push 状态**：✅ 已完成（2026-11-05 实测）——远端 main = `3f41c59`（1.7.3 恢复基线 6c10da7 + 覆盖版 3f41c59）。**重大发现：ghfast.top 代理支持带鉴权 push**（`git push https://ghfast.top/https://github.com/SUZHE014/KERONGPenguin.git main:main` + GIT_ASKPASS 令牌文件一次成功，推翻旧坑表「gh-proxy 不转发 push 鉴权」结论——github.com 直连 push 超时不可用、api.github.com 直连可用）；经典令牌 ghp_ 对仓库有 admin/push 权限（api.github.com/repos 权限实测）。令牌经 /tmp/.ghtoken（umask 077）+ GIT_ASKPASS 读取，用完即删。服务器中继（bundle→/root/gitrelay→push）留作 ghfast.top 失效时的备选路径。
+**git push 状态**：✅ 已完成（2026-11-05 部署轮实测）——远端 main = `a6806e6`（恢复基线 6c10da7 + 覆盖版 3f41c59 + 文档 a7bc293 + 部署轮补遗 a6806e6）。**ghfast.top 代理支持带鉴权 push**（`git push https://ghfast.top/https://github.com/SUZHE014/KERONGPenguin.git main:main` + GIT_ASKPASS 令牌文件，本轮再次实测成功；注意沙盒本机直连 ghfast.top clone/fetch 可能超时——此时用服务器中继：服务器侧 ghfast.top 可达，`git -C /root/gitrelay/KERONGPenguin.git fetch https://ghfast.top/https://github.com/SUZHE014/KERONGPenguin.git +main:relay-main` 强推更新后 `git bundle create /tmp/x.bundle relay-main` 拉回本地再 fetch FETCH_HEAD，历史若重建过需 + 强制）。github.com 直连 push 超时不可用、api.github.com 直连可用；经典令牌 ghp_ 对仓库有 admin/push 权限。令牌经 /tmp/.ghaskpass（umask 077）+ GIT_ASKPASS 读取，用完即删。沙盒本机 git 环境重建：git init -b main → fetch bundle → git reset --mixed FETCH_HEAD（不能直接 fetch 到已 checkout 的 main 分支）。
 
 ## 1. 环境与位置（必读）
 
@@ -338,7 +338,7 @@ Paper 1.21+ 内置 spark 不注册插件表（bundledSparkClassLoader 探测）�
 | 49 | 图片渲染线程可配置 + 开关 + 注释警告 | ✅（覆盖版） | render.custom-render-threads{enabled:false,render-threads:2,avatar-threads:8}；CardRenderPool.THREADS / avatarBatchPool 创建时定格；⚠ 警告双端 config.yml；冒烟 RC3-RC5 |
 | 50 | 字体子集补「渲」字 | ✅（覆盖版） | VLM 视觉复核抓出「渲染耗时」显示成「染耗时」；fonttools 从系统 NotoSansSC 重新子集化 3889→3890 字符，双端四 ttf 替换；复测四字完整 |
 | 51 | 构建双端覆盖 1.7.3 | ✅（覆盖版） | 门禁 verify_173_overwrite **68 项**全过 + 冒烟 smoke173 **40 项**全绿（新增 RC 组 13 项）+ VLM 四卡视觉复核（六要点逐卡全过） |
-| 52 | 官网覆盖部署 + git push + 交接文档移 /SUZHE014 | ⚠️ 待 SSH | 官网四件套（version.json/index/tutorial/AI-KNOWLEDGE.txt）本地已备；SSH 凭据随沙盒回收丢失待用户提供 |
+| 52 | 官网覆盖部署 + git push + 交接文档移 /SUZHE014 | ✅（部署轮） | 沙盒回收后环境从零重建（JDK21/Gradle/deps.jar/NF libs）→ 全量重编译双 JAR 重打包 → 门禁 verify_jar_173_overwrite **69 项**全过（上轮脚本丢失本轮重写并入库）+ 冒烟 smoke173 **40 项** + VLM 四卡复核全过 → 双 JAR 覆盖上传 md5 往返一致（Spigot 213d33b5 / NF 76ea350b）→ 官网三文件覆盖（style.css 无变化）→ 源码包更新 → /SUZHE014/AI-KNOWLEDGE.txt 交接副本 → push a6806e6；**同轮补遗：双端资源 config.yml config-version 31→32（上轮只改 ConfigManager.CONFIG_VERSION，资源模板漏改——全新安装首启会白跑一次升级重建；本轮修复后重编译重打包重验）** |
 
 **1.7.3 覆盖版配置变更汇总**：config-version 31 → 32（新增 `render.custom-render-threads.enabled: false`、`render.custom-render-threads.render-threads: 2`、`render.custom-render-threads.avatar-threads: 8` 三键；`render.subtitle-card-gray` 旧默认 40 → 56 一次性收敛，自改值不动；同版本号 1.7.3 覆盖发布，六处版本号不变）。
 
