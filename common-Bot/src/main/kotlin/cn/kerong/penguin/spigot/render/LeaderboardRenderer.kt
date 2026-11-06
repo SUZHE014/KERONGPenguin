@@ -178,7 +178,7 @@ object LeaderboardRenderer {
                 drawHeader(g, backdrop, data.title, data.totalPlayers)
                 // 展示玩家数 = min(统计玩家总数, 显示上限)（实际进入排行的行数）
                 val displayedTop = minOf(data.totalPlayers, data.topLimit.toLong())
-                drawSubtitle(g, image, backdrop, data.serverName, data.updateTime, displayedTop)
+                drawSubtitle(g, backdrop, data.serverName, data.updateTime, displayedTop)
                 drawListHeader(g, data.listHeader, data.topLimit, data.totalPlayers)
             }
             if (data.entries.isEmpty()) {
@@ -274,7 +274,7 @@ object LeaderboardRenderer {
      * min(统计玩家总数, 显示上限) 名玩家；覆盖版四轮：数值格式
      * xTOP → TOP x（TOP 在前，如 TOP 8；旧 xTOP 废弃）；
      * 覆盖版一轮的「渲染耗时」格移除（渲染计时补画逻辑同步删除）。 */
-    private fun drawSubtitle(g: Graphics2D, image: BufferedImage, backdrop: InfoCardAssets.CardBackdropContext?, serverName: String, updateTime: String, displayedTop: Long) {
+    private fun drawSubtitle(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, serverName: String, updateTime: String, displayedTop: Long) {
         val top = (MARGIN + HEADER_HEIGHT + HEADER_GAP).toFloat()
         val gap = 16f
         val cardWidth = (WIDTH - 2 * MARGIN - 2 * gap).toFloat() / 3f
@@ -287,15 +287,14 @@ object LeaderboardRenderer {
         )
         cells.forEachIndexed { index, (label, value) ->
             val x = MARGIN + index * (cardWidth + gap)
-            // 1.7.3 覆盖版五轮：绘制前采样画布底色（背景原样）→ 自适应配色；
-            // 1.7.3.1：连续对比度配色（传入卡底亮度）
-            val baseLum = InfoCardRenderer.subtitleBaseLum(image, x, top, cardWidth, cardHeight)
             backdrop?.paintCard(g, x, top, cardWidth, cardHeight, 14f)
-            // 副标题条接副标题灰度（render.subtitle-card-gray，覆盖版默认 56）
+            // 副标题条接副标题灰度（render.subtitle-card-gray，1.7.3.1 覆盖版默认 106 =
+            // 与项目卡相同）
             g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
             g.fill(RoundRectangle2D.Float(x, top, cardWidth, cardHeight, 14f, 14f))
             // 1.7.3 覆盖版四轮起：小标签统一走 InfoCardRenderer.drawSubLabel
-            InfoCardRenderer.drawSubLabel(g, label, x + 26f, top + 34f, baseLum)
+            // （1.7.3.1 覆盖版：固定灰 0x9FB3C8，1.7.0 同款）
+            InfoCardRenderer.drawSubLabel(g, label, x + 26f, top + 34f)
             g.font = InfoCardRenderer.font(30f, true)
             g.color = COLOR_VALUE
             value?.let { g.drawString(clip(g, it, (cardWidth - 52).toInt()), x + 26f, top + 68f) }

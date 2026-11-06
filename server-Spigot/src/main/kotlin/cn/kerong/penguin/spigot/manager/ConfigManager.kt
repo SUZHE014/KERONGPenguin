@@ -156,16 +156,20 @@ class ConfigManager(private val plugin: JavaPlugin) {
             plugin.logger.info("标题框黑度默认值调整：96 → 80（render.title-card-gray，可自行改回）")
             changed = true
         }
-        // 1.7.3 覆盖版：副标题灰度调深（初版 40 太浅看不出卡片底色 → 56，
-        // 仍明显低于标题卡 80 与项目卡 106）——升级时旧默认 40 自动收敛为
-        // 新默认 56；自行改过该值的配置不受影响（重建器内同款收敛）
-        if (oldVersion in 1 until 32 &&
-            config.isSet("render.subtitle-card-gray") &&
-            config.getInt("render.subtitle-card-gray", -1) == 40
+        // 1.7.3.1 覆盖版：副标题灰度对齐项目卡（56 → 106 = 与项目卡
+        // render.item-card-gray 相同，用户口径「副标题框的默认灰度换成和
+        // 项目框一样的灰度」）——升级时历史默认 40（1.7.3 初版）/ 56
+        // （1.7.3 覆盖版）自动收敛为新默认 106；自行改过该值的配置不受
+        // 影响（重建器内同款收敛）
+        if (oldVersion in 1 until 33 &&
+            config.isSet("render.subtitle-card-gray")
         ) {
-            config.set("render.subtitle-card-gray", 56)
-            plugin.logger.info("副标题灰度默认值调整：40 → 56（render.subtitle-card-gray，可自行改回）")
-            changed = true
+            val subGray = config.getInt("render.subtitle-card-gray", -1)
+            if (subGray == 40 || subGray == 56) {
+                config.set("render.subtitle-card-gray", 106)
+                plugin.logger.info("副标题灰度默认值调整：$subGray → 106（render.subtitle-card-gray，与项目卡相同，可自行改回）")
+                changed = true
+            }
         }
         // 清理已废弃的配置段
         // 1.5.1：移除 query-online 段（图片输出改为 markdown 关闭时自动启用）与 motd.text（文本模板已删除）
@@ -337,6 +341,11 @@ class ConfigManager(private val plugin: JavaPlugin) {
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
 
+        // 1.7.3.1 覆盖版：升 33——副标题灰度对齐项目卡（render.subtitle-card-gray
+        // 默认 56 → 106 = 与 render.item-card-gray 相同，用户口径「副标题框的
+        // 默认灰度换成和项目框一样的灰度」；历史默认 40 / 56 升级自动收敛，
+        // 自改值不动）+ 副标题小标签配色回退 1.7.0 查在线同款固定灰
+        // 0x9FB3C8（五轮自适应双色 / 1.7.3.1 连续对比度配色整体回退，无配置变化）。
         // 1.7.3 覆盖版：升 32——新增三键（render.custom-render-threads 段：
         // enabled 默认 false / render-threads 默认 2 / avatar-threads 默认 8，
         // 自定义图片渲染线程开关开启后生效，改后需重启）+ 副标题灰度旧默认
@@ -360,7 +369,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // qq-bind.checkin.points-reward（签到点券奖励，默认 0 关闭）
         // 1.7.1：升 28——无新增键纯注释刷新（卡片背景图说明段补 /hbkrg bpng
         // 图片包下载与 /hbkrg bpngsz 一键切换的用法说明）
-        private const val CURRENT_CONFIG_VERSION = 32
+        private const val CURRENT_CONFIG_VERSION = 33
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -553,10 +562,11 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 中间偏深）
             "render.title-card-gray" to 80,
             "render.item-card-gray" to 106,
-            // 1.7.3：副标题灰度（0-255 半透明黑 alpha）——查信息玩家名称项 +
-            // 五张卡片副标题条（服务器 / 更新时间 / 渲染耗时）；初版 40 太浅，
-            // 覆盖版调深为 56——仍明显低于标题卡 80 与项目卡 106
-            "render.subtitle-card-gray" to 56,
+            // 1.7.3.1 覆盖版：副标题灰度（0-255 半透明黑 alpha）——查信息玩家
+            // 名称项 + 五张卡片副标题条（服务器 / 更新时间 / 渲染耗时）；
+            // 默认 106 与项目卡相同（用户口径「副标题框的默认灰度换成和
+            // 项目框一样的灰度」；历史默认 40 → 56 → 106）
+            "render.subtitle-card-gray" to 106,
             // 1.7.3 覆盖版：自定义图片渲染线程（高级，默认关闭 = 自动模式：
             // 渲染池 CPU 核数一半 1~4 线程、头像下载池 8 线程）；开启后线程数
             // 用下方两键；线程池首次渲染时创建，改后需重启生效；⚠ 线程数

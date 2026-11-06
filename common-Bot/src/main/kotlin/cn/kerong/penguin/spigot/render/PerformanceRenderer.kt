@@ -201,7 +201,7 @@ object PerformanceRenderer {
             // 返回卡片背后局部模糊上下文（毛玻璃，模糊度 render.blur-strength）
             val backdrop = InfoCardAssets.drawBackground(g, data.background, WIDTH, height)
             drawHeader(g, backdrop, status)
-            drawSubtitle(g, image, backdrop, data.serverName, data.updateTime)
+            drawSubtitle(g, backdrop, data.serverName, data.updateTime)
             drawMetricGrid(g, backdrop, cards)
 
             // 1.7.3 覆盖版：补画渲染耗时（此时全部面板已画完，毫秒数含背景 /
@@ -553,7 +553,7 @@ object PerformanceRenderer {
      * 查在线状态栏同款；底色接副标题灰度 render.subtitle-card-gray；
      * 1.7.3 覆盖版：第三格改「渲染耗时」——从开始渲染到本图全部面板
      * 绘制完成的毫秒数，数值在绘制完成后由 [drawRenderElapsed] 补画）。 */
-    private fun drawSubtitle(g: Graphics2D, image: BufferedImage, backdrop: InfoCardAssets.CardBackdropContext?, serverName: String, updateTime: String) {
+    private fun drawSubtitle(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, serverName: String, updateTime: String) {
         val top = (MARGIN + HEADER_HEIGHT + HEADER_GAP).toFloat()
         val gap = 16f
         val cardWidth = (WIDTH - 2 * MARGIN - 2 * gap).toFloat() / 3f
@@ -566,15 +566,14 @@ object PerformanceRenderer {
         )
         cells.forEachIndexed { index, (label, value) ->
             val x = MARGIN + index * (cardWidth + gap)
-            // 1.7.3 覆盖版五轮：绘制前采样画布底色（背景原样）→ 自适应配色；
-            // 1.7.3.1：连续对比度配色（传入卡底亮度）
-            val baseLum = InfoCardRenderer.subtitleBaseLum(image, x, top, cardWidth, cardHeight)
             backdrop?.paintCard(g, x, top, cardWidth, cardHeight, 14f)
-            // 副标题条接副标题灰度（render.subtitle-card-gray，覆盖版默认 56）
+            // 副标题条接副标题灰度（render.subtitle-card-gray，1.7.3.1 覆盖版默认 106 =
+            // 与项目卡相同）
             g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
             g.fill(RoundRectangle2D.Float(x, top, cardWidth, cardHeight, 14f, 14f))
             // 1.7.3 覆盖版四轮起：小标签统一走 InfoCardRenderer.drawSubLabel
-            InfoCardRenderer.drawSubLabel(g, label, x + 26f, top + 34f, baseLum)
+            // （1.7.3.1 覆盖版：固定灰 0x9FB3C8，1.7.0 同款）
+            InfoCardRenderer.drawSubLabel(g, label, x + 26f, top + 34f)
             g.font = InfoCardRenderer.font(30f, true)
             g.color = COLOR_VALUE
             value?.let { g.drawString(clip(g, it, (cardWidth - 52).toInt()), x + 26f, top + 68f) }
