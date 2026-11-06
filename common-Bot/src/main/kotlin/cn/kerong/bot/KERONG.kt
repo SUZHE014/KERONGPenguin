@@ -289,7 +289,9 @@ internal class TextExecution(
  *   意义（用户反馈），整条延迟采集与展示链路随字段一并下线；
  * - 1.6.9.3 新增：[maxPlayers]（服务器真实最大人数，读不到为 null；
  *   查性能卡片在线人数卡展示「N / M」，M 默认用本真实值，服主可经
- *   render.performance.max-players-source 改用其他插件修改过的展示人数）。
+ *   render.performance.max-players-source = motd 改用服务器列表展示值
+ *   ——1.7.3.1 第三次覆盖版起由 MotdDisplayTracker 本机 SLP 自查询捕获
+ *   （人数 N 与最大 M 成对切换，双端一致，查不到回退真实值）。
  */
 data class PerformanceSnapshot(
     /** 最近 1 分钟平均 TPS（满值 20；核心不支持读取时为 null）。 */

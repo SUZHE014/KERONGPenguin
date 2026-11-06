@@ -120,9 +120,11 @@ object PerformanceService {
                     }
 
                     // 1b. 1.6.9.3：在线人数卡的最大人数（real = 真实值默认；
-                    //     motd = 其他插件修改过的展示人数，最近一次 ping 捕获，
-                    //     无人 ping 过回退真实值）
-                    val (maxPlayers, maxFromMotd) = resolveMaxPlayers(snapshot.maxPlayers)
+                    //     motd = 服务器列表展示值）；1.7.3.1 第三次覆盖版重做：
+                    //     人数 N 与最大 M 成对切到展示值，捕获器改本机 SLP 自查询
+                    //     （60 秒节流，查不到回退真实值，双端一致）
+                    val (onlinePlayers, maxPlayers, fromMotd) =
+                        resolveDisplayCounts(snapshot.onlinePlayers, snapshot.maxPlayers)
 
                     // 1c. 1.6.9.3：TPS 变量（variable-fetch.tps，开启且填写时
                     //     优先输出；主线程解析，失败 / 未配置回退自采集值）
@@ -150,8 +152,9 @@ object PerformanceService {
                             updateTime = updateTime,
                             snapshot = snapshot,
                             background = background,
+                            onlinePlayersDisplay = onlinePlayers,
                             maxPlayers = maxPlayers,
-                            maxPlayersFromMotd = maxFromMotd,
+                            maxPlayersFromMotd = fromMotd,
                             tpsVariableText = tpsVariableText,
                         )
                     )
@@ -180,12 +183,13 @@ object PerformanceService {
     }
 
     /**
-     * 最大人数来源解析（1.6.9.3）：
-     * - real（默认）：服务器真实最大人数（快照携带）；
-     * - motd：其他插件修改过的展示人数（[MotdDisplayTracker] 最近一次 ping
-     *   捕获值；无人 ping 过回退真实值）；返回（最大人数, 是否为展示值）。
+     * 展示值解析（1.6.9.3 新增 max-players-source；1.7.3.1 第三次覆盖版重做）：
+     * - real（默认）：人数与最大人数用服务器真实值（快照携带）；
+     * - motd：服务器列表展示值（[MotdDisplayTracker] 本机 SLP 自查询最近
+     *   捕获，过期现场刷新；人数 N 与最大 M 成对切换，查不到回退真实值）；
+     * 返回（展示在线人数, 展示最大人数, 是否为 MOTD 展示值）。
      */
-    private fun resolveMaxPlayers(realMax: Int?): Pair<Int?, Boolean> {
+    private fun resolveDisplayCounts(realOnline: Int?, realMax: Int?): Triple<Int?, Int?, Boolean> {
         val source = try {
             (org.bukkit.Bukkit.getPluginManager().getPlugin("KERONGPenguin") as? org.bukkit.plugin.java.JavaPlugin)
                 ?.config?.getString("render.performance.max-players-source", "real")?.trim()?.lowercase()
@@ -193,9 +197,13 @@ object PerformanceService {
             null
         }
         if (source == "motd") {
-            val display = cn.kerong.penguin.spigot.stats.MotdDisplayTracker.lastDisplayMax
-            if (display != null && display > 0) return display to true
+            cn.kerong.penguin.spigot.stats.MotdDisplayTracker.refreshIfStale()
+            val online = cn.kerong.penguin.spigot.stats.MotdDisplayTracker.lastDisplayOnline
+            val max = cn.kerong.penguin.spigot.stats.MotdDisplayTracker.lastDisplayMax
+            if (online != null && max != null) {
+                return Triple(online, max, true)
+            }
         }
-        return realMax to false
+        return Triple(realOnline, realMax, false)
     }
 }

@@ -72,6 +72,17 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         server.pluginManager.registerEvents(GameChat(), this)
         server.pluginManager.registerEvents(PlayerEventsListener(), this)
 
+        // 1.7.3.1 第三次覆盖版：注入本服端口（MotdDisplayTracker 本机 SLP
+        // 自查询用——render.performance.max-players-source = motd 时查性能
+        // 展示服务器列表的实际展示值，双端统一机制）
+        cn.kerong.penguin.spigot.stats.MotdDisplayTracker.portProvider = {
+            try {
+                server.port
+            } catch (_: Throwable) {
+                null
+            }
+        }
+
         // 注册统计记录器（/查信息 数据源）
         PlayerStatsManager.initialize()
 
@@ -249,6 +260,11 @@ class KERONGSpigot : JavaPlugin(), KERONG {
 
 
     override fun onDisable() {
+        // 1.7.3.1 第三次覆盖版：清空 motd 展示值捕获器（端口注入与捕获值）
+        try {
+            cn.kerong.penguin.spigot.stats.MotdDisplayTracker.reset()
+        } catch (_: Throwable) {
+        }
         // 1.6.4：每一步都独立捕获——停机阶段任何一步失败（含历史遗留的
         // 「zip file closed」类加载错误）都不应中断后续清理与服务器关服。
         // 保存统计数据
@@ -467,7 +483,8 @@ class KERONGSpigot : JavaPlugin(), KERONG {
 
         // 5. 真实最大人数（1.6.9.3 新增：查性能卡片在线人数卡展示「N / M」；
         //    render.performance.max-players-source = motd 时由查性能服务侧改用
-        //    ping 捕获的展示人数，这里始终提供真实值兜底）
+        //    MotdDisplayTracker 本机 SLP 自查询捕获的展示人数，这里始终提供
+        //    真实值兜底）
         val realMaxPlayers = try {
             api.maxPlayers
         } catch (_: Throwable) {

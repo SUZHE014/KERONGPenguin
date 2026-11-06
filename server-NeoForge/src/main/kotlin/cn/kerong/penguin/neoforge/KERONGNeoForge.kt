@@ -81,6 +81,19 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         configManager = ConfigManager(this)
         configManager.initialize()
         File(dataFolder, "img").mkdirs()
+
+        // 1.7.3.1 第三次覆盖版：注入本服端口（MotdDisplayTracker 本机 SLP
+        // 自查询——render.performance.max-players-source = motd 时查性能展示
+        // 服务器列表的实际展示值，与 Spigot 端同一机制；端口三重策略见
+        // NeoPortReader：连接 channel 反射 → 专用服属性反射 → server.properties）
+        cn.kerong.penguin.spigot.stats.MotdDisplayTracker.portProvider = {
+            try {
+                NeoPortReader.portOf(NeoServerRef.server)
+                    ?: NeoPortReader.portFromPropertiesFile(dataFolder)
+            } catch (_: Throwable) {
+                null
+            }
+        }
         // 共享实例注册 → 装载状态 → 异步启动 QQ 客户端（与 Spigot onEnable 同序）
         initializeRuntime()
         PlayerStatsManager.initialize()
@@ -143,6 +156,11 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
 
     /** 服务器停止中（ServerStoppingEvent）：落账并保存。 */
     internal fun onServerStopping() {
+        // 1.7.3.1 第三次覆盖版：清空 motd 展示值捕获器（端口注入与捕获值）
+        try {
+            cn.kerong.penguin.spigot.stats.MotdDisplayTracker.reset()
+        } catch (_: Throwable) {
+        }
         try {
             PlayerStatsManager.shutdown()
         } catch (_: Throwable) {
@@ -319,7 +337,8 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         }
 
         // 1.6.9.3：真实最大人数（查性能卡片在线人数卡展示「N / M」；
-        // 模组端无 ping 状态事件可捕获展示人数，恒用真实值）
+        // 1.7.3.1 第三次覆盖版起 motd 展示值由 MotdDisplayTracker 本机
+        // SLP 自查询捕获（双端一致），这里始终提供真实值兜底）
         val realMaxPlayers = try {
             server.playerList?.maxPlayers
         } catch (_: Throwable) {

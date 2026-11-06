@@ -144,9 +144,14 @@ object PerformanceRenderer {
         val snapshot: cn.kerong.bot.PerformanceSnapshot,
         /** 预处理背景（尺寸可与画布不一致，渲染时拉伸铺满）；null 表示无背景。 */
         val background: BufferedImage? = null,
+        /**
+         * 在线人数展示覆盖值（1.7.3.1 第三次覆盖版新增）：非 null 时在线人数卡
+         * 的人数 N 用它（motd 模式 = 服务器列表展示值），不再用快照真实值。
+         */
+        val onlinePlayersDisplay: Int? = null,
         /** 在线人数卡展示的最大人数（1.6.9.3 新增；null = 不展示「/ M」部分）。 */
         val maxPlayers: Int? = null,
-        /** 最大人数是否为其他插件修改过的展示值（MOTD 展示人数；副说明标记）。 */
+        /** 人数与最大人数是否为服务器列表展示值（MOTD 展示值；副说明标记）。 */
         val maxPlayersFromMotd: Boolean = false,
         /**
          * TPS 变量文本（1.6.9.3 新增，variable-fetch.tps）：非 null 时 TPS 卡
@@ -349,10 +354,12 @@ object PerformanceRenderer {
         // 反映客户端到服务器连接的往返，本地 / 同机连接下恒为 0ms，
         // 数据永远只代表服务器本地网络，对性能监控无实际意义；
         // 1.6.9.3：展示「N / M」——M 为服务器最大人数，默认真实值，
-        // render.performance.max-players-source = motd 时用其他插件修改过的
-        // 展示人数（副说明标记「MOTD 展示值」），进度条按 N/M 占比绘制）
+        // render.performance.max-players-source = motd 时用服务器列表展示值
+        // （副说明标记「MOTD 展示值」，进度条按 N/M 占比绘制）；
+        // 1.7.3.1 第三次覆盖版：motd 模式下人数 N 与最大 M 成对切换——
+        // N 用 onlinePlayersDisplay 展示值，状态胶囊与进度条同源）
         run {
-            val online = snapshot.onlinePlayers
+            val online = data.onlinePlayersDisplay ?: snapshot.onlinePlayers
             val max = data.maxPlayers
             val color = when {
                 online == null -> COLOR_SUB
@@ -383,7 +390,7 @@ object PerformanceRenderer {
                     barColor = color,
                     note = when {
                         max == null || max <= 0 -> "仅展示人数 · 玩家名单用 /查在线 查看"
-                        data.maxPlayersFromMotd -> "最大 $max 人（MOTD 展示值）· 名单用 /查在线 查看"
+                        data.maxPlayersFromMotd -> "人数与最大值为 MOTD 展示值 · 名单用 /查在线 查看"
                         else -> "服务器最大 $max 人 · 名单用 /查在线 查看"
                     },
                 )

@@ -309,13 +309,13 @@ coins-leaderboard:
 </div>
 
 <div class="cfg-item">
-<h4>查性能最大人数来源 <span class="key">render.performance.max-players-source</span></h4>
+<h4>查性能展示人数来源 <span class="key">render.performance.max-players-source</span></h4>
 <div class="config">
 <pre>render:
   performance:
-    max-players-source: "real"  # real = 真实值；motd = 展示人数</pre>
+    max-players-source: "real"  # real = 真实值；motd = 服务器列表展示值</pre>
 </div>
-<p>/查性能 展示「当前 / 最大」。real = 服务器真实最大人数（默认）；motd = 其他插件改过的展示人数（服务器列表里显示的那个，取自最近一次玩家 ping 服务器；模组版恒用真实值）。</p>
+<p>/查性能 在线人数卡展示「当前 / 最大」。real = 服务器真实值（默认）；motd = 服务器列表展示值（其他插件 / 模组改过的，<b>人数与最大值一起生效</b>）——插件按需对 127.0.0.1 本机自查询服务器列表取值，60 秒内复用结果，查不到回退真实值；插件版与模组版统一生效。</p>
 </div>
 </div>
 
@@ -703,7 +703,7 @@ coins-leaderboard:
 
 <div class="tutorial-step">
 <h3>查性能卡片的指标细节</h3>
-<p>共五项：TPS（每秒刻数，满值 20，超过按 20 展示）/ MSPT（每刻耗时毫秒）/ 内存 / CPU / 在线人数（展示「当前 / 最大」，最大人数来源见 render.performance.max-players-source——real = 真实值，motd = 其他插件修改过的展示人数，取自最近一次玩家 ping 服务器时显示的值，无人 ping 过回退真实值；模组端无此事件恒用真实值）。自动兼容 Spigot / Paper / Purpur / Folia / NeoForge 核心；Folia 多线程核心用插件内置采样器读取窗口均值。装了 Spark（插件 / 模组）时优先直接调用 Spark 取数（Paper 1.21+ 系核心已内置 spark，无需安装；想用自装版需加启动参数 <code>-Dpaper.preferSparkPlugin=true</code>，且 Modrinth 上的 spark 文件是模组变体、放 plugins 目录无效）；没装或读不到时回退自研采集，个别核心读不到时显示「--」。填了 TPS 变量时优先显示变量内容。<b>为什么没有"延迟"项</b>：玩家 Ping 反映的是客户端到服务器的连接往返，本地 / 同机 / 内网穿透部署下恒为 0ms，无监控意义。</p>
+<p>共五项：TPS（每秒刻数，满值 20，超过按 20 展示）/ MSPT（每刻耗时毫秒）/ 内存 / CPU / 在线人数（展示「当前 / 最大」，人数与最大值的来源见 render.performance.max-players-source——real = 真实值，motd = 服务器列表展示值（其他插件 / 模组改过的；插件按需本机自查询服务器列表取值，60 秒内复用，查不到回退真实值，插件版与模组版统一生效））。自动兼容 Spigot / Paper / Purpur / Folia / NeoForge 核心；Folia 多线程核心用插件内置采样器读取窗口均值。装了 Spark（插件 / 模组）时优先直接调用 Spark 取数（Paper 1.21+ 系核心已内置 spark，无需安装；想用自装版需加启动参数 <code>-Dpaper.preferSparkPlugin=true</code>，且 Modrinth 上的 spark 文件是模组变体、放 plugins 目录无效）；没装或读不到时回退自研采集，个别核心读不到时显示「--」。填了 TPS 变量时优先显示变量内容。<b>为什么没有"延迟"项</b>：玩家 Ping 反映的是客户端到服务器的连接往返，本地 / 同机 / 内网穿透部署下恒为 0ms，无监控意义。</p>
 </div>
 
 <div class="tutorial-step">
