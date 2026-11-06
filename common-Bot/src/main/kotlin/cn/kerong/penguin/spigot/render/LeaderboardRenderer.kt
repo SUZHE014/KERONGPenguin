@@ -288,8 +288,8 @@ object LeaderboardRenderer {
         cells.forEachIndexed { index, (label, value) ->
             val x = MARGIN + index * (cardWidth + gap)
             backdrop?.paintCard(g, x, top, cardWidth, cardHeight, 14f)
-            // 副标题条接副标题灰度（render.subtitle-card-gray，1.7.3.1 覆盖版默认 106 =
-            // 与项目卡相同）
+            // 副标题条接副标题灰度（render.subtitle-card-gray，1.7.3.1 第二次
+            // 覆盖版默认 80，与标题框相同）
             g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
             g.fill(RoundRectangle2D.Float(x, top, cardWidth, cardHeight, 14f, 14f))
             // 1.7.3 覆盖版四轮起：小标签统一走 InfoCardRenderer.drawSubLabel

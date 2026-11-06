@@ -244,9 +244,8 @@ object InfoCardRenderer {
         val h = 64f
 
         backdrop?.paintCard(g, x, y, w, h, 16f)
-        // 1.7.3：玩家名称项属副标题类小卡，接副标题灰度（1.7.3.1 覆盖版默认 106，
-        // 与项目卡 render.item-card-gray 相同——用户口径「副标题框的默认灰度
-        // 换成和项目框一样的灰度」）
+        // 1.7.3：玩家名称项属副标题类小卡，接副标题灰度（1.7.3.1 第二次覆盖版
+        // 默认 80，与标题框 render.title-card-gray 相同，回归 1.7.0 轻卡观感）
         g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
         g.fill(RoundRectangle2D.Float(x, y, w, h, 16f, 16f))
 
@@ -278,8 +277,8 @@ object InfoCardRenderer {
         cells.forEachIndexed { index, (label, value) ->
             val x = 24f + index * (cardWidth + gap)
             backdrop?.paintCard(g, x, y, cardWidth, cardHeight, 14f)
-            // 副标题条接副标题灰度（render.subtitle-card-gray，1.7.3.1 覆盖版
-            // 默认 106 = 与项目卡相同）
+            // 副标题条接副标题灰度（render.subtitle-card-gray，1.7.3.1 第二次
+            // 覆盖版默认 80，与标题框相同）
             g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
             g.fill(RoundRectangle2D.Float(x, y, cardWidth, cardHeight, 14f, 14f))
             // 1.7.3 覆盖版四轮起：小标签统一走 drawSubLabel（1.7.3.1 覆盖版：
