@@ -3,13 +3,16 @@
 用法：python3 scripts/make_source_zip.py [输出路径]
 仿照五轮会话产出的 KERONGPenguin_v1.7.3_source.zip 结构（759 文件口径）。"""
 import os
+import pathlib
 import subprocess
 import sys
 import zipfile
 
-REPO = "/home/z/my-project/penguin-git"
+# 仓库根 = 脚本所在目录的上一级（旧版硬编码 /home/z/my-project/penguin-git，
+# 沙盒重置后仓库目录名可能变化，改为跟随脚本位置自适应）
+REPO = str(pathlib.Path(__file__).resolve().parent.parent)
 NAME = sys.argv[1] if len(sys.argv) > 1 else \
-    "/home/z/my-project/penguin-git/build/dist/KERONGPenguin_v1.7.3_source.zip"
+    os.path.join(REPO, "build", "dist", "KERONGPenguin_v1.7.3.1_source.zip")
 
 
 def main():
