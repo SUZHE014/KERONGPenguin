@@ -122,6 +122,14 @@ object OnlineListRenderer {
          * 裁剪铺满，1.6.9.5 起不再拉伸）；null 表示无背景。
          */
         val background: BufferedImage? = null,
+        /**
+         * 每页背景提供器（1.7.3.1 第四次覆盖版新增）：每渲染一页按本页
+         * 画布高度调用一次、独立重新抽取一张背景——自定义 img/ 随机图
+         * 时每页各抽各的（与在线排行榜 / 财富榜的分页行为一致），返回
+         * null 时回退 [background] 字段。旧调用方只填 [background] 时
+         * 行为不变（整组页面共用同一张）。
+         */
+        val backgroundProvider: ((height: Int) -> BufferedImage?)? = null,
     )
 
     /**
@@ -151,6 +159,11 @@ object OnlineListRenderer {
      * 渲染在线列表卡片并返回 PNG 字节列表（1.5.5 分段发送）：
      * 不超过 [MAX_PLAYERS_PER_PAGE] 人时返回单张；超出自动切页 ——
      * 第一张带完整标题区，后续各张只绘制玩家网格（不显示标题）。
+     *
+     * 1.7.3.1 第四次覆盖版：背景改由 [OnlineListData.backgroundProvider]
+     * 每页独立提供（自定义 img/ 随机背景多页时每页重新抽取，不再整组
+     * 共用同一张）；未提供 provider 时回退 [OnlineListData.background]
+     * 的旧共用行为。
      */
     fun renderPages(data: OnlineListData): List<ByteArray> {
         val all = data.entries
@@ -185,8 +198,12 @@ object OnlineListRenderer {
             g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
 
             // 1.6.9.5：背景统一走共享入口（cover 裁剪铺满，不再拉伸变形）；
-            // 返回卡片背后局部模糊上下文（毛玻璃，模糊度 render.blur-strength）
-            val backdrop = InfoCardAssets.drawBackground(g, data.background, WIDTH, height)
+            // 返回卡片背后局部模糊上下文（毛玻璃，模糊度 render.blur-strength）；
+            // 1.7.3.1 第四次覆盖版：backgroundProvider 每页独立取背景
+            // （自定义 img/ 随机图时每页重新抽取，不再整组共用同一张），
+            // 未提供时回退 data.background（旧整组共用行为）
+            val pageBackground = data.backgroundProvider?.invoke(height) ?: data.background
+            val backdrop = InfoCardAssets.drawBackground(g, pageBackground, WIDTH, height)
             if (firstPage) {
                 drawHeader(g, backdrop, data.entries.size)
                 drawStatusBar(g, backdrop, data.serverName, data.updateTime)

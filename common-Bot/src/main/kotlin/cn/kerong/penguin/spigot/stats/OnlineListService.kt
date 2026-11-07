@@ -116,28 +116,33 @@ object OnlineListService {
                     //    首页带标题、续页只画内容）；1.5.7 统一背景入口：
                     //    默认内置深灰底图（随 JAR 分发），开关关闭后随机用
                     //    img/ 目录图片，img 无可用图片时回退内置图；
-                    //    背景处理高度封顶（1.5.1 内存限制），渲染时拉伸铺满，
-                    //    整组页面共用同一张背景保持视觉统一
-                    val height = OnlineListRenderer.measurePageHeight(entries.size, true)
+                    //    背景处理高度封顶（1.5.1 内存限制），渲染时 cover 裁剪铺满。
+                    //    1.7.3.1 第四次覆盖版：多页改为每页独立重新抽背景
+                    //    （backgroundProvider 按各页画布高度各调一次，不再
+                    //    整组共用同一张——自定义 img/ 随机图时第 2 页起换图，
+                    //    与在线排行榜 / 财富榜分页行为一致；内置背景与单页
+                    //    场景观感不变）
                     val dataDirectory = plugin.configFile?.parentFile
                     val bindManager = try {
                         QqBindManager.getInstance()
                     } catch (_: Throwable) {
                         null
                     }
-                    val background = InfoCardAssets.resolveBackground(
-                        dataDirectory,
-                        OnlineListRenderer.WIDTH,
-                        height,
-                        bindManager?.onlineListBuiltinBackground ?: true,
-                    )
+                    val useBuiltinBackground = bindManager?.onlineListBuiltinBackground ?: true
                     val updateTime = SimpleDateFormat("HH:mm").format(Date())
                     val pages = OnlineListRenderer.renderPages(
                         OnlineListRenderer.OnlineListData(
                             serverName = plugin.serverName,
                             updateTime = updateTime,
                             entries = entries,
-                            background = background,
+                            backgroundProvider = { pageHeight ->
+                                InfoCardAssets.resolveBackground(
+                                    dataDirectory,
+                                    OnlineListRenderer.WIDTH,
+                                    pageHeight,
+                                    useBuiltinBackground,
+                                )
+                            },
                         )
                     )
 

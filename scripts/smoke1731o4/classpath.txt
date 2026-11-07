@@ -1,0 +1,3 @@
+smoke classpath (NF JAR 兼容层):
+CP=scripts/smoke1731o4/out:build/dist/KERONGPenguin_NeoForge-1.20.4-1.7.3.1.jar:scripts/slf4j-api-2.0.13.jar:scripts/slf4j-nop-2.0.13.jar
+JAVAC_CP=build/dist/KERONGPenguin_NeoForge-1.20.4-1.7.3.1.jar:scripts/slf4j-api-2.0.13.jar
