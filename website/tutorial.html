@@ -18,58 +18,6 @@
 </header>
 <div class="container">
 <section>
-<h2>安装教程</h2>
-
-<div class="tutorial-step">
-<h3><span class="step-num">1</span>创建机器人</h3>
-<ol>
-<li>在手机上安装 <strong>QQ 最新版本</strong>，点击 <strong>联系人 → 机器人 → 创建我的机器人</strong></li>
-<li>选择 <strong>其他服务</strong>，滚动到页面底部点击 <strong>"快速获取机器人 AppID 和 AppSecret"</strong></li>
-<li>设置头像、昵称和简介，把机器人的 <strong>ID</strong> 和 <strong>密钥</strong> 保存下来</li>
-</ol>
-<p>电脑版高级创建：<a href="https://q.qq.com" target="_blank" rel="noopener">q.qq.com</a>（QQ 机器人开放平台官网，与手机创建的机器人通用）</p>
-</div>
-
-<div class="tutorial-step">
-<h3><span class="step-num">2</span>安装并填写配置</h3>
-<ol>
-<li>从 <a href="index.html">下载页面</a> 下载最新的 .jar 文件（插件版放 <code>plugins/</code>，模组版放 <code>mods/</code>）</li>
-<li>启动服务器，会自动生成配置文件</li>
-<li>打开配置文件（插件版 <code>plugins/KERONGPenguin/config.yml</code>，模组版 <code>kerongpenguin/config.yml</code>），填入第 1 步保存的机器人信息：</li>
-</ol>
-<div class="config">
-<pre>bot:
-  app-id: '机器人ID'
-  secret: '机器人密钥'
-  name: '机器人名称'</pre>
-</div>
-<ol start="4">
-<li>保存配置文件，重启服务器</li>
-</ol>
-</div>
-
-<div class="tutorial-step">
-<h3><span class="step-num">3</span>邀请机器人进群</h3>
-<ol>
-<li>在 QQ 中把机器人邀请到你的群，点击机器人头像 → <strong>设置</strong></li>
-<li>把 <strong>机器人可获取的信息范围</strong> 调成 <strong>群内全部消息</strong>，打开<strong>主动发消息</strong>开关</li>
-<li>在群里发送 <strong>/查询open ID</strong>，机器人会回复你的群 OpenId</li>
-<li>把 OpenId 填入配置文件并重启服务器（<b>注意：每一项必须用双引号包裹</b>）：</li>
-</ol>
-<div class="config">
-<pre>bot:
-  groups: ["这里填获取到的群OpenId"]  # 留空 [] 表示不限制</pre>
-</div>
-</div>
-
-<div class="tutorial-step">
-<h3>完成</h3>
-<p>在群里发送 <code>/查信息</code>、<code>/查在线</code>、<code>/查性能</code> 试试。玩家进服会收到验证码，在群里<b>直接发送纯数字验证码</b>即可完成 QQ 绑定（也可以发送 <code>/绑定 验证码</code>）。</p>
-<p>首次填完机器人账号（AppID / 密钥）需重启服务器生效；之后改其他配置执行 <code>/hbkrg reload</code> 即可（绝大多数配置即时生效，仅机器人凭据与更新检查两项必须重启，详见下方技术细节）。</p>
-</div>
-</section>
-
-<section>
 <h2>命令卡片</h2>
 <p style="color:#aab3bc">机器人的全部命令与用法。群聊命令在机器人所在群里发送（<b>@机器人</b> 直接说话是 AI 对话，需在 ai 段开启）；每条群命令都能在 config.yml 的 <b>commands 段</b>单独开关，关掉后 /帮助 条目与 QQ 快捷面板按钮会同步消失。</p>
 
@@ -125,6 +73,58 @@
 <tr><td><code>/qq skip &lt;玩家名&gt;</code></td><td>把玩家加入跳过绑定名单（不再要求其绑定 QQ）</td></tr>
 <tr><td><code>/qq unskip &lt;玩家名&gt;</code></td><td>把玩家移出跳过绑定名单</td></tr>
 </table>
+</div>
+</section>
+
+<section>
+<h2>安装教程</h2>
+
+<div class="tutorial-step">
+<h3><span class="step-num">1</span>创建机器人</h3>
+<ol>
+<li>在手机上安装 <strong>QQ 最新版本</strong>，点击 <strong>联系人 → 机器人 → 创建我的机器人</strong></li>
+<li>选择 <strong>其他服务</strong>，滚动到页面底部点击 <strong>"快速获取机器人 AppID 和 AppSecret"</strong></li>
+<li>设置头像、昵称和简介，把机器人的 <strong>ID</strong> 和 <strong>密钥</strong> 保存下来</li>
+</ol>
+<p>电脑版高级创建：<a href="https://q.qq.com" target="_blank" rel="noopener">q.qq.com</a>（QQ 机器人开放平台官网，与手机创建的机器人通用）</p>
+</div>
+
+<div class="tutorial-step">
+<h3><span class="step-num">2</span>安装并填写配置</h3>
+<ol>
+<li>从 <a href="index.html">下载页面</a> 下载最新的 .jar 文件（插件版放 <code>plugins/</code>，模组版放 <code>mods/</code>）</li>
+<li>启动服务器，会自动生成配置文件</li>
+<li>打开配置文件（插件版 <code>plugins/KERONGPenguin/config.yml</code>，模组版 <code>kerongpenguin/config.yml</code>），填入第 1 步保存的机器人信息：</li>
+</ol>
+<div class="config">
+<pre>bot:
+  app-id: '机器人ID'
+  secret: '机器人密钥'
+  name: '机器人名称'</pre>
+</div>
+<ol start="4">
+<li>保存配置文件，重启服务器</li>
+</ol>
+</div>
+
+<div class="tutorial-step">
+<h3><span class="step-num">3</span>邀请机器人进群</h3>
+<ol>
+<li>在 QQ 中把机器人邀请到你的群，点击机器人头像 → <strong>设置</strong></li>
+<li>把 <strong>机器人可获取的信息范围</strong> 调成 <strong>群内全部消息</strong>，打开<strong>主动发消息</strong>开关</li>
+<li>在群里发送 <strong>/查询open ID</strong>，机器人会回复你的群 OpenId</li>
+<li>把 OpenId 填入配置文件并重启服务器（<b>注意：每一项必须用双引号包裹</b>）：</li>
+</ol>
+<div class="config">
+<pre>bot:
+  groups: ["这里填获取到的群OpenId"]  # 留空 [] 表示不限制</pre>
+</div>
+</div>
+
+<div class="tutorial-step">
+<h3>完成</h3>
+<p>在群里发送 <code>/查信息</code>、<code>/查在线</code>、<code>/查性能</code> 试试。玩家进服会收到验证码，在群里<b>直接发送纯数字验证码</b>即可完成 QQ 绑定（也可以发送 <code>/绑定 验证码</code>）。</p>
+<p>首次填完机器人账号（AppID / 密钥）需重启服务器生效；之后改其他配置执行 <code>/hbkrg reload</code> 即可（绝大多数配置即时生效，仅机器人凭据与更新检查两项必须重启，详见下方技术细节）。</p>
 </div>
 </section>
 
