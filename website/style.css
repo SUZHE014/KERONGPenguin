@@ -47,5 +47,14 @@ td{padding:10px 12px;border-bottom:1px solid #262c34;color:#aab3bc;font-size:0.9
 .cfg-item h4 .key{color:#4da3ff;font-size:0.88em;font-family:monospace}
 .cfg-item .config{margin:10px 0;padding:12px 15px}
 .cfg-item p{color:#aab3bc;font-size:0.92em;margin:6px 0}
+/* 命令卡片表格（命令一览，每条命令一行：命令 + 功能用法） */
+.cmd-table{width:100%;border-collapse:collapse;margin:4px 0 2px}
+.cmd-table th{color:#7a848e;font-size:0.8em;text-align:left;padding:6px 10px 8px;border-bottom:1px solid #2a2f36;font-weight:normal;letter-spacing:0.05em}
+.cmd-table td{padding:10px 10px;border-bottom:1px solid #20252c;vertical-align:top}
+.cmd-table tr:last-child td{border-bottom:none}
+.cmd-table td:first-child{white-space:nowrap}
+.cmd-table td:first-child code{background:#0f1216;color:#7ab8ff;padding:2px 8px;border-radius:5px;font-size:0.86em;font-family:monospace}
+.cmd-table td:last-child{color:#aab3bc;font-size:0.92em}
+.cmd-table .alias{display:block;color:#6b7580;font-size:0.8em;margin-top:5px}
 footer{text-align:center;padding:40px 20px;color:#7a848e;font-size:0.85em;background:#1a1e24;border-top:1px solid #2a2f36}
-@media(max-width:600px){header nav{gap:12px;font-size:0.85em} section{padding:30px 0} .dl-btn{padding:12px 25px;font-size:1em} .core{margin-right:12px} td,th{padding:8px 8px;font-size:0.85em} .dl-box{padding:25px 14px} .tutorial-step .config pre,.cfg-item .config pre{white-space:pre-wrap;overflow-wrap:anywhere}}
+@media(max-width:600px){header nav{gap:12px;font-size:0.85em} section{padding:30px 0} .dl-btn{padding:12px 25px;font-size:1em} .core{margin-right:12px} td,th{padding:8px 8px;font-size:0.85em} .dl-box{padding:25px 14px} .tutorial-step .config pre,.cfg-item .config pre{white-space:pre-wrap;overflow-wrap:anywhere} .cmd-table td:first-child{white-space:normal} .cmd-table td:first-child code{white-space:pre-wrap;overflow-wrap:anywhere}}
