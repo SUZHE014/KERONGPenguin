@@ -20,10 +20,10 @@
 <section>
 <h2>下载</h2>
 <div class="dl-box">
-<p style="font-size:1.3em;font-weight:bold;color:#e8edf2;margin-bottom:5px">版本 1.7.3.1</p>
-<p style="color:#7a848e;margin-bottom:20px">发布于 2026-11-06</p>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.3.1.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.3.1.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
+<p style="font-size:1.3em;font-weight:bold;color:#e8edf2;margin-bottom:5px">版本 1.7.4</p>
+<p style="color:#7a848e;margin-bottom:20px">发布于 2026-11-07</p>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.4.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.4.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
 <div class="dl-info">支持 MC 的版本请详见下方「支持的插件与兼容性 → 支持的服务端核心」</div>
 </div>
 </section>
@@ -56,6 +56,8 @@
 <h2>历史版本</h2>
 <table>
 <tr><th>版本</th><th>发布日期</th><th>下载</th></tr>
+<tr><td>NeoForge 1.7.4</td><td>2026-11-07</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.4.jar">下载</a></td></tr>
+<tr><td>Spigot 1.7.4</td><td>2026-11-07</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.4.jar">下载</a></td></tr>
 <tr><td>NeoForge 1.7.3.1</td><td>2026-11-06</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.3.1.jar">下载</a></td></tr>
 <tr><td>Spigot 1.7.3.1</td><td>2026-11-06</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.3.1.jar">下载</a></td></tr>
 <tr><td>NeoForge 1.7.3</td><td>2026-11-05</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.3.jar">下载</a></td></tr>
@@ -77,6 +79,15 @@
 <section>
 <h2>更新日志</h2>
 <div class="changelog">
+<div class="version"><h3>v1.7.4</h3><span class="date">2026-11-07</span><ul>
+<li><b>新增：QQ 多玩家绑定</b>——每个 QQ 账号最多能绑定多少个玩家可配置（<code>qq-bind.max-players-per-qq</code>，默认 1 = 与旧版单绑定一致，只能填等于或大于 1 的整数，填 0 / 负数按 1 处理）。调大后一个 QQ 可绑定多个玩家；群里用查信息 / 查询open ID / 重新绑定 / 签到这类需要找到“对应玩家”的指令时，机器人先列出该 QQ 名下的全部玩家让你<b>回复数字选择</b>（直接发数字或 @机器人 发数字都可以，2 分钟内有效）；@机器人 发数字不会被判定为 AI 对话。已达绑定上限时绑定码保留，解绑后重发同一码仍可绑定。</li>
+<li><b>修复：未开启 AI 功能时快捷面板仍出现 AI 指令按钮</b>——ai.enabled 未开启时「AI对话上下文」「清除当前上下文」两个按钮不再出现在面板（旧版未接开关，未配置 AI 的服务器面板里也摆着两条不可用的 AI 指令）。</li>
+<li><b>修复：QQ 绑定关闭时签到命令仍可用</b>——签到建立在 QQ-玩家绑定关系之上（签到天数 / 奖励都记在绑定的玩家档案里），绑定总开关 qq-bind.enabled 关闭时签到命令与面板按钮一并关闭（旧版只看签到自己的开关，绑定关闭后历史绑定数据仍可签到）。</li>
+<li><b>调整：移除旧命令 /金币榜</b>——1.6.2 已更名 /财富榜，本轮官网 / 帮助 / 配置注释同步清理，命令只保留「财富榜」一个入口。</li>
+<li><b>调整：查在线多页图片每页重新抽背景图</b>——在线人数多自动分多张图片时，每一页都从 img/ 自定义背景里<b>重新随机抽一张</b>（旧版整组页面共用同一张背景，图包里明明有很多张、感觉来来去去就几张）；在线排行榜 / 财富榜本就每页独立抽图；使用默认内置背景时观感不变，插件版 / 模组版统一生效。</li>
+<li><b>新增：控制台 QQ 配置引导二维码</b>——启动未配置机器人凭据（bot.app-id / bot.secret）时在控制台打印官网教程页二维码，手机 QQ 扫码直达配置教程；<code>/hbkrg qr</code> 随时重新打印。</li>
+<li>配置版本 34 → 35（新增 qq-bind.max-players-per-qq 与 bind-limit / select-player / select-invalid 三条消息模板，升级自动补齐，旧配置无需改动）。</li>
+</ul></div>
 <div class="version"><h3>v1.7.3.1</h3><span class="date">2026-11-06</span><ul>
 <li><b>调整：查在线多页图片每页重新抽背景图</b>——在线人数多自动分多张图片时，每一页都从 img/ 自定义背景里<b>重新随机抽一张</b>（旧版整组页面共用同一张背景，图包里明明有很多张、感觉来来去去就几张）；在线排行榜 / 财富榜本就每页独立抽图；使用默认内置背景时观感不变，插件版 / 模组版统一生效。</li>
 <li><b>修复：motd 展示人数不生效</b>——<code>render.performance.max-players-source = motd</code> 时，查性能在线人数卡改为展示服务器列表里的实际展示值（人数与最大值一起生效，卡底注明「MOTD 展示值」）；插件按需对 127.0.0.1 本机自查询服务器列表取值（60 秒内复用结果，查不到回退真实值），<b>插件版与模组版统一生效</b>——旧版模组端配置写 motd 也永远显示服务器真实人数、插件端只换最大人数，都是不到位。</li>
@@ -150,3 +161,4 @@
 </footer>
 </body>
 </html>
+

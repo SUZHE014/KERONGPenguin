@@ -14,7 +14,7 @@ import java.util.Locale
 
 /**
  * 游戏内命令注册（等价 Spigot 版 plugin.yml 命令 + KERONGCommand / QqCommand）：
- * - /hbkrg：reload / info / chs / bpng / bpngsz / help，需要权限等级 2（OP）；
+ * - /hbkrg：reload / info / chs / bpng / bpngsz / qr / help，需要权限等级 2（OP）；
  *   1.6.2 新增 chs：机器人重连超时挂起或断线期间手动重试连接；
  * - /qq：rebind（玩家自助解绑）与 qxqq / skip / unskip（OP 管理）。
  *
@@ -123,6 +123,14 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
                     { Component.literal("§e提示: §f已提交堆是 JVM 预留量，渲染高峰后扩张、不代表插件实际占用；若此处存活堆很小而面板内存很高，多查其他插件 / JVM 参数（-Xmx 与 GC 行为）") },
                     false,
                 )
+                1
+            },
+        )
+        // 1.7.4：控制台重显 QQ 机器人配置引导二维码（官网教程页；
+        // 未配置凭据时启动也会自动打印一次）
+        builder.then(
+            Commands.literal("qr").executes { context ->
+                plugin.printQqSetupQr()
                 1
             },
         )
@@ -299,6 +307,7 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
         line("§e/$label mem§f - 查看插件内存与缓存诊断（JVM 堆 + 各级缓存）")
         line("§e/$label bpng§f - 查看可下载的背景图片包；/$label bpng <包ID> 下载到 img/（下载中可再执行一次中断）")
         line("§e/$label bpngsz yes|no§f - 一键切换全部卡片是否使用 img/ 自定义背景图")
+        line("§e/$label qr§f - 控制台重新打印 QQ 机器人配置引导二维码（扫码打开官网教程）")
     }
 
     // ---------- 更名说明（/hbkrg） ----------

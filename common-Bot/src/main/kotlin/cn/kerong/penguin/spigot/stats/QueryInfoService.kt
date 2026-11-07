@@ -129,6 +129,10 @@ object QueryInfoService {
      * 1.5.3：支持查询他人——`/查信息 @成员` 时 [qqOpenId] 为发起查询者（冷却接其计），
      * [targetOpenId] 为被查询成员（未绑定则提示该成员先完成绑定）；
      * 不传 [targetOpenId] 时行为与旧版一致（查询自己）。
+     *
+     * 1.7.4：[selectedPlayer] 为多玩家选择确认后传入的玩家（查信息命令检测到
+     * 目标名下多个绑定玩家时先发数字选择消息）；传入时跳过绑定检索与
+     * 冷却检查（发起命令时已通过冷却，选择确认属于同一次查询的延续）。
      */
     fun handle(
         plugin: KERONG,
@@ -136,19 +140,23 @@ object QueryInfoService {
         qqOpenId: String,
         targetOpenId: String? = null,
         targetName: String? = null,
+        selectedPlayer: cn.kerong.penguin.spigot.qqbind.QqBindManager.BoundPlayer? = null,
     ) {
         // 查询冷却：同一用户冷却间隔内只允许一次，防止刷屏导致渲染风暴（1.5.3：按发起者计；
         // 1.6.0：秒数可配置 render.command-cooldown-seconds，默认 5，0 = 关闭）
-        val cooldownMillis = cn.kerong.penguin.spigot.render.RenderSettings.commandCooldownMillis()
-        val now = System.currentTimeMillis()
-        if (cooldownMillis > 0) {
-            val lastAt = lastQueryAt[qqOpenId] ?: 0L
-            if (now - lastAt < cooldownMillis) {
-                cn.kerong.penguin.spigot.qqbind.MessageTemplates.sendPlain(event, "query-too-frequent")
-                return
+        // 1.7.4：选择确认路径（selectedPlayer 非空）跳过——原命令已通过冷却检查
+        if (selectedPlayer == null) {
+            val cooldownMillis = cn.kerong.penguin.spigot.render.RenderSettings.commandCooldownMillis()
+            val now = System.currentTimeMillis()
+            if (cooldownMillis > 0) {
+                val lastAt = lastQueryAt[qqOpenId] ?: 0L
+                if (now - lastAt < cooldownMillis) {
+                    cn.kerong.penguin.spigot.qqbind.MessageTemplates.sendPlain(event, "query-too-frequent")
+                    return
+                }
+                lastQueryAt[qqOpenId] = now
+                if (lastQueryAt.size > 1024) lastQueryAt.clear()
             }
-            lastQueryAt[qqOpenId] = now
-            if (lastQueryAt.size > 1024) lastQueryAt.clear()
         }
 
         // 查询目标：未指定则查询自己（旧版行为）
@@ -173,9 +181,17 @@ object QueryInfoService {
                             "[查信息] ${qqOpenId} 查询 ${targetName ?: targetOpenId}（${targetOpenId}）的玩家信息"
                         )
                     }
-                    val playerName = bindManager.findPlayerByQq(lookupOpenId)
-                    val quuid = bindManager.findQuuidByQq(lookupOpenId)
-                    if (playerName == null || playerName.isEmpty() || quuid == null || quuid.isEmpty()) {
+                    // 1.7.4：选择确认路径直接用选中的玩家；常规路径自行检索
+                    val playerName: String?
+                    val quuid: String?
+                    if (selectedPlayer != null) {
+                        playerName = selectedPlayer.playerName
+                        quuid = selectedPlayer.quuuid
+                    } else {
+                        playerName = bindManager.findPlayerByQq(lookupOpenId)
+                        quuid = bindManager.findQuuidByQq(lookupOpenId)
+                    }
+                    if (playerName.isNullOrEmpty() || quuid.isNullOrEmpty()) {
                         // 1.5.3：查询他人未绑定时指明是谁未绑定，避免误以为查询者自己未绑定
                         if (targetName != null) {
                             cn.kerong.penguin.spigot.qqbind.MessageTemplates.sendPlain(

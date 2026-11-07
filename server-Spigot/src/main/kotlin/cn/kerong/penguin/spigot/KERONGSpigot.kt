@@ -296,6 +296,8 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         configManager.reload()
         reloadRuntimeConfig()
         logCommandExecutor()
+        // 1.7.4：多玩家选择的待选会话随重载作废（旧闭包可能引用过期配置）
+        cn.kerong.bot.events.PlayerSelection.clearAll()
     }
 
     // ---------- 命令执行器选择（含混合端自动检测） ----------

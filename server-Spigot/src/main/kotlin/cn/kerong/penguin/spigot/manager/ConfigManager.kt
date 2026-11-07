@@ -92,7 +92,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
             changed = true
         }
         // 1.6.2：命令更名 /金币榜 → /财富榜（commands 段开关同步迁移保留用户取值；
-        // 旧命令名作为隐藏别名继续可用，与主命令共用开关）
+        // 1.7.4：别名彻底移除，命令只保留 /财富榜）
         if (oldVersion in 1 until 18 && config.isSet("commands.金币榜")) {
             config.set("commands.财富榜", config.get("commands.金币榜"))
             config.set("commands.金币榜", null)
@@ -342,6 +342,11 @@ class ConfigManager(private val plugin: JavaPlugin) {
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
 
+        // 1.7.4：升 35——新增两键（只加新键+默认值，不做任何旧值迁移）：
+        // qq-bind.max-players-per-qq（每个 QQ 账号最多能绑定多少个玩家，默认 1，
+        // 只能等于或大于 1，配 0 / 负数按 1 处理）与多玩家数字选择机制
+        // （无独立配置键：选择有效期固定 2 分钟）；新增消息模板 bind-limit /
+        // select-player / select-invalid；同时 QQ 绑定开启提醒不要开白名单。
         // 1.7.3.1 第二次覆盖版：升 34——副标题灰度改为 80（render.subtitle-card-gray
         // 默认 106 → 80 = 与标题框 title-card-gray 相同，回归 1.7.0 轻卡观感，
         // 用户口径「把副标题默认灰度改为 80」；历史默认 40 / 56 / 106 升级
@@ -374,7 +379,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // qq-bind.checkin.points-reward（签到点券奖励，默认 0 关闭）
         // 1.7.1：升 28——无新增键纯注释刷新（卡片背景图说明段补 /hbkrg bpng
         // 图片包下载与 /hbkrg bpngsz 一键切换的用法说明）
-        private const val CURRENT_CONFIG_VERSION = 34
+        private const val CURRENT_CONFIG_VERSION = 35
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -426,11 +431,11 @@ class ConfigManager(private val plugin: JavaPlugin) {
          * 别名与主命令共用 commands 段里的开关；别名不出现在快捷指令菜单与
          * commands 配置段（dispatch 层按别名命中后仍查主命令开关值）。
          * 1.5.7.4：「在线」为 /查在线 的输入别名；
-         * 1.6.2：「金币榜」为 /财富榜 的旧名别名（命令更名后旧用户无感升级）。
+         * 1.6.2：「金币榜」为 /财富榜 的旧名别名——1.7.4 移除（更名已两个
+         * 大版本周期，配置迁移 1.6.2 时已完成，官网与配置注释同步清理）。
          */
         private val COMMAND_ALIASES = linkedMapOf(
             "在线" to "查在线",
-            "金币榜" to "财富榜",
         )
 
         /**
@@ -446,6 +451,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 1.6.9.3：server-status 与 motd-* 五个模板已随 /在线服务器、/motd 命令移除
             // QQ 绑定
             "bind-usage", "bind-usage-fallback", "bind-disabled", "bind-error", "bind-success", "bind-invalid",
+            "bind-limit", "select-player", "select-invalid",
             // 签到
             "checkin-disabled", "checkin-not-bound", "checkin-data-error", "checkin-time-error",
             "checkin-already", "checkin-success-no-economy", "checkin-reward-invalid",
@@ -528,6 +534,10 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "qq-bind.personal-info" to true,
             "qq-bind.code-expire-minutes" to 10,
             "qq-bind.code-length" to 5,
+            // 1.7.4：每个 QQ 账号最多能绑定多少个玩家（默认 1 = 旧版单绑定行为；
+            // 只能等于或大于 1，配 0 / 负数按 1 处理；名下多个玩家时查信息 /
+            // 查询open ID / 重新绑定 / 签到等指令会先让用户数字选择）
+            "qq-bind.max-players-per-qq" to 1,
             "qq-bind.checkin.enabled" to false,
             "qq-bind.checkin.prefix" to "[签到]",
             "qq-bind.checkin.reward" to 100.0,

@@ -148,11 +148,21 @@ object MenuManager {
     /** 依赖 QQ 绑定功能开启的按钮（绑定关闭时一并隐藏；1.5.2：个人信息按钮更名为查信息）。 */
     private val QQ_BIND_PANEL_NAMES = setOf("绑定", "重新绑定", "黑名单", "解除黑名单", "查信息")
 
-    /** 依赖签到功能开启的按钮。 */
+    /**
+     * 依赖签到功能开启的按钮（1.7.4：同时要求 QQ 绑定总开关开启——签到建立
+     * 在绑定关系之上，绑定关闭时命令与按钮一并关闭）。
+     */
     private val CHECKIN_PANEL_NAMES = setOf("签到")
 
     /** 依赖经济插件（Vault）开启的按钮（1.6.0 金币榜；1.6.2 更名财富榜）。 */
     private val ECONOMY_PANEL_NAMES = setOf("财富榜")
+
+    /**
+     * 依赖 AI 对话功能（ai.enabled）开启的按钮（1.7.4 修复：AI 未开启时
+     * 「AI对话上下文」「清除当前上下文」两个按钮不再出现在快捷面板——
+     * 旧版未接开关，未配置 AI 的服务器面板里也摆着两条不可用的 AI 指令）。
+     */
+    private val AI_PANEL_NAMES = setOf("AI对话上下文", "清除当前上下文")
 
     /**
      * 面板同步结果（1.6.7.10）：启动同步与 /hbkrg reload 据此如实反馈，
@@ -209,6 +219,7 @@ object MenuManager {
             var personalInfoEnabled = true
             var checkinEnabled = false
             var economyAvailable = false
+            var aiEnabled = false
             try {
                 val plugin = cn.kerong.bot.provider.BotShared.instance ?: return PanelSyncResult(null, 0, 0, "插件实例不可用")
                 commandList = plugin.commandList()
@@ -217,14 +228,19 @@ object MenuManager {
                 personalInfoEnabled = manager.isPersonalInfoEnabled
                 checkinEnabled = manager.isCheckinEnabled
                 economyAvailable = cn.kerong.bot.events.commands.CheckInCommands().isEconomyAvailable()
+                aiEnabled = manager.isAiEnabled
             } catch (_: Throwable) {
             }
 
             val visible = PANEL_ITEMS.filter { item ->
                 if (!qqBindEnabled && item.name in QQ_BIND_PANEL_NAMES) return@filter false
                 if (qqBindEnabled && !personalInfoEnabled && item.name == "查信息") return@filter false
-                if (!checkinEnabled && item.name in CHECKIN_PANEL_NAMES) return@filter false
+                // 1.7.4：签到按钮同时看签到开关与绑定总开关（与命令侧检查一致；
+                // 旧版绑定关闭后按钮仍在，点击才提示未开启）
+                if ((!checkinEnabled || !qqBindEnabled) && item.name in CHECKIN_PANEL_NAMES) return@filter false
                 if (!economyAvailable && item.name in ECONOMY_PANEL_NAMES) return@filter false
+                // 1.7.4：AI 功能未开启时隐藏 AI 相关按钮（旧版恒展示的问题修复）
+                if (!aiEnabled && item.name in AI_PANEL_NAMES) return@filter false
                 val enabled = commandList[item.name]
                 enabled == null || enabled
             }

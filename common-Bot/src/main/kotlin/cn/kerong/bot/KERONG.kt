@@ -221,6 +221,11 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
         val secret = botSecret
         if (appId.isBlank() || secret.isBlank()) {
             PluginFileLog.warnAndKeep("未配置 bot.app-id 或 bot.secret，QQ 机器人未启动")
+            // 1.7.4：控制台二维码绑定引导——参考同类产品（HuHoBot）的扫码引导
+            // 体验：手机 QQ 扫描控制台二维码直达官网教程，按教程在 QQ 开放平台
+            // 创建机器人并填写凭据（本插件无网页面板 / 云端中继，凭据仍需手动
+            // 填写配置文件后重启；二维码只负责把教程送到服主手机上）
+            printQqSetupQr()
             return
         }
         PluginFileLog.infoAndKeep("正在后台启动 QQ 机器人客户端（AppID: $appId）…")
@@ -233,6 +238,28 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
                 PluginFileLog.warnAndKeep("QQ 命令将无法响应，请检查网络连接与机器人凭据（bot.app-id / bot.secret）")
             }
         }
+    }
+
+    /**
+     * 1.7.4：控制台打印 QQ 机器人配置引导二维码（官网教程页）。
+     *
+     * 触发点：启动时未配置 bot.app-id / bot.secret；或控制台命令 /hbkrg qr
+     * 随时重显。二维码经插件日志器输出（每行带统一前缀，对扫码无影响——
+     * 前缀只等价于加宽左侧静区）；生成失败时退化为打印纯文本教程地址。
+     */
+    fun printQqSetupQr() {
+        val url = "https://kerong.xin/penguin/tutorial.html"
+        PluginFileLog.infoAndKeep("手机 QQ 扫描下方二维码打开配置教程（也可以手动输入网址）：")
+        try {
+            val qr = cn.kerong.bot.tools.QrCode.encodeAscii(url, quietZone = 2)
+            for (line in qr.lineSequence()) {
+                PluginFileLog.infoAndKeep("  $line")
+            }
+        } catch (t: Throwable) {
+            PluginFileLog.warnAndKeep("引导二维码生成失败：${t.message}")
+        }
+        PluginFileLog.infoAndKeep("教程地址: $url")
+        PluginFileLog.infoAndKeep("按教程在 QQ 开放平台创建机器人后，把 bot.app-id / bot.secret 填入配置文件并重启服务器生效。")
     }
 
     /** 本地正则过滤 + 敏感词审核。 */

@@ -10,7 +10,7 @@
 # ============================================================
 
 # 配置文件版本号（插件自动维护，勿改）
-config-version: 34
+config-version: 35
 
 # 启动后自动联网检查新版本（改这里需重启才生效）
 update-check:
@@ -185,7 +185,7 @@ variable-fetch:
 
 # ---------------- 排行榜 ----------------
 # /在线排行榜：总在线时长排行（排名徽章 + 皮肤头像 + 玩家名 + 时长）
-# /财富榜：金币排行（需 Vault，含离线玩家；别名 /金币榜）
+# /财富榜：金币排行（需 Vault，含离线玩家；1.7.4 移除旧名 /金币榜）
 # 两个排行榜共用同一个「单页上限」配置（page-size，全局生效）
 leaderboard:
   # 单页最多显示多少名（全局：在线排行榜 / 财富榜共用；
@@ -208,6 +208,9 @@ economy-alias: ""
 qq-bind:
   # 绑定总开关：开启后玩家进服必须先绑定 QQ
   #（群里发 /绑定 <码>，或直接发送纯数字验证码）
+  # ⚠️ 开启前请先关闭服务器自带白名单（white-list）并移除白名单插件——
+  # 未绑定玩家会在白名单阶段先被拦下、拿不到绑定验证码；QQ 绑定本身就是
+  # 准入控制（绑定过的才能进服），不要和任何白名单方案叠用
   enabled: false
   # /查信息 命令开关
   personal-info: true
@@ -223,6 +226,13 @@ qq-bind:
   # 绑定码有效期（分钟）与位数（4-8）
   code-expire-minutes: 10
   code-length: 5
+  # 每个 QQ 账号最多能绑定多少个玩家（1.7.4；默认 1 = 旧版单绑定行为；
+  # 只能填等于或大于 1 的整数，填 0 / 负数按 1 处理）
+  # 调大后：一个 QQ 可绑定多个玩家；群里用查信息 / 查询open ID /
+  # 重新绑定 / 签到这类需要找到"对应玩家"的指令时，机器人会先列出
+  # 该 QQ 名下的全部玩家让用户回复数字选择（直接发数字或 @机器人 发数字
+  # 都可以，2 分钟内有效）；改完 /hbkrg reload 即时生效
+  max-players-per-qq: 1
   # 每日签到（群里发 /签到）
   checkin:
     enabled: false
@@ -258,6 +268,9 @@ messages:
   bind-error: "bind-error.md"                        # 绑定处理异常（{error}）
   bind-success: "bind-success.md"                    # 绑定成功
   bind-invalid: "bind-invalid.md"                    # 绑定码无效或已过期
+  bind-limit: "bind-limit.md"                        # 已达每 QQ 可绑定玩家上限（{count} {max}）
+  select-player: "select-player.md"                  # 多玩家选择消息（{count} {list}）
+  select-invalid: "select-invalid.md"                # 选择序号超范围（{count}）
   # —— 签到 ——
   checkin-disabled: "checkin-disabled.md"            # 签到未开启
   checkin-not-bound: "checkin-not-bound.md"          # 未绑定玩家签到（{prefix}）
@@ -352,7 +365,7 @@ commands:
   查在线: true          # /查在线 —— 在线玩家列表（别名 /在线）
   查性能: true          # /查性能 —— 性能卡片（TPS/MSPT/内存/CPU/在线人数）
   在线排行榜: true      # /在线排行榜 —— 总在线时长排行
-  财富榜: true          # /财富榜 —— 金币排行（需 Vault；别名 /金币榜）
+  财富榜: true          # /财富榜 —— 金币排行（需 Vault）
   发信息: true          # /发信息 <内容> —— 发消息到游戏内
   执行命令: true        # /执行命令 <命令> —— 管理员执行服务器命令
   执行: true            # /执行 <key> —— 执行自定义命令

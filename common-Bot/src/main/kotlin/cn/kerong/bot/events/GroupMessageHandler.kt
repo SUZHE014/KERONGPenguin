@@ -82,6 +82,13 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         // 失败不影响消息处理（仅内存写入，持久化异步）
         OpenIdDirectory.recordEvent(event)
 
+        // 1.7.4：多玩家选择的数字确认拦截——优先级最高（在群白名单检查与
+        // 自动绑定之前：查信息 / 查询open ID 在任意群可用，它们触发的选择
+        // 会话也应能在任意群确认；只有 1-2 位纯数字且存在同群同人的活跃
+        // 会话时才消费，其余消息零影响）。在此拦截意味着 @机器人 + 数字
+        // 不会被判定为 AI 对话（用户口径：艾特机器人发数字代码是选择确认）
+        if (PlayerSelection.tryConsume(event, content)) return
+
         // 查询open ID（OpenId 查询）与查信息（统计卡片）命令始终放行（任何群可用）；
         // 其余命令仅允许配置的群。1.5.2：两命令更名（原 查信息/个人信息）。
         // “查询open” 用前缀匹配兼容大小写/空格变体（查询OpenID、查询openid 等）。
@@ -95,7 +102,9 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         // 不匹配任何绑定码时静默放行（不影响全量转发与 AI 对话）。
         if (tryAutoBindByDigits(event, content)) return
 
-        // 1. 依次尝试命令分发
+        // 1. 依次尝试命令分发（1.7.4：@机器人 + 指令同样在此命中——消息内
+        // 的 @ 片段与前导斜杠在命令匹配前被剥离，与直接发送指令走完全
+        // 同一条路径，因此「@机器人 查信息」「@机器人 /帮助」均可执行）
         if (dispatchCommand(event)) return
 
         // 2. @机器人触发 AI 对话（非 / 开头）。
@@ -149,17 +158,29 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
             if (plugin.commandList()["绑定"] == false) return false
             val qq = safeUserId(event)
             if (qq == "<unknown>") return false
-            val success = try {
+            val result = try {
                 manager.confirmBinding(text, qq)
             } catch (_: Throwable) {
-                false
+                QqBindManager.BindResult.INVALID
             }
-            if (success) {
-                QqBindManager.logQuiet("[自动绑定] 纯数字消息匹配绑定码 玩家绑定成功 QQ=$qq")
-                MessageTemplates.sendDirect(event, "bind-success")
-                true
-            } else {
-                false
+            when (result) {
+                QqBindManager.BindResult.SUCCESS -> {
+                    QqBindManager.logQuiet("[自动绑定] 纯数字消息匹配绑定码 玩家绑定成功 QQ=$qq")
+                    MessageTemplates.sendDirect(event, "bind-success")
+                    true
+                }
+                // 1.7.4：码匹配但已达绑定上限——用户意图明确，如实提示
+                // （码保留，解绑后重发同一码仍可绑定）；黑名单与无效码保持
+                // 静默放行（与旧版一致：不向群里无关数字闲聊回复任何内容）
+                QqBindManager.BindResult.LIMIT -> {
+                    QqBindManager.logQuiet("[自动绑定] 绑定码有效但已达绑定上限 QQ=$qq")
+                    MessageTemplates.sendDirect(event, "bind-limit", mapOf(
+                        "count" to manager.listBoundPlayersByQq(qq).size.toString(),
+                        "max" to manager.maxPlayersPerQq.toString(),
+                    ))
+                    true
+                }
+                else -> false
             }
         } catch (_: Throwable) {
             false

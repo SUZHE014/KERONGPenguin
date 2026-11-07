@@ -10,7 +10,10 @@ import org.bukkit.command.TabExecutor
 import java.util.Locale
 
 /**
- * /hbkrg 主命令：reload / info / chs / mem / bpng / bpngsz / help。
+ * /hbkrg 主命令：reload / info / chs / mem / bpng / bpngsz / qr / help。
+ *
+ * 1.7.4 新增 qr：控制台重显 QQ 机器人配置引导二维码（官网教程页；
+ * 未配置凭据时启动也会自动打印一次，本命令随时重显）。
  *
  * 1.7.1 新增 bpng / bpngsz：背景图片包下载与一键切换（共享逻辑在
  * [cn.kerong.penguin.spigot.render.BackgroundPackService]，双端命令层仅做
@@ -89,6 +92,11 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
             }
             "bpngsz" -> {
                 handleBpngsz(sender, args)
+                return true
+            }
+            "qr" -> {
+                // 1.7.4：控制台重显 QQ 机器人配置引导二维码（官网教程页）
+                plugin.printQqSetupQr()
                 return true
             }
         }
@@ -238,9 +246,10 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
         sender.sendMessage("${ChatColor.YELLOW}/$label mem${ChatColor.WHITE} - 查看插件内存与缓存诊断（JVM 堆 + 各级缓存）")
         sender.sendMessage("${ChatColor.YELLOW}/$label bpng${ChatColor.WHITE} - 查看可下载的背景图片包；/$label bpng <包ID> 下载到 img/（下载中可再执行一次中断）")
         sender.sendMessage("${ChatColor.YELLOW}/$label bpngsz yes|no${ChatColor.WHITE} - 一键切换全部卡片是否使用 img/ 自定义背景图")
+        sender.sendMessage("${ChatColor.YELLOW}/$label qr${ChatColor.WHITE} - 控制台重新打印 QQ 机器人配置引导二维码（扫码打开官网教程）")
     }
 
     companion object {
-        private val SUBCOMMANDS = listOf("reload", "info", "chs", "mem", "bpng", "bpngsz", "help")
+        private val SUBCOMMANDS = listOf("reload", "info", "chs", "mem", "bpng", "bpngsz", "qr", "help")
     }
 }

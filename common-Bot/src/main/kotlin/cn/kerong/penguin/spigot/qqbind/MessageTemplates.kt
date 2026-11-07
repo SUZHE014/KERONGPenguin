@@ -52,6 +52,9 @@ object MessageTemplates {
         "bind-error",                    // 绑定处理异常
         "bind-success",                  // 绑定成功（/绑定 与纯数字自动绑定共用）
         "bind-invalid",                  // 绑定码无效或已过期
+        "bind-limit",                    // 已达每 QQ 可绑定玩家数上限（1.7.4）
+        "select-player",                 // 多玩家选择消息（1.7.4）
+        "select-invalid",                // 选择序号超范围（1.7.4）
         // —— 签到 ——
         "checkin-disabled",              // 签到功能未开启
         "checkin-not-bound",             // QQ 未绑定玩家

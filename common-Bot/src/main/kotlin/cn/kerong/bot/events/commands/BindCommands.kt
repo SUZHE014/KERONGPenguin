@@ -34,7 +34,7 @@ class BindCommands : CommandSupport() {
         }
 
         val qq = safeUserId(event)
-        val success = try {
+        val result = try {
             manager.confirmBinding(code, qq)
         } catch (error: Throwable) {
             QqBindManager.logQuiet("[QQ命令] /绑定 异常: ${safeMessage(error)}")
@@ -42,12 +42,24 @@ class BindCommands : CommandSupport() {
             return
         }
 
-        if (success) {
-            QqBindManager.logQuiet("[QQ命令] /绑定 成功 code=$code qq=$qq")
-            MessageTemplates.sendDirect(event, "bind-success")
-        } else {
-            QqBindManager.logQuiet("[QQ命令] /绑定 失败 code=$code 无效或过期")
-            MessageTemplates.sendDirect(event, "bind-invalid")
+        when (result) {
+            QqBindManager.BindResult.SUCCESS -> {
+                QqBindManager.logQuiet("[QQ命令] /绑定 成功 code=$code qq=$qq")
+                MessageTemplates.sendDirect(event, "bind-success")
+            }
+            // 1.7.4：已达每个 QQ 可绑定玩家数上限（绑定码保留，解绑后重发同一码仍可绑定）
+            QqBindManager.BindResult.LIMIT -> {
+                QqBindManager.logQuiet("[QQ命令] /绑定 拒绝：已达绑定上限 code=$code qq=$qq")
+                MessageTemplates.sendDirect(event, "bind-limit", mapOf(
+                    "count" to manager.listBoundPlayersByQq(qq).size.toString(),
+                    "max" to manager.maxPlayersPerQq.toString(),
+                ))
+            }
+            // 黑名单与无效码统一回复 bind-invalid（旧版行为：不暴露黑名单状态）
+            else -> {
+                QqBindManager.logQuiet("[QQ命令] /绑定 失败 code=$code 无效或过期")
+                MessageTemplates.sendDirect(event, "bind-invalid")
+            }
         }
     }
 

@@ -215,6 +215,8 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
     override fun reloadPluginConfig() {
         configManager.reload()
         reloadRuntimeConfig()
+        // 1.7.4：多玩家选择的待选会话随重载作废（旧闭包可能引用过期配置）
+        cn.kerong.bot.events.PlayerSelection.clearAll()
     }
 
     // ---------- 平台标识 ----------
@@ -433,7 +435,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             .resolve("kerongpenguin").toFile()
 
         /** 模组版本（与 neoforge.mods.toml 一致）。 */
-        private const val MOD_VERSION = "1.7.3.1"
+        private const val MOD_VERSION = "1.7.4"
 
         /** 当前模组实例（命令与事件层访问）。 */
         @Volatile

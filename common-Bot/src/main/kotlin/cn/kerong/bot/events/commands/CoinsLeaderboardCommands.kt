@@ -27,9 +27,9 @@ import java.awt.image.BufferedImage
  * 默认为「金币排行榜」/「金币 TOP N」）。
  *
  * 1.6.2 更名：命令由 /金币榜 改为 /财富榜，快捷菜单按钮同步更名；
- * 旧命令 /金币榜 保留为隐藏别名（不进入快捷菜单，与主命令共用开关，
- * 配置里的 commands.金币榜 升级时自动迁移为 commands.财富榜），
- * 旧用户使用习惯不受影响。消息模板文件名仍为 coins-leaderboard-*.md
+ * 旧命令 /金币榜 曾保留为隐藏别名——1.7.4 移除（配置迁移 1.6.2 时已完成，
+ * 官网与帮助模板同步清理，命令只保留 /财富榜 一个入口）。
+ * 消息模板文件名仍为 coins-leaderboard-*.md
  * （模板 ID 与命令名解耦，已自定义模板的用户升级后不丢失）。
  *
  * 配置与在线排行榜一致（coins-leaderboard 段）：
@@ -67,7 +67,9 @@ class CoinsLeaderboardCommands : CommandSupport() {
     /** 原始条目（扫描 + 余额查询后的数据）。 */
     private data class RawEntry(val name: String, val uuid: UUID?, val balance: Double)
 
-    @Commands("财富榜", "金币榜")
+    // 1.7.4：移除旧名别名「金币榜」（1.6.2 更名财富榜后保留至今；官网与配置
+    // 注释同步清理，命令只保留「财富榜」一个入口）
+    @Commands("财富榜")
     fun coinsLeaderboard(plugin: KERONG, event: GroupMessageEvent, params: String) {
         // 查询冷却（render.command-cooldown-seconds，默认 5 秒，0 = 关闭）
         val qq = try {

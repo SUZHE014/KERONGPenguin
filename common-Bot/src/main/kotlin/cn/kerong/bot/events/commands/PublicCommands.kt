@@ -73,11 +73,24 @@ class PublicCommands : CommandSupport() {
         if (mentioned != null) {
             val targetId = mentioned.firstOrNull() ?: return
             val targetName = mentioned.getOrNull(1) ?: targetId
-            QueryInfoService.handle(plugin, event, qq, targetId, targetName)
+            // 1.7.4：目标成员名下绑定多个玩家时，由发起者回复数字选择要查询的玩家
+            cn.kerong.bot.events.PlayerSelection.requireBoundPlayer(
+                event, bindManager, targetId,
+                notBoundTemplate = "info-target-not-bound",
+                notBoundVars = mapOf("name" to targetName),
+            ) { selected ->
+                QueryInfoService.handle(plugin, event, qq, targetId, targetName, selected)
+            }
             return
         }
-        // 卡片渲染与数据汇总在服务内异步完成
-        QueryInfoService.handle(plugin, event, qq)
+        // 卡片渲染与数据汇总在服务内异步完成；1.7.4：自己名下绑定多个
+        // 玩家时先选择（单个玩家 / 未绑定与旧版一致）
+        cn.kerong.bot.events.PlayerSelection.requireBoundPlayer(
+            event, bindManager, qq,
+            notBoundTemplate = "info-not-bound",
+        ) { selected ->
+            QueryInfoService.handle(plugin, event, qq, selectedPlayer = selected)
+        }
     }
 
     /**
@@ -135,21 +148,36 @@ class PublicCommands : CommandSupport() {
         } catch (_: Throwable) {
             null
         }
-        val boundPlayer = try {
-            bindManager?.findPlayerByQq(openId)
-        } catch (_: Throwable) {
-            null
-        }
         // {lastSeenPart}：有记录时为「\n最后活跃: xxx」，无记录时为空（行不显示）
         val lastSeenPart = if (lastSeen != null) "\n最后活跃: $lastSeen" else ""
         // {openidPart}（1.6.5）：管理员查询时为「OpenId: xxx\n」，非管理员为空（行不显示）
         val openidPart = if (isAdmin(plugin, event)) "OpenId: $openId\n" else ""
-        MessageTemplates.sendDirect(event, "openid-lookup", mapOf(
-            "openidPart" to openidPart,
-            "nickname" to (nickname ?: "未知（该账号未在机器人可见的群消息中出现过）"),
-            "lastSeenPart" to lastSeenPart,
-            "player" to (boundPlayer?.takeIf { it.isNotEmpty() } ?: "未绑定任何游戏玩家"),
-        ))
+        fun renderLookup(playerText: String) {
+            MessageTemplates.sendDirect(event, "openid-lookup", mapOf(
+                "openidPart" to openidPart,
+                "nickname" to (nickname ?: "未知（该账号未在机器人可见的群消息中出现过）"),
+                "lastSeenPart" to lastSeenPart,
+                "player" to playerText,
+            ))
+        }
+        // 1.7.4：目标名下绑定多个玩家时先数字选择再展示（查询他人 = 发起者选择；
+        // 查询自己 = 自己选择）；未绑定与旧版一致展示「未绑定任何游戏玩家」
+        val players = try {
+            bindManager?.listBoundPlayersByQq(openId) ?: emptyList()
+        } catch (_: Throwable) {
+            emptyList()
+        }
+        if (players.isEmpty()) {
+            renderLookup("未绑定任何游戏玩家")
+            return
+        }
+        if (players.size == 1) {
+            renderLookup(players[0].playerName)
+            return
+        }
+        cn.kerong.bot.events.PlayerSelection.selectOrRun(event, players) { selected ->
+            renderLookup(selected.playerName)
+        }
     }
 
     /** /发信息 <内容> —— 发送消息到游戏内。转发关闭时回复模板 forward-disabled。 */
@@ -327,11 +355,12 @@ class PublicCommands : CommandSupport() {
             return
         }
         manager.addBlacklist(mentionedId, mentionedName)
-        val kicked = manager.unbindAndKickByQq(mentionedId)
-        if (kicked != null) {
+        // 1.7.4：多玩家绑定——拉黑时该 QQ 名下全部绑定玩家一并解绑踢出
+        val unbound = manager.unbindAllAndKickByQq(mentionedId)
+        if (unbound.isNotEmpty()) {
             MessageTemplates.sendDirect(event, "blacklist-added-kicked", mapOf(
                 "name" to (mentionedName ?: mentionedId),
-                "player" to kicked,
+                "player" to unbound.joinToString("、"),
             ))
         } else {
             MessageTemplates.sendDirect(event, "blacklist-added", mapOf(
@@ -373,7 +402,10 @@ class PublicCommands : CommandSupport() {
         ))
     }
 
-    /** /重新绑定 —— 解除当前 QQ 绑定并踢出玩家（自助）。模板：rebind-success/not-bound。 */
+    /**
+     * /重新绑定 —— 解除当前 QQ 绑定并踢出玩家（自助）。模板：rebind-success/not-bound。
+     * 1.7.4：名下绑定多个玩家时先数字选择，只解绑选中的那一个（其余绑定不受影响）。
+     */
     @Commands("重新绑定")
     fun rebindQq(plugin: KERONG, event: GroupMessageEvent, params: String) {
         val manager = try {
@@ -383,11 +415,16 @@ class PublicCommands : CommandSupport() {
             return
         }
         val qq = userId(event)
-        val kicked = manager.unbindAndKickByQq(qq)
-        if (kicked != null) {
-            MessageTemplates.sendDirect(event, "rebind-success", mapOf("player" to kicked))
-        } else {
-            MessageTemplates.sendDirect(event, "rebind-not-bound")
+        cn.kerong.bot.events.PlayerSelection.requireBoundPlayer(
+            event, manager, qq,
+            notBoundTemplate = "rebind-not-bound",
+        ) { selected ->
+            val kicked = manager.unbindByQuuid(selected.quuuid, selected.playerName)
+            if (kicked) {
+                MessageTemplates.sendDirect(event, "rebind-success", mapOf("player" to selected.playerName))
+            } else {
+                MessageTemplates.sendDirect(event, "rebind-not-bound")
+            }
         }
     }
 

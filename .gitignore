@@ -63,3 +63,7 @@ scripts/smoke1731o2/out/
 scripts/blurtest/out/
 scripts/smoke1731o3/out/
 scripts/smoke1731o4/out/
+
+# 1.7.4 冒烟产物（JAR 副本与编译输出不入库）
+scripts/smoke174/*.class
+scripts/smoke174/out/

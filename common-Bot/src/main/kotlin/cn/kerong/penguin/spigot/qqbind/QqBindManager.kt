@@ -46,6 +46,24 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
     /** 待确认的绑定码。 */
     class PendingBind(val playerName: String, val playerKey: String, val quuid: String, val expireAt: Long)
 
+    /**
+     * 一个 QQ 账号名下绑定的一个玩家（1.7.4 多玩家绑定）：
+     * [playerName] 玩家名 + [quuuid] 其 QUUID 主文件（一人一文件）。
+     */
+    data class BoundPlayer(val playerName: String, val quuuid: String)
+
+    /** [confirmBinding] 的结果（1.7.4：多玩家上限与旧版单绑定共用同一提交入口）。 */
+    enum class BindResult {
+        /** 绑定成功（含同玩家重复绑定刷新）。 */
+        SUCCESS,
+        /** 绑定码不存在或已过期。 */
+        INVALID,
+        /** 提交者在 QQ 黑名单中（不暴露具体原因，与旧版一致回复无效）。 */
+        BLACKLISTED,
+        /** 已达每个 QQ 账号可绑定玩家数上限（qq-bind.max-players-per-qq）。 */
+        LIMIT,
+    }
+
     /** AI 对话消息。 */
     class ChatMessage(val role: String, val content: String)
 
@@ -419,6 +437,16 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             if (length < 4) length = 4
             if (length > 8) length = 8
             return length
+        }
+
+    /**
+     * 每个 QQ 账号最多能绑定多少个玩家（1.7.4 新增，默认 1，只能等于或
+     * 大于 1——配置写 0 / 负数时按 1 处理，避免把所有绑定入口意外关死）。
+     */
+    val maxPlayersPerQq: Int
+        get() {
+            val value = plugin.config.getInt("qq-bind.max-players-per-qq", 1)
+            return if (value < 1) 1 else value
         }
 
     /** QQ 群 AI 对话开关。 */
@@ -917,31 +945,91 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         return code
     }
 
-    /** 提交绑定码完成绑定。 */
+    /**
+     * 提交绑定码完成绑定（1.7.4：返回 [BindResult] 供命令层区分回复）。
+     *
+     * 多玩家绑定规则：
+     * - 同一玩家重复提交（已在名下）→ 视为刷新绑定，成功；
+     * - 名下玩家数已达 qq-bind.max-players-per-qq → 拒绝（LIMIT，**绑定码保留**——
+     *   玩家先 /重新绑定 腾位后可继续用同一码绑定，码到期前仍有效）；
+     * - 其余（未达上限）→ 绑定成功。
+     */
     @Synchronized
-    fun confirmBinding(code: String?, qq: String?): Boolean {
-        if (code == null || qq.isNullOrEmpty()) return false
+    fun confirmBinding(code: String?, qq: String?): BindResult {
+        if (code == null || qq.isNullOrEmpty()) return BindResult.INVALID
         val trimmed = code.trim()
-        if (trimmed.isEmpty()) return false
+        if (trimmed.isEmpty()) return BindResult.INVALID
         cleanExpiredCodes()
-        val pending = pendingCodes[trimmed] ?: return false
+        val pending = pendingCodes[trimmed] ?: return BindResult.INVALID
 
         if (isBlacklisted(qq)) {
             logQuiet("[绑定拒绝] QQ=$qq 在黑名单中，拒绝绑定 玩家=${pending.playerName}")
             pendingCodes.remove(trimmed)
-            return false
+            return BindResult.BLACKLISTED
         }
-        val existing = findPlayerByQq(qq)
-        if (existing != null && !existing.equals(pending.playerName, ignoreCase = true)) {
-            logQuiet("[绑定拒绝] QQ=$qq 已绑定玩家=$existing，拒绝重复绑定 玩家=${pending.playerName}")
-            pendingCodes.remove(trimmed)
-            return false
+        val bound = listBoundPlayersByQq(qq)
+        val alreadyBound = bound.any { it.playerName.equals(pending.playerName, ignoreCase = true) }
+        if (!alreadyBound && bound.size >= maxPlayersPerQq) {
+            logQuiet(
+                "[绑定拒绝] QQ=$qq 已绑定 ${bound.size} 个玩家（上限 ${maxPlayersPerQq}），" +
+                    "拒绝绑定 玩家=${pending.playerName}（绑定码保留，解绑后可重试）"
+            )
+            return BindResult.LIMIT
         }
         saveQuuidRecord(pending.quuid, pending.playerName, qq, System.currentTimeMillis(), false)
         openidToQuuid[qq] = pending.quuid
         pendingCodes.remove(trimmed)
-        logQuiet("[绑定成功] 玩家=${pending.playerName} QUUID=${pending.quuid} QQ=$qq")
-        return true
+        logQuiet("[绑定成功] 玩家=${pending.playerName} QUUID=${pending.quuid} QQ=$qq（名下 ${bound.size + if (alreadyBound) 0 else 1} 个玩家）")
+        return BindResult.SUCCESS
+    }
+
+    /**
+     * 列出一个 QQ 账号（OpenId）名下绑定的全部玩家（1.7.4 多玩家绑定）。
+     *
+     * 数据源为 QUUID 主文件逐个扫描（qq 字段非空即已绑定），按绑定时间
+     * 升序返回（先绑定的排前面，选择列表顺序稳定）；磁盘异常时尽力返回。
+     * 兼容性：单绑定时代的数据同样适用（列表长度 0 / 1）。
+     */
+    fun listBoundPlayersByQq(qq: String?): List<BoundPlayer> {
+        if (qq.isNullOrEmpty()) return emptyList()
+        // 中间载体：绑定时间 + 玩家名 + QUUID（时间升序、同名按字典序稳定排序）
+        val result = ArrayList<Triple<Long, String, String>>()
+        val files = try {
+            quuidFolder.listFiles { f -> f.isFile && f.name.endsWith(".yml") }
+        } catch (_: Throwable) {
+            null
+        } ?: return emptyList()
+        for (file in files) {
+            val name = file.name
+            if (name == "index.yml" || name == "skip.yml" || name == "blacklist.yml") continue
+            try {
+                val yaml = YamlConfiguration.loadConfiguration(file)
+                if (yaml.getString("qq", "") != qq) continue
+                val playerName = yaml.getString("playerName", "") ?: ""
+                if (playerName.isEmpty()) continue
+                result.add(Triple(yaml.getLong("boundAt", 0L), playerName, name.removeSuffix(".yml")))
+            } catch (_: Throwable) {
+            }
+        }
+        result.sortWith(compareBy({ it.first }, { it.second.lowercase() }))
+        return result.map { BoundPlayer(it.second, it.third) }
+    }
+
+    /**
+     * 解绑该 QQ 名下绑定的全部玩家并踢出（1.7.4：黑名单场景——拉黑一个
+     * QQ 时其名下所有绑定玩家一并解除，与多玩家绑定对称）。
+     * @return 被解绑的玩家名列表（空 = 该 QQ 未绑定任何玩家）
+     */
+    fun unbindAllAndKickByQq(qq: String?): List<String> {
+        val players = listBoundPlayersByQq(qq)
+        if (players.isEmpty()) return emptyList()
+        val unbound = ArrayList<String>()
+        for (player in players) {
+            if (unbindByQuuid(player.quuuid, player.playerName)) {
+                unbound.add(player.playerName)
+            }
+        }
+        return unbound
     }
 
     @Synchronized
@@ -965,7 +1053,11 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         if (currentQq.isNullOrEmpty()) return false
         yaml.set("qq", "")
         yaml.set("boundAt", 0L)
-        openidToQuuid.remove(currentQq)
+        // 1.7.4：OpenId → QUUID 反查缓存只在指向本 QUUID 时移除；该 QQ 名下
+        // 还有其他绑定玩家时保留（getQuuidByOpenid 的兜底扫描会在 miss 时重建）
+        if (openidToQuuid[currentQq] == quuid) {
+            openidToQuuid.remove(currentQq)
+        }
         try {
             saveAtomic(yaml, file)
         } catch (_: IOException) {

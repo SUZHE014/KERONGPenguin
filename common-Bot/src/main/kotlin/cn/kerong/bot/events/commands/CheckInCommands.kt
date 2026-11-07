@@ -39,7 +39,11 @@ class CheckInCommands : CommandSupport() {
             MessageTemplates.sendDirect(event, "manager-not-ready")
             return
         }
-        if (!manager.isCheckinEnabled) {
+        // 1.7.4 修复：QQ 绑定总开关（qq-bind.enabled）关闭时签到命令同样关闭——
+        // 签到建立在 QQ-玩家绑定关系之上（签到天数 / 奖励都记在绑定的玩家档案里），
+        // 绑定都没开时签到没有意义（旧版只看 qq-bind.checkin.enabled，绑定关闭后
+        // 历史绑定数据仍可签到，与“绑定已关闭”的状态矛盾）；面板按钮同步隐藏
+        if (!manager.isEnabled || !manager.isCheckinEnabled) {
             MessageTemplates.sendDirect(event, "checkin-disabled")
             return
         }
@@ -52,17 +56,26 @@ class CheckInCommands : CommandSupport() {
             MessageTemplates.sendDirect(event, "qq-unknown")
             return
         }
-        val playerName = manager.findPlayerByQq(qq)
-        if (playerName.isNullOrEmpty()) {
-            MessageTemplates.sendDirect(event, "checkin-not-bound", mapOf("prefix" to manager.checkinPrefix))
-            return
+        // 1.7.4：多玩家绑定——名下多个玩家时先发送选择消息，数字确认后对
+        // 选中的玩家签到（单个玩家 / 未绑定与旧版行为一致）
+        cn.kerong.bot.events.PlayerSelection.requireBoundPlayer(
+            event, manager, qq,
+            notBoundTemplate = "checkin-not-bound",
+            notBoundVars = mapOf("prefix" to manager.checkinPrefix),
+        ) { selected ->
+            performCheckin(plugin, event, manager, qq, selected.playerName, selected.quuuid)
         }
-        val quuid = manager.findQuuidByQq(qq)
-        if (quuid.isNullOrEmpty()) {
-            MessageTemplates.sendDirect(event, "checkin-data-error", mapOf("prefix" to manager.checkinPrefix))
-            return
-        }
+    }
 
+    /** 签到主体（1.7.4 从命令方法抽出：选择确认后以选中的玩家执行）。 */
+    private fun performCheckin(
+        plugin: KERONG,
+        event: GroupMessageEvent,
+        manager: QqBindManager,
+        qq: String?,
+        playerName: String,
+        quuid: String,
+    ) {
         // 联网获取北京时间（可能阻塞数秒，此方法已在消息线程）
         val today = try {
             BeijingTimeUtil.getBeijingDate()
