@@ -264,6 +264,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
         plugin.config.getString("player-events.join.format", "[游戏] {name} 加入了服务器") ?: "[游戏] {name} 加入了服务器",
         plugin.config.getBoolean("player-events.quit.enabled", true),
         plugin.config.getString("player-events.quit.format", "[游戏] {name} 离开了服务器") ?: "[游戏] {name} 离开了服务器",
+        // 1.7.4 覆盖版：死亡播报（参考 HuHoBot，配置键与其一致；默认关闭）
+        plugin.config.getBoolean("player-events.death.enabled", false),
+        plugin.config.getString("player-events.death.format", "[游戏] {message}") ?: "[游戏] {message}",
     )
 
     fun markdownFiles(): Map<String, String> {
@@ -363,7 +366,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 渲染视觉修正（标题 padding / 徽标灰度 +36 / 性能卡等距 / 综合状态 /
         // 渲染耗时副标题格，无配置变化）；
         // 1.7.3：升 31——新增三键（只加新键+默认值，不做任何旧值迁移）：
-        // render.subtitle-card-gray（副标题灰度，默认 40 = 查信息玩家名称项 +
+        // render.subtitle-card-gray（副标题灰度，默认 40 = 玩家名片玩家名称项 +
         // 五张卡片副标题条（服务器 / 更新时间 / 状态），明显低于标题卡 80 与
         // 项目卡 106）、leaderboard.page-size（排行榜单页上限，全局：在线
         // 排行榜 / 财富榜共用，默认 20，旧版硬编码 15）、同时标题卡改全宽化
@@ -418,10 +421,12 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
         /**
          * 支持开关的群命令名单（1.5.2：查信息更名对应个人信息卡片命令，新增 查询open ID；
-         * 1.6.0 新增金币榜；1.6.2 更名财富榜；1.6.9.3 移除 在线服务器 与 motd）。
+         * 1.6.0 新增金币榜；1.6.2 更名财富榜；1.6.9.3 移除 在线服务器 与 motd；
+         * 1.7.4 覆盖版：查询open ID 更名为 查信息（旧名保留为隐藏别名），
+         * 查信息（玩家统计卡片）更名为 玩家名片）。
          */
         private val COMMAND_NAMES = listOf(
-            "查询open ID", "查信息", "绑定", "重新绑定", "查在线", "查性能", "在线排行榜", "财富榜", "发信息",
+            "查信息", "玩家名片", "绑定", "重新绑定", "查在线", "查性能", "在线排行榜", "财富榜", "发信息",
             "执行命令", "执行", "管理员执行", "全量", "帮助",
             "AI对话上下文", "清除当前上下文", "黑名单", "解除黑名单", "签到",
         )
@@ -436,6 +441,17 @@ class ConfigManager(private val plugin: JavaPlugin) {
          */
         private val COMMAND_ALIASES = linkedMapOf(
             "在线" to "查在线",
+            // 1.7.4 覆盖版：「查询open ID」更名为「查信息」，旧名及其大小写
+            // 变体保留为隐藏别名（共用 commands.查信息 开关；旧配置里写死的
+            // commands.查询open ID 键仍优先生效，不做迁移）
+            "查询open ID" to "查信息",
+            "查询Open ID" to "查信息",
+            "查询open id" to "查信息",
+            "查询Open id" to "查信息",
+            "查询openID" to "查信息",
+            "查询OpenID" to "查信息",
+            "查询openid" to "查信息",
+            "查询OPENID" to "查信息",
         )
 
         /**
@@ -572,7 +588,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "render.blur-strength" to 50,
             // 1.7.2 覆盖版：卡片底色黑度（0-255 半透明黑 alpha）；title =
             // 四张卡片顶部标题区（默认 80 比项目卡片略浅，覆盖版前这些区域
-            // 硬编码半透明白调不动）；item = 列表容器（查信息统计面板 +
+            // 硬编码半透明白调不动）；item = 列表容器（玩家名片统计面板 +
             // 查在线 / 排行榜 / 查性能容器，默认 106 = 旧值 120 与浅值 64
             // 中间偏深）
             "render.title-card-gray" to 80,
@@ -603,7 +619,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 1.6.9：变量获取信息（查信息卡片的指定项目改读 PlaceholderAPI 变量输出；
             // 默认关闭；变量留空 / 解析失败自动回退插件自带数据）；
             // 1.6.9.3：新增 player-name（玩家名，查信息 / 排行榜生效）、
-            // tps（查性能生效）与 custom-items（自定义查信息项目：段名=项目ID，
+            // tps（查性能生效）与 custom-items（自定义玩家名片项目：段名=项目ID，
             // 子键 项目名称 / 获取变量；正常返回才展示）
             "variable-fetch.enabled" to false,
             "variable-fetch.total-playtime" to "",

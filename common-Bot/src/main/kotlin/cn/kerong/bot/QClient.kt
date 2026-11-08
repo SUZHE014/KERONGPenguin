@@ -125,6 +125,10 @@ object QClient {
             }
 
             session.registerListenerHost(groupMessageHandler)
+            // 1.7.4 覆盖版：消息按钮互动监听（多绑定玩家选择 / 解除黑名单按钮；
+            // 与群消息监听并列的第二个 ListenerHost，事件源 PUBLIC_INTENTS 已含
+            // INTERACTION 位，无需改订阅意图）
+            session.registerListenerHost(cn.kerong.bot.events.InterActionListener())
             // 1.6.7.4：注册完成属常规例行信息，仅写文件留档不刷控制台（用户需求）
             PluginFileLog.write("群消息监听已注册（命令系统就绪）")
             session.APPLICATION.logger.setLogLevel(1)
@@ -262,6 +266,22 @@ object QClient {
         // 1.5.4.5：同上，主线程事件入队发送。
         OutboxQueue.submit {
             sendTextToGroupsSync(plugin.formatPlayerQuitMessage(playerName), "发送玩家退服通知")
+        }
+    }
+
+    /**
+     * 播报玩家死亡（1.7.4 覆盖版新增，默认关闭——player-events.death.enabled）。
+     *
+     * 死亡描述与击杀者名由各平台事件层生成（Spigot / NeoForge 的 DeathMessage
+     * 工具，实现与文案口径参考 HuHoBot：http://docs.huhobot.dpdns.org/ 、
+     * https://github.com/HuHoBot/PenguinAgent ）。
+     */
+    fun broadcastPlayerDeath(playerName: String, deathMessage: String?, killerName: String? = null) {
+        if (starter == null) return
+        if (!plugin.playerEventFormat().deathEnabled) return
+        // 与进出服播报同路径：主线程事件入队发送
+        OutboxQueue.submit {
+            sendTextToGroupsSync(plugin.formatPlayerDeathMessage(playerName, deathMessage, killerName), "发送玩家死亡播报")
         }
     }
 

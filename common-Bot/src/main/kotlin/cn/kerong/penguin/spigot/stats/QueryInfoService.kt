@@ -19,10 +19,10 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /**
- * /查信息（1.5.2 前名为 /个人信息）命令服务：QQ → 玩家 UUID → 数据组装 → 卡片渲染 → 图片发送。
+ * /玩家名片（1.5.2 前名为 /个人信息，1.7.4 覆盖版前名为 /查信息）命令服务：QQ → 玩家 UUID → 数据组装 → 卡片渲染 → 图片发送。
  *
  * 流程：
- * 1. 通过 QQ OpenId 查找绑定的玩家（未绑定则直接提示；1.5.3 支持 `/查信息 @成员`
+ * 1. 通过 QQ OpenId 查找绑定的玩家（未绑定则直接提示；1.5.3 支持 `/玩家名片 @成员`
  *    查询他人，未绑定时指明是谁未绑定）；
  * 2. 汇总数据：金币（Vault）、称号（0.1.5.5 默认 DeluxeTags，含颜色码）、
  *    在线时长与今日在线（本插件自记录）、累计签到（本插件签到系统）、点券（PlayerPoints）、
@@ -37,7 +37,7 @@ import java.util.concurrent.TimeUnit
  * - 依赖插件缺失隐藏统计项：Vault（金币）/ DeluxeTags+Vault（称号）/ PlayerPoints（点券）
  *   任一未安装或未启用（含经济服务未注册）时对应项不渲染，签到未开启同理；
  *   卡片高度随实际项数自适应（满项 760，少一行减 96px），背景按实际高度处理；
- * - 查询他人：`/查信息 @成员` 渲染该成员绑定玩家的卡片，冷却按查询发起者计。
+ * - 查询他人：`/玩家名片 @成员` 渲染该成员绑定玩家的卡片，冷却按查询发起者计。
  *
  * 1.5.1：
  * - 全链路异步：机器人消息线程只做冷却判断，绑定查找（磁盘 IO）、统计 / 称号 /
@@ -73,7 +73,7 @@ import java.util.concurrent.TimeUnit
  *   就展示，依赖插件未装且变量读取失败时显示「未获取成功」而不是隐藏；
  * - 新增玩家名变量（variable-fetch.player-name）：卡片头部玩家名改为
  *   变量返回内容（头像 / 统计仍按真实玩家拉取，仅展示名变化）；
- * - 新增自定义查信息项目（variable-fetch.custom-items）：项目ID（段名，
+ * - 新增自定义玩家名片项目（variable-fetch.custom-items）：项目ID（段名，
  *   仅区分不展示）+ 项目名称 + 获取变量，正常返回的追加展示在卡片末尾，
  *   未返回的不展示；改完配置 /hbkrg reload 即生效（每次查询实时读取）。
  */
@@ -126,11 +126,11 @@ object QueryInfoService {
      * 全流程异步执行（1.5.1）：机器人消息线程仅做冷却判断，
      * 绑定查找、数据采集、渲染与发送全部在共享渲染池完成。
      *
-     * 1.5.3：支持查询他人——`/查信息 @成员` 时 [qqOpenId] 为发起查询者（冷却接其计），
+     * 1.5.3：支持查询他人——`/玩家名片 @成员` 时 [qqOpenId] 为发起查询者（冷却接其计），
      * [targetOpenId] 为被查询成员（未绑定则提示该成员先完成绑定）；
      * 不传 [targetOpenId] 时行为与旧版一致（查询自己）。
      *
-     * 1.7.4：[selectedPlayer] 为多玩家选择确认后传入的玩家（查信息命令检测到
+     * 1.7.4：[selectedPlayer] 为多玩家选择确认后传入的玩家（玩家名片命令检测到
      * 目标名下多个绑定玩家时先发数字选择消息）；传入时跳过绑定检索与
      * 冷却检查（发起命令时已通过冷却，选择确认属于同一次查询的延续）。
      */
@@ -178,7 +178,7 @@ object QueryInfoService {
                     }
                     if (targetOpenId != null) {
                         PluginFileLog.write(
-                            "[查信息] ${qqOpenId} 查询 ${targetName ?: targetOpenId}（${targetOpenId}）的玩家信息"
+                            "[玩家名片] ${qqOpenId} 查询 ${targetName ?: targetOpenId}（${targetOpenId}）的玩家信息"
                         )
                     }
                     // 1.7.4：选择确认路径直接用选中的玩家；常规路径自行检索
@@ -238,7 +238,7 @@ object QueryInfoService {
                     val items = buildItems(snapshot, checkinTotalText)
                     val cardHeight = InfoCardRenderer.cardHeight(items.size)
                     PluginFileLog.write(
-                        "[查信息] 统计项 ${items.size} 项（金币=${if (snapshot.vaultAvailable) "展示" else if (snapshot.vars.coinsConfigured) "展示-变量" else "隐藏-Vault未装"}" +
+                        "[玩家名片] 统计项 ${items.size} 项（金币=${if (snapshot.vaultAvailable) "展示" else if (snapshot.vars.coinsConfigured) "展示-变量" else "隐藏-Vault未装"}" +
                             " 称号=${if (snapshot.titleAvailable) "展示" else if (snapshot.vars.titleConfigured) "展示-变量" else "隐藏-无来源插件"}" +
                             " 点券=${if (snapshot.pointsAvailable) "展示" else if (snapshot.vars.pointsConfigured) "展示-变量" else "隐藏-PlayerPoints未装"}" +
                             " 签到=${if (checkinTotalText != null) "展示" else "隐藏-未开启"}" +
@@ -298,9 +298,9 @@ object QueryInfoService {
                 } catch (error: Throwable) {
                     // 失败日志带堆栈前几帧且双写日志文件，事后可从
                     // logs/qq/qq-bind-日期.log 追溯具体失败原因
-                    plugin.log_error("[查信息] 渲染卡片失败: ${error.message}")
+                    plugin.log_error("[玩家名片] 渲染卡片失败: ${error.message}")
                     plugin.log_error(
-                        "[查信息] 失败堆栈: " +
+                        "[玩家名片] 失败堆栈: " +
                             error.stackTraceToString().lineSequence().take(8).joinToString(" | ")
                     )
                     cn.kerong.penguin.spigot.qqbind.MessageTemplates.sendPlain(event, "info-render-failed")
@@ -378,7 +378,7 @@ object QueryInfoService {
         add(InfoCardRenderer.CardItem("屠龙次数", "${snapshot.stats.dragonKills} 次"))
         add(InfoCardRenderer.CardItem("击杀玩家次数", "${snapshot.stats.playerKills} 次"))
         add(InfoCardRenderer.CardItem("死亡次数", "${snapshot.stats.deaths} 次"))
-        // 1.6.9.3：自定义查信息项目追加在末尾（仅正常返回的项；顺序即配置顺序）
+        // 1.6.9.3：自定义玩家名片项目追加在末尾（仅正常返回的项；顺序即配置顺序）
         for (custom in snapshot.vars.customItems) {
             add(InfoCardRenderer.CardItem(custom.name, custom.value))
         }
@@ -927,7 +927,7 @@ object QueryInfoService {
     }
 
     /** 游戏时长：9时42分33秒。1.6.8 起最大单位为小时（不再展示「天」），
-     *     如 3天5时20分 现展示为 77时20分（查信息卡片「在线时长」）。 */
+     *     如 3天5时20分 现展示为 77时20分（玩家名片卡片「在线时长」）。 */
     fun formatPlayTime(seconds: Long): String {
         if (seconds <= 0) return "0分钟"
         val hours = seconds / 3600

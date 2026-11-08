@@ -283,7 +283,7 @@ class CoinsLeaderboardCommands : CommandSupport() {
         }
     }
 
-    /** 金额显示（整数去掉小数点，与签到 / 查信息卡片同风格）。 */
+    /** 金额显示（整数去掉小数点，与签到 / 玩家名片卡片同风格）。 */
     private fun formatMoney(amount: Double): String =
         if (amount == amount.toLong().toDouble()) amount.toLong().toString() else amount.toString()
 

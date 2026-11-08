@@ -14,7 +14,7 @@ import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.raid.RaidTriggerEvent
 
 /**
- * 玩家统计事件监听（/查信息 卡片的数据采集端，1.5.2 前命令名为 /个人信息）。
+ * 玩家统计事件监听（/玩家名片 卡片的数据采集端，1.5.2 前命令名为 /个人信息）。
  * 采集策略（低开销）：
  * - 高频事件（方块破坏）只在远古残骸时才写计数，其余直接返回；
  * - 击杀/死亡/钓鱼/繁殖/袭击为低频事件，直接累计；
@@ -54,11 +54,18 @@ class PlayerEventsListener : Listener {
         PlayerStatsManager.onEntityDeath(killer, event.entity.type)
     }
 
-    /** 玩家死亡。 */
+    /** 玩家死亡：统计 + 死亡播报（1.7.4 覆盖版新增播报，默认关闭）。 */
     @EventHandler(priority = EventPriority.MONITOR)
     fun onPlayerDeath(event: PlayerDeathEvent) {
         val player = event.entity.player ?: return
         PlayerStatsManager.onPlayerDeath(player)
+        // 死亡播报（player-events.death.enabled，默认 false；文案与占位符口径
+        // 参考 HuHoBot http://docs.huhobot.dpdns.org/ ，描述生成见 [DeathMessage]）
+        cn.kerong.bot.QClient.broadcastPlayerDeath(
+            event.entity.name,
+            DeathMessage.describe(event),
+            DeathMessage.killerOf(event),
+        )
     }
 
     /** 钓鱼（仅统计钓上鱼）。 */

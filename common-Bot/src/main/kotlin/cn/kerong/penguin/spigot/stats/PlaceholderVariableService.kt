@@ -8,7 +8,7 @@ import org.bukkit.plugin.java.JavaPlugin
 import java.util.UUID
 
 /**
- * 变量获取信息（1.6.9 新增，1.6.9.3 扩展）：/查信息 卡片的指定项目可改为
+ * 变量获取信息（1.6.9 新增，1.6.9.3 扩展）：/玩家名片 卡片的指定项目可改为
  * 读取服主在 config.yml variable-fetch 段填写的 PlaceholderAPI 变量输出。
  *
  * 规则（与官网教程一致）：
@@ -24,7 +24,7 @@ import java.util.UUID
  * - 1.6.9.3 显隐规则：金币 / 点券 / 称号三项只要**填写了变量**（无论读取成败），
  *   即使对应依赖插件（Vault / PlayerPoints / 称号来源）未安装也照常展示该项；
  *   读取失败且无插件自带数据可回退时显示「未获取成功」而不是隐藏；
- * - 自定义查信息项目（variable-fetch.custom-items 段，1.6.9.3 新增）：
+ * - 自定义玩家名片项目（variable-fetch.custom-items 段，1.6.9.3 新增）：
  *   每项 = 项目ID（段名，仅区分用不展示）+ 项目名称 + 获取变量；查询时逐项解析，
  *   正常返回的展示在卡片末尾，未返回的不展示（无插件自带数据可回退）；
  * - 变量值支持与固定文本混排（如 "%x% 小时"，PAPI 会替换其中的变量部分）；
@@ -55,7 +55,7 @@ object PlaceholderVariableService {
         "player-name" to "玩家名",
     )
 
-    /** TPS（服务器级变量，作用于 /查性能，不在查信息卡片上）。 */
+    /** TPS（服务器级变量，作用于 /查性能，不在玩家名片卡片上）。 */
     private const val KEY_TPS = "tps"
 
     /**
@@ -71,14 +71,14 @@ object PlaceholderVariableService {
         val playerName: String?,
     )
 
-    /** 自定义查信息项目配置（variable-fetch.custom-items 段读出）。 */
+    /** 自定义玩家名片项目配置（variable-fetch.custom-items 段读出）。 */
     data class CustomItem(val id: String, val name: String, val placeholder: String)
 
     /** 解析成功的自定义项目（正常返回的才保留展示）。 */
     data class ResolvedCustomItem(val id: String, val name: String, val value: String)
 
     /**
-     * 一次查信息查询的完整变量上下文（主线程快照内一次解析产出）。
+     * 一次玩家名片查询的完整变量上下文（主线程快照内一次解析产出）。
      * configured 标记与解析成败无关（开关开启 + 变量非空即为 true），
      * 用于「填了变量就展示、读不到显示未获取成功」的显隐规则。
      */
@@ -128,7 +128,7 @@ object PlaceholderVariableService {
     fun isConfigured(key: String): Boolean = isEnabled() && placeholderOf(key) != null
 
     /**
-     * 读出自定义查信息项目配置（variable-fetch.custom-items 段；
+     * 读出自定义玩家名片项目配置（variable-fetch.custom-items 段；
      * 每项：段名 = 项目ID，子键 项目名称 / 获取变量）。
      * 名称或变量留空的项跳过；段为空 / 读取异常返回空表。
      * /hbkrg reload 重载配置后即读到新内容（每次查询实时读取）。
@@ -146,7 +146,7 @@ object PlaceholderVariableService {
     }
 
     /**
-     * 主线程解析全部已配置的玩家级变量 + 自定义项目（在查信息的主线程
+     * 主线程解析全部已配置的玩家级变量 + 自定义项目（在玩家名片的主线程
      * 快照内调用一次）。
      *
      * @return [Context] 覆盖值 + 显隐标记 + 自定义项目；同时把每个已配置变量
@@ -197,11 +197,11 @@ object PlaceholderVariableService {
                 }
             }
             if (customLog.isNotEmpty()) {
-                PluginFileLog.write("[变量] 查信息 $playerName 自定义项目:$customLog")
+                PluginFileLog.write("[变量] 玩家名片 $playerName 自定义项目:$customLog")
             }
         }
         if (logLine.isNotEmpty()) {
-            PluginFileLog.write("[变量] 查信息 $playerName:$logLine")
+            PluginFileLog.write("[变量] 玩家名片 $playerName:$logLine")
         }
         return Context(
             overrides = Overrides(
@@ -221,7 +221,7 @@ object PlaceholderVariableService {
 
     /**
      * 批量解析排行榜条目的变量覆盖（1.6.9.3 新增，主线程快照内调用）：
-     * 变量除了查信息以外，排行榜 / 财富榜等有对应数据项的地方同样拉取变量
+     * 变量除了玩家名片以外，排行榜 / 财富榜等有对应数据项的地方同样拉取变量
      * （不返回则用插件自带的）。
      *
      * @param players 玩家（真实名 → UUID）列表，仅对展示的 top 条目解析

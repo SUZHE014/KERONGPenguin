@@ -11,7 +11,12 @@ import io.github.kloping.qqbot.entities.qqpd.User
 import java.util.concurrent.CompletableFuture
 
 /**
- * 公开命令：帮助 / 查信息 / 查询open ID / 查在线 / 发信息 / 黑名单 / 重新绑定 / AI 上下文等。
+ * 公开命令：帮助 / 玩家名片 / 查信息 / 查在线 / 发信息 / 黑名单 / 重新绑定 / AI 上下文等。
+ *
+ * 1.7.4 覆盖版：指令改名（与 HuHoBot 语义对齐）——
+ * - 旧「查询open ID」改名为「查信息」（查 OpenId，配置 bot.groups 用），
+ *   旧名及其大小写变体保留为隐藏别名（不出现在菜单，命中后共用同一开关）；
+ * - 旧「查信息」（玩家统计卡片）改名为「玩家名片」。
  *
  * 1.6.0：全部文本回复改走消息模板系统（[MessageTemplates]）——
  * 每条回复对应数据目录 Markdown/ 下一个 .md 模板文件（配置 messages 段可换文件），
@@ -21,7 +26,7 @@ import java.util.concurrent.CompletableFuture
  * 1.5.7.4：/查在线 新增别名 /在线（不出现在快捷指令菜单，
  * 命令开关与 commands.查在线 共用）。
  *
- * 1.5.3：/查信息 @成员 查询该成员绑定的玩家；/查询OpenID 反查 QQ 账号。
+ * 1.5.3：/查信息（现玩家名片）@成员 查询该成员绑定的玩家；/查询OpenID（现查信息）反查 QQ 账号。
  *
  * 1.6.9.3：移除 /在线服务器 与 /motd 两条命令（用户需求；服务器地址
  * 改由服主自行在群里公告，插件侧不再提供查询）。
@@ -29,10 +34,11 @@ import java.util.concurrent.CompletableFuture
 class PublicCommands : CommandSupport() {
 
     /**
-     * /查信息 —— 查询 QQ 绑定玩家的生涯统计卡片（渲染为图片发送，不 @ 提及）。
-     * 1.5.2 前名为 /个人信息。未绑定则提示先完成绑定。
+     * /玩家名片 —— 查询 QQ 绑定玩家的生涯统计卡片（渲染为图片发送，不 @ 提及）。
+     * 1.5.2 前名为 /个人信息，1.5.2-1.7.4 初版名为 /查信息，1.7.4 覆盖版更名 /玩家名片
+ * （「查信息」名字让位给原 /查询open ID 的 OpenId 查询）。未绑定则提示先完成绑定。
      *
-     * 1.5.3：支持 `/查信息 @成员` 查询该成员绑定的玩家信息（
+     * 1.5.3：支持 `/玩家名片 @成员` 查询该成员绑定的玩家信息（
      * 提及数据来自消息 mentions 字段而非命令参数——@ 片段在命令分发前已被剥离）；
      * 未绑定时提示该成员先完成绑定。
      *
@@ -40,7 +46,7 @@ class PublicCommands : CommandSupport() {
      * 若 QQ 绑定功能（qq-bind.enabled）关闭，本命令同时关闭。
      * 提示文本模板：info-bind-disabled / info-closed / qq-unknown（messages 段）。
      */
-    @Commands("查信息")
+    @Commands("玩家名片")
     fun queryPersonalInfo(plugin: KERONG, event: GroupMessageEvent, params: String) {
         val bindManager = try {
             QqBindManager.getInstance()
@@ -73,7 +79,7 @@ class PublicCommands : CommandSupport() {
         if (mentioned != null) {
             val targetId = mentioned.firstOrNull() ?: return
             val targetName = mentioned.getOrNull(1) ?: targetId
-            // 1.7.4：目标成员名下绑定多个玩家时，由发起者回复数字选择要查询的玩家
+            // 1.7.4：目标成员名下绑定多个玩家时，由发起者点击按钮（或回复数字）选择要查询的玩家
             cn.kerong.bot.events.PlayerSelection.requireBoundPlayer(
                 event, bindManager, targetId,
                 notBoundTemplate = "info-target-not-bound",
@@ -94,12 +100,13 @@ class PublicCommands : CommandSupport() {
     }
 
     /**
-     * /查询open ID —— OpenId 查询与反查。
+     * /查信息 —— OpenId 查询与反查（1.7.4 覆盖版由「查询open ID」更名而来，
+     * 旧名及其大小写变体保留为隐藏别名）。
      *
      * 用法（1.5.3）：
-     * - `/查询open ID`：显示自己的 OpenId 与群 OpenId（用于配置 bot.groups）；
-     * - `/查询open ID <OpenId>`：反查该 OpenId 对应的 QQ 账号（群昵称 + 绑定玩家）；
-     * - `/查询open ID @成员`：查看被 @ 成员的绑定信息。
+     * - `/查信息`：显示自己的 OpenId 与群 OpenId（用于配置 bot.groups）；
+     * - `/查信息 <OpenId>`：反查该 OpenId 对应的 QQ 账号（群昵称 + 绑定玩家）；
+     * - `/查信息 @成员`：查看被 @ 成员的绑定信息。
      *
      * 1.6.5：反查结果中的 OpenId 行仅管理员可见（避免普通群成员批量收集
      * OpenId 冒充绑定）；非管理员只看到群昵称、最后活跃、绑定玩家。
@@ -108,7 +115,7 @@ class PublicCommands : CommandSupport() {
      * 见 OpenIdDirectory）；机器人无法通过接口按 OpenId 查询群资料。
      * 提示文本模板：openid-self / openid-lookup（messages 段）。
      */
-    @Commands("查询open ID", "查询Open ID", "查询open id", "查询Open id", "查询openID", "查询OpenID", "查询openid", "查询OPENID")
+    @Commands("查信息", "查询open ID", "查询Open ID", "查询open id", "查询Open id", "查询openID", "查询OpenID", "查询openid", "查询OPENID")
     fun queryInfo(plugin: KERONG, event: GroupMessageEvent, params: String) {
         val arg = params?.trim() ?: ""
         val mentioned = extractMentionedQqInfo(event)
@@ -369,7 +376,13 @@ class PublicCommands : CommandSupport() {
         }
     }
 
-    /** /解除黑名单 @QQ —— 从黑名单移除 QQ（管理员）。模板：blacklist-removed/unblacklist-empty/list。 */
+    /**
+     * /解除黑名单 @QQ —— 从黑名单移除 QQ（管理员）。模板：blacklist-removed/unblacklist-empty/list。
+     *
+     * 1.7.4 覆盖版：不带 @ 时列出的清单消息附带**按钮键盘**——每个黑名单条目
+     * 一个「解除」按钮，点击即移除（交互模式参考 HuHoBot 的消息按钮，
+     * 见 [cn.kerong.bot.events.UnblacklistButtons]）；@成员 的直接解除路径不变。
+     */
     @Commands("解除黑名单")
     fun unblacklist(plugin: KERONG, event: GroupMessageEvent, params: String) {
         if (!requireAdmin(plugin, event)) return
@@ -394,12 +407,17 @@ class PublicCommands : CommandSupport() {
             MessageTemplates.sendDirect(event, "unblacklist-empty")
             return
         }
-        MessageTemplates.sendDirect(event, "unblacklist-list", mapOf(
-            "count" to list.size.toString(),
-            "list" to list.mapIndexed { index, id ->
-                "${index + 1}. ${manager.getBlacklistName(id) ?: id}"
-            }.joinToString("\n"),
-        ))
+        val entries = list.map { id -> id to (manager.getBlacklistName(id) ?: id) }
+        // 优先发按钮清单；发送失败（平台拒收键盘 / 客户端未启动）回落旧版纯文本
+        val sent = cn.kerong.bot.events.UnblacklistButtons.sendList(event, entries)
+        if (!sent) {
+            MessageTemplates.sendDirect(event, "unblacklist-list", mapOf(
+                "count" to list.size.toString(),
+                "list" to entries.mapIndexed { index, (_, name) ->
+                    "${index + 1}. $name"
+                }.joinToString("\n"),
+            ))
+        }
     }
 
     /**

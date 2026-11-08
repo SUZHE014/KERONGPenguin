@@ -95,8 +95,17 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
                 return true
             }
             "qr" -> {
-                // 1.7.4：控制台重显 QQ 机器人配置引导二维码（官网教程页）
-                plugin.printQqSetupQr()
+                // 1.7.4 覆盖版：凭据未配置 → 发起/重显 QQ 官方扫码登录（授权后
+                // 凭据自动写入并连接；二维码过期自动刷新重发）；已配置 → 打印
+                // 官网教程二维码（手动查教程用）
+                if (plugin.botAppId.isBlank() || plugin.botSecret.isBlank()) {
+                    val result = cn.kerong.bot.QrLoginManager.start()
+                    sender.sendMessage("${ChatColor.GREEN}$result")
+                    sender.sendMessage("${ChatColor.YELLOW}请在服务器控制台查看二维码与扫码链接（也支持手动复制链接到手机 QQ 打开）。")
+                } else {
+                    sender.sendMessage("${ChatColor.YELLOW}QQ 机器人凭据已配置，显示官网教程二维码（重新扫码绑定请先清空 bot.app-id / bot.secret 并重启）。")
+                    plugin.printQqSetupQr()
+                }
                 return true
             }
         }

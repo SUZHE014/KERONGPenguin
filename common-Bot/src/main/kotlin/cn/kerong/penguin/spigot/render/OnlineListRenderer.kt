@@ -54,7 +54,7 @@ object OnlineListRenderer {
     private const val MARGIN = 40
 
     /** 顶部标题区高度（眉题 + 主标题 + 右侧人数卡；1.7.3 覆盖版二轮：150 → 164；
-     * 1.7.3 覆盖版三轮：164 → 182，眉题视觉顶边距 27 → 45px——对齐查信息
+     * 1.7.3 覆盖版三轮：164 → 182，眉题视觉顶边距 27 → 45px——对齐玩家名片
      * 欢迎面板（最上框参照标准，实测 45px），用户反馈二轮 27px 仍太贴边；
      * +18 全部给顶部，底边距 42px 与眉题→主标题间距保持不变）。 */
     private const val HEADER_HEIGHT = 182
@@ -227,12 +227,12 @@ object OnlineListRenderer {
     }
 
     /** 顶部标题区：眉题 + 主标题 + 右侧在线人数卡（1.7.3：整块标题卡 —— 背后铺
-     * 局部模糊 + 标题框黑度 + 圆角边缘，与查信息顶部欢迎区同款；旧版标题
+     * 局部模糊 + 标题框黑度 + 圆角边缘，与玩家名片顶部欢迎区同款；旧版标题
      * 文字直画在背景上，看不出卡片边界，灰度也只作用于右侧小方框；
      * 1.7.3 覆盖版二轮：眉题 / 主标题基线下移 8px（上边缘间距加大），
      * 右上角小方框与标题框四周留 14px 可见间距——旧版 8/8/0 太贴边；
      * 1.7.3 覆盖版三轮：眉题 / 主标题基线再下移 18px（顶边距 27 → 45px
-     * 对齐查信息最上框），副标题框零改动——用户口径：间距调的是主标题框）。 */
+     * 对齐玩家名片最上框），副标题框零改动——用户口径：间距调的是主标题框）。 */
     private fun drawHeader(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, onlineCount: Int) {
         val top = MARGIN
 
@@ -242,9 +242,9 @@ object OnlineListRenderer {
         g.color = Color(0x00, 0x00, 0x00, RenderSettings.titleCardGray())
         g.fill(RoundRectangle2D.Float(MARGIN.toFloat(), top.toFloat(), headerWidth, HEADER_HEIGHT.toFloat(), 24f, 24f))
 
-        // 英文眉题（字距拉宽；1.7.3 覆盖版：距卡左缘 28px，与查信息欢迎面板一致；
+        // 英文眉题（字距拉宽；1.7.3 覆盖版：距卡左缘 28px，与玩家名片欢迎面板一致；
         // 1.7.3 覆盖版三轮：基线 46 → 64，上边缘视觉间距 27 → 45px，
-        // 对齐查信息欢迎面板眉题顶边距——二轮 27px 用户反馈仍偏贴）
+        // 对齐玩家名片欢迎面板眉题顶边距——二轮 27px 用户反馈仍偏贴）
         g.font = InfoCardRenderer.font(26f, true)
         g.color = COLOR_EYEBROW
         g.drawString("M I N E C R A F T   S E R V E R", (MARGIN + 32).toFloat(), (top + 64).toFloat())

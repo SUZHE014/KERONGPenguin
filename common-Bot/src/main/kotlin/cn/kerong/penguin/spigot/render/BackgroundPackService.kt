@@ -23,7 +23,7 @@ import java.util.Locale
  *   逐张下载并显示进度，期间可再次执行同一命令或 /hbkrg bpng stop 中断；
  *   单张下载失败自动跳过继续下一张；已存在且校验一致的文件自动跳过
  *   （中断后重新执行即续传）；
- * - /hbkrg bpngsz yes / no —— 一键把全部五张卡片（查信息 / 查在线 /
+ * - /hbkrg bpngsz yes / no —— 一键把全部五张卡片（玩家名片 / 查在线 /
  *   查性能 / 在线排行榜 / 财富榜）的背景开关切换为 img/ 自定义背景
  *   或恢复内置背景，写入配置后自动重载（等效 /hbkrg reload 的配置段）。
  *
@@ -336,7 +336,7 @@ object BackgroundPackService {
         val lines = ArrayList<String>()
         if (useCustom) {
             lines.add("§a已一键切换：全部卡片使用 img/ 自定义背景图（5 项设置已写入并自动重载）")
-            lines.add("§7涉及卡片: 查信息 / 查在线 / 查性能 / 在线排行榜 / 财富榜")
+            lines.add("§7涉及卡片: 玩家名片 / 查在线 / 查性能 / 在线排行榜 / 财富榜")
             val imgDir = File(javaPlugin.dataFolder, "img")
             val hasImage = imgDir.isDirectory && imgDir.listFiles()
                 ?.any { it.isFile && it.extension.lowercase() in IMAGE_EXTENSIONS } == true

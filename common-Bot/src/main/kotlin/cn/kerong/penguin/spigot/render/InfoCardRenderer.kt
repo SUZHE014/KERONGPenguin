@@ -29,7 +29,7 @@ import java.util.concurrent.TimeoutException
 import javax.imageio.ImageIO
 
 /**
- * 玩家信息卡片渲染器（/查信息，1.5.2 前为 /个人信息）。
+ * 玩家信息卡片渲染器（/玩家名片；1.5.2 前为 /个人信息，1.7.4 覆盖版前为 /查信息）。
  *
  * 设计参考（issue #1）：图片渲染界面参考自 BaiZhouziYou / 新亭泪
  * 发布在 EasyBot 资源市场的图片模板（https://xintinglei.cn/）——早期版本
@@ -72,7 +72,7 @@ import javax.imageio.ImageIO
  * - 暗色遮罩保持单遍合成（等效总黑度约 41%），前景可读性与历史版本一致
  *   （背景原图直出，毛玻璃观感由卡片背后的局部模糊承担）。
  *
- * 1.5.7：全部图片渲染（查信息 / 查在线 / 在线排行榜）默认改用内置背景图
+ * 1.5.7：全部图片渲染（玩家名片 / 查在线 / 在线排行榜）默认改用内置背景图
  * （深灰主体 + 深绿装饰，随 JAR 分发，各自配置开关默认 true，见
  * [InfoCardAssets.resolveBackground]）；img/ 目录随机图改为可选行为
  * （开关关闭），且 img 无可用图片时自动回退内置图。
@@ -91,7 +91,7 @@ object InfoCardRenderer {
      * 亮度切换——1.7.3 覆盖版五轮~1.7.3.1 的自适应 / 连续对比度配色
      * （0x5C7288、0xB8C8D8、等比压暗）在 1.7.3.1 覆盖版整体回退：
      * 用户口径「不要现在的花里胡哨，换回以前版本的（参考 1.7.0 查在线）」。
-     * 副标题条小标签（五张卡）与查信息身份条「玩家名称」标签共用。 */
+     * 副标题条小标签（五张卡）与玩家名片身份条「玩家名称」标签共用。 */
     private val COLOR_LABEL = Color(0x9F, 0xB3, 0xC8)
     private val COLOR_VALUE = Color.WHITE
     private val COLOR_BADGE = Color(0xA8, 0xBA, 0xCC)
@@ -836,7 +836,7 @@ object InfoCardAssets {
      * 1.5.7：主体由黑色改为深灰色（与半透明卡片叠加色保持 ΔL ≥ 20，
      * 方框卡片边界清晰可辨），并拆为两张同风格图：
      * - [BUILTIN_BACKGROUND_LEADERBOARD]：排行榜竖图（1200×1800）；
-     * - [BUILTIN_BACKGROUND_CARD]：查信息卡片 / 查在线列表共用横图（1800×1200）。
+     * - [BUILTIN_BACKGROUND_CARD]：玩家名片卡片 / 查在线列表共用横图（1800×1200）。
      * 设计已自带可读性，不叠暗色遮罩。解码源图按类路径各缓存一次，
      * 各尺寸的 cover 结果按「资源路径 + 尺寸」复用 backgroundCache
      * （零 stamp 永不失效，随 LRU / 字节预算淘汰）。
@@ -968,7 +968,7 @@ object InfoCardAssets {
     /** 批量预热迟到硬上限（毫秒）：预算过后仍在跑的任务到点取消（防慢源链路占满线程池）。 */
     private const val AVATAR_BATCH_HARD_CANCEL_MILLIS = 40_000L
 
-    /** 头像批量预热共享线程池（在线列表 / 排行榜 / 财富榜 / 查信息共用，避免各建一池线程数翻倍；
+    /** 头像批量预热共享线程池（在线列表 / 排行榜 / 财富榜 / 玩家名片共用，避免各建一池线程数翻倍；
      * 1.7.3 覆盖版：线程数可经 render.custom-render-threads.avatar-threads 自定义（重启生效））。 */
     private val avatarBatchPool by lazy {
         Executors.newFixedThreadPool(AVATAR_THREADS) { runnable ->
@@ -984,7 +984,7 @@ object InfoCardAssets {
     }
 
     /**
-     * 批量预热头像（在线列表 / 排行榜 / 财富榜 / 查信息共用入口）。
+     * 批量预热头像（在线列表 / 排行榜 / 财富榜 / 玩家名片共用入口）。
      *
      * 1.7.2 重做并发策略。旧版各服务自建 4 线程小池 + invokeAll(8 秒) 硬预算，
      * 到点会**中断**在途下载——慢速可用的源读到一半被切断，已下载字节全部
@@ -2013,7 +2013,7 @@ object InfoCardAssets {
      *   自动回退内置背景**（不再退纯色渐变，保证出图风格统一）；
      * - 长图背景处理高度封顶 [ONLINE_BACKGROUND_MAX_HEIGHT] 防栅格膨胀（1.5.1
      *   仅随机图封顶；1.6.6.1 覆盖版内置图同样封顶，且不再为每种页高
-     *   各存一张 10MB 级 cover 条目；查信息卡片高 ≤ 856px 不受影响），
+     *   各存一张 10MB 级 cover 条目；玩家名片卡片高 ≤ 856px 不受影响），
      *   渲染时按 cover 裁剪铺满（1.6.9.5 起不再拉伸变形，见
      *   [drawBackground]）；
      * - 卡片矮图不受影响。

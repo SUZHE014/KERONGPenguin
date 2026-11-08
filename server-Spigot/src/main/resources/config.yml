@@ -32,7 +32,7 @@ bot:
   # 断线重连提示开关（false = 过程提示只写日志文件不刷控制台）
   reconnect-notify: true
   # 允许响应的群列表：填「群 OpenId」，不是群号！
-  # 获取：把机器人拉进群 → 群里发 /查询open ID
+  # 获取：把机器人拉进群 → 群里发 /查信息
   # 每项必须加双引号，如 ["ABC123"]；留空 [] = 所有群都响应
   groups: []
 
@@ -49,7 +49,7 @@ chat-format:
 
 # ---------------- 进出服播报 ----------------
 player-events:
-  # 玩家进服 / 离服是否向群播报（只发给 bot.groups 里的群）
+  # 玩家进服 / 离服 / 死亡是否向群播报（只发给 bot.groups 里的群）
   # 文案可用：{name} 玩家名、{server} 服务器名、{platform} 平台
   join:
     enabled: true
@@ -57,6 +57,13 @@ player-events:
   quit:
     enabled: true
     format: "[游戏] {name} 离开了服务器"
+  # 死亡播报（1.7.4 覆盖版新增，参考 HuHoBot 的同名功能与配置口径，
+  # 文档 http://docs.huhobot.dpdns.org/ ；默认关闭，开启后玩家死亡向群播报）
+  # 除通用占位符外还可用：{message} 自动生成的中文死亡描述（如
+  # 「Steve 被苦力怕杀死了」）、{killer} 击杀者名（环境死亡时为「未知」）
+  death:
+    enabled: false
+    format: "[游戏] {message}"
 
 # ---------------- 查在线输出 ----------------
 # /查在线 输出方式由下方 motd.use-markdown 控制：
@@ -86,7 +93,7 @@ motd:
   use-markdown: false
 
 # ---------------- 图片渲染 ----------------
-# 查信息卡片、查在线、排行榜、查性能共用本段
+# 玩家名片卡片、查在线、排行榜、查性能共用本段
 render:
   # 同一玩家查询结果复用秒数（0 = 每次重新渲染）
   result-cache-seconds: 60
@@ -98,9 +105,9 @@ render:
   blur-strength: 50
   # 标题框黑度（0-255，越大越深）：四张卡片顶部标题区用，比项目卡片略浅
   title-card-gray: 80
-  # 项目卡片黑度（0-255，越大越深）：查信息统计面板与查在线 / 排行榜 / 查性能的列表容器用
+  # 项目卡片黑度（0-255，越大越深）：玩家名片统计面板与查在线 / 排行榜 / 查性能的列表容器用
   item-card-gray: 106
-  # 副标题灰度（0-255，越大越深）：查信息玩家名称项与五张卡片的
+  # 副标题灰度（0-255，越大越深）：玩家名片玩家名称项与五张卡片的
   # 副标题条（服务器 / 更新时间 / 渲染耗时）用，默认 80 与标题框相同
   subtitle-card-gray: 80
   # 自定义图片渲染线程（高级；默认关闭 = 自动模式：渲染线程按 CPU
@@ -113,10 +120,10 @@ render:
   custom-render-threads:
     # 自定义开关（false = 自动模式，忽略下面两键）
     enabled: false
-    # 图片渲染线程数（1-16）：查信息 / 查在线 / 排行榜 / 财富榜 / 查性能
+    # 图片渲染线程数（1-16）：玩家名片 / 查在线 / 排行榜 / 财富榜 / 查性能
     # 五张卡片的绘制线程；⚠ 调大会抢占游戏 CPU，慎改
     render-threads: 2
-    # 头像批量下载线程数（1-16）：在线列表 / 排行榜 / 财富榜 / 查信息
+    # 头像批量下载线程数（1-16）：在线列表 / 排行榜 / 财富榜 / 玩家名片
     # 批量拉取头像的并行下载数；不影响游戏 tick，调大会增加对外部
     # 头像接口的并发压力（可能触发限流），调小则大名单收齐变慢
     avatar-threads: 8
@@ -154,7 +161,7 @@ image-download:
 
 # ---------------- 变量获取（需 PlaceholderAPI 插件） ----------------
 # 开启后下列项目优先读取你填写的变量（PlaceholderAPI 占位符）：
-# 查信息卡片（时长 / 金币 / 点券 / 称号 / 玩家名 / 自定义项目）、
+# 玩家名片卡片（时长 / 金币 / 点券 / 称号 / 玩家名 / 自定义项目）、
 # 在线排行榜（玩家名 / 时长）、财富榜（玩家名 / 金币）、查性能（TPS）
 # 变量留空 = 用插件自带数据；读取失败自动回退自带数据
 variable-fetch:
@@ -212,7 +219,7 @@ qq-bind:
   # 未绑定玩家会在白名单阶段先被拦下、拿不到绑定验证码；QQ 绑定本身就是
   # 准入控制（绑定过的才能进服），不要和任何白名单方案叠用
   enabled: false
-  # /查信息 命令开关
+  # /玩家名片 命令开关
   personal-info: true
   # 未绑定玩家进服看到的拦截界面文案（支持 & 颜色代码；
   # 变量：{code} 验证码、{name} 玩家名、{expire} 有效期分钟）
@@ -228,10 +235,10 @@ qq-bind:
   code-length: 5
   # 每个 QQ 账号最多能绑定多少个玩家（1.7.4；默认 1 = 旧版单绑定行为；
   # 只能填等于或大于 1 的整数，填 0 / 负数按 1 处理）
-  # 调大后：一个 QQ 可绑定多个玩家；群里用查信息 / 查询open ID /
+  # 调大后：一个 QQ 可绑定多个玩家；群里用玩家名片 / 查信息 /
   # 重新绑定 / 签到这类需要找到"对应玩家"的指令时，机器人会先列出
-  # 该 QQ 名下的全部玩家让用户回复数字选择（直接发数字或 @机器人 发数字
-  # 都可以，2 分钟内有效）；改完 /hbkrg reload 即时生效
+  # 该 QQ 名下的全部玩家让用户点击按钮选择（旧版客户端也可回复数字，
+  # 直接发数字或 @机器人 发数字都可以，2 分钟内有效）；改完 /hbkrg reload 即时生效
   max-players-per-qq: 1
   # 每日签到（群里发 /签到）
   checkin:
@@ -281,9 +288,9 @@ messages:
   checkin-reward-invalid: "checkin-reward-invalid.md"  # 奖励数额配置错误（{prefix}）
   checkin-success: "checkin-success.md"              # 签到成功得金币（{prefix} {player} {reward} {streak}）
   checkin-pay-error: "checkin-pay-error.md"          # 奖励未发放到账（{prefix}）
-  # —— 查信息 ——
-  info-bind-disabled: "info-bind-disabled.md"       # 查信息未开启
-  info-closed: "info-closed.md"                      # 查信息被管理员关闭
+  # —— 玩家名片（原 /查信息，1.7.4 覆盖版更名）——
+  info-bind-disabled: "info-bind-disabled.md"       # 玩家名片未开启
+  info-closed: "info-closed.md"                      # 玩家名片被管理员关闭
   info-not-bound: "info-not-bound.md"                # 查自己但未绑定
   info-target-not-bound: "info-target-not-bound.md"  # 查他人但对方未绑定（{name}）
   info-render-failed: "info-render-failed.md"        # 信息卡片生成失败
@@ -344,7 +351,7 @@ filter-regex: []
 #   both = 满足任一即可
 admin:
   mode: qq
-  # 管理员名单（填 OpenId，群里发 /查询open ID 获取；每项加双引号）
+  # 管理员名单（填 OpenId，群里发 /查信息 获取；每项加双引号）
   openids: []
 
 # ---------------- 功能开关 ----------------
@@ -358,8 +365,8 @@ features:
 # 改动后 /hbkrg reload 立即生效
 commands:
   帮助: true            # /帮助 —— 查看所有命令
-  查询open ID: true     # /查询open ID —— 查 OpenId（配置 bot.groups 用）
-  查信息: true          # /查信息 —— 玩家统计卡片（@某人 查别人）
+  查信息: true          # /查信息 —— 查 OpenId（配置 bot.groups 用；旧名 /查询open ID 仍可用）
+  玩家名片: true        # /玩家名片 —— 玩家统计卡片（@某人 查别人；原 /查信息）
   绑定: true            # /绑定 <绑定码> —— 绑定 QQ（纯数字码直接发送亦可）
   重新绑定: true        # /重新绑定 —— 解绑换号
   查在线: true          # /查在线 —— 在线玩家列表（别名 /在线）

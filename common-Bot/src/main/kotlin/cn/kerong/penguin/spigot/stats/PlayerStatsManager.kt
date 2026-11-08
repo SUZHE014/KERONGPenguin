@@ -19,7 +19,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 玩家统计数据记录器（/查信息 卡片的数据源）。
+ * 玩家统计数据记录器（/玩家名片 卡片的数据源）。
  *
  * 设计目标：低开销、崩溃安全、按玩家 UUID 一人一条。
  * - 事件实时累计：挖掘残骸 / 击杀怪物 / 屠龙 / 击杀玩家（1.5.2）/ 死亡 / 钓鱼 / 繁殖 / 触发袭击；

@@ -29,7 +29,7 @@ import java.awt.image.BufferedImage
  *    下次查询命中缓存后展示真实头像，避免大量玩家时首查等待过久）；
  * 3. [OnlineListRenderer] 渲染毛玻璃卡片，背景 1.5.7 起默认内置深灰底图
  *    （render.online-list-builtin-background，1.6.0 起位于顶层 render 段，
- *    随 JAR 分发，与查信息卡片共用横版底图与缓存）；开关关闭后随机用
+ *    随 JAR 分发，与玩家名片卡片共用横版底图与缓存）；开关关闭后随机用
  *    img/ 目录图片，img 无可用图片时自动回退内置图；长图背景处理高度封顶
  *    （[InfoCardAssets.ONLINE_BACKGROUND_MAX_HEIGHT]），渲染时拉伸铺满，
  *    控制内存占用；
@@ -160,7 +160,7 @@ object OnlineListService {
                         cn.kerong.penguin.spigot.qqbind.MessageTemplates.sendPlain(event, "image-send-failed")
                     }
                 } catch (error: Throwable) {
-                    // 失败日志带堆栈前几帧且双写日志文件，与 /查信息 一致可事后追溯
+                    // 失败日志带堆栈前几帧且双写日志文件，与 /玩家名片 一致可事后追溯
                     plugin.log_error("[查在线] 渲染在线列表失败: ${error.message}")
                     plugin.log_error(
                         "[查在线] 失败堆栈: " +

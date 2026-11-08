@@ -217,6 +217,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         reloadRuntimeConfig()
         // 1.7.4：多玩家选择的待选会话随重载作废（旧闭包可能引用过期配置）
         cn.kerong.bot.events.PlayerSelection.clearAll()
+        cn.kerong.bot.events.UnblacklistButtons.clearAll()
     }
 
     // ---------- 平台标识 ----------

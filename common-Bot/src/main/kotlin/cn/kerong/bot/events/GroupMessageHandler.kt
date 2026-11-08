@@ -78,21 +78,21 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         // 前缀，导致 /命令 前缀匹配失败——先剥再进命令分发；无片段零开销）
         val content = QqText.stripLeadingMentionPlaceholders(rawContent)
 
-        // 1.5.3：记录群成员昵称（OpenId → 群昵称目录，供 /查询OpenID 反查展示），
+        // 1.5.3：记录群成员昵称（OpenId → 群昵称目录，供 /查信息（原 /查询OpenID）反查展示），
         // 失败不影响消息处理（仅内存写入，持久化异步）
         OpenIdDirectory.recordEvent(event)
 
         // 1.7.4：多玩家选择的数字确认拦截——优先级最高（在群白名单检查与
-        // 自动绑定之前：查信息 / 查询open ID 在任意群可用，它们触发的选择
+        // 自动绑定之前：玩家名片 / 查信息在任意群可用，它们触发的选择
         // 会话也应能在任意群确认；只有 1-2 位纯数字且存在同群同人的活跃
         // 会话时才消费，其余消息零影响）。在此拦截意味着 @机器人 + 数字
         // 不会被判定为 AI 对话（用户口径：艾特机器人发数字代码是选择确认）
         if (PlayerSelection.tryConsume(event, content)) return
 
-        // 查询open ID（OpenId 查询）与查信息（统计卡片）命令始终放行（任何群可用）；
-        // 其余命令仅允许配置的群。1.5.2：两命令更名（原 查信息/个人信息）。
-        // “查询open” 用前缀匹配兼容大小写/空格变体（查询OpenID、查询openid 等）。
-        if (!content.contains("查信息") && !content.contains("查询open")) {
+        // 查信息（OpenId 查询，原 查询open ID）与玩家名片（统计卡片，原 查信息）
+        // 命令始终放行（任何群可用）；其余命令仅允许配置的群。
+        // “查询open” 用前缀匹配兼容旧名大小写/空格变体（查询OpenID、查询openid 等）。
+        if (!content.contains("查信息") && !content.contains("查询open") && !content.contains("玩家名片")) {
             if (groupId == null || !isAllowedGroup(groupId)) return
         }
 

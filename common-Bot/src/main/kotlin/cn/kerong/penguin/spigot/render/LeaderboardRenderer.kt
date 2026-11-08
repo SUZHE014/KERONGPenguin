@@ -50,7 +50,7 @@ object LeaderboardRenderer {
     private const val PAGE_TOP_PAD = 24
 
     /** 第一页标题区高度（眉题 + 主标题 + 右侧统计卡；1.7.3 覆盖版二轮：150 → 164；
-     * 1.7.3 覆盖版三轮：164 → 182，眉题视觉顶边距 27 → 45px——对齐查信息
+     * 1.7.3 覆盖版三轮：164 → 182，眉题视觉顶边距 27 → 45px——对齐玩家名片
      * 欢迎面板（最上框参照标准，实测 45px），用户反馈二轮 27px 仍太贴边；
      * +18 全部给顶部，底边距 42px 与眉题→主标题间距保持不变）。 */
     private const val HEADER_HEIGHT = 182
@@ -161,7 +161,7 @@ object LeaderboardRenderer {
      * 首页副标题条第三格改「展示玩家」——展示 min(玩家总数, 显示上限) 名
      * 玩家；覆盖版四轮：数值格式 xTOP → TOP x（TOP 在前，如 TOP 8）；
      * 覆盖一轮的「渲染耗时」格移除，渲染计时补画逻辑同步删除——
-     * 查在线 / 查性能 / 查信息三卡保留该格）。 */
+     * 查在线 / 查性能 / 玩家名片三卡保留该格）。 */
     fun renderPage(data: LeaderboardData, firstPage: Boolean): ByteArray {
         val height = measurePageHeight(data.entries.size, firstPage)
         val image = BufferedImage(WIDTH, height, BufferedImage.TYPE_INT_RGB)
@@ -198,7 +198,7 @@ object LeaderboardRenderer {
     }
 
     /**
-     * 秒数格式化为时长文本（与查信息卡片「在线时长」同风格）：
+     * 秒数格式化为时长文本（与玩家名片卡片「在线时长」同风格）：
      * 小时 / 分组合（1.6.8 起最大单位为小时，不再展示「天」——
      * 如 3天5小时20分钟 现展示为 77小时20分钟），全零时显示「暂无记录」。
      */
@@ -219,7 +219,7 @@ object LeaderboardRenderer {
      * 边界，灰度也只作用于右侧统计小卡；1.7.3 覆盖版二轮：眉题 / 主标题
      * 基线下移 8px（上边缘间距加大），右上角小方框与标题框四周留 14px
      * 可见间距——旧版 8/8/0 太贴边看不出内嵌层次；1.7.3 覆盖版三轮：眉题 /
-     * 主标题基线再下移 18px（顶边距 27 → 45px 对齐查信息最上框），
+     * 主标题基线再下移 18px（顶边距 27 → 45px 对齐玩家名片最上框），
      * 副标题框零改动——用户口径：间距调的是主标题框，副标题框一切正常）。 */
     private fun drawHeader(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, title: String, totalPlayers: Long) {
         val top = MARGIN
@@ -233,7 +233,7 @@ object LeaderboardRenderer {
 
         // 英文眉题（字距拉宽，与其他卡片统一风格；1.7.3 覆盖版：距卡左缘 28px；
         // 1.7.3 覆盖版三轮：基线 46 → 64，上边缘视觉间距 27 → 45px，
-        // 对齐查信息欢迎面板眉题顶边距——二轮 27px 用户反馈仍偏贴）
+        // 对齐玩家名片欢迎面板眉题顶边距——二轮 27px 用户反馈仍偏贴）
         g.font = InfoCardRenderer.font(26f, true)
         g.color = COLOR_EYEBROW
         g.drawString("M I N E C R A F T   S E R V E R", (MARGIN + 32).toFloat(), (top + 64).toFloat())

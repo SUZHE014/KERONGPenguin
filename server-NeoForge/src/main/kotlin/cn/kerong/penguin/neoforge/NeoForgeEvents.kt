@@ -181,7 +181,7 @@ class NeoForgeEvents(private val plugin: KERONGNeoForge) {
 
     // ---------- 统计（信息卡数据源） ----------
 
-    /** 死亡：玩家死亡计数；击杀归属（怪物击杀 / 屠龙 / 击杀玩家）。 */
+    /** 死亡：玩家死亡计数；击杀归属（怪物击杀 / 屠龙 / 击杀玩家）；死亡播报（1.7.4 覆盖版）。 */
     @SubscribeEvent
     fun onLivingDeath(event: LivingDeathEvent) {
         val dying = event.entity
@@ -190,6 +190,13 @@ class NeoForgeEvents(private val plugin: KERONGNeoForge) {
 
         if (dying is ServerPlayer) {
             PlayerStatsManager.onPlayerDeath(NeoPlayer(dying))
+            // 死亡播报（player-events.death.enabled，默认 false；占位符口径与
+            // HuHoBot 一致，中文描述生成见 [DeathMessageNeo]）
+            QClient.broadcastPlayerDeath(
+                dying.gameProfile.name,
+                DeathMessageNeo.describe(event),
+                DeathMessageNeo.killerOf(event),
+            )
         }
         if (killer != null && killer !== dying) {
             PlayerStatsManager.onEntityDeath(NeoPlayer(killer), mapEntityType(dying))

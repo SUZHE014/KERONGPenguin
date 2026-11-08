@@ -14,7 +14,7 @@ import javax.imageio.ImageIO
  * 设计参考：图片渲染界面参考自 BaiZhouziYou / 新亭泪
  * 发布在 EasyBot 资源市场的图片模板（https://xintinglei.cn/，
  * 模板合集 https://github.com/BaiizhouziYou/easybot-image-templates/）
- * ——性能卡片延续本项目整套深色卡片风格基调（与查信息 / 查在线 /
+ * ——性能卡片延续本项目整套深色卡片风格基调（与玩家名片 / 查在线 /
  * 排行榜同源），本卡片为本项目的独立实现。
  *
  * 面板透明度与其他卡片统一（头部卡 / 网格容器 / 指标卡 / 状态胶囊 /
@@ -23,7 +23,7 @@ import javax.imageio.ImageIO
  *
  * 半透明卡片风格（1.6.7.5 覆盖版，1350 宽，固定版式单页图）：
  * - 顶部标题区（1.7.3：整块全宽标题卡——模糊 + 标题框黑度 + 圆角边缘一次到位；
- *   1.7.3 覆盖版：标题文字 padding 对齐查信息欢迎面板（距卡左缘 24~28px），
+ *   1.7.3 覆盖版：标题文字 padding 对齐玩家名片欢迎面板（距卡左缘 24~28px），
  *   右上角小方框改「综合状态」（TPS / MSPT / 内存 / CPU 综合评级，不含人数）
  *   且灰度永远比标题框深一点（同灰度叠加视觉融合看不出边界）；
  * - 副标题条（1.7.3 新增）：服务器 / 更新时间 / 渲染耗时 三张小卡，
@@ -62,7 +62,7 @@ object PerformanceRenderer {
     private const val MARGIN = 40
 
     /** 顶部标题区高度（眉题 + 主标题 + 右侧时间卡；1.7.3 覆盖版二轮：150 → 164；
-     * 1.7.3 覆盖版三轮：164 → 182，眉题视觉顶边距 27 → 45px——对齐查信息
+     * 1.7.3 覆盖版三轮：164 → 182，眉题视觉顶边距 27 → 45px——对齐玩家名片
      * 欢迎面板（最上框参照标准，实测 45px），用户反馈二轮 27px 仍太贴边；
      * +18 全部给顶部，底边距 42px 与眉题→主标题间距保持不变）。 */
     private const val HEADER_HEIGHT = 182
@@ -113,7 +113,7 @@ object PerformanceRenderer {
     /** 右上角小方框（徽标卡）底色：永远比标题框深一点（1.7.3 覆盖版）。 */
     private val COLOR_HEADER_BADGE: Color get() = Color(0x00, 0x00, 0x00, RenderSettings.headerBadgeCardGray())
 
-    /** 指标卡底色（半透明白，与查信息/查在线/排行榜单元格同款 alpha 16）。 */
+    /** 指标卡底色（半透明白，与玩家名片/查在线/排行榜单元格同款 alpha 16）。 */
     private val COLOR_CARD = Color(0xFF, 0xFF, 0xFF, 16)
 
     /**
@@ -499,12 +499,12 @@ object PerformanceRenderer {
     /**
      * 顶部标题区：眉题 + 主标题 + 右侧综合状态卡（1.7.3：整块全宽标题卡
      * ——模糊 + 标题框黑度 + 圆角边缘；1.7.3 覆盖版：标题文字 padding 对齐
-     * 查信息欢迎面板（眉题距卡左缘 28px、主标题 24px，旧版 8/4px 太贴边）；
+     * 玩家名片欢迎面板（眉题距卡左缘 28px、主标题 24px，旧版 8/4px 太贴边）；
      * 右上角小方框改「综合状态」——四项指标综合评级不含人数，灰度永远
      * 比标题框深一点防融合；1.7.3 覆盖版二轮：眉题 / 主标题基线下移 8px
      * （上边缘间距加大），小方框与标题框四周留 14px 可见间距——旧 8/8/0
      * 太贴边看不出内嵌层次；1.7.3 覆盖版三轮：眉题 / 主标题基线再下移
-     * 18px（顶边距 27 → 45px 对齐查信息最上框），副标题框零改动——
+     * 18px（顶边距 27 → 45px 对齐玩家名片最上框），副标题框零改动——
      * 用户口径：间距调的是主标题框）。 */
     private fun drawHeader(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, status: OverallStatus) {
         val top = MARGIN
@@ -517,9 +517,9 @@ object PerformanceRenderer {
             COLOR_HEADER_CARD, 24f,
         )
 
-        // 英文眉题（字距拉宽；1.7.3 覆盖版：距卡左缘 28px，与查信息欢迎面板一致；
+        // 英文眉题（字距拉宽；1.7.3 覆盖版：距卡左缘 28px，与玩家名片欢迎面板一致；
         // 1.7.3 覆盖版三轮：基线 46 → 64，上边缘视觉间距 27 → 45px，
-        // 对齐查信息欢迎面板眉题顶边距——二轮 27px 用户反馈仍偏贴）
+        // 对齐玩家名片欢迎面板眉题顶边距——二轮 27px 用户反馈仍偏贴）
         g.font = InfoCardRenderer.font(26f, true)
         g.color = COLOR_EYEBROW
         g.drawString("M I N E C R A F T   S E R V E R", (MARGIN + 32).toFloat(), (top + 64).toFloat())

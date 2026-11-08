@@ -300,7 +300,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         if (playerUuid.isNotEmpty()) uuidToQuuid.putIfAbsent(playerUuid, quuid)
     }
 
-    /** 读取 QUUID 记录的 playerUuid 字段（/查信息 使用）。 */
+    /** 读取 QUUID 记录的 playerUuid 字段（/玩家名片 使用）。 */
     fun getPlayerUuidByQuuid(quuid: String?): String? {
         if (quuid.isNullOrEmpty()) return null
         val file = File(quuidFolder, "$quuid.yml")
@@ -413,7 +413,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         }
 
     /**
-     * /查信息 统计卡片命令开关（默认开启，1.5.2 前名为 /个人信息）。
+     * /玩家名片 统计卡片命令开关（默认开启；1.5.2 前名为 /个人信息，1.7.4 覆盖版前名为 /查信息）。
      * 前提：QQ 绑定功能（qq-bind.enabled）处于开启状态，否则本开关无效。
      */
     val isPersonalInfoEnabled: Boolean
@@ -579,7 +579,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         }
 
     /**
-     * 1.5.7：查信息统计卡片是否使用内置背景图（默认 true）。
+     * 1.5.7：玩家名片统计卡片是否使用内置背景图（默认 true）。
      * 1.6.0：配置从 qq-bind.render.info-card-builtin-background 迁至顶层
      * render.info-card-builtin-background（渲染设置不依赖 QQ 绑定）。
      * true：内置深灰底图（backgrounds/card-default.png，随 JAR 分发，零配置）；
@@ -596,7 +596,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
      * 1.5.7：查在线列表图片是否使用内置背景图（默认 true）。
      * 1.6.0：配置从 qq-bind.render.online-list-builtin-background 迁至顶层
      * render.online-list-builtin-background（查在线不依赖 QQ 绑定）。
-     * 语义同 [infoCardBuiltinBackground]，与查信息共用横版内置底图。
+     * 语义同 [infoCardBuiltinBackground]，与玩家名片共用横版内置底图。
      */
     val onlineListBuiltinBackground: Boolean
         get() = try {
@@ -691,7 +691,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         updateQuuidRecord(quuid) { yaml -> yaml.set("checkinStreak", streak) }
     }
 
-    /** 累计签到次数（/查信息 卡片数据）。 */
+    /** 累计签到次数（/玩家名片 卡片数据）。 */
     fun getCheckinTotal(quuid: String?): Long {
         if (quuid.isNullOrEmpty()) return 0L
         return readQuuidRecord(quuid)?.getLong("checkinTotal", 0L) ?: 0L

@@ -26,7 +26,7 @@
 <table class="cmd-table">
 <tr><th>命令</th><th>功能与用法</th></tr>
 <tr><td><code>/帮助</code></td><td>查看当前可用的命令列表</td></tr>
-<tr><td><code>/查信息</code><span class="alias">/查信息 @成员</span></td><td>查询自己的玩家统计卡片（游戏时长、金币、点券、称号、皮肤等）；@某成员 可查对方的卡片；一个 QQ 绑定了多个玩家时先回复数字选择</td></tr>
+<tr><td><code>/玩家名片</code><span class="alias">/玩家名片 @成员</span></td><td>查询自己的玩家统计卡片（游戏时长、金币、点券、称号、皮肤等）；@某成员 可查对方的卡片；一个 QQ 绑定了多个玩家时先点按钮选择（旧客户端可回复数字）</td></tr>
 <tr><td><code>/查在线</code><span class="alias">别名 /在线</span></td><td>查看在线玩家列表与皮肤头像；默认输出图片卡片，想换成文字列表见「查在线输出」设置</td></tr>
 <tr><td><code>/查性能</code></td><td>服务器性能卡片：TPS、MSPT、内存、CPU 与右上角综合状态</td></tr>
 <tr><td><code>/在线排行榜</code></td><td>全服在线时长排行榜（图片分页展示）</td></tr>
@@ -34,7 +34,7 @@
 <tr><td><code>/签到</code><span class="alias">别名 /sign</span></td><td>每日签到领取奖励（金币、点券等；连续签到有加成）；需要开启 QQ 绑定与签到两个开关；一个 QQ 绑定了多个玩家时先回复数字选择给谁签到</td></tr>
 <tr><td><code>/绑定 &lt;绑定码&gt;</code></td><td>用进服时收到的数字验证码绑定 QQ 与游戏账号；在群里直接发送纯数字验证码效果相同</td></tr>
 <tr><td><code>/重新绑定</code></td><td>解除自己的绑定（会同时踢下线），下次进服重新获取验证码；换 QQ 号时用</td></tr>
-<tr><td><code>/查询open ID</code></td><td>查询自己的群 OpenId（配置群白名单、管理员名单用）；管理员发送 /查询open ID @成员 可反查成员绑定信息</td></tr>
+<tr><td><code>/查信息</code><span class="alias">/查询open ID（旧名仍可用）</span></td><td>查询自己的 OpenId 与群 OpenId（配置群白名单、管理员名单用）；管理员发送 /查信息 @成员 可反查成员绑定信息</td></tr>
 <tr><td><code>/发信息 &lt;内容&gt;</code></td><td>把一句话发送到游戏内全服聊天，如 /发信息 大家好</td></tr>
 <tr><td><code>/执行 &lt;key&gt;</code></td><td>触发服主预设的自定义命令（见「自定义指令」设置）</td></tr>
 </table>
@@ -68,7 +68,7 @@
 <tr><td><code>/hbkrg mem</code></td><td>查看插件内存诊断（JVM 堆与各级图片缓存占用）</td></tr>
 <tr><td><code>/hbkrg bpng</code></td><td>列出官网可下载的背景图片包；/hbkrg bpng &lt;包名&gt; 下载指定图片包；/hbkrg bpng stop 中断进行中的下载</td></tr>
 <tr><td><code>/hbkrg bpngsz yes|no</code></td><td>一键开关统计卡片的随机背景图（yes 开 / no 关，自动写回配置）</td></tr>
-<tr><td><code>/hbkrg qr</code></td><td>控制台重新打印 QQ 机器人配置引导二维码（手机 QQ 扫码打开官网教程；启动未配置凭据时也会自动打印一次）</td></tr>
+<tr><td><code>/hbkrg qr</code></td><td>凭据未配置时发起 / 重显 QQ 机器人扫码登录（控制台二维码 + 扫码链接，扫码后凭据自动写入并连接；过期自动刷新重发）；已配置时打印官网教程二维码</td></tr>
 <tr><td><code>/qq rebind</code></td><td>玩家在游戏内自助解除自己的绑定，下次进服重新获取验证码</td></tr>
 <tr><td><code>/qq qxqq &lt;玩家名&gt;</code></td><td>管理员强制解除指定玩家的绑定</td></tr>
 <tr><td><code>/qq skip &lt;玩家名&gt;</code></td><td>把玩家加入跳过绑定名单（不再要求其绑定 QQ）</td></tr>
@@ -113,7 +113,7 @@
 <ol>
 <li>在 QQ 中把机器人邀请到你的群，点击机器人头像 → <strong>设置</strong></li>
 <li>把 <strong>机器人可获取的信息范围</strong> 调成 <strong>群内全部消息</strong>，打开<strong>主动发消息</strong>开关</li>
-<li>在群里发送 <strong>/查询open ID</strong>，机器人会回复你的群 OpenId</li>
+<li>在群里发送 <strong>/查信息</strong>（旧名 /查询open ID 也可），机器人会回复你的群 OpenId</li>
 <li>把 OpenId 填入配置文件并重启服务器（<b>注意：每一项必须用双引号包裹</b>）：</li>
 </ol>
 <div class="config">
@@ -124,7 +124,7 @@
 
 <div class="tutorial-step">
 <h3>基础设置完成</h3>
-<p>在群里发送 <code>/查信息</code>、<code>/查在线</code>、<code>/查性能</code> 试试。首次填完机器人账号（AppID / 密钥）需重启服务器生效；之后改其他配置执行 <code>/hbkrg reload</code> 即可（绝大多数配置即时生效，仅机器人凭据与更新检查两项必须重启，详见下方技术细节）。</p>
+<p>在群里发送 <code>/玩家名片</code>、<code>/查在线</code>、<code>/查性能</code> 试试。机器人账号（AppID / 密钥）可手动填写重启生效，也可以直接用启动时控制台的扫码登录（扫码后自动写入并连接）；之后改其他配置执行 <code>/hbkrg reload</code> 即可（绝大多数配置即时生效，仅机器人凭据与更新检查两项必须重启，详见下方技术细节）。</p>
 <p>基础设置已完成，其他功能配置请看常用设置</p>
 </div>
 </section>
@@ -143,7 +143,7 @@
 <pre>bot:
   groups: ["群的OpenId"]  # 每项双引号；留空 [] = 所有群都响应</pre>
 </div>
-<p>填「群 OpenId」，不是群号！获取：把机器人拉进群 → 群里发 <code>/查询open ID</code> → 回复里「群的 OpenId」就是要填的值。留空 [] 时所有群都能用命令，但聊天转发、进出服播报只发给列表里的群——建议至少填上你自己的群。改完 <code>/hbkrg reload</code> 生效。</p>
+<p>填「群 OpenId」，不是群号！获取：把机器人拉进群 → 群里发 <code>/查信息</code>（旧名 /查询open ID）→ 回复里「群的 OpenId」就是要填的值。留空 [] 时所有群都能用命令，但聊天转发、进出服播报只发给列表里的群——建议至少填上你自己的群。改完 <code>/hbkrg reload</code> 生效。</p>
 </div>
 
 <div class="cfg-item">
@@ -183,16 +183,16 @@
 <pre>qq-bind:
   max-players-per-qq: 1  # 每个 QQ 最多绑几个玩家（只能填 ≥1）</pre>
 </div>
-<p>1.7.4 新增。默认 1 = 与旧版一样一个 QQ 只能绑一个玩家；调大后一个 QQ 可以绑多个（比如一个人两个号）。绑了多个玩家时，群里用查信息 / 查询open ID / 重新绑定 / 签到这类指令，机器人会先列出名下全部玩家让你<b>回复数字选择</b>（直接发数字或 @机器人 发数字都行，2 分钟内有效；@机器人 发数字不会被当成 AI 对话）。已达上限时绑定码保留，解绑后重发同一码仍可绑定。填 0 / 负数按 1 处理；改完 <code>/hbkrg reload</code> 即时生效。</p>
+<p>1.7.4 新增。默认 1 = 与旧版一样一个 QQ 只能绑一个玩家；调大后一个 QQ 可以绑多个（比如一个人两个号）。绑了多个玩家时，群里用玩家名片 / 查信息 / 重新绑定 / 签到这类指令，机器人会先列出名下全部玩家让你<b>点击按钮选择</b>（旧版 QQ 客户端不显示按钮时也可回复数字序号，2 分钟内有效；@机器人 发数字不会被当成 AI 对话）。已达上限时绑定码保留，解绑后重发同一码仍可绑定。填 0 / 负数按 1 处理；改完 <code>/hbkrg reload</code> 即时生效。</p>
 </div>
 
 <div class="cfg-item">
-<h4>查信息开关 <span class="key">qq-bind.personal-info</span></h4>
+<h4>玩家名片开关 <span class="key">qq-bind.personal-info</span></h4>
 <div class="config">
 <pre>qq-bind:
-  personal-info: true  # false = 群里不再响应 /查信息</pre>
+  personal-info: true  # false = 群里不再响应 /玩家名片</pre>
 </div>
-<p><code>/查信息</code> 玩家统计卡片命令的总开关。</p>
+<p><code>/玩家名片</code> 玩家统计卡片命令的总开关（1.7.4 覆盖版前名为 /查信息）。</p>
 </div>
 
 <div class="cfg-item">
@@ -254,7 +254,7 @@
 
 <div class="tutorial-step">
 <h3>图片渲染（render 段）</h3>
-<p>查信息 / 查在线 / 查性能 / 排行榜的图片默认用内置背景图（随 JAR 自带，零配置即用）。以下各项改完 <code>/hbkrg reload</code> 立即生效。</p>
+<p>玩家名片 / 查在线 / 查性能 / 排行榜的图片默认用内置背景图（随 JAR 自带，零配置即用）。以下各项改完 <code>/hbkrg reload</code> 立即生效。</p>
 
 <div class="cfg-item">
 <h4>查询结果缓存 <span class="key">render.result-cache-seconds</span></h4>
@@ -289,7 +289,7 @@
 <pre>render:
   title-card-gray: 80  # 0-255，越大越深</pre>
 </div>
-<p>查信息 / 查在线 / 在线排行榜 / 查性能四张卡片<b>顶部标题区</b>的底色，默认 80 比项目卡片（106）略浅。</p>
+<p>玩家名片 / 查在线 / 在线排行榜 / 查性能四张卡片<b>顶部标题区</b>的底色，默认 80 比项目卡片（106）略浅。</p>
 </div>
 
 <div class="cfg-item">
@@ -298,7 +298,7 @@
 <pre>render:
   subtitle-card-gray: 80  # 0-255，越大越深</pre>
 </div>
-<p>查信息<b>玩家名称项</b>与五张卡片<b>副标题条</b>（服务器 / 更新时间 / 第三格：查信息 / 查在线 / 查性能为渲染耗时，排行榜（含财富榜）为展示玩家 TOP x 三张小卡）的底色，默认 80 与标题框相同。</p>
+<p>玩家名片<b>玩家名称项</b>与五张卡片<b>副标题条</b>（服务器 / 更新时间 / 第三格：玩家名片 / 查在线 / 查性能为渲染耗时，排行榜（含财富榜）为展示玩家 TOP x 三张小卡）的底色，默认 80 与标题框相同。</p>
 </div>
 
 <div class="cfg-item">
@@ -319,7 +319,7 @@
 <pre>render:
   item-card-gray: 106  # 0-255，越大越深</pre>
 </div>
-<p>查信息统计面板与查在线 / 排行榜 / 查性能的<b>列表容器</b>底色。</p>
+<p>玩家名片统计面板与查在线 / 排行榜 / 查性能的<b>列表容器</b>底色。</p>
 </div>
 
 <div class="cfg-item">
@@ -344,7 +344,7 @@
 <h4>卡片背景开关 <span class="key">builtin-background（五处）</span></h4>
 <div class="config">
 <pre>render:
-  info-card-builtin-background: true     # 查信息
+  info-card-builtin-background: true     # 玩家名片
   online-list-builtin-background: true   # 查在线
   performance:
     builtin-background: true             # 查性能
@@ -405,12 +405,12 @@ coins-leaderboard:
 <h4>自带项目变量 <span class="key">total-playtime 等七项</span></h4>
 <div class="config">
 <pre>variable-fetch:
-  total-playtime: ""  # 总在线时长（查信息 / 在线排行榜）
-  today-playtime: ""  # 今日在线时长（查信息）
-  coins: ""           # 金币（查信息 / 财富榜）
-  points: ""          # 点券（查信息）
-  title: ""           # 称号（查信息）
-  player-name: ""     # 玩家名（查信息卡片 / 两个排行榜的展示名）
+  total-playtime: ""  # 总在线时长（玩家名片 / 在线排行榜）
+  today-playtime: ""  # 今日在线时长（玩家名片）
+  coins: ""           # 金币（玩家名片 / 财富榜）
+  points: ""          # 点券（玩家名片）
+  title: ""           # 称号（玩家名片）
+  player-name: ""     # 玩家名（玩家名片卡片 / 两个排行榜的展示名）
   tps: ""             # TPS（查性能）</pre>
 </div>
 <p>规则：留空 = 用插件自带数据；变量读取失败自动回退自带数据，卡片不会缺项。玩家名变量只改展示名，头像 / 统计 / 排名仍按真实玩家。变量可与文字混写（如 <code>%变量% 小时</code>）。</p>
@@ -418,7 +418,7 @@ coins-leaderboard:
 </div>
 
 <div class="cfg-item">
-<h4>自定义查信息项目 <span class="key">variable-fetch.custom-items</span></h4>
+<h4>自定义玩家名片项目 <span class="key">variable-fetch.custom-items</span></h4>
 <div class="config">
 <pre>variable-fetch:
   custom-items:
@@ -458,7 +458,7 @@ coins-leaderboard:
 <div class="config">
 <pre>economy-alias: ""  # 填 "元宝" 后所有输出里的"金币"都显示为"元宝"</pre>
 </div>
-<p>作用于排行榜标题、查信息卡片、签到文案、/帮助、消息模板；命令名不受影响。</p>
+<p>作用于排行榜标题、玩家名片卡片、签到文案、/帮助、消息模板；命令名不受影响。</p>
 </div>
 </div>
 
@@ -574,6 +574,17 @@ coins-leaderboard:
     enabled: true
     format: "[游戏] {name} 离开了服务器"</pre>
 </div>
+
+<div class="cfg-item">
+<h4>死亡播报 <span class="key">player-events.death</span></h4>
+<div class="config">
+<pre>player-events:
+  death:
+    enabled: false   # 玩家死亡是否向群播报（1.7.4 覆盖版新增，默认关闭）
+    format: "[游戏] {message}"</pre>
+</div>
+<p>1.7.4 覆盖版新增（配置口径与 HuHoBot 一致，参考 <a href="http://docs.huhobot.dpdns.org/">docs.huhobot.dpdns.org</a>）。除通用变量（<code>{name}</code> / <code>{player}</code> / <code>{server}</code> / <code>{platform}</code>）外还支持：<code>{message}</code> 自动生成的中文死亡描述（如「Steve 被苦力怕杀死了」）、<code>{killer}</code> 击杀者名（环境死亡时为「未知」）。插件版与模组版统一生效；只发给 bot.groups 里的群。</p>
+</div>
 <p>同进服播报，控制玩家离服时是否播报与文案。</p>
 </div>
 </div>
@@ -636,7 +647,7 @@ coins-leaderboard:
 <div class="config">
 <pre>admin:
   mode: qq      # qq = 群主与管理员（推荐）；config = 仅名单；both = 任一
-  openids: []   # 名单（填 OpenId，/查询open ID 获取，每项双引号）</pre>
+  openids: []   # 名单（填 OpenId，/查信息 获取，每项双引号）</pre>
 </div>
 <p>决定谁能在群里用管理员命令（/执行命令、/黑名单 等）。</p>
 </div>
@@ -654,8 +665,8 @@ coins-leaderboard:
 <div class="config">
 <pre>commands:
   帮助: true          # /帮助 —— 查看所有命令
-  查询open ID: true   # /查询open ID —— 查 OpenId
-  查信息: true        # /查信息 —— 玩家统计卡片（可 @某人 查别人）
+  查信息: true        # /查信息 —— 查 OpenId（旧名 /查询open ID 仍可用）
+  玩家名片: true      # /玩家名片 —— 玩家统计卡片（可 @某人 查别人）
   绑定: true          # /绑定 <绑定码>
   重新绑定: true      # /重新绑定 —— 解绑换号用
   查在线: true        # /查在线（别名 /在线）
@@ -782,7 +793,7 @@ coins-leaderboard:
 
 <div class="tutorial-step">
 <h3>哪些配置不能用 /hbkrg reload（只能重启服务器）</h3>
-<p>绝大多数配置改完执行 <code>/hbkrg reload</code> 立即生效：命令开关、群列表（bot.groups）、聊天转发格式、进出服播报、消息模板（Markdown 文件）、图片渲染设置（模糊度 / 缓存 / 冷却）、变量获取、AI 参数、签到设置等。<b>只有以下两项 reload 不管用，改完必须重启服务器</b>：</p>
+<p>绝大多数配置改完执行 <code>/hbkrg reload</code> 立即生效：命令开关、群列表（bot.groups）、聊天转发格式、进出服 / 死亡播报、消息模板（Markdown 文件）、图片渲染设置（模糊度 / 缓存 / 冷却）、变量获取、AI 参数、签到设置等。<b>只有以下两项 reload 不管用，改完必须重启服务器</b>：</p>
 <ul>
 <li><b>bot.app-id / bot.secret（QQ 机器人凭据）</b>——QQ 客户端只在启动时用当期凭据连接一次，reload 和 <code>/hbkrg chs</code> 重连都不会读取新凭据。</li>
 <li><b>update-check 段（更新检查）</b>——只在服务器启动后第 8 秒检查一次新版本，改开关 / 镜像地址要下次启动才生效。</li>
@@ -790,7 +801,7 @@ coins-leaderboard:
 <p><b>主命令</b>：游戏内管理命令为 <code>/hbkrg</code>（旧名 /kerong、/hbkng 均已移除不兼容，输入旧命令会提示未知指令）。reload 会在重载配置后<b>自动重新同步 QQ 快捷指令面板</b>（先删除旧面板再按新配置重建按钮），改完命令开关执行一次 <code>/hbkrg reload</code> 即可，无需其他操作。</p>
 
 <h3>变量获取信息的生效范围与回退规则</h3>
-<p>variable-fetch 每个项目独立判定：变量留空 → 用插件自带数据；变量读取失败（未装 PlaceholderAPI / 变量不存在返回原文 / 返回空白）→ 自动回退插件自带数据。自定义项目读不到时不展示。生效范围：查信息卡片（各项目 + 自定义项目）、在线排行榜（玩家名 / 总在线时长）、财富榜（玩家名 / 金币）、查性能（TPS）；玩家名变量只改展示名，头像 / 统计 / 排名仍按真实玩家。变量解析在服务器主线程内一次完成（保证线程安全），解析结果（采用 / 回退）写进插件日志。模组版无 PlaceholderAPI 生态，恒用自带数据。</p>
+<p>variable-fetch 每个项目独立判定：变量留空 → 用插件自带数据；变量读取失败（未装 PlaceholderAPI / 变量不存在返回原文 / 返回空白）→ 自动回退插件自带数据。自定义项目读不到时不展示。生效范围：玩家名片卡片（各项目 + 自定义项目）、在线排行榜（玩家名 / 总在线时长）、财富榜（玩家名 / 金币）、查性能（TPS）；玩家名变量只改展示名，头像 / 统计 / 排名仍按真实玩家。变量解析在服务器主线程内一次完成（保证线程安全），解析结果（采用 / 回退）写进插件日志。模组版无 PlaceholderAPI 生态，恒用自带数据。</p>
 </div>
 
 <div class="tutorial-step">
@@ -815,7 +826,7 @@ coins-leaderboard:
 
 <div class="tutorial-step">
 <h3>基岩版互通（Geyser）</h3>
-<p>装了 Geyser-Spigot / Floodgate 的服务器，基岩玩家和 Java 玩家一样拿绑定码、绑定、签到、查信息，全部按玩家 UUID 记录；同名不同 UUID 即两个独立账号（基岩 <code>.Steve</code> 与 Java <code>Steve</code> 各自独立）。</p>
+<p>装了 Geyser-Spigot / Floodgate 的服务器，基岩玩家和 Java 玩家一样拿绑定码、绑定、签到、玩家名片，全部按玩家 UUID 记录；同名不同 UUID 即两个独立账号（基岩 <code>.Steve</code> 与 Java <code>Steve</code> 各自独立）。</p>
 </div>
 
 <div class="tutorial-step">

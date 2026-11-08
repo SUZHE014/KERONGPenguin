@@ -39,7 +39,7 @@ object MessageTemplates {
         "no-admin-permission",           // 无管理员权限
         "query-too-frequent",            // 查询太频繁（图片命令冷却内）
         "server-busy",                   // 渲染队列繁忙兜底
-        "image-send-failed",             // 图片发送失败（查信息 / 查在线 / 排行榜）
+        "image-send-failed",             // 图片发送失败（玩家名片 / 查在线 / 排行榜）
         "manager-not-ready",             // 管理器未就绪（简短版）
         "manager-not-ready-bind",        // 绑定管理器未就绪（简短版）
         "manager-not-ready-retry",       // 管理器未就绪，请稍后再试
@@ -65,9 +65,9 @@ object MessageTemplates {
         "checkin-reward-invalid",        // 奖励金币数量配置错误
         "checkin-success",               // 签到成功（获得金币）
         "checkin-pay-error",             // 金币系统未就绪
-        // —— 查信息 ——
-        "info-bind-disabled",            // 查信息未开启（QQ 绑定未启用）
-        "info-closed",                   // 查信息被管理员关闭
+        // —— 玩家名片（原 /查信息）——
+        "info-bind-disabled",            // 玩家名片未开启（QQ 绑定未启用）
+        "info-closed",                   // 玩家名片被管理员关闭
         "info-not-bound",                // 自己未绑定
         "info-target-not-bound",         // 被查询成员未绑定
         "info-render-failed",            // 信息卡片生成失败

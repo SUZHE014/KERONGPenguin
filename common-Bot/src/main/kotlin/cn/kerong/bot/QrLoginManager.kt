@@ -1,0 +1,362 @@
+package cn.kerong.bot
+
+import cn.kerong.bot.provider.BotShared
+import cn.kerong.bot.provider.plugin
+import cn.kerong.bot.tools.PluginFileLog
+import com.alibaba.fastjson.JSON
+import com.alibaba.fastjson.JSONObject
+import org.bukkit.plugin.java.JavaPlugin
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
+import java.security.SecureRandom
+import java.util.Base64
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
+
+/**
+ * QQ 机器人扫码登录（1.7.4 覆盖版新增）。
+ *
+ * 触发点：启动时未配置 bot.app-id / bot.secret，或控制台执行 /hbkrg qr
+ * （凭据未配置时）。流程对齐同类产品 HuHoBot 的扫码授权体验：
+ *
+ * 1. 生成 32 字节随机密钥（Base64）→ POST q.qq.com/lite/create_bind_task
+ *    创建绑定任务，取得 task_id；
+ * 2. 控制台打印 connect.html 授权链接的 ASCII 二维码 + **扫码链接文本**
+ *    （手机 QQ 扫码或手动复制链接均可完成授权）；
+ * 3. 每 2 秒轮询 q.qq.com/lite/poll_bind_result，等待用户在手机上确认；
+ * 4. 授权成功：响应携带 AES-256-GCM 加密的 bot_encrypt_secret，用第 1 步
+ *    的密钥解密得到 Secret，连同 bot_appid 写入 config.yml 并自动启动机器人；
+ * 5. 二维码过期（status=3）：**自动重新创建任务并重发新码**（含新链接），
+ *    连续过期超过 6 次才放弃并回落「手动配置教程」引导。
+ *
+ * 协议参考实现（鸣谢）：
+ * - HuHoBot 文档：http://docs.huhobot.dpdns.org/ （快速开始「扫码登录」）
+ * - HuHoBot 源码：https://github.com/HuHoBot/PenguinAgent
+ *   （manager/QrLoginManager.kt——create_bind_task / poll_bind_result /
+ *   connect.html 链接拼装 / AES-GCM 解密 / 过期自动刷新，本实现与其对齐）
+ */
+object QrLoginManager {
+
+    /** 绑定任务创建接口。 */
+    private const val CREATE_URL = "https://q.qq.com/lite/create_bind_task"
+
+    /** 绑定结果轮询接口。 */
+    private const val POLL_URL = "https://q.qq.com/lite/poll_bind_result"
+
+    /** 授权页链接前缀（task_id 拼在其后）。 */
+    private const val CONNECT_URL_PREFIX = "https://q.qq.com/qqbot/openclaw/connect.html?task_id="
+
+    /** 轮询间隔（毫秒）。 */
+    private const val POLL_INTERVAL_MS = 2_000L
+
+    /** HTTP 超时（毫秒）。 */
+    private const val HTTP_TIMEOUT_MS = 10_000L
+
+    /** 二维码连续过期上限：超过即放弃（与参考实现一致），回落手动配置引导。 */
+    private const val MAX_REFRESH_COUNT = 6
+
+    private val secureRandom = SecureRandom()
+
+    /** 当前授权会话（null = 未在进行）。 */
+    @Volatile
+    private var session: AuthSession? = null
+
+    /** 授权会话状态。 */
+    private enum class State { WAITING, EXPIRED, SUCCESS, FAILED, CANCELLED }
+
+    /** 一次扫码授权会话（含取消标记 / 过期刷新计数 / 当前二维码链接）。 */
+    private class AuthSession {
+        @Volatile var cancelled = false
+        @Volatile var state = State.WAITING
+        @Volatile var qrUrl: String = ""
+        @Volatile var refreshCount = 0
+    }
+
+    /** 授权得到的凭据。 */
+    private data class QrCredentials(val appId: String, val appSecret: String)
+
+    /**
+     * 启动扫码登录会话：
+     * - 已有会话且仍在等待 / 刚过期 → 不重复起线程，直接重显当前二维码；
+     * - 否则新建会话并启动守护线程执行完整流程。
+     *
+     * @return 提示文本（写入命令反馈或日志）
+     */
+    fun start(): String {
+        synchronized(this) {
+            val current = session
+            if (current != null && !current.cancelled &&
+                (current.state == State.WAITING || current.state == State.EXPIRED)
+            ) {
+                reprintCurrent()
+                return "扫码登录会话已在进行中，已重新显示当前二维码与链接"
+            }
+            val newSession = AuthSession()
+            session = newSession
+            Thread({
+                try {
+                    runSession(newSession)
+                } catch (error: Throwable) {
+                    PluginFileLog.errorAndKeep("扫码登录会话异常退出: ${error.message}")
+                }
+            }, "KERONG-QrAuth").apply {
+                isDaemon = true
+                start()
+            }
+            return "已启动 QQ 机器人扫码登录（控制台查看二维码）"
+        }
+    }
+
+    /** 取消当前会话（插件卸载时调用，防止后台线程继续轮询）。 */
+    fun cancel() {
+        val current = session ?: return
+        if (current.state == State.WAITING || current.state == State.EXPIRED) {
+            current.cancelled = true
+            current.state = State.CANCELLED
+        }
+    }
+
+    /** 重显当前会话的二维码与链接（无会话时返回 false）。 */
+    fun reprintCurrent(): Boolean {
+        val current = session ?: return false
+        if (current.qrUrl.isEmpty()) return false
+        printQrToConsole(current.qrUrl)
+        return true
+    }
+
+    /** 当前是否正在进行扫码登录（WAITING / EXPIRED）。 */
+    val isActive: Boolean
+        get() {
+            val current = session ?: return false
+            return !current.cancelled &&
+                (current.state == State.WAITING || current.state == State.EXPIRED)
+        }
+
+    // ---------- 会话主流程 ----------
+
+    /**
+     * 会话主循环：创建任务 → 打印二维码与链接 → 轮询结果 →
+     * 过期自动刷新重发（直到成功 / 取消 / 连续过期超限）。
+     */
+    private fun runSession(session: AuthSession) {
+        PluginFileLog.infoAndKeep("========== QQ Bot 扫码登录 ==========")
+        PluginFileLog.infoAndKeep("未检测到 bot.app-id / bot.secret，请使用手机 QQ 扫描以下二维码完成机器人绑定")
+        PluginFileLog.infoAndKeep("（也可以等下方链接出来后手动复制到手机 QQ 打开）")
+        PluginFileLog.infoAndKeep("")
+        while (!session.cancelled) {
+            try {
+                val key = generateBindKey()
+                val taskId = createBindTask(key)
+                val connectUrl = buildConnectUrl(taskId)
+                session.qrUrl = connectUrl
+                session.state = State.WAITING
+                printQrToConsole(connectUrl)
+                PluginFileLog.infoAndKeep("扫码链接: $connectUrl")
+                PluginFileLog.infoAndKeep("（扫码后自动继续，二维码过期会自动刷新重发）")
+                PluginFileLog.infoAndKeep("")
+                val credentials = pollUntilResult(session, taskId, key)
+                if (credentials != null) {
+                    writeCredentials(credentials)
+                    session.state = State.SUCCESS
+                    PluginFileLog.infoAndKeep("")
+                    PluginFileLog.infoAndKeep("========== 扫码成功 ==========")
+                    PluginFileLog.infoAndKeep("AppID: ${credentials.appId}")
+                    PluginFileLog.infoAndKeep("Secret: ${credentials.appSecret.take(6)}****（已写入配置文件）")
+                    PluginFileLog.infoAndKeep("已将 AppID 和 Secret 写入 config.yml，正在启动机器人…")
+                    // 授权成功后立即以新凭据连接（launchQqClient 内部读取最新配置）
+                    try {
+                        plugin.launchQqClient()
+                    } catch (error: Throwable) {
+                        PluginFileLog.errorAndKeep("扫码授权后启动机器人失败: ${error.message}（重启服务器后自动连接）")
+                    }
+                    return
+                }
+                if (session.cancelled) break
+                // 凭据为 null 且未取消 = 二维码过期：自动刷新重发
+                session.refreshCount += 1
+                if (session.refreshCount > MAX_REFRESH_COUNT) {
+                    session.state = State.FAILED
+                    PluginFileLog.warnAndKeep("二维码已连续过期 $MAX_REFRESH_COUNT 次，扫码登录已停止——可稍后用 /hbkrg qr 重新发起，或按教程手动配置凭据。")
+                    printQqSetupQrFallback()
+                    return
+                }
+                session.state = State.EXPIRED
+                PluginFileLog.warnAndKeep("二维码已过期，正在刷新…（第 ${session.refreshCount}/$MAX_REFRESH_COUNT 次）")
+                PluginFileLog.infoAndKeep("")
+            } catch (error: Exception) {
+                if (session.cancelled) break
+                session.state = State.FAILED
+                PluginFileLog.errorAndKeep("扫码授权失败: ${error.message}——已停止扫码登录，可稍后用 /hbkrg qr 重试。")
+                printQqSetupQrFallback()
+                return
+            }
+        }
+        session.state = State.CANCELLED
+    }
+
+    /** 连续失败兜底：回落官网教程引导（手动配置路径）。 */
+    private fun printQqSetupQrFallback() {
+        try {
+            plugin.printQqSetupQr()
+        } catch (_: Throwable) {
+        }
+    }
+
+    // ---------- 协议细节（与参考实现对齐） ----------
+
+    /** 生成 32 字节随机 AES-256 密钥（Base64 文本，随 create_bind_task 上送）。 */
+    private fun generateBindKey(): String {
+        val bytes = ByteArray(32)
+        secureRandom.nextBytes(bytes)
+        return Base64.getEncoder().encodeToString(bytes)
+    }
+
+    /** 创建绑定任务：POST {"key": <base64>}，返回 task_id。 */
+    private fun createBindTask(key: String): String {
+        val body = JSON.toJSONString(mapOf("key" to key))
+        val response = httpPost(CREATE_URL, body)
+        val json = JSON.parseObject(response)
+        if (json.getIntValue("retcode") != 0) {
+            throw RuntimeException("create_bind_task failed: ${json.getString("msg")}")
+        }
+        val taskId = json.getJSONObject("data")?.getString("task_id")
+        if (taskId.isNullOrBlank()) {
+            throw RuntimeException("create_bind_task: missing task_id")
+        }
+        return taskId
+    }
+
+    /** 拼装授权页链接（task_id 与 source 做 URL 编码，+ 号按 %20 处理）。 */
+    private fun buildConnectUrl(taskId: String): String {
+        val encodedTaskId = URLEncoder.encode(taskId, "UTF-8").replace("+", "%20")
+        val encodedSource = URLEncoder.encode("openclaw", "UTF-8").replace("+", "%20")
+        return "${CONNECT_URL_PREFIX}$encodedTaskId&source=$encodedSource&_wv=2"
+    }
+
+    /**
+     * 轮询绑定结果直到成功 / 过期 / 取消。
+     *
+     * @return 成功返回凭据；过期（status=3）返回 null；取消返回 null（调用方查 cancelled）
+     */
+    private fun pollUntilResult(session: AuthSession, taskId: String, key: String): QrCredentials? {
+        while (!session.cancelled) {
+            try {
+                Thread.sleep(POLL_INTERVAL_MS)
+            } catch (_: InterruptedException) {
+                return null
+            }
+            if (session.cancelled) return null
+            try {
+                val body = JSON.toJSONString(mapOf("task_id" to taskId))
+                val response = httpPost(POLL_URL, body)
+                val json = JSON.parseObject(response)
+                if (json.getIntValue("retcode") != 0) {
+                    PluginFileLog.warnAndKeep("扫码轮询失败: ${json.getString("msg")}，继续重试…")
+                    continue
+                }
+                val data: JSONObject? = json.getJSONObject("data") ?: continue
+                when (data!!.getIntValue("status")) {
+                    2 -> {
+                        // 授权成功：取出凭据并解密
+                        val appId = data.get("bot_appid")?.toString() ?: ""
+                        val encryptSecret = data.getString("bot_encrypt_secret") ?: ""
+                        return QrCredentials(appId, decryptSecret(encryptSecret, key))
+                    }
+                    3 -> return null // 二维码过期
+                    else -> continue // 仍在等待扫码
+                }
+            } catch (error: Exception) {
+                PluginFileLog.warnAndKeep("扫码轮询异常: ${error.message}，继续重试…")
+            }
+        }
+        return null
+    }
+
+    /**
+     * AES-256-GCM 解密 Secret：
+     * 密文 = 12 字节 IV + 密文体 + 16 字节认证标签，整体 Base64；
+     * 密钥为 create_bind_task 时上送的 32 字节随机数（Base64）。
+     */
+    private fun decryptSecret(encryptSecretBase64: String, keyBase64: String): String {
+        val keyBytes = Base64.getDecoder().decode(keyBase64)
+        if (keyBytes.size != 32) {
+            throw IllegalArgumentException("key must be 32 bytes (AES-256), got ${keyBytes.size}")
+        }
+        val cipherBytes = Base64.getDecoder().decode(encryptSecretBase64)
+        if (cipherBytes.size <= 28) {
+            throw IllegalArgumentException("ciphertext too short: ${cipherBytes.size}")
+        }
+        val iv = cipherBytes.copyOfRange(0, 12)
+        val cipherText = cipherBytes.copyOfRange(12, cipherBytes.size - 16)
+        val tag = cipherBytes.copyOfRange(cipherBytes.size - 16, cipherBytes.size)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(keyBytes, "AES"), GCMParameterSpec(128, iv))
+        return String(cipher.doFinal(cipherText + tag), Charsets.UTF_8)
+    }
+
+    /** 极简 JSON POST（Content-Type / Accept: application/json，10 秒超时）。 */
+    private fun httpPost(url: String, body: String): String {
+        val connection = URL(url).openConnection() as HttpURLConnection
+        return try {
+            connection.requestMethod = "POST"
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.setRequestProperty("Accept", "application/json")
+            connection.connectTimeout = HTTP_TIMEOUT_MS.toInt()
+            connection.readTimeout = HTTP_TIMEOUT_MS.toInt()
+            connection.doOutput = true
+            connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            val code = connection.responseCode
+            if (code in 200..299) {
+                connection.inputStream.use { it.readBytes().toString(Charsets.UTF_8) }
+            } else {
+                val errorText = try {
+                    connection.errorStream?.use { it.readBytes().toString(Charsets.UTF_8) }
+                } catch (_: Throwable) {
+                    null
+                }
+                throw RuntimeException("HTTP $code: $errorText")
+            }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    // ---------- 控制台二维码 ----------
+
+    /** 控制台打印 ASCII 二维码（复用 1.7.4 自研编码器；失败退化为只打链接）。 */
+    private fun printQrToConsole(url: String) {
+        try {
+            val qr = cn.kerong.bot.tools.QrCode.encodeAscii(url, quietZone = 2)
+            for (line in qr.lineSequence()) {
+                PluginFileLog.infoAndKeep("  $line")
+            }
+        } catch (t: Throwable) {
+            PluginFileLog.warnAndKeep("无法渲染二维码，请复制下方链接到手机 QQ 打开: ${t.message}")
+        }
+    }
+
+    // ---------- 凭据落盘 ----------
+
+    /**
+     * 把授权得到的凭据写入 config.yml（bot.app-id / bot.secret）并重载配置。
+     *
+     * 写入路径与 /hbkrg bpngsz 相同：平台 YamlConfiguration.set + saveConfig
+     * （Spigot 1.18.1+ / NeoForge 兼容层均保留配置注释）。
+     */
+    private fun writeCredentials(credentials: QrCredentials) {
+        val kerong = try {
+            BotShared.instance
+        } catch (_: Throwable) {
+            null
+        } ?: throw IllegalStateException("插件实例未初始化，无法写入凭据")
+        val javaPlugin = kerong as? JavaPlugin
+            ?: throw IllegalStateException("当前平台不支持自动写入配置，请手动填入 bot.app-id / bot.secret")
+        val config = javaPlugin.config
+        config.set("bot.app-id", credentials.appId)
+        config.set("bot.secret", credentials.appSecret)
+        javaPlugin.saveConfig()
+        kerong.reloadPluginConfig()
+    }
+}

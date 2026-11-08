@@ -104,14 +104,15 @@ object MenuManager {
      * 按用户要求不出现在快捷菜单；1.6.7 新增「查性能」按钮
      * （commands.查性能 关闭时同步消失）；1.6.9.3 移除「在线服务器」与
      * 「motd」两个按钮（对应命令已删除，面板从 21 项降回 19 项，
-     * 不再触发平台上限裁剪）。
+     * 不再触发平台上限裁剪）；1.7.4 覆盖版指令改名——「查询open ID」
+     * 按钮更名为「查信息」、「查信息」按钮更名为「玩家名片」。
      */
     private data class PanelItem(val name: String, val desc: String)
 
     private val PANEL_ITEMS = listOf(
         PanelItem("帮助", "查看所有命令"),
-        PanelItem("查询open ID", "查询 OpenId"),
-        PanelItem("查信息", "查询玩家统计卡片"),
+        PanelItem("查信息", "查询 OpenId"),
+        PanelItem("玩家名片", "查询玩家统计卡片"),
         PanelItem("绑定", "绑定 QQ"),
         PanelItem("重新绑定", "解除 QQ 绑定"),
         PanelItem("查在线", "查询在线玩家"),
@@ -133,11 +134,11 @@ object MenuManager {
     /**
      * 超出平台上限（20 个）时的裁剪顺序（从本表头部开始裁）：
      * 优先保留玩家常用按钮，低频管理类按钮先让位（对应命令仍可手动输入）。
-     * 1.6.7.10：全功能开启时面板 21 项超限，按此顺序裁掉「查询open ID」；
+     * 1.6.7.10：全功能开启时面板 21 项超限，按此顺序裁掉「查询open ID」（现名查信息）；
      * 1.6.9.3：移除两个已删除命令的按钮后全功能 19 项，正常不再触发裁剪。
      */
     private val PANEL_TRIM_ORDER = listOf(
-        "查询open ID",
+        "查信息",
         "解除黑名单",
         "AI对话上下文",
         "清除当前上下文",
@@ -145,8 +146,8 @@ object MenuManager {
         "黑名单",
     )
 
-    /** 依赖 QQ 绑定功能开启的按钮（绑定关闭时一并隐藏；1.5.2：个人信息按钮更名为查信息）。 */
-    private val QQ_BIND_PANEL_NAMES = setOf("绑定", "重新绑定", "黑名单", "解除黑名单", "查信息")
+    /** 依赖 QQ 绑定功能开启的按钮（绑定关闭时一并隐藏；1.5.2：个人信息按钮更名为查信息；1.7.4 覆盖版：更名玩家名片）。 */
+    private val QQ_BIND_PANEL_NAMES = setOf("绑定", "重新绑定", "黑名单", "解除黑名单", "玩家名片")
 
     /**
      * 依赖签到功能开启的按钮（1.7.4：同时要求 QQ 绑定总开关开启——签到建立

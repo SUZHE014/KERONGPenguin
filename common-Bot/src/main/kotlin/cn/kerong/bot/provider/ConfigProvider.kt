@@ -48,6 +48,10 @@ data class PlayerEventFormat(
     val joinFormat: String,
     val quitEnabled: Boolean,
     val quitFormat: String,
+    /** 死亡播报开关（1.7.4 覆盖版新增，参考 HuHoBot；默认关闭）。 */
+    val deathEnabled: Boolean = false,
+    /** 死亡播报格式（占位符与 HuHoBot 一致：{name}/{player}/{server}/{platform}/{message}/{killer}）。 */
+    val deathFormat: String = "[游戏] {message}",
 )
 
 /** 自定义命令详情（QQ 群触发 → 服务器执行）。 */
@@ -103,6 +107,8 @@ interface ConfigProvider {
         joinFormat = "[游戏] {name} 加入了服务器",
         quitEnabled = true,
         quitFormat = "[游戏] {name} 离开了服务器",
+        deathEnabled = false,
+        deathFormat = "[游戏] {message}",
     )
 
     /** 配置文件路径（用于定位 Markdown / 敏感词目录），无配置文件的平台返回 null。 */
@@ -142,6 +148,18 @@ interface ConfigProvider {
     /** 玩家退出播报。 */
     fun formatPlayerQuitMessage(name: String): String =
         formatPlayerEventMessage(playerEventFormat().quitFormat, name)
+
+    /**
+     * 玩家死亡播报（1.7.4 覆盖版新增，占位符与 HuHoBot 对齐）。
+     *
+     * @param name 死者玩家名
+     * @param deathMessage 自动生成的中文死亡描述（如「Steve 被苦力怕杀死了」，不含死者名）
+     * @param killerName 击杀者名（环境死亡时为 null，输出为「未知」）
+     */
+    fun formatPlayerDeathMessage(name: String, deathMessage: String?, killerName: String?): String =
+        formatPlayerEventMessage(playerEventFormat().deathFormat, name)
+            .replace("{message}", deathMessage ?: "死了")
+            .replace("{killer}", killerName ?: "未知")
 
     /** 应用占位符后的事件播报文本。 */
     fun formatPlayerEventMessage(format: String, name: String): String = format
