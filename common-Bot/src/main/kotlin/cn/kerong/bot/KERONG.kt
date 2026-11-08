@@ -222,10 +222,11 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
         if (appId.isBlank() || secret.isBlank()) {
             PluginFileLog.warnAndKeep("未配置 bot.app-id 或 bot.secret，QQ 机器人未启动")
             // 1.7.4 覆盖版：改用 QQ 官方「扫码登录」引导（对齐 HuHoBot 的扫码授权
-            // 体验，参考 http://docs.huhobot.dpdns.org/ 与 HuHoBot 源码）：
+            // 体验，参考 HuHoBot 源码）：
             // 控制台打印授权二维码 + 扫码链接，手机 QQ 扫码确认后凭据自动写入
-            // config.yml 并自动连接；二维码过期自动刷新重发（连续 6 次过期回落
-            // 旧版「官网教程二维码」手动配置引导）。
+            // config.yml 并自动连接；二维码过期自动刷新重发（连续 6 次过期后
+            // 停止并提示重试。1.7.4 第三轮覆盖版：旧版「官网教程二维码 +
+            // 教程链接」手动配置引导已按用户指令删除，不再打印）。
             QrLoginManager.start()
             return
         }
@@ -239,32 +240,6 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
                 PluginFileLog.warnAndKeep("QQ 命令将无法响应，请检查网络连接与机器人凭据（bot.app-id / bot.secret）")
             }
         }
-    }
-
-    /**
-     * 控制台打印 QQ 机器人配置引导二维码（官网教程页）。
-     *
-     * 1.7.4 初版：启动未配置凭据时打印本二维码；1.7.4 覆盖版起，未配置凭据改走
-     * [QrLoginManager] 的 QQ 官方扫码登录（授权后凭据自动写入并连接），本方法
-     * 退居二线：扫码登录连续过期 / 失败的回落引导，以及凭据已配置时 /hbkrg qr
-     * 的重显（查看教程用）。
-     *
-     * 二维码经插件日志器输出（每行带统一前缀，对扫码无影响——
-     * 前缀只等价于加宽左侧静区）；生成失败时退化为打印纯文本教程地址。
-     */
-    fun printQqSetupQr() {
-        val url = "https://kerong.xin/penguin/tutorial.html"
-        PluginFileLog.infoAndKeep("手机 QQ 扫描下方二维码打开配置教程（也可以手动输入网址）：")
-        try {
-            val qr = cn.kerong.bot.tools.QrCode.encodeAscii(url, quietZone = 2)
-            for (line in qr.lineSequence()) {
-                PluginFileLog.infoAndKeep("  $line")
-            }
-        } catch (t: Throwable) {
-            PluginFileLog.warnAndKeep("引导二维码生成失败：${t.message}")
-        }
-        PluginFileLog.infoAndKeep("教程地址: $url")
-        PluginFileLog.infoAndKeep("按教程在 QQ 开放平台创建机器人后，把 bot.app-id / bot.secret 填入配置文件并重启服务器生效。")
     }
 
     /** 本地正则过滤 + 敏感词审核。 */

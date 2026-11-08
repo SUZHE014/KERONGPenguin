@@ -11,12 +11,14 @@ import io.github.kloping.qqbot.impl.ListenerHost
  * 把按钮点击分派给各按钮流程：
  * - [PlayerSelection]（多绑定玩家选择按钮，前缀 krg:psel:）
  * - [UnblacklistButtons]（解除黑名单按钮，前缀 krg:unban:）
+ * - [ServerSelectButtons]（多服务器选择/切换按钮，前缀 krg:cluster:，
+ *   1.7.4 第三轮覆盖版新增——多实例集群下每台实例都收到回调并各自记录
+ *   群选择，仅按钮持有会话的实例处理其余两类按钮，天然去重）
  *
  * 官方要求：收到互动事件后必须回应（event.response(code)），否则客户端
  * 一直 loading 到超时；code 0 时客户端弹「操作成功」——只有真正处理成功
  * 才回 0，被拒绝 / 已过期 / 他人点击一律回非零静默。该回应口径与实现
- * 参考 HuHoBot（文档 http://docs.huhobot.dpdns.org/ 、
- * 源码 https://github.com/HuHoBot/PenguinAgent 的 AgentInteractionListener）。
+ * 参考 HuHoBot（源码 https://github.com/HuHoBot/PenguinAgent 的 AgentInteractionListener）。
  */
 class InterActionListener : ListenerHost() {
 
@@ -67,6 +69,8 @@ class InterActionListener : ListenerHost() {
                     PlayerSelection.onInteraction(groupOpenId, userOpenId, buttonData, respondOnce) != null
                 buttonData.startsWith(UnblacklistButtons.ACTION_PREFIX) ->
                     UnblacklistButtons.onInteraction(groupOpenId, userOpenId, buttonData, respondOnce) != null
+                buttonData.startsWith(ServerSelectButtons.ACTION_PREFIX) ->
+                    ServerSelectButtons.onInteraction(groupOpenId, buttonData, respondOnce) != null
                 else -> false
             }
             if (!handled) {

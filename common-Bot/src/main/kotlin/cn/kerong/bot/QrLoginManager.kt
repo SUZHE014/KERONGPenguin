@@ -29,10 +29,11 @@ import javax.crypto.spec.SecretKeySpec
  * 4. 授权成功：响应携带 AES-256-GCM 加密的 bot_encrypt_secret，用第 1 步
  *    的密钥解密得到 Secret，连同 bot_appid 写入 config.yml 并自动启动机器人；
  * 5. 二维码过期（status=3）：**自动重新创建任务并重发新码**（含新链接），
- *    连续过期超过 6 次才放弃并回落「手动配置教程」引导。
+ *    连续过期超过 6 次停止并提示重试（1.7.4 第三轮覆盖版：旧版「官网教程
+ *    二维码 + 教程链接」回落引导已按用户指令删除）。
  *
  * 协议参考实现（鸣谢）：
- * - HuHoBot 文档：http://docs.huhobot.dpdns.org/ （快速开始「扫码登录」）
+ * - HuHoBot 的扫码登录快速开始指引
  * - HuHoBot 源码：https://github.com/HuHoBot/PenguinAgent
  *   （manager/QrLoginManager.kt——create_bind_task / poll_bind_result /
  *   connect.html 链接拼装 / AES-GCM 解密 / 过期自动刷新，本实现与其对齐）
@@ -54,7 +55,7 @@ object QrLoginManager {
     /** HTTP 超时（毫秒）。 */
     private const val HTTP_TIMEOUT_MS = 10_000L
 
-    /** 二维码连续过期上限：超过即放弃（与参考实现一致），回落手动配置引导。 */
+    /** 二维码连续过期上限：超过即停止（与参考实现一致），提示稍后重试。 */
     private const val MAX_REFRESH_COUNT = 6
 
     private val secureRandom = SecureRandom()
@@ -178,8 +179,7 @@ object QrLoginManager {
                 session.refreshCount += 1
                 if (session.refreshCount > MAX_REFRESH_COUNT) {
                     session.state = State.FAILED
-                    PluginFileLog.warnAndKeep("二维码已连续过期 $MAX_REFRESH_COUNT 次，扫码登录已停止——可稍后用 /hbkrg qr 重新发起，或按教程手动配置凭据。")
-                    printQqSetupQrFallback()
+                    PluginFileLog.warnAndKeep("二维码已连续过期 $MAX_REFRESH_COUNT 次，扫码登录已停止——可稍后用 /hbkrg qr 重新发起。")
                     return
                 }
                 session.state = State.EXPIRED
@@ -189,19 +189,10 @@ object QrLoginManager {
                 if (session.cancelled) break
                 session.state = State.FAILED
                 PluginFileLog.errorAndKeep("扫码授权失败: ${error.message}——已停止扫码登录，可稍后用 /hbkrg qr 重试。")
-                printQqSetupQrFallback()
                 return
             }
         }
         session.state = State.CANCELLED
-    }
-
-    /** 连续失败兜底：回落官网教程引导（手动配置路径）。 */
-    private fun printQqSetupQrFallback() {
-        try {
-            plugin.printQqSetupQr()
-        } catch (_: Throwable) {
-        }
     }
 
     // ---------- 协议细节（与参考实现对齐） ----------

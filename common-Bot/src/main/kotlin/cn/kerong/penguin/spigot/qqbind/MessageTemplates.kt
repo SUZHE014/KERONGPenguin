@@ -82,9 +82,12 @@ object MessageTemplates {
         "coins-leaderboard-no-economy",  // 未安装 Vault 经济插件
         "coins-leaderboard-no-data",     // 暂无金币数据
         "coins-leaderboard-render-failed", // 金币排行图片生成失败
-        // —— 查询 OpenID ——
+        // —— 查询 OpenID / 群绑定码 ——
         "openid-self",                   // 自己的 OpenId 与群 OpenId
         "openid-lookup",                 // OpenId 反查结果
+        // —— 多服务器集群（1.7.4 第三轮覆盖版） ——
+        "cluster-single",                // 单服模式下的 /切换服务器 提示
+        "cluster-list-fallback",         // 按钮不可用时的纯文本服务器列表
         // —— 发信息 ——
         "forward-disabled",              // 群聊转发功能已关闭
         // —— AI 对话 ——

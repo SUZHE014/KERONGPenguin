@@ -34,7 +34,8 @@
 <tr><td><code>/签到</code><span class="alias">别名 /sign</span></td><td>每日签到领取奖励（金币、点券等；连续签到有加成）；需要开启 QQ 绑定与签到两个开关；一个 QQ 绑定了多个玩家时先回复数字选择给谁签到</td></tr>
 <tr><td><code>/绑定 &lt;绑定码&gt;</code></td><td>用进服时收到的数字验证码绑定 QQ 与游戏账号；在群里直接发送纯数字验证码效果相同</td></tr>
 <tr><td><code>/重新绑定</code></td><td>解除自己的绑定（会同时踢下线），下次进服重新获取验证码；换 QQ 号时用</td></tr>
-<tr><td><code>/查信息</code><span class="alias">/查询open ID（旧名仍可用）</span></td><td>查询自己的 OpenId 与群 OpenId（配置群白名单、管理员名单用）；管理员发送 /查信息 @成员 可反查成员绑定信息</td></tr>
+<tr><td><code>/查信息</code></td><td>查询自己的 OpenId 与群 OpenId（配置群白名单、管理员名单用）；管理员发送 /查信息 @成员 可反查成员绑定信息（1.7.4 覆盖版起旧名 /查询open ID 已下线，指令只认现名）</td></tr>
+<tr><td><code>/切换服务器</code></td><td>多服务器集群：查看当前连接本机器人的全部服务器并点击按钮切换（未配置集群时提示单服；配置方法见「多服务器集群」设置）</td></tr>
 <tr><td><code>/发信息 &lt;内容&gt;</code></td><td>把一句话发送到游戏内全服聊天，如 /发信息 大家好</td></tr>
 <tr><td><code>/执行 &lt;key&gt;</code></td><td>触发服主预设的自定义命令（见「自定义指令」设置）</td></tr>
 </table>
@@ -68,7 +69,7 @@
 <tr><td><code>/hbkrg mem</code></td><td>查看插件内存诊断（JVM 堆与各级图片缓存占用）</td></tr>
 <tr><td><code>/hbkrg bpng</code></td><td>列出官网可下载的背景图片包；/hbkrg bpng &lt;包名&gt; 下载指定图片包；/hbkrg bpng stop 中断进行中的下载</td></tr>
 <tr><td><code>/hbkrg bpngsz yes|no</code></td><td>一键开关统计卡片的随机背景图（yes 开 / no 关，自动写回配置）</td></tr>
-<tr><td><code>/hbkrg qr</code></td><td>凭据未配置时发起 / 重显 QQ 机器人扫码登录（控制台二维码 + 扫码链接，扫码后凭据自动写入并连接；过期自动刷新重发）；已配置时打印官网教程二维码</td></tr>
+<tr><td><code>/hbkrg qr</code></td><td>凭据未配置时发起 / 重显 QQ 机器人扫码登录（控制台二维码 + 扫码链接，扫码后凭据自动写入并连接；过期自动刷新重发）；已配置时仅提示当前凭据状态</td></tr>
 <tr><td><code>/qq rebind</code></td><td>玩家在游戏内自助解除自己的绑定，下次进服重新获取验证码</td></tr>
 <tr><td><code>/qq qxqq &lt;玩家名&gt;</code></td><td>管理员强制解除指定玩家的绑定</td></tr>
 <tr><td><code>/qq skip &lt;玩家名&gt;</code></td><td>把玩家加入跳过绑定名单（不再要求其绑定 QQ）</td></tr>
@@ -91,40 +92,39 @@
 </div>
 
 <div class="tutorial-step">
-<h3><span class="step-num">2</span>安装并填写配置</h3>
+<h3><span class="step-num">2</span>安装并扫码登录（推荐）</h3>
 <ol>
 <li>从 <a href="index.html">下载页面</a> 下载最新的 .jar 文件（插件版放 <code>plugins/</code>，模组版放 <code>mods/</code>）</li>
-<li>启动服务器，会自动生成配置文件</li>
-<li>打开配置文件（插件版 <code>plugins/KERONGPenguin/config.yml</code>，模组版 <code>kerongpenguin/config.yml</code>），填入第 1 步保存的机器人信息：</li>
+<li>启动服务器：未配置凭据时控制台会自动打印<b>扫码登录二维码与扫码链接</b>，手机 QQ 扫码（或复制链接到手机 QQ 打开）确认授权</li>
+<li>授权成功后 AppID / Secret <b>自动写入配置文件并自动连接</b>机器人，无需手动改文件；二维码过期会<b>自动刷新重发新码</b></li>
 </ol>
+<p>随时可用 <code>/hbkrg qr</code> 重新发起扫码登录（凭据未配置时）。</p>
+<p>备选（手动填写）：打开配置文件（插件版 <code>plugins/KERONGPenguin/config.yml</code>，模组版 <code>kerongpenguin/config.yml</code>）填入第 1 步保存的机器人信息后重启：</p>
 <div class="config">
 <pre>bot:
   app-id: '机器人ID'
   secret: '机器人密钥'
   name: '机器人名称'</pre>
 </div>
-<ol start="4">
-<li>保存配置文件，重启服务器</li>
-</ol>
 </div>
 
 <div class="tutorial-step">
-<h3><span class="step-num">3</span>邀请机器人进群</h3>
+<h3><span class="step-num">3</span>邀请机器人进群（自动绑定）</h3>
 <ol>
 <li>在 QQ 中把机器人邀请到你的群，点击机器人头像 → <strong>设置</strong></li>
 <li>把 <strong>机器人可获取的信息范围</strong> 调成 <strong>群内全部消息</strong>，打开<strong>主动发消息</strong>开关</li>
-<li>在群里发送 <strong>/查信息</strong>（旧名 /查询open ID 也可），机器人会回复你的群 OpenId</li>
-<li>把 OpenId 填入配置文件并重启服务器（<b>注意：每一项必须用双引号包裹</b>）：</li>
+<li>在群里发送<strong>任意消息</strong>（命令 / 聊天均可，如 <code>/查信息</code>）：bot.groups 未填写时插件<b>自动把本群 OpenId 写入白名单并重载配置</b>（含快捷面板同步），无需手动抄 ID、无需重启</li>
 </ol>
+<p>之后要加别的群：自行把新群 OpenId 追加进 <code>bot.groups</code>（每一项必须用双引号包裹），或清空列表后让新群先发消息：</p>
 <div class="config">
 <pre>bot:
-  groups: ["这里填获取到的群OpenId"]  # 留空 [] 表示不限制</pre>
+  groups: ["群A的OpenId", "群B的OpenId"]  # 留空 [] 时回到自动绑定模式</pre>
 </div>
 </div>
 
 <div class="tutorial-step">
 <h3>基础设置完成</h3>
-<p>在群里发送 <code>/玩家名片</code>、<code>/查在线</code>、<code>/查性能</code> 试试。机器人账号（AppID / 密钥）可手动填写重启生效，也可以直接用启动时控制台的扫码登录（扫码后自动写入并连接）；之后改其他配置执行 <code>/hbkrg reload</code> 即可（绝大多数配置即时生效，仅机器人凭据与更新检查两项必须重启，详见下方技术细节）。</p>
+<p>在群里发送 <code>/玩家名片</code>、<code>/查在线</code>、<code>/查性能</code> 试试。机器人凭据可用扫码登录自动写入，也可手动填写重启生效；之后改其他配置执行 <code>/hbkrg reload</code> 即可（绝大多数配置即时生效，仅机器人凭据与更新检查两项必须重启，详见下方技术细节）。</p>
 <p>基础设置已完成，其他功能配置请看常用设置</p>
 </div>
 </section>
@@ -135,15 +135,26 @@
 
 <div class="tutorial-step">
 <h3>机器人账号（bot 段）</h3>
-<p>bot.app-id 与 bot.secret 两个必填项见顶部安装教程第 2 步（改凭据必须重启服务器；每台服务器要用不同的机器人，同一 AppID 两台会互相挤掉线）。</p>
+<p>bot.app-id 与 bot.secret 两个必填项见顶部安装教程第 2 步（推荐扫码登录自动写入；手动改凭据必须重启服务器）。</p>
 
 <div class="cfg-item">
 <h4>允许响应的群 <span class="key">bot.groups</span></h4>
 <div class="config">
 <pre>bot:
-  groups: ["群的OpenId"]  # 每项双引号；留空 [] = 所有群都响应</pre>
+  groups: ["群的OpenId"]  # 每项双引号；留空 [] = 自动绑定模式</pre>
 </div>
-<p>填「群 OpenId」，不是群号！获取：把机器人拉进群 → 群里发 <code>/查信息</code>（旧名 /查询open ID）→ 回复里「群的 OpenId」就是要填的值。留空 [] 时所有群都能用命令，但聊天转发、进出服播报只发给列表里的群——建议至少填上你自己的群。改完 <code>/hbkrg reload</code> 生效。</p>
+<p>填「群 OpenId」，不是群号！<b>留空 [] 时为自动绑定模式</b>：机器人拉进群后在群里发任意消息（命令 / 聊天均可），插件自动把该群 OpenId 写入本列表并重载配置（含快捷面板同步），无需手动抄 ID；绑定第一个群后其余群不再自动加入。要加别的群：把新群 OpenId 追加进列表（群里发 <code>/查信息</code> 可查到），或清空列表后让新群先发消息。改完 <code>/hbkrg reload</code> 生效。</p>
+</div>
+
+<div class="cfg-item">
+<h4>多服务器集群 <span class="key">bot.cluster 段（1.7.4 覆盖版新增）</span></h4>
+<div class="config">
+<pre>bot:
+  cluster:
+    name: "生存服"          # 本服在按钮上显示的名称（留空则用 bot.name）
+    members: ["生存服", "创造服"]  # 全部成员（含自己，各服必须一致）</pre>
+</div>
+<p>多台服务器<b>共用同一个 QQ 机器人</b>（相同 AppID）时配置。配置后：群里执行命令先弹「选择服务器」按钮（按钮名就是对应的服务器名），按下后该群的命令、聊天转发与播报都由所选服务器处理；<code>/切换服务器</code> 指令可随时重新选择（QQ 快捷面板同步增加该按钮）。未配置（成员少于 2 个）时全部集群逻辑旁路，单服行为零变化。注意：各服的 members 列表必须完全一致，否则路由错乱。</p>
 </div>
 
 <div class="cfg-item">
@@ -162,6 +173,37 @@
   reconnect-notify: true  # false = 过程提示只写日志文件不刷控制台</pre>
 </div>
 <p>控制台里断线重连的过程提示开关；机器人断线会自动重连，无需处理。</p>
+</div>
+</div>
+
+<div class="tutorial-step">
+<h3>服务器开关消息（server-notify 段，1.7.4 覆盖版新增）</h3>
+
+<div class="cfg-item">
+<h4>总开关 <span class="key">server-notify.enabled</span>（默认开启）</h4>
+<div class="config">
+<pre>server-notify:
+  enabled: true  # 总开关，关闭后关机 / 重启 / 意外关闭都不发送</pre>
+</div>
+<p>服务器关闭 / 重启 / 意外关闭时向 QQ 群发送通知（只发给 bot.groups 里的群）。机制：状态文件记录上次运行如何结束——上次未正常收尾（崩溃 / kill -9 / 断电）下次启动补发「意外关闭」；正常关闭后 restart-window 秒内再启动发「重启完成」；普通开机不发送。插件重载 / 手动停用不会误发关机消息。</p>
+</div>
+
+<div class="cfg-item">
+<h4>三类文案 <span class="key">server-notify.shutdown / restart / crash</span></h4>
+<div class="config">
+<pre>server-notify:
+  shutdown:
+    enabled: true
+    message: "服务器已正常关闭"      # 占位符：{server}、{platform}
+  restart:
+    enabled: true
+    message: "服务器已重启完成"
+  crash:
+    enabled: true
+    message: "服务器意外关闭（崩溃或被强制结束），请管理员检查控制台"
+  restart-window: 180              # 上次正常关闭后多少秒内再启动算重启</pre>
+</div>
+<p>每类通知可独立开关与改文案；restart-window 建议 120-300 秒，超过这个时间再启动只当作普通开机不发送。多服务器集群下按群当前选择的服务器路由，不会重复播报。</p>
 </div>
 </div>
 
@@ -583,7 +625,7 @@ coins-leaderboard:
     enabled: false   # 玩家死亡是否向群播报（1.7.4 覆盖版新增，默认关闭）
     format: "[游戏] {message}"</pre>
 </div>
-<p>1.7.4 覆盖版新增（配置口径与 HuHoBot 一致，参考 <a href="http://docs.huhobot.dpdns.org/">docs.huhobot.dpdns.org</a>）。除通用变量（<code>{name}</code> / <code>{player}</code> / <code>{server}</code> / <code>{platform}</code>）外还支持：<code>{message}</code> 自动生成的中文死亡描述（如「Steve 被苦力怕杀死了」）、<code>{killer}</code> 击杀者名（环境死亡时为「未知」）。插件版与模组版统一生效；只发给 bot.groups 里的群。</p>
+<p>1.7.4 覆盖版新增（配置口径与 HuHoBot 一致）。除通用变量（<code>{name}</code> / <code>{player}</code> / <code>{server}</code> / <code>{platform}</code>）外还支持：<code>{message}</code> 自动生成的中文死亡描述（如「Steve 被苦力怕杀死了」）、<code>{killer}</code> 击杀者名（环境死亡时为「未知」）。插件版与模组版统一生效；只发给 bot.groups 里的群。</p>
 </div>
 <p>同进服播报，控制玩家离服时是否播报与文案。</p>
 </div>
@@ -665,7 +707,7 @@ coins-leaderboard:
 <div class="config">
 <pre>commands:
   帮助: true          # /帮助 —— 查看所有命令
-  查信息: true        # /查信息 —— 查 OpenId（旧名 /查询open ID 仍可用）
+  查信息: true        # /查信息 —— 查 OpenId
   玩家名片: true      # /玩家名片 —— 玩家统计卡片（可 @某人 查别人）
   绑定: true          # /绑定 <绑定码>
   重新绑定: true      # /重新绑定 —— 解绑换号用
@@ -681,6 +723,7 @@ coins-leaderboard:
   AI对话上下文: true  # /AI对话上下文 开|关
   清除当前上下文: true # /清除当前上下文
   黑名单: true        # /黑名单 @QQ
+  切换服务器: true    # /切换服务器 —— 多服务器集群切换（1.7.4 覆盖版新增）
   解除黑名单: true    # /解除黑名单 @QQ
   签到: true          # /签到 —— 每日签到</pre>
 </div>

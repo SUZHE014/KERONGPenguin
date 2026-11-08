@@ -84,6 +84,12 @@ object QClient {
             shuttingDown = false
             lastOpenAt = 0L
             ReconnectManager.onLaunch()
+            // 1.7.4 第三轮覆盖版：启动时预加载多服务器集群状态（配置 + 群
+            // 选择持久化文件；单服部署仅记录本服名，集群模式输出成员概览）
+            try {
+                ClusterState.reload()
+            } catch (_: Throwable) {
+            }
             PluginFileLog.infoAndKeep("QQ 机器人客户端初始化（AppID: $appid）…")
             groupMessageHandler = GroupMessageHandler(currentPlugin)
             val session = Starter(appid, "", secret).also { starter = it }
@@ -273,7 +279,7 @@ object QClient {
      * 播报玩家死亡（1.7.4 覆盖版新增，默认关闭——player-events.death.enabled）。
      *
      * 死亡描述与击杀者名由各平台事件层生成（Spigot / NeoForge 的 DeathMessage
-     * 工具，实现与文案口径参考 HuHoBot：http://docs.huhobot.dpdns.org/ 、
+     * 工具，实现与文案口径参考 HuHoBot（
      * https://github.com/HuHoBot/PenguinAgent ）。
      */
     fun broadcastPlayerDeath(playerName: String, deathMessage: String?, killerName: String? = null) {
@@ -309,6 +315,10 @@ object QClient {
         val currentPlugin = plugin
         val payloadJson = JSON.toJSONString(payload)
         for (groupId in currentPlugin.groupOpenIdList()) {
+            // 1.7.4 第三轮覆盖版：多服务器集群路由——该群当前归属其他
+            // 服务器时本实例让位（播报 / 转发 / 广播不重复；未配置集群时
+            // 恒为 true，单服行为零变化）
+            if (!ClusterState.shouldServeGroup(groupId)) continue
             try {
                 starter?.bot?.groupBaseV2?.send(groupId, payloadJson, Channel.SEND_MESSAGE_HEADERS)
             } catch (e: Exception) {
@@ -343,6 +353,8 @@ object QClient {
             return
         }
         if (markdownContent.isBlank()) return
+        // 1.7.4 第三轮覆盖版：多服务器集群路由——该群归属其他服务器时让位
+        if (!ClusterState.shouldServeGroup(groupOpenId)) return
         val markdown = Markdown().setContent(markdownContent)
         val payload = V2MsgData().setContent(markdownContent).setMsg_type(2).setMarkdown(markdown)
         if (keyboard != null) {

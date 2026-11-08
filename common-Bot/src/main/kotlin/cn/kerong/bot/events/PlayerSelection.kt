@@ -18,8 +18,8 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * 选择消息带**内联键盘**——每个绑定玩家一个按钮，点击即选择；旧版 QQ
  * 客户端不渲染按钮时仍可用数字回复兜底。交互模式参考 HuHoBot 的消息按钮
- * （点击回调 / 身份校验 / 消费后过期静默）：
- * 文档 http://docs.huhobot.dpdns.org/ 、源码 https://github.com/HuHoBot/PenguinAgent
+ * （点击回调 / 身份校验 / 消费后过期静默），源码
+ * https://github.com/HuHoBot/PenguinAgent
  * （UnbindConfirmation.kt 的确认键盘与互动处理）。
  *
  * 数字确认的两种形态（兜底保留，判定顺序在 AI 对话**之前**——@机器人 发送

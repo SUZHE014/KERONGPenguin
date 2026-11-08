@@ -9,8 +9,8 @@ import net.neoforged.neoforge.event.entity.living.LivingDeathEvent
  * 把 NeoForge 死亡事件转成中文播报文案（1.7.4 覆盖版新增，供死亡播报用）。
  *
  * 文案口径与 Spigot 版 [cn.kerong.penguin.spigot.events.DeathMessage] 一致，
- * 两者共同参考 HuHoBot 的死亡播报实现（占位符与中文描述逐分支对齐）：
- * 文档 http://docs.huhobot.dpdns.org/ 、源码 https://github.com/HuHoBot/PenguinAgent 。
+ * 两者共同参考 HuHoBot 的死亡播报实现（占位符与中文描述逐分支对齐），
+ * 源码 https://github.com/HuHoBot/PenguinAgent 。
  *
  * 差异说明：原版死亡消息（DamageSource.getLocalizedDeathMessage）取自语言包
  * 默认英文，直接转发可读性差；这里按伤害类型 msgId（death.attack.* 的键尾）

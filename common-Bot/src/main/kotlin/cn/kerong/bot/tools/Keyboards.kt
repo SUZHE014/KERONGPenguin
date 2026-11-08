@@ -6,7 +6,7 @@ import io.github.kloping.qqbot.entities.ex.Keyboard
  * QQ 群消息按钮（内联键盘）构建工具（1.7.4 覆盖版新增）。
  *
  * 交互模式参考同类产品 HuHoBot 的消息按钮（确定 / 取消键盘、点击回调、
- * 权限与身份校验）：文档 http://docs.huhobot.dpdns.org/ 、
+ * 权限与身份校验）：文档 、
  * 源码 https://github.com/HuHoBot/PenguinAgent （UnbindConfirmation.kt）。
  *
  * kloping SDK 的键盘构建要点（与 HuHoBot 使用的 API 一致）：

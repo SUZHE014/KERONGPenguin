@@ -1,6 +1,7 @@
 package cn.kerong.bot.events
 
 import cn.kerong.bot.GroupAtTracker
+import cn.kerong.bot.ClusterState
 import cn.kerong.bot.KERONG
 import cn.kerong.bot.QClient
 import cn.kerong.bot.RecentMessageGate
@@ -82,6 +83,11 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         // 失败不影响消息处理（仅内存写入，持久化异步）
         OpenIdDirectory.recordEvent(event)
 
+        // 1.7.4 第三轮覆盖版：群自动绑定——bot.groups 未填写时，任何群互动
+        // 消息（命令 / 聊天均可）自动把该群 OpenId 写入白名单并重载
+        // （[AutoGroupBinder]；不拦截消息，本条继续正常处理）
+        AutoGroupBinder.tryBind(groupId)
+
         // 1.7.4：多玩家选择的数字确认拦截——优先级最高（在群白名单检查与
         // 自动绑定之前：玩家名片 / 查信息在任意群可用，它们触发的选择
         // 会话也应能在任意群确认；只有 1-2 位纯数字且存在同群同人的活跃
@@ -89,10 +95,12 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         // 不会被判定为 AI 对话（用户口径：艾特机器人发数字代码是选择确认）
         if (PlayerSelection.tryConsume(event, content)) return
 
-        // 查信息（OpenId 查询，原 查询open ID）与玩家名片（统计卡片，原 查信息）
-        // 命令始终放行（任何群可用）；其余命令仅允许配置的群。
-        // “查询open” 用前缀匹配兼容旧名大小写/空格变体（查询OpenID、查询openid 等）。
-        if (!content.contains("查信息") && !content.contains("查询open") && !content.contains("玩家名片")) {
+        // 查信息（OpenId 查询）与玩家名片（统计卡片）命令始终放行（任何群
+        // 可用）；切换服务器（多服务器集群指令）同样任意群可用；其余命令仅
+        // 允许配置的群。
+        // 1.7.4 第三轮覆盖版：旧名「查询open」前缀兼容匹配已按用户指令移除
+        // （旧版指令兜底全部下线，指令只认现名）。
+        if (!content.contains("查信息") && !content.contains("玩家名片") && !content.contains("切换服务器")) {
             if (groupId == null || !isAllowedGroup(groupId)) return
         }
 
@@ -100,7 +108,19 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         // 时，若该数字恰好是某位玩家当前的绑定码，发送者即完成绑定
         // （与 /绑定 <验证码> 同一回复模板 bind-success）。
         // 不匹配任何绑定码时静默放行（不影响全量转发与 AI 对话）。
+        // （多服务器集群下置于路由之前：绑定码由持有该码的服务器实例消费，
+        // 与群当前选择无关）
         if (tryAutoBindByDigits(event, content)) return
+
+        // 1.7.4 第三轮覆盖版：多服务器集群路由（未配置集群时全部旁路，
+        // 行为与单服版本完全一致）。
+        // - 群未选择：命令 → 按 msg_id 哈希选出的仲裁实例弹「选择服务器」
+        //   按钮后全部拦截（等待用户选择）；非命令消息（聊天 / @机器人）→
+        //   按群哈希确定性路由到默认服务器；
+        // - 群已选择：仅所选服务器继续处理，其余实例直接返回。
+        // 参考 HuHoBot 的多服务器选择体验（其为主控-适配器架构，本插件为
+        // 对等实例广播协调，详见 [ClusterState] KDoc）。
+        if (!filterByCluster(event, content, groupId)) return
 
         // 1. 依次尝试命令分发（1.7.4：@机器人 + 指令同样在此命中——消息内
         // 的 @ 片段与前导斜杠在命令匹配前被剥离，与直接发送指令走完全
@@ -129,6 +149,38 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
     private fun isAllowedGroup(groupId: String): Boolean {
         val allowed = plugin.groupOpenIdList()
         return allowed.isEmpty() || groupId in allowed
+    }
+
+    /**
+     * 多服务器集群路由（1.7.4 第三轮覆盖版新增，详见 [ClusterState] KDoc）。
+     *
+     * @return true = 本实例继续处理这条消息；false = 本实例让位（所选 / 默认
+     *   归属其他服务器，或命令已被选择按钮接管）
+     */
+    private fun filterByCluster(event: GroupMessageEvent, content: String, groupId: String?): Boolean {
+        if (!ClusterState.isMultiServer) return true
+        if (groupId.isNullOrEmpty()) return true
+        val selected = ClusterState.selectedServer(groupId)
+        if (selected != null) {
+            return selected == ClusterState.selfServerName
+        }
+        // 群未选择：命令 → 仲裁实例弹选择按钮后统一拦截（等待选择）
+        if (content.trim().startsWith("/")) {
+            val msgId = try {
+                event.rawMessage?.id
+            } catch (_: Throwable) {
+                null
+            }
+            if (msgId != null && ClusterState.isArbiterFor(msgId)) {
+                ServerSelectButtons.sendSelector(
+                    event,
+                    "检测到多台服务器连接本机器人，执行命令前请先选择服务器：",
+                )
+            }
+            return false
+        }
+        // 非命令消息（聊天 / @机器人）：未选择时按群哈希确定性路由
+        return ClusterState.defaultServerFor(groupId) == ClusterState.selfServerName
     }
 
     /**

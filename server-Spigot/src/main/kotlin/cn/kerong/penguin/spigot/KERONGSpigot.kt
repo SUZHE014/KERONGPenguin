@@ -135,6 +135,13 @@ class KERONGSpigot : JavaPlugin(), KERONG {
             SparkStartupCheck.schedule(12_000L) { probeSpark() }
         }
         log_info("KERONG Penguin 已加载")
+        // 1.7.4 第三轮覆盖版：服务器开关消息（口径与 HuHoBot 的 server-notify
+        // 一致，默认开启）——启动完成时检查上次运行如何结束（崩溃补发 /
+        // 重启窗口内发重启完成）；QQ 异步连接，通知线程就绪后自发
+        try {
+            cn.kerong.bot.ServerNotifyManager.onServerStarted()
+        } catch (_: Throwable) {
+        }
     }
 
     /**
@@ -256,10 +263,15 @@ class KERONGSpigot : JavaPlugin(), KERONG {
             null
         }
     }
-
-
-
     override fun onDisable() {
+        // 1.7.4 第三轮覆盖版：服务器开关消息——真实关服时发「服务器已正常
+        // 关闭」（同步发送，此时 QQ 客户端仍在连接）；插件重载 / 手动停用
+        // 不发但记正常收尾，避免之后被误报成崩溃。必须最先执行（后续
+        // shutdownRuntime 会断开 QQ 连接）
+        try {
+            cn.kerong.bot.ServerNotifyManager.onServerStopping(isRealServerStop())
+        } catch (_: Throwable) {
+        }
         // 1.7.3.1 第三次覆盖版：清空 motd 展示值捕获器（端口注入与捕获值）
         try {
             cn.kerong.penguin.spigot.stats.MotdDisplayTracker.reset()
@@ -292,6 +304,33 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         }
     }
 
+    /**
+     * 判断本次 onDisable 是否由服务器真实停止触发（1.7.4 第三轮覆盖版，
+     * 服务器开关消息用）：
+     * 1. Paper 系核心的 `Server#isStopping()`；
+     * 2. Spigot 的 `CraftServer#getServer()` → NMS `MinecraftServer#isRunning()`
+     *    （停止流程里它已是 false）；
+     * 3. 都拿不到时按真实停止处理（插件热重载会多发一次关机通知，
+     *    但不会漏发关服通知）。
+     */
+    private fun isRealServerStop(): Boolean {
+        return try {
+            val stopping = runCatching {
+                server.javaClass.getMethod("isStopping").invoke(server) as? Boolean
+            }.getOrNull()
+            if (stopping != null) return stopping
+            val handle = runCatching {
+                server.javaClass.getMethod("getServer").invoke(server)
+            }.getOrNull()
+            val isRunning = runCatching {
+                handle?.javaClass?.getMethod("isRunning")?.invoke(handle) as? Boolean
+            }.getOrNull()
+            if (isRunning != null) !isRunning else true
+        } catch (_: Throwable) {
+            true
+        }
+    }
+
     override fun reloadPluginConfig() {
         configManager.reload()
         reloadRuntimeConfig()
@@ -299,6 +338,11 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         // 1.7.4：多玩家选择的待选会话随重载作废（旧闭包可能引用过期配置）
         cn.kerong.bot.events.PlayerSelection.clearAll()
         cn.kerong.bot.events.UnblacklistButtons.clearAll()
+        // 1.7.4 第三轮覆盖版：群自动绑定标记重置（清空 groups 后可再次
+        // 自动绑定）；多服务器集群重新加载（配置 + 选择状态文件）并清弹窗节流
+        cn.kerong.bot.events.AutoGroupBinder.reset()
+        cn.kerong.bot.ClusterState.reload()
+        cn.kerong.bot.events.ServerSelectButtons.clearAll()
     }
 
     // ---------- 命令执行器选择（含混合端自动检测） ----------
@@ -557,6 +601,11 @@ class KERONGSpigot : JavaPlugin(), KERONG {
     override fun adminList(): List<String> = configManager.adminOpenIds()
 
     override fun groupOpenIdList(): List<String> = configManager.groupOpenIds()
+
+    // 1.7.4 第三轮覆盖版：多服务器集群配置
+    override fun clusterName(): String = configManager.clusterName()
+
+    override fun clusterMembers(): List<String> = configManager.clusterMembers()
 
     override val fullAmount: Boolean
         get() = configManager.fullForwardingByDefault()

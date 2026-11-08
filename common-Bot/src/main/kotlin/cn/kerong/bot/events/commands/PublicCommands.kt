@@ -1,5 +1,6 @@
 package cn.kerong.bot.events.commands
 
+import cn.kerong.bot.ClusterState
 import cn.kerong.bot.KERONG
 import cn.kerong.bot.QClient
 import cn.kerong.penguin.spigot.qqbind.MessageTemplates
@@ -11,12 +12,17 @@ import io.github.kloping.qqbot.entities.qqpd.User
 import java.util.concurrent.CompletableFuture
 
 /**
- * 公开命令：帮助 / 玩家名片 / 查信息 / 查在线 / 发信息 / 黑名单 / 重新绑定 / AI 上下文等。
+ * 公开命令：帮助 / 玩家名片 / 查信息 / 查在线 / 发信息 / 黑名单 / 重新绑定 / AI 上下文 / 切换服务器等。
  *
  * 1.7.4 覆盖版：指令改名（与 HuHoBot 语义对齐）——
- * - 旧「查询open ID」改名为「查信息」（查 OpenId，配置 bot.groups 用），
- *   旧名及其大小写变体保留为隐藏别名（不出现在菜单，命中后共用同一开关）；
+ * - 旧「查询open ID」改名为「查信息」（查 OpenId，配置 bot.groups 用）;
  * - 旧「查信息」（玩家统计卡片）改名为「玩家名片」。
+ *
+ * 1.7.4 第三轮覆盖版：
+ * - 旧版指令兜底全部下线（用户指令：「那些旧版指令兜底都去掉」）——
+ *   「查询open ID」及其大小写变体不再是 /查信息 的隐藏别名，指令只认现名；
+ * - 新增 /切换服务器（多服务器集群，见 [ClusterState]；与 HuHoBot 的
+ *   多服务器概念一致）。
  *
  * 1.6.0：全部文本回复改走消息模板系统（[MessageTemplates]）——
  * 每条回复对应数据目录 Markdown/ 下一个 .md 模板文件（配置 messages 段可换文件），
@@ -100,11 +106,13 @@ class PublicCommands : CommandSupport() {
     }
 
     /**
-     * /查信息 —— OpenId 查询与反查（1.7.4 覆盖版由「查询open ID」更名而来，
-     * 旧名及其大小写变体保留为隐藏别名）。
+     * /查信息 —— OpenId 查询与反查（1.7.4 覆盖版由「查询open ID」更名而来；
+     * 1.7.4 第三轮覆盖版起旧名变体兜底下线，指令只认现名）。
      *
      * 用法（1.5.3）：
      * - `/查信息`：显示自己的 OpenId 与群 OpenId（用于配置 bot.groups）；
+     *   未配置 bot.groups 时群里任意互动消息会自动完成绑定（见
+     *   GroupMessageHandler 的自动绑定逻辑，无需手动填群 ID）；
      * - `/查信息 <OpenId>`：反查该 OpenId 对应的 QQ 账号（群昵称 + 绑定玩家）；
      * - `/查信息 @成员`：查看被 @ 成员的绑定信息。
      *
@@ -115,7 +123,7 @@ class PublicCommands : CommandSupport() {
      * 见 OpenIdDirectory）；机器人无法通过接口按 OpenId 查询群资料。
      * 提示文本模板：openid-self / openid-lookup（messages 段）。
      */
-    @Commands("查信息", "查询open ID", "查询Open ID", "查询open id", "查询Open id", "查询openID", "查询OpenID", "查询openid", "查询OPENID")
+    @Commands("查信息")
     fun queryInfo(plugin: KERONG, event: GroupMessageEvent, params: String) {
         val arg = params?.trim() ?: ""
         val mentioned = extractMentionedQqInfo(event)
@@ -129,6 +137,45 @@ class PublicCommands : CommandSupport() {
         // 1.5.3：反查 / 查看 @ 成员
         val targetOpenId = if (arg.isNotEmpty()) arg else mentioned!!.firstOrNull() ?: return
         reverseLookupOpenId(plugin, event, targetOpenId)
+    }
+
+    /**
+     * /切换服务器 —— 多服务器集群：展示当前连接本机器人的服务器列表并
+     * 按钮切换（1.7.4 第三轮覆盖版新增，开关 commands.切换服务器）。
+     *
+     * - 未配置集群（bot.cluster.members 少于 2 个）：回复单服提示；
+     * - 已配置：输出成员列表（当前选择带 ✓ 标记）+ 内联键盘按钮，点击后
+     *   **每台实例**同步记录该群的选择（互动事件广播到达），此后该群的
+     *   命令 / 聊天转发 / 播报都由所选服务器处理。
+     *
+     * 与 HuHoBot 的多服务器体验对齐（其为主控-适配器架构，本插件为对等
+     * 实例广播协调，差异见 [ClusterState] KDoc）：
+     * 文档 。
+     * 提示文本模板：cluster-single（messages 段）。
+     */
+    @Commands("切换服务器")
+    fun switchServer(plugin: KERONG, event: GroupMessageEvent, params: String) {
+        if (!ClusterState.isMultiServer) {
+            MessageTemplates.sendDirect(event, "cluster-single", mapOf(
+                "server" to ClusterState.selfServerName,
+            ))
+            return
+        }
+        // 按钮消息为引用本条指令的被动回复（不占主动消息配额）；
+        // 弹出失败（旧版客户端不渲染键盘等）时回退纯文本列表
+        val sent = cn.kerong.bot.events.ServerSelectButtons.sendSelector(
+            event,
+            "当前连接本机器人的服务器如下，点击按钮切换：",
+        )
+        if (!sent) {
+            val current = ClusterState.selectedServer(groupId(event))
+            val list = ClusterState.serverMembers.joinToString("\n") { name ->
+                if (name == current) "- $name（当前）" else "- $name"
+            }
+            MessageTemplates.sendDirect(event, "cluster-list-fallback", mapOf(
+                "list" to list,
+            ))
+        }
     }
 
     /**

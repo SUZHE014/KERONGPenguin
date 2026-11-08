@@ -246,6 +246,38 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
     fun groupOpenIds(): List<String> = plugin.config.getStringList("bot.groups")
 
+    /** 多服务器集群：本服显示名（1.7.4 第三轮覆盖版，未配置时用 bot.name）。 */
+    fun clusterName(): String = plugin.config.getString("bot.cluster.name", "") ?: ""
+
+    /** 多服务器集群：全部成员服务器名列表（各服必须一致；少于 2 个不启用）。 */
+    fun clusterMembers(): List<String> = plugin.config.getStringList("bot.cluster.members")
+
+    // ---------- 服务器开关消息（1.7.4 第三轮覆盖版，口径与 HuHoBot 一致，默认开启） ----------
+
+    fun isServerNotifyEnabled(): Boolean = plugin.config.getBoolean("server-notify.enabled", true)
+
+    fun isServerNotifyShutdownEnabled(): Boolean =
+        isServerNotifyEnabled() && plugin.config.getBoolean("server-notify.shutdown.enabled", true)
+
+    fun serverNotifyShutdownMessage(): String =
+        plugin.config.getString("server-notify.shutdown.message", "服务器已正常关闭") ?: "服务器已正常关闭"
+
+    fun isServerNotifyRestartEnabled(): Boolean =
+        isServerNotifyEnabled() && plugin.config.getBoolean("server-notify.restart.enabled", true)
+
+    fun serverNotifyRestartMessage(): String =
+        plugin.config.getString("server-notify.restart.message", "服务器已重启完成") ?: "服务器已重启完成"
+
+    fun isServerNotifyCrashEnabled(): Boolean =
+        isServerNotifyEnabled() && plugin.config.getBoolean("server-notify.crash.enabled", true)
+
+    fun serverNotifyCrashMessage(): String =
+        plugin.config.getString("server-notify.crash.message", "服务器意外关闭（崩溃或被强制结束），请管理员检查控制台")
+            ?: "服务器意外关闭（崩溃或被强制结束），请管理员检查控制台"
+
+    fun serverNotifyRestartWindow(): Long =
+        plugin.config.getLong("server-notify.restart-window", 180L).coerceIn(0L, 3600L)
+
     /**
      * 命令执行器配置。
      * 可取值：Auto（自动检测，推荐）/ Hybrid（混合控制台）/ 其他（模拟控制台）。
@@ -345,6 +377,11 @@ class ConfigManager(private val plugin: JavaPlugin) {
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
 
+        // 1.7.4 第三轮覆盖版：升 36——新增集群与服务器开关消息键
+        // （bot.cluster.name / bot.cluster.members / commands.切换服务器 /
+        // server-notify 段八键）与两个消息模板（cluster-single /
+        // cluster-list-fallback）；「查询open ID」旧名开关键 8 个变体进
+        // 废弃键清单（别名兜底已下线）。
         // 1.7.4：升 35——新增两键（只加新键+默认值，不做任何旧值迁移）：
         // qq-bind.max-players-per-qq（每个 QQ 账号最多能绑定多少个玩家，默认 1，
         // 只能等于或大于 1，配 0 / 负数按 1 处理）与多玩家数字选择机制
@@ -382,7 +419,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // qq-bind.checkin.points-reward（签到点券奖励，默认 0 关闭）
         // 1.7.1：升 28——无新增键纯注释刷新（卡片背景图说明段补 /hbkrg bpng
         // 图片包下载与 /hbkrg bpngsz 一键切换的用法说明）
-        private const val CURRENT_CONFIG_VERSION = 35
+        private const val CURRENT_CONFIG_VERSION = 36
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -414,6 +451,11 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "commands.在线服务器", "commands.motd", "messages.server-status",
             "messages.motd-usage", "messages.motd-query-failed", "messages.motd-offline",
             "messages.motd-error", "messages.motd-status",
+            // 1.7.4 第三轮覆盖版：「查询open ID」旧名别名已下线，旧配置里
+            // 写死的开关键一并清理（现名 commands.查信息）
+            "commands.查询open ID", "commands.查询Open ID", "commands.查询open id",
+            "commands.查询Open id", "commands.查询openID", "commands.查询OpenID",
+            "commands.查询openid", "commands.查询OPENID",
             // 1.7.0：本地头像获取链路移除（统一在线获取）；
             // 原版遮罩样式与整图透明度移除（只保留毛玻璃，模糊度改 blur-strength）
             "render.avatar-fetch-priority", "render.background-style", "render.global-opacity",
@@ -422,13 +464,14 @@ class ConfigManager(private val plugin: JavaPlugin) {
         /**
          * 支持开关的群命令名单（1.5.2：查信息更名对应个人信息卡片命令，新增 查询open ID；
          * 1.6.0 新增金币榜；1.6.2 更名财富榜；1.6.9.3 移除 在线服务器 与 motd；
-         * 1.7.4 覆盖版：查询open ID 更名为 查信息（旧名保留为隐藏别名），
-         * 查信息（玩家统计卡片）更名为 玩家名片）。
+         * 1.7.4 覆盖版：查询open ID 更名为 查信息，查信息（玩家统计卡片）
+         * 更名为 玩家名片；1.7.4 第三轮覆盖版：新增 切换服务器（多服务器
+         * 集群指令），旧名「查询open ID」的别名兜底全部下线）。
          */
         private val COMMAND_NAMES = listOf(
             "查信息", "玩家名片", "绑定", "重新绑定", "查在线", "查性能", "在线排行榜", "财富榜", "发信息",
             "执行命令", "执行", "管理员执行", "全量", "帮助",
-            "AI对话上下文", "清除当前上下文", "黑名单", "解除黑名单", "签到",
+            "AI对话上下文", "清除当前上下文", "黑名单", "解除黑名单", "签到", "切换服务器",
         )
 
         /**
@@ -437,21 +480,12 @@ class ConfigManager(private val plugin: JavaPlugin) {
          * commands 配置段（dispatch 层按别名命中后仍查主命令开关值）。
          * 1.5.7.4：「在线」为 /查在线 的输入别名；
          * 1.6.2：「金币榜」为 /财富榜 的旧名别名——1.7.4 移除（更名已两个
-         * 大版本周期，配置迁移 1.6.2 时已完成，官网与配置注释同步清理）。
+         * 大版本周期，配置迁移 1.6.2 时已完成，官网与配置注释同步清理）；
+         * 1.7.4 第三轮覆盖版：「查询open ID」及其 8 个大小写变体别名全部
+         * 移除（用户指令「那些旧版指令兜底都去掉」，指令只认现名）。
          */
         private val COMMAND_ALIASES = linkedMapOf(
             "在线" to "查在线",
-            // 1.7.4 覆盖版：「查询open ID」更名为「查信息」，旧名及其大小写
-            // 变体保留为隐藏别名（共用 commands.查信息 开关；旧配置里写死的
-            // commands.查询open ID 键仍优先生效，不做迁移）
-            "查询open ID" to "查信息",
-            "查询Open ID" to "查信息",
-            "查询open id" to "查信息",
-            "查询Open id" to "查信息",
-            "查询openID" to "查信息",
-            "查询OpenID" to "查信息",
-            "查询openid" to "查信息",
-            "查询OPENID" to "查信息",
         )
 
         /**
@@ -484,6 +518,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "coins-leaderboard-no-economy", "coins-leaderboard-no-data", "coins-leaderboard-render-failed",
             // 查询 OpenID
             "openid-self", "openid-lookup",
+            // 多服务器集群（1.7.4 第三轮覆盖版：cluster-single 单服提示 /
+            // cluster-list-fallback 按钮不可用时的纯文本服务器列表）
+            "cluster-single", "cluster-list-fallback",
             // 发信息
             "forward-disabled",
             // AI 对话
@@ -507,6 +544,22 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "bot.secret" to "",
             "bot.name" to "KERONGPenguin",
             "bot.groups" to emptyList<Any>(),
+            // 1.7.4 第三轮覆盖版：多服务器集群（多台服务器共用同一 QQ 机器人
+            // 凭据时配置；name = 本服在按钮上显示的名称，members = 全部成员
+            // 名称列表[含自己]，各服必须完全一致；未配置 / 少于 2 个成员时
+            // 集群逻辑全部旁路，单服行为零变化）
+            "bot.cluster.name" to "",
+            "bot.cluster.members" to emptyList<Any>(),
+            // 1.7.4 第三轮覆盖版：服务器开关消息（配置口径与 HuHoBot 的
+            // server-notify 段一致，默认全部开启）
+            "server-notify.enabled" to true,
+            "server-notify.shutdown.enabled" to true,
+            "server-notify.shutdown.message" to "服务器已正常关闭",
+            "server-notify.restart.enabled" to true,
+            "server-notify.restart.message" to "服务器已重启完成",
+            "server-notify.crash.enabled" to true,
+            "server-notify.crash.message" to "服务器意外关闭（崩溃或被强制结束），请管理员检查控制台",
+            "server-notify.restart-window" to 180,
             // 1.6.2：断线重连过程提示开关（1.6.6.3 起默认防刷屏：控制台只输出本轮第 1 次 /
             // 最后一次 / 成功 / 超时里程碑，中间过程写文件；false = 里程碑过程提示也不输出；
             // 重连成功与重连超时后的 /hbkrg chs 恢复指引不受此开关影响，始终输出）

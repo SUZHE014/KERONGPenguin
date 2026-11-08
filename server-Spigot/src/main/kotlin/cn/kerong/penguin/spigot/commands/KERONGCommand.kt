@@ -12,8 +12,11 @@ import java.util.Locale
 /**
  * /hbkrg 主命令：reload / info / chs / mem / bpng / bpngsz / qr / help。
  *
- * 1.7.4 新增 qr：控制台重显 QQ 机器人配置引导二维码（官网教程页；
- * 未配置凭据时启动也会自动打印一次，本命令随时重显）。
+ * 1.7.4 新增 qr：凭据未配置时发起/重显 QQ 官方扫码登录；凭据已配置时仅
+ * 提示状态（旧版「官网教程二维码 + 教程链接」输出已按用户指令删除）。
+ *
+ * 注：QQ 群绑定已改为全自动（bot.groups 未填写时群互动消息自动写入白名单
+ * 并重载，见 [cn.kerong.bot.events.AutoGroupBinder]），不再需要控制台命令。
  *
  * 1.7.1 新增 bpng / bpngsz：背景图片包下载与一键切换（共享逻辑在
  * [cn.kerong.penguin.spigot.render.BackgroundPackService]，双端命令层仅做
@@ -96,15 +99,15 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
             }
             "qr" -> {
                 // 1.7.4 覆盖版：凭据未配置 → 发起/重显 QQ 官方扫码登录（授权后
-                // 凭据自动写入并连接；二维码过期自动刷新重发）；已配置 → 打印
-                // 官网教程二维码（手动查教程用）
+                // 凭据自动写入并连接；二维码过期自动刷新重发）；已配置 → 纯
+                // 文本状态提示（1.7.4 第三轮覆盖版：旧版「教程二维码 + 教程
+                // 链接」输出已按用户指令删除）
                 if (plugin.botAppId.isBlank() || plugin.botSecret.isBlank()) {
                     val result = cn.kerong.bot.QrLoginManager.start()
                     sender.sendMessage("${ChatColor.GREEN}$result")
                     sender.sendMessage("${ChatColor.YELLOW}请在服务器控制台查看二维码与扫码链接（也支持手动复制链接到手机 QQ 打开）。")
                 } else {
-                    sender.sendMessage("${ChatColor.YELLOW}QQ 机器人凭据已配置，显示官网教程二维码（重新扫码绑定请先清空 bot.app-id / bot.secret 并重启）。")
-                    plugin.printQqSetupQr()
+                    sender.sendMessage("${ChatColor.YELLOW}QQ 机器人凭据已配置（正常连接中）。重新扫码绑定请先清空 bot.app-id / bot.secret 并重启服务器。")
                 }
                 return true
             }
@@ -255,7 +258,7 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
         sender.sendMessage("${ChatColor.YELLOW}/$label mem${ChatColor.WHITE} - 查看插件内存与缓存诊断（JVM 堆 + 各级缓存）")
         sender.sendMessage("${ChatColor.YELLOW}/$label bpng${ChatColor.WHITE} - 查看可下载的背景图片包；/$label bpng <包ID> 下载到 img/（下载中可再执行一次中断）")
         sender.sendMessage("${ChatColor.YELLOW}/$label bpngsz yes|no${ChatColor.WHITE} - 一键切换全部卡片是否使用 img/ 自定义背景图")
-        sender.sendMessage("${ChatColor.YELLOW}/$label qr${ChatColor.WHITE} - 控制台重新打印 QQ 机器人配置引导二维码（扫码打开官网教程）")
+        sender.sendMessage("${ChatColor.YELLOW}/$label qr${ChatColor.WHITE} - 未配置凭据时发起 QQ 机器人扫码登录（控制台扫码，授权后自动连接）")
     }
 
     companion object {

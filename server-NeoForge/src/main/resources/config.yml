@@ -10,7 +10,7 @@
 # ============================================================
 
 # 配置文件版本号（插件自动维护，勿改）
-config-version: 35
+config-version: 36
 
 # 启动后自动联网检查新版本（改这里需重启才生效）
 update-check:
@@ -32,9 +32,22 @@ bot:
   # 断线重连提示开关（false = 过程提示只写日志文件不刷控制台）
   reconnect-notify: true
   # 允许响应的群列表：填「群 OpenId」，不是群号！
-  # 获取：把机器人拉进群 → 群里发 /查信息
-  # 每项必须加双引号，如 ["ABC123"]；留空 [] = 所有群都响应
+  # 自动绑定：留空 [] 时，把机器人拉进群后在群里发任意消息（命令 / 聊天
+  #   均可），插件自动把该群 OpenId 写入本列表并重载（含快捷面板同步），
+  #   无需手动查 ID；之后要加别的群自行编辑本列表或清空后让新群先互动
+  # 每项必须加双引号，如 ["ABC123"]
   groups: []
+  # 多服务器集群（1.7.4 第三轮覆盖版新增，单服部署无需配置）：
+  # 多台服务器共用同一个 QQ 机器人（相同 AppID）时，在每台服都配置：
+  #   name = 本服在「选择服务器」按钮上显示的名称（留空则用上方 bot.name）
+  #   members = 全部成员服务器名称列表（含自己，各服必须完全一致）
+  # 配置后：群里执行命令先弹「选择服务器」按钮，选择后该群的命令、聊天
+  # 转发与进出服 / 死亡播报都由所选服务器处理；/切换服务器 可随时切换。
+  # 参考同类产品 HuHoBot 的多服务器体验
+  cluster:
+    name: ""
+    # 示例（去掉行首 # 生效）：members: ["生存服", "创造服"]
+    members: []
 
 # ---------------- 聊天转发 ----------------
 chat-format:
@@ -58,12 +71,38 @@ player-events:
     enabled: true
     format: "[游戏] {name} 离开了服务器"
   # 死亡播报（1.7.4 覆盖版新增，参考 HuHoBot 的同名功能与配置口径，
-  # 文档 http://docs.huhobot.dpdns.org/ ；默认关闭，开启后玩家死亡向群播报）
+  # 默认关闭，开启后玩家死亡向群播报）
   # 除通用占位符外还可用：{message} 自动生成的中文死亡描述（如
   # 「Steve 被苦力怕杀死了」）、{killer} 击杀者名（环境死亡时为「未知」）
   death:
     enabled: false
     format: "[游戏] {message}"
+
+# ---------------- 服务器开关消息 ----------------
+# 服务器关闭 / 重启 / 意外关闭时向 QQ 群发送通知（1.7.4 第三轮覆盖版新增，
+# 配置口径与 HuHoBot 一致，默认开启；只发给 bot.groups 里的群）
+# 机制：状态文件记录上次运行如何结束——上次未正常收尾（崩溃 / kill -9 /
+# 断电）下次启动补发「意外关闭」；正常关闭后 restart-window 秒内再启动
+# 发「重启完成」；普通开机不发送。插件重载 / 手动停用不会误发关机消息。
+server-notify:
+  # 总开关，关闭后下面三项都不发送
+  enabled: true
+  shutdown:
+    enabled: true
+    # 可用占位符：{server}、{platform}
+    message: "服务器已正常关闭"
+  restart:
+    enabled: true
+    # 可用占位符：{server}、{platform}
+    message: "服务器已重启完成"
+  crash:
+    enabled: true
+    # 上次运行没有正常关闭（崩溃、kill -9、断电等）时，下次启动后发送
+    # 可用占位符：{server}、{platform}
+    message: "服务器意外关闭（崩溃或被强制结束），请管理员检查控制台"
+  # 上次正常关闭后多少秒内重新启动算作重启，建议 120-300
+  # 超过这个时间再启动只会当作普通开机，不发送通知
+  restart-window: 180
 
 # ---------------- 查在线输出 ----------------
 # /查在线 输出方式由下方 motd.use-markdown 控制：
@@ -309,6 +348,8 @@ messages:
   # —— 查询 OpenID ——
   openid-self: "openid-self.md"                     # 自己与群的 OpenId（{openid} {group}）
   openid-lookup: "openid-lookup.md"                 # OpenId 反查结果
+  cluster-single: "cluster-single.md"               # /切换服务器 单服提示（{server}）
+  cluster-list-fallback: "cluster-list-fallback.md" # /切换服务器 按钮不可用时的纯文本列表（{list}）
   # —— 发信息 ——
   forward-disabled: "forward-disabled.md"           # 聊天转发已关闭
   # —— AI 对话 ——
@@ -365,8 +406,8 @@ features:
 # 改动后 /hbkrg reload 立即生效
 commands:
   帮助: true            # /帮助 —— 查看所有命令
-  查信息: true          # /查信息 —— 查 OpenId（配置 bot.groups 用；旧名 /查询open ID 仍可用）
-  玩家名片: true        # /玩家名片 —— 玩家统计卡片（@某人 查别人；原 /查信息）
+  查信息: true          # /查信息 —— 查 OpenId 与四位数群绑定码（配置 bot.groups 用）
+  玩家名片: true        # /玩家名片 —— 玩家统计卡片（@某人 查别人）
   绑定: true            # /绑定 <绑定码> —— 绑定 QQ（纯数字码直接发送亦可）
   重新绑定: true        # /重新绑定 —— 解绑换号
   查在线: true          # /查在线 —— 在线玩家列表（别名 /在线）
@@ -383,6 +424,7 @@ commands:
   黑名单: true          # /黑名单 @QQ —— 拉黑（自动解绑并踢出，管理员）
   解除黑名单: true      # /解除黑名单 @QQ —— 解除拉黑（管理员）
   签到: true            # /签到 —— 每日签到领奖励
+  切换服务器: true      # /切换服务器 —— 多服务器集群：查看并切换当前群操作的服务器（未配置集群时提示单服）
 
 # ---------------- AI 对话 ----------------
 # QQ 群里 @机器人 或游戏内输入前缀即可对话（OpenAI / DeepSeek 等兼容接口）

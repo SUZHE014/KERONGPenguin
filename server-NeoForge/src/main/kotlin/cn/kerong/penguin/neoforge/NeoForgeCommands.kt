@@ -16,6 +16,8 @@ import java.util.Locale
  * 游戏内命令注册（等价 Spigot 版 plugin.yml 命令 + KERONGCommand / QqCommand）：
  * - /hbkrg：reload / info / chs / bpng / bpngsz / qr / help，需要权限等级 2（OP）；
  *   1.6.2 新增 chs：机器人重连超时挂起或断线期间手动重试连接；
+ *   注：QQ 群绑定已改为全自动（bot.groups 未填写时群互动消息自动写入
+ *   白名单并重载），不再需要控制台命令；
  * - /qq：rebind（玩家自助解绑）与 qxqq / skip / unskip（OP 管理）。
  *
  * 1.6.7.7：移除短别名 /hb（用户需求），主命令唯一；旧输入由原版
@@ -127,7 +129,8 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
             },
         )
         // 1.7.4 覆盖版：凭据未配置 → 发起/重显 QQ 官方扫码登录（授权后凭据
-        // 自动写入并连接；二维码过期自动刷新重发）；已配置 → 官网教程二维码
+        // 自动写入并连接；二维码过期自动刷新重发）；已配置 → 纯文本状态提示
+        // （1.7.4 第三轮覆盖版：旧版「教程二维码 + 教程链接」输出已删除）
         builder.then(
             Commands.literal("qr").executes { context ->
                 if (plugin.botAppId.isBlank() || plugin.botSecret.isBlank()) {
@@ -139,10 +142,9 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
                     )
                 } else {
                     context.source.sendSuccess(
-                        { Component.literal("§eQQ 机器人凭据已配置，显示官网教程二维码（重新扫码绑定请先清空 bot.app-id / bot.secret 并重启）。") },
+                        { Component.literal("§eQQ 机器人凭据已配置（正常连接中）。重新扫码绑定请先清空 bot.app-id / bot.secret 并重启服务器。") },
                         false,
                     )
-                    plugin.printQqSetupQr()
                 }
                 1
             },
@@ -320,7 +322,7 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
         line("§e/$label mem§f - 查看插件内存与缓存诊断（JVM 堆 + 各级缓存）")
         line("§e/$label bpng§f - 查看可下载的背景图片包；/$label bpng <包ID> 下载到 img/（下载中可再执行一次中断）")
         line("§e/$label bpngsz yes|no§f - 一键切换全部卡片是否使用 img/ 自定义背景图")
-        line("§e/$label qr§f - 控制台重新打印 QQ 机器人配置引导二维码（扫码打开官网教程）")
+        line("§e/$label qr§f - 未配置凭据时发起 QQ 机器人扫码登录（控制台扫码，授权后自动连接）")
     }
 
     // ---------- 更名说明（/hbkrg） ----------

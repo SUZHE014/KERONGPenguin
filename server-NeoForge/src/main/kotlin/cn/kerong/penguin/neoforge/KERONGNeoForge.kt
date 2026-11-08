@@ -105,6 +105,13 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         } catch (_: Throwable) {
         }
         registerBindLoginGate()
+        // 1.7.4 第三轮覆盖版：服务器开关消息（口径与 HuHoBot 的 server-notify
+        // 一致，默认开启）——启动完成时检查上次运行如何结束（崩溃补发 /
+        // 重启窗口内发重启完成）；QQ 异步连接，通知线程就绪后自发
+        try {
+            cn.kerong.bot.ServerNotifyManager.onServerStarted()
+        } catch (_: Throwable) {
+        }
         // 1.6.7.3：spark 接入状态提示；1.6.7.4 三态探测（ServerStarted 即
         // 服务器启动成功，延迟 5 秒等 spark 统计窗口积累首批样本；成功提示
         // 受 commands.查性能 开关门控、接入失败无论开关必提示、未安装静默）
@@ -156,6 +163,14 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
 
     /** 服务器停止中（ServerStoppingEvent）：落账并保存。 */
     internal fun onServerStopping() {
+        // 1.7.4 第三轮覆盖版：服务器开关消息——真实关服发「服务器已正常
+        // 关闭」（同步发送，此时 QQ 客户端仍在连接）。必须最先执行（后续
+        // shutdownRuntime 会断开 QQ 连接）；ServerStoppingEvent 在 NeoForge
+        // 里只会由真实关服触发（模组无插件式热重载），按真实停止处理
+        try {
+            cn.kerong.bot.ServerNotifyManager.onServerStopping(true)
+        } catch (_: Throwable) {
+        }
         // 1.7.3.1 第三次覆盖版：清空 motd 展示值捕获器（端口注入与捕获值）
         try {
             cn.kerong.penguin.spigot.stats.MotdDisplayTracker.reset()
@@ -218,6 +233,11 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         // 1.7.4：多玩家选择的待选会话随重载作废（旧闭包可能引用过期配置）
         cn.kerong.bot.events.PlayerSelection.clearAll()
         cn.kerong.bot.events.UnblacklistButtons.clearAll()
+        // 1.7.4 第三轮覆盖版：群自动绑定标记重置（清空 groups 后可再次
+        // 自动绑定）；多服务器集群重新加载（配置 + 选择状态文件）并清弹窗节流
+        cn.kerong.bot.events.AutoGroupBinder.reset()
+        cn.kerong.bot.ClusterState.reload()
+        cn.kerong.bot.events.ServerSelectButtons.clearAll()
     }
 
     // ---------- 平台标识 ----------
@@ -262,6 +282,11 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
     override fun adminList(): List<String> = configManager.adminOpenIds()
 
     override fun groupOpenIdList(): List<String> = configManager.groupOpenIds()
+
+    // 1.7.4 第三轮覆盖版：多服务器集群配置（与 Spigot 共用 ConfigManager）
+    override fun clusterName(): String = configManager.clusterName()
+
+    override fun clusterMembers(): List<String> = configManager.clusterMembers()
 
     override val fullAmount: Boolean
         get() = configManager.fullForwardingByDefault()

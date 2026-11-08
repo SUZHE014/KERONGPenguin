@@ -12,8 +12,8 @@ import org.bukkit.event.entity.PlayerDeathEvent
  * 原版 [PlayerDeathEvent.getDeathMessage] 取自服务端语言包，默认是英文，
  * 直接转发到 QQ 群可读性很差，因此这里按击杀者与死亡原因自行拼装中文描述。
  *
- * 参考实现（鸣谢）：HuHoBot 的 DeathMessage.kt——
- * 文档 http://docs.huhobot.dpdns.org/ （玩家事件通知 / 死亡播报占位符口径）、
+ * 参考实现（鸣谢）：HuHoBot 的 DeathMessage.kt
+ * （玩家事件通知 / 死亡播报占位符口径），
  * 源码 https://github.com/HuHoBot/PenguinAgent （server/Spigot events/DeathMessage.kt，
  * 本文件与其逐分支对齐：击杀者判定 / 环境死亡中文文案 / {message} 不含死者名）。
  */

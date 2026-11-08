@@ -15,8 +15,7 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * 现改为：列出清单的同一消息携带**内联键盘**，每个黑名单条目一个按钮，
  * 点击即解除该条目（无需再 @）。交互模式参考 HuHoBot 的消息按钮
- * （点击回调 / 发起者身份校验 / 消费后过期静默）：
- * 文档 http://docs.huhobot.dpdns.org/ 、
+ * （点击回调 / 发起者身份校验 / 消费后过期静默），
  * 源码 https://github.com/HuHoBot/PenguinAgent （UnbindConfirmation.kt）。
  *
  * 安全边界：黑名单管理是管理员操作，本流程沿用「发起者本人才能点」的

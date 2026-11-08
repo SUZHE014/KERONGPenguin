@@ -60,7 +60,7 @@ class PlayerEventsListener : Listener {
         val player = event.entity.player ?: return
         PlayerStatsManager.onPlayerDeath(player)
         // 死亡播报（player-events.death.enabled，默认 false；文案与占位符口径
-        // 参考 HuHoBot http://docs.huhobot.dpdns.org/ ，描述生成见 [DeathMessage]）
+        // 参考 HuHoBot，描述生成见 [DeathMessage]）
         cn.kerong.bot.QClient.broadcastPlayerDeath(
             event.entity.name,
             DeathMessage.describe(event),

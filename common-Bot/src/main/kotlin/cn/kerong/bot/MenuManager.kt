@@ -129,6 +129,9 @@ object MenuManager {
         PanelItem("黑名单", "黑名单"),
         PanelItem("解除黑名单", "解除黑名单"),
         PanelItem("签到", "每日签到领金币"),
+        // 1.7.4 第三轮覆盖版：多服务器集群按钮（仅集群模式显示，
+        // 见 [ClusterState]；点击后发送 /切换服务器 弹出服务器按钮）
+        PanelItem("切换服务器", "切换连接的服务器"),
     )
 
     /**
@@ -144,6 +147,9 @@ object MenuManager {
         "清除当前上下文",
         "全量",
         "黑名单",
+        // 1.7.4 第三轮覆盖版：集群模式下全功能 21 项，切换服务器按钮
+        // 优先让位（仍可在群里手动输入 /切换服务器）
+        "切换服务器",
     )
 
     /** 依赖 QQ 绑定功能开启的按钮（绑定关闭时一并隐藏；1.5.2：个人信息按钮更名为查信息；1.7.4 覆盖版：更名玩家名片）。 */
@@ -242,6 +248,9 @@ object MenuManager {
                 if (!economyAvailable && item.name in ECONOMY_PANEL_NAMES) return@filter false
                 // 1.7.4：AI 功能未开启时隐藏 AI 相关按钮（旧版恒展示的问题修复）
                 if (!aiEnabled && item.name in AI_PANEL_NAMES) return@filter false
+                // 1.7.4 第三轮覆盖版：多服务器集群按钮仅集群模式显示
+                // （未配置 bot.cluster 时隐藏，避免单服用户面板里出现不可用按钮）
+                if (item.name == "切换服务器" && !cn.kerong.bot.ClusterState.isMultiServer) return@filter false
                 val enabled = commandList[item.name]
                 enabled == null || enabled
             }
