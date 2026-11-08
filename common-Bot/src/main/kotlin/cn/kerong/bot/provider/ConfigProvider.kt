@@ -220,7 +220,7 @@ interface ConfigProvider {
      */
     fun clusterMembers(): List<String> = emptyList()
 
-    // ---------- 服务器开关消息（1.7.4 第三轮覆盖版，配置口径与 HuHoBot 一致，默认开启） ----------
+    // ---------- 服务器开关消息（1.7.4 第三轮覆盖版引入；第七轮删除重启时间窗口） ----------
 
     /** 服务器状态通知总开关（关闭后关机 / 重启 / 意外关闭都不发送）。 */
     fun isServerNotifyEnabled(): Boolean = true
@@ -231,20 +231,17 @@ interface ConfigProvider {
     /** 正常关闭通知文案（占位符 {server} / {platform}）。 */
     fun serverNotifyShutdownMessage(): String = "[状态]\n服务器已正常关闭 (╯︵╰,)"
 
-    /** 重启完成通知开关。 */
+    /** 开启通知开关（上次正常关闭后本次启动发送，不限间隔时长）。 */
     fun isServerNotifyRestartEnabled(): Boolean = true
 
-    /** 重启完成通知文案（占位符 {server} / {platform}）。 */
+    /** 开启通知文案（占位符 {server} / {platform}）。 */
     fun serverNotifyRestartMessage(): String = "[状态]\n服务器已开启！！(≧∇≦)/"
 
     /** 意外关闭（崩溃 / 强制结束）通知开关。 */
     fun isServerNotifyCrashEnabled(): Boolean = true
 
     /** 意外关闭通知文案（占位符 {server} / {platform}）。 */
-    fun serverNotifyCrashMessage(): String = "[状态]\n服务器....༽◺_轨迹༼"
-
-    /** 重启判定窗口（秒）：上次正常关闭后多少秒内再启动算重启，范围 0-3600。 */
-    fun serverNotifyRestartWindow(): Long = 180L
+    fun serverNotifyCrashMessage(): String = "[状态]\n服务器....༽◺_◿༼"
 
     /** 是否开启全量消息转发。 */
     val fullAmount: Boolean

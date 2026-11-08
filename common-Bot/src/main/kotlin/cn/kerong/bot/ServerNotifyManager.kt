@@ -16,16 +16,16 @@ import java.util.Properties
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * 服务器开关消息发送（1.7.4 第三轮覆盖版新增，配置口径与 HuHoBot 的
- * server-notify 段一致，默认开启）。
+ * 服务器开关消息发送（1.7.4 第三轮覆盖版新增，配置口径参考 HuHoBot 的
+ * server-notify 段；第七轮覆盖版删除重启时间窗口）。
  *
- * 机制（与参考实现相同）：
+ * 机制：
  * - 用状态文件跨进程记录上一次运行是怎么结束的（正常收尾 clean 标记 +
  *   停止时间 + JVM 启动时间）；
  * - 服务器启动完成（QQ 客户端开始异步连接）时读上次状态：
  *   上次未正常收尾 → 崩溃 / kill -9 / 断电，补发「意外关闭」通知；
- *   上次正常收尾且距停止时间在 restart-window 内 → 发「重启完成」；
- *   其他情况（普通开机）不发送；
+ *   上次正常收尾（记录过真实停止时间）→ 不限间隔时长，一律发「服务器已开启」；
+ *   首次安装（无状态记录）不发送；
  * - 服务器真实停止时（平台层判定，插件重载不算）发「服务器已正常关闭」，
  *   同时记录停止时间；
  * - 启动侧通知是异步等 QQ 就绪后再发（守护线程轮询，最多 60 秒），
@@ -87,8 +87,6 @@ object ServerNotifyManager {
 
         // 同一个 JVM 内重新 onEnable 属于插件重载，不按「上一次运行」判断
         if (previousJvmStart != null && previousJvmStart > 0 && previousJvmStart != currentJvmStart) {
-            val now = System.currentTimeMillis()
-            val restartWindowMs = plugin.serverNotifyRestartWindow() * 1000L
             when {
                 !previousClean -> {
                     PluginFileLog.infoAndKeep("[服务器通知] 检测到上次服务器未正常关闭，将在 QQ 就绪后发送意外关闭通知")
@@ -97,7 +95,11 @@ object ServerNotifyManager {
                         plugin.serverNotifyCrashMessage(),
                     )
                 }
-                previousStopTime > 0 && now - previousStopTime in 0..restartWindowMs -> {
+                // 上次正常收尾且记录过真实停止时间：不限间隔时长一律发开启通知
+                //（旧版超过 restart-window 秒再启动不播报的机制已删除；插件
+                //  重载 / 手动停用的收尾不带停止时间，不会误发）
+                previousStopTime > 0 -> {
+                    PluginFileLog.infoAndKeep("[服务器通知] 检测到上次正常运行后重新启动，将在 QQ 就绪后发送开启通知")
                     notifyAfterStartup(
                         plugin.isServerNotifyRestartEnabled(),
                         plugin.serverNotifyRestartMessage(),
