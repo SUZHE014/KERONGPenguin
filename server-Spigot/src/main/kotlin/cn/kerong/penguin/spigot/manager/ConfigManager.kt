@@ -170,6 +170,29 @@ class ConfigManager(private val plugin: JavaPlugin) {
                 changed = true
             }
         }
+        // 服务器开关消息默认文案换新（用户口径「关机重启播报配置默认文字分别
+        // 改为」）——历史默认文案是默认写入而非用户意图，升级时自动收敛为
+        // 新默认；自行改过文案的配置不受影响（重建器内同款收敛，这里是
+        // 重建失败兑底路径的双保险）
+        if (oldVersion in 1 until 38) {
+            var notifyTextUpdated = false
+            if (config.getString("server-notify.shutdown.message") == "服务器已正常关闭") {
+                config.set("server-notify.shutdown.message", "[状态]\n服务器已正常关闭 (╯︵╰,)")
+                notifyTextUpdated = true
+            }
+            if (config.getString("server-notify.restart.message") == "服务器已重启完成") {
+                config.set("server-notify.restart.message", "[状态]\n服务器已开启！！(≧∇≦)/")
+                notifyTextUpdated = true
+            }
+            if (config.getString("server-notify.crash.message") == "服务器意外关闭（崩溃或被强制结束），请管理员检查控制台") {
+                config.set("server-notify.crash.message", "[状态]\n服务器....༽◺_轨迹༼")
+                notifyTextUpdated = true
+            }
+            if (notifyTextUpdated) {
+                plugin.logger.info("服务器开关消息默认文案已换新（server-notify 三条 message，可自行改回）")
+                changed = true
+            }
+        }
         // 清理已废弃的配置段
         // 1.5.1：移除 query-online 段（图片输出改为 markdown 关闭时自动启用）与 motd.text（文本模板已删除）
         // 1.5.2：移除 commands.个人信息（该命令已更名为 查信息）
@@ -258,20 +281,19 @@ class ConfigManager(private val plugin: JavaPlugin) {
         isServerNotifyEnabled() && plugin.config.getBoolean("server-notify.shutdown.enabled", true)
 
     fun serverNotifyShutdownMessage(): String =
-        plugin.config.getString("server-notify.shutdown.message", "服务器已正常关闭") ?: "服务器已正常关闭"
+        plugin.config.getString("server-notify.shutdown.message", "[状态]\n服务器已正常关闭 (╯︵╰,)") ?: "[状态]\n服务器已正常关闭 (╯︵╰,)"
 
     fun isServerNotifyRestartEnabled(): Boolean =
         isServerNotifyEnabled() && plugin.config.getBoolean("server-notify.restart.enabled", true)
 
     fun serverNotifyRestartMessage(): String =
-        plugin.config.getString("server-notify.restart.message", "服务器已重启完成") ?: "服务器已重启完成"
+        plugin.config.getString("server-notify.restart.message", "[状态]\n服务器已开启！！(≧∇≦)/") ?: "[状态]\n服务器已开启！！(≧∇≦)/"
 
     fun isServerNotifyCrashEnabled(): Boolean =
         isServerNotifyEnabled() && plugin.config.getBoolean("server-notify.crash.enabled", true)
 
     fun serverNotifyCrashMessage(): String =
-        plugin.config.getString("server-notify.crash.message", "服务器意外关闭（崩溃或被强制结束），请管理员检查控制台")
-            ?: "服务器意外关闭（崩溃或被强制结束），请管理员检查控制台"
+        plugin.config.getString("server-notify.crash.message", "[状态]\n服务器....༽◺_轨迹༼") ?: "[状态]\n服务器....༽◺_轨迹༼"
 
     fun serverNotifyRestartWindow(): Long =
         plugin.config.getLong("server-notify.restart-window", 180L).coerceIn(0L, 3600L)
@@ -375,6 +397,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
 
+        // 1.7.4 覆盖版：升 38——服务器开关消息三条默认文案换新
+        // （server-notify.shutdown / restart / crash 的 message；历史默认
+        // 文案升级自动收敛，自改值不动；无新增键）。
         // 1.7.4 覆盖版：升 37——副标题灰度改为 106（render.subtitle-card-gray
         // 默认 80 → 106 = 与项目卡 item-card-gray 相同；历史默认 40 / 56 / 80
         // 升级自动收敛，自改值不动；无新增键）。
@@ -420,7 +445,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // qq-bind.checkin.points-reward（签到点券奖励，默认 0 关闭）
         // 1.7.1：升 28——无新增键纯注释刷新（卡片背景图说明段补 /hbkrg bpng
         // 图片包下载与 /hbkrg bpngsz 一键切换的用法说明）
-        private const val CURRENT_CONFIG_VERSION = 37
+        private const val CURRENT_CONFIG_VERSION = 38
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -555,11 +580,11 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // server-notify 段一致，默认全部开启）
             "server-notify.enabled" to true,
             "server-notify.shutdown.enabled" to true,
-            "server-notify.shutdown.message" to "服务器已正常关闭",
+            "server-notify.shutdown.message" to "[状态]\n服务器已正常关闭 (╯︵╰,)",
             "server-notify.restart.enabled" to true,
-            "server-notify.restart.message" to "服务器已重启完成",
+            "server-notify.restart.message" to "[状态]\n服务器已开启！！(≧∇≦)/",
             "server-notify.crash.enabled" to true,
-            "server-notify.crash.message" to "服务器意外关闭（崩溃或被强制结束），请管理员检查控制台",
+            "server-notify.crash.message" to "[状态]\n服务器....༽◺_轨迹༼",
             "server-notify.restart-window" to 180,
             // 1.6.2：断线重连过程提示开关（1.6.6.3 起默认防刷屏：控制台只输出本轮第 1 次 /
             // 最后一次 / 成功 / 超时里程碑，中间过程写文件；false = 里程碑过程提示也不输出；

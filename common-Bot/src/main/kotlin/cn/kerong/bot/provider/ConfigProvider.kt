@@ -229,19 +229,19 @@ interface ConfigProvider {
     fun isServerNotifyShutdownEnabled(): Boolean = true
 
     /** 正常关闭通知文案（占位符 {server} / {platform}）。 */
-    fun serverNotifyShutdownMessage(): String = "服务器已正常关闭"
+    fun serverNotifyShutdownMessage(): String = "[状态]\n服务器已正常关闭 (╯︵╰,)"
 
     /** 重启完成通知开关。 */
     fun isServerNotifyRestartEnabled(): Boolean = true
 
     /** 重启完成通知文案（占位符 {server} / {platform}）。 */
-    fun serverNotifyRestartMessage(): String = "服务器已重启完成"
+    fun serverNotifyRestartMessage(): String = "[状态]\n服务器已开启！！(≧∇≦)/"
 
     /** 意外关闭（崩溃 / 强制结束）通知开关。 */
     fun isServerNotifyCrashEnabled(): Boolean = true
 
     /** 意外关闭通知文案（占位符 {server} / {platform}）。 */
-    fun serverNotifyCrashMessage(): String = "服务器意外关闭（崩溃或被强制结束），请管理员检查控制台"
+    fun serverNotifyCrashMessage(): String = "[状态]\n服务器....༽◺_轨迹༼"
 
     /** 重启判定窗口（秒）：上次正常关闭后多少秒内再启动算重启，范围 0-3600。 */
     fun serverNotifyRestartWindow(): Long = 180L

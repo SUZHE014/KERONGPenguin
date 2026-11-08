@@ -10,7 +10,7 @@
 # ============================================================
 
 # 配置文件版本号（插件自动维护，勿改）
-config-version: 37
+config-version: 38
 
 # 启动后自动联网检查新版本（改这里需重启才生效）
 update-check:
@@ -84,16 +84,16 @@ server-notify:
   shutdown:
     enabled: true
     # 可用占位符：{server}、{platform}
-    message: "服务器已正常关闭"
+    message: "[状态]\n服务器已正常关闭 (╯︵╰,)"
   restart:
     enabled: true
     # 可用占位符：{server}、{platform}
-    message: "服务器已重启完成"
+    message: "[状态]\n服务器已开启！！(≧∇≦)/"
   crash:
     enabled: true
     # 上次运行没有正常关闭（崩溃、kill -9、断电等）时，下次启动后发送
     # 可用占位符：{server}、{platform}
-    message: "服务器意外关闭（崩溃或被强制结束），请管理员检查控制台"
+    message: "[状态]\n服务器....༽◺_轨迹༼"
   # 上次正常关闭后多少秒内重新启动算作重启，建议 120-300
   # 超过这个时间再启动只会当作普通开机，不发送通知
   restart-window: 180
