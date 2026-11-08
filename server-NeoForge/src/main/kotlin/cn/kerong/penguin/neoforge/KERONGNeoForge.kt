@@ -96,6 +96,13 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         }
         // 共享实例注册 → 装载状态 → 异步启动 QQ 客户端（与 Spigot onEnable 同序）
         initializeRuntime()
+        // 1.7.4 第五轮覆盖版：扫码登录二维码在服务器启动完成后显示——本回调
+        // 即 ServerStartedEvent（启动就绪），未配置凭据时 initializeRuntime 内
+        // 只置待发标记，这里立即消费；启动日志已刷完，二维码不会被冲掉
+        try {
+            cn.kerong.bot.QrLoginManager.startIfStartupPending()
+        } catch (_: Throwable) {
+        }
         PlayerStatsManager.initialize()
         // 1.6.6.2：启动即开启磁盘缓存清扫线程（首轮 10 秒后执行）——
         // 强制关机 / 崩溃后残留的过期头像缓存文件在下次启动 10 秒内

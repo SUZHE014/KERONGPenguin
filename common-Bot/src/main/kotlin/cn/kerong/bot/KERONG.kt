@@ -223,11 +223,16 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
             PluginFileLog.warnAndKeep("未配置 bot.app-id 或 bot.secret，QQ 机器人未启动")
             // 1.7.4 覆盖版：改用 QQ 官方「扫码登录」引导（对齐 HuHoBot 的扫码授权
             // 体验，参考 HuHoBot 源码）：
-            // 控制台打印授权二维码 + 扫码链接，手机 QQ 扫码确认后凭据自动写入
-            // config.yml 并自动连接；二维码过期自动刷新重发（连续 6 次过期后
-            // 停止并提示重试。1.7.4 第三轮覆盖版：旧版「官网教程二维码 +
+            // 手机 QQ 扫码确认后凭据自动写入 config.yml 并自动连接；二维码过期
+            // 自动刷新重发（每次会话自动刷新上限 3 次，超过后可用 /hbkrg qr
+            // 手动重新发起；1.7.4 第三轮覆盖版：旧版「官网教程二维码 +
             // 教程链接」手动配置引导已按用户指令删除，不再打印）。
-            QrLoginManager.start()
+            // 第五轮覆盖版：二维码延迟到**服务器启动完成后**再显示（本调用
+            // 发生在插件 enable / ServerStarted 阶段，控制台仍在刷启动日志，
+            // 立即打印会被淹没——Spigot 由 ServerLoadEvent、NeoForge 由
+            // ServerStartedEvent 尾部消费待发标记）。
+            QrLoginManager.markStartupPending()
+            PluginFileLog.infoAndKeep("扫码登录二维码将在服务器启动完成后显示（/hbkrg qr 可随时手动发起；已配置时扫码将替换现有凭据）")
             return
         }
         PluginFileLog.infoAndKeep("正在后台启动 QQ 机器人客户端（AppID: $appId）…")

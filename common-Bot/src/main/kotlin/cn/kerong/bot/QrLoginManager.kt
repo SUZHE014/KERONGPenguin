@@ -18,8 +18,15 @@ import javax.crypto.spec.SecretKeySpec
 /**
  * QQ 机器人扫码登录（1.7.4 覆盖版新增）。
  *
- * 触发点：启动时未配置 bot.app-id / bot.secret，或控制台执行 /hbkrg qr
- * （凭据未配置时）。流程对齐同类产品 HuHoBot 的扫码授权体验：
+ * 触发点：
+ * - 启动时未配置 bot.app-id / bot.secret → 延迟到**服务器启动完成后**
+ *   再显示二维码（Spigot 经 ServerLoadEvent、NeoForge 在 ServerStartedEvent
+ *   尾部消费，见 [markStartupPending] / [startIfStartupPending]；避免启动
+ *   阶段控制台刷屏把二维码冲掉）；
+ * - 控制台执行 /hbkrg qr → 随时手动发起（凭据已配置时也可用，扫码成功后
+ *   **替换**现有 bot.app-id / bot.secret 并以新凭据重连）。
+ *
+ * 流程（对齐同类产品 HuHoBot 的扫码授权体验）：
  *
  * 1. 生成 32 字节随机密钥（Base64）→ POST q.qq.com/lite/create_bind_task
  *    创建绑定任务，取得 task_id；
@@ -27,10 +34,12 @@ import javax.crypto.spec.SecretKeySpec
  *    （手机 QQ 扫码或手动复制链接均可完成授权）；
  * 3. 每 2 秒轮询 q.qq.com/lite/poll_bind_result，等待用户在手机上确认；
  * 4. 授权成功：响应携带 AES-256-GCM 加密的 bot_encrypt_secret，用第 1 步
- *    的密钥解密得到 Secret，连同 bot_appid 写入 config.yml 并自动启动机器人；
- * 5. 二维码过期（status=3）：**自动重新创建任务并重发新码**（含新链接），
- *    连续过期超过 6 次停止并提示重试（1.7.4 第三轮覆盖版：旧版「官网教程
- *    二维码 + 教程链接」回落引导已按用户指令删除）。
+ *    的密钥解密得到 Secret，连同 bot_appid 写入 config.yml 并自动启动机器人
+ *    （已配置场景先关闭旧 WSS 会话再以新凭据重连）；
+ * 5. 二维码过期（status=3）：自动重新创建任务并重发新码，**每次会话自动
+ *    刷新上限 3 次**，超过后停止自动刷新，可用 /hbkrg qr 手动重新发起
+ *    （1.7.4 第三轮覆盖版：旧版「官网教程二维码 + 教程链接」回落引导
+ *    已按用户指令删除）。
  *
  * 协议参考实现（鸣谢）：
  * - HuHoBot 的扫码登录快速开始指引
@@ -55,8 +64,11 @@ object QrLoginManager {
     /** HTTP 超时（毫秒）。 */
     private const val HTTP_TIMEOUT_MS = 10_000L
 
-    /** 二维码连续过期上限：超过即停止（与参考实现一致），提示稍后重试。 */
-    private const val MAX_REFRESH_COUNT = 6
+    /**
+     * 每次会话二维码自动刷新上限：超过即停止自动刷新，提示用 /hbkrg qr
+     * 手动重新发起（手动重新发起后计数从 0 重新计）。
+     */
+    private const val MAX_REFRESH_COUNT = 3
 
     private val secureRandom = SecureRandom()
 
@@ -64,11 +76,19 @@ object QrLoginManager {
     @Volatile
     private var session: AuthSession? = null
 
+    /**
+     * 启动待发标记：未配置凭据时启动流程置位，等服务器启动完成后由
+     * [startIfStartupPending] 消费（Spigot ServerLoadEvent / NeoForge
+     * ServerStartedEvent 尾部）。
+     */
+    @Volatile
+    private var startupPending = false
+
     /** 授权会话状态。 */
     private enum class State { WAITING, EXPIRED, SUCCESS, FAILED, CANCELLED }
 
-    /** 一次扫码授权会话（含取消标记 / 过期刷新计数 / 当前二维码链接）。 */
-    private class AuthSession {
+    /** 一次扫码授权会话（含取消标记 / 过期刷新计数 / 当前二维码链接 / 是否手动发起）。 */
+    private class AuthSession(val manual: Boolean) {
         @Volatile var cancelled = false
         @Volatile var state = State.WAITING
         @Volatile var qrUrl: String = ""
@@ -83,9 +103,11 @@ object QrLoginManager {
      * - 已有会话且仍在等待 / 刚过期 → 不重复起线程，直接重显当前二维码；
      * - 否则新建会话并启动守护线程执行完整流程。
      *
+     * @param manual 是否由 /hbkrg qr 手动发起（凭据已配置时也允许，扫码
+     *   成功后替换现有配置并以新凭据重连）
      * @return 提示文本（写入命令反馈或日志）
      */
-    fun start(): String {
+    fun start(manual: Boolean = false): String {
         synchronized(this) {
             val current = session
             if (current != null && !current.cancelled &&
@@ -94,7 +116,7 @@ object QrLoginManager {
                 reprintCurrent()
                 return "扫码登录会话已在进行中，已重新显示当前二维码与链接"
             }
-            val newSession = AuthSession()
+            val newSession = AuthSession(manual)
             session = newSession
             Thread({
                 try {
@@ -135,16 +157,51 @@ object QrLoginManager {
                 (current.state == State.WAITING || current.state == State.EXPIRED)
         }
 
+    /**
+     * 标记「启动待发」：未配置凭据时由启动流程调用（不立即显示二维码）。
+     *
+     * 二维码改在服务器启动完成后显示（Spigot 的插件 enable 阶段控制台仍
+     * 在刷启动日志，二维码会被淹没；NeoForge 端 initializeRuntime 本就在
+     * ServerStartedEvent 内调用，消费点紧跟其后，时序同样满足）。
+     */
+    fun markStartupPending() {
+        startupPending = true
+    }
+
+    /**
+     * 服务器启动完成回调（Spigot ServerLoadEvent / NeoForge ServerStartedEvent
+     * 尾部）：消费「启动待发」标记，开始扫码登录会话。
+     *
+     * @return true = 已发起（此前确实有待发标记）
+     */
+    fun startIfStartupPending(): Boolean {
+        if (!startupPending) return false
+        startupPending = false
+        start(manual = false)
+        return true
+    }
+
     // ---------- 会话主流程 ----------
 
     /**
      * 会话主循环：创建任务 → 打印二维码与链接 → 轮询结果 →
-     * 过期自动刷新重发（直到成功 / 取消 / 连续过期超限）。
+     * 过期自动刷新重发（直到成功 / 取消 / 自动刷新次数超限）。
      */
     private fun runSession(session: AuthSession) {
+        // 会话开始时凭据是否已配置（手动扫码替换场景），决定头部文案与
+        // 成功后是否需要关闭旧连接
+        val alreadyConfigured = try {
+            plugin.botAppId.isNotBlank() && plugin.botSecret.isNotBlank()
+        } catch (_: Throwable) {
+            false
+        }
         PluginFileLog.infoAndKeep("========== QQ Bot 扫码登录 ==========")
-        PluginFileLog.infoAndKeep("未检测到 bot.app-id / bot.secret，请使用手机 QQ 扫描以下二维码完成机器人绑定")
-        PluginFileLog.infoAndKeep("（也可以等下方链接出来后手动复制到手机 QQ 打开）")
+        if (alreadyConfigured) {
+            PluginFileLog.infoAndKeep("当前已配置 QQ 机器人凭据——本次扫码成功后将替换 bot.app-id / bot.secret 并以新凭据重新连接")
+        } else {
+            PluginFileLog.infoAndKeep("未检测到 bot.app-id / bot.secret，请使用手机 QQ 扫描以下二维码完成机器人绑定")
+            PluginFileLog.infoAndKeep("（也可以等下方链接出来后手动复制到手机 QQ 打开）")
+        }
         PluginFileLog.infoAndKeep("")
         while (!session.cancelled) {
             try {
@@ -155,7 +212,7 @@ object QrLoginManager {
                 session.state = State.WAITING
                 printQrToConsole(connectUrl)
                 PluginFileLog.infoAndKeep("扫码链接: $connectUrl")
-                PluginFileLog.infoAndKeep("（扫码后自动继续，二维码过期会自动刷新重发）")
+                PluginFileLog.infoAndKeep("（扫码后自动继续，二维码过期会自动刷新重发，本次会话自动刷新上限 $MAX_REFRESH_COUNT 次）")
                 PluginFileLog.infoAndKeep("")
                 val credentials = pollUntilResult(session, taskId, key)
                 if (credentials != null) {
@@ -163,10 +220,19 @@ object QrLoginManager {
                     session.state = State.SUCCESS
                     PluginFileLog.infoAndKeep("")
                     PluginFileLog.infoAndKeep("========== 扫码成功 ==========")
-                    PluginFileLog.infoAndKeep("AppID: ${credentials.appId}")
+                    if (alreadyConfigured) {
+                        PluginFileLog.infoAndKeep("已替换原有凭据：AppID: ${credentials.appId}")
+                    } else {
+                        PluginFileLog.infoAndKeep("AppID: ${credentials.appId}")
+                    }
                     PluginFileLog.infoAndKeep("Secret: ${credentials.appSecret.take(6)}****（已写入配置文件）")
                     PluginFileLog.infoAndKeep("已将 AppID 和 Secret 写入 config.yml，正在启动机器人…")
-                    // 授权成功后立即以新凭据连接（launchQqClient 内部读取最新配置）
+                    // 授权成功后立即以新凭据连接（launchQqClient 内部读取最新配置）；
+                    // 已配置场景（手动扫码替换）先关闭旧 WSS 会话，避免新旧双连接
+                    try {
+                        QClient.closeSessionForCredentialSwap()
+                    } catch (_: Throwable) {
+                    }
                     try {
                         plugin.launchQqClient()
                     } catch (error: Throwable) {
@@ -179,7 +245,7 @@ object QrLoginManager {
                 session.refreshCount += 1
                 if (session.refreshCount > MAX_REFRESH_COUNT) {
                     session.state = State.FAILED
-                    PluginFileLog.warnAndKeep("二维码已连续过期 $MAX_REFRESH_COUNT 次，扫码登录已停止——可稍后用 /hbkrg qr 重新发起。")
+                    PluginFileLog.warnAndKeep("二维码已连续过期 $MAX_REFRESH_COUNT 次，自动刷新已停止——可用 /hbkrg qr 手动重新发起（重新发起后计数重置）。")
                     return
                 }
                 session.state = State.EXPIRED

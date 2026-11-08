@@ -134,6 +134,28 @@ class KERONGSpigot : JavaPlugin(), KERONG {
             // ServerLoadEvent 不可用的极端核心：退回 onEnable 后 12 秒旧节奏
             SparkStartupCheck.schedule(12_000L) { probeSpark() }
         }
+        // 1.7.4 第五轮覆盖版：扫码登录二维码延迟到服务器启动完成后显示
+        // （onEnable 阶段控制台仍在刷启动日志，二维码会被淹没；ServerLoadEvent
+        // 在「Done」之后触发，此时打印不会被冲掉。未配置凭据时 launchQqClient
+        // 只置待发标记；/hbkrg qr 手动发起不受影响，随时可用）
+        try {
+            Bukkit.getPluginManager().registerEvents(object : Listener {
+                @EventHandler(priority = EventPriority.MONITOR)
+                fun onServerLoadQr(@Suppress("UNUSED_PARAMETER") event: ServerLoadEvent) {
+                    cn.kerong.bot.QrLoginManager.startIfStartupPending()
+                }
+            }, this)
+        } catch (_: Throwable) {
+            // ServerLoadEvent 不可用的极端核心：退回延迟兜底（后台守护线程 12 秒）
+            Thread({
+                try {
+                    Thread.sleep(12_000)
+                } catch (_: InterruptedException) {
+                    return@Thread
+                }
+                cn.kerong.bot.QrLoginManager.startIfStartupPending()
+            }, "KERONG-QrDeferred").apply { isDaemon = true }.start()
+        }
         log_info("KERONG Penguin 已加载")
         // 1.7.4 第三轮覆盖版：服务器开关消息（口径与 HuHoBot 的 server-notify
         // 一致，默认开启）——启动完成时检查上次运行如何结束（崩溃补发 /

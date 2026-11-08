@@ -128,24 +128,25 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
                 1
             },
         )
-        // 1.7.4 覆盖版：凭据未配置 → 发起/重显 QQ 官方扫码登录（授权后凭据
-        // 自动写入并连接；二维码过期自动刷新重发）；已配置 → 纯文本状态提示
-        // （1.7.4 第三轮覆盖版：旧版「教程二维码 + 教程链接」输出已删除）
+        // 第五轮覆盖版：手动发起扫码登录（已配置时也可用——扫码成功后替换
+        // 现有 bot.app-id / bot.secret 并以新凭据重连；未配置时为首次绑定；
+        // 二维码每次会话自动刷新上限 3 次，超过后停止自动刷新，可再次执行
+        // 本命令手动重新发起）
         builder.then(
             Commands.literal("qr").executes { context ->
-                if (plugin.botAppId.isBlank() || plugin.botSecret.isBlank()) {
-                    val result = cn.kerong.bot.QrLoginManager.start()
-                    context.source.sendSuccess({ Component.literal("§a$result") }, false)
+                val configured = plugin.botAppId.isNotBlank() && plugin.botSecret.isNotBlank()
+                val result = cn.kerong.bot.QrLoginManager.start(manual = true)
+                context.source.sendSuccess({ Component.literal("§a$result") }, false)
+                if (configured) {
                     context.source.sendSuccess(
-                        { Component.literal("§e请在服务器控制台查看二维码与扫码链接（也支持手动复制链接到手机 QQ 打开）。") },
-                        false,
-                    )
-                } else {
-                    context.source.sendSuccess(
-                        { Component.literal("§eQQ 机器人凭据已配置（正常连接中）。重新扫码绑定请先清空 bot.app-id / bot.secret 并重启服务器。") },
+                        { Component.literal("§c注意：当前已配置 QQ 机器人凭据，本次扫码成功后将替换 bot.app-id / bot.secret 并以新凭据重新连接。") },
                         false,
                     )
                 }
+                context.source.sendSuccess(
+                    { Component.literal("§e请在服务器控制台查看二维码与扫码链接（也支持手动复制链接到手机 QQ 打开）。") },
+                    false,
+                )
                 1
             },
         )

@@ -688,6 +688,32 @@ object QClient {
         }
     }
 
+    /**
+     * 1.7.4 第五轮覆盖版：扫码替换凭据——关闭当前 WSS 会话。
+     *
+     * 已配置状态下经 /hbkrg qr 手动扫码成功后，新凭据写入配置并重连前
+     * 调用：只关 WSS 会话与诊断钩子（随后 [launchClient] 会重建），**保留**
+     * OutboxQueue 发送队列与 SDK 静态线程池供新会话复用（不同于
+     * [shutdown] 的整体停机——那里的队列与线程池清理是不可逆的一次性
+     * 操作，插件卸载 / 关服才走）。
+     *
+     * 客户端未启动（从未 launch 或已 shutdown）时为空操作。
+     */
+    fun closeSessionForCredentialSwap() {
+        val session = starter ?: return
+        try {
+            WssDiagnostics.stop()
+        } catch (_: Throwable) {
+        }
+        try {
+            session.shutdown()
+        } catch (_: Throwable) {
+        } finally {
+            starter = null
+        }
+        PluginFileLog.infoAndKeep("已关闭旧凭据的 QQ 连接，准备以新凭据重连…")
+    }
+
     /** 停止客户端。 */
     fun shutdown() {
         shuttingDown = true

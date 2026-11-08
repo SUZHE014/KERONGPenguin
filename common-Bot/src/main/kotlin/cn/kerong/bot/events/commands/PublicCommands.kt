@@ -113,7 +113,7 @@ class PublicCommands : CommandSupport() {
      *   未配置 bot.groups 时群里任意互动消息会自动完成绑定（见
      *   GroupMessageHandler 的自动绑定逻辑，无需手动填群 ID）；
      * - `/查信息 <玩家名>`：反查该玩家绑定的 QQ 账号（群昵称 + 该 QQ
-     *   名下绑定的全部玩家；多个绑定玩家同时显示）；
+     *   名下绑定的全部玩家；多个绑定玩家同时显示；QQ 号行全员可见）；
      * - `/查信息 <OpenId>`：反查该 OpenId 对应的 QQ 账号（群昵称 + 绑定玩家）；
      * - `/查信息 @成员`：查看被 @ 成员的绑定信息。
      *
@@ -121,8 +121,10 @@ class PublicCommands : CommandSupport() {
      * 未命中再按 OpenId 反查（玩家名 ≤16 字符且字符集受限，OpenId 更长，
      * 两者实际无重叠）。
      *
-     * 1.6.5：反查结果中的 OpenId 行仅管理员可见（避免普通群成员批量收集
-     * OpenId 冒充绑定）；非管理员只看到群昵称、最后活跃、绑定玩家。
+     * 1.6.5：OpenId 反查（`/查信息 <OpenId>` / @成员）结果中的 OpenId 行
+     * 仅管理员可见（避免普通群成员批量收集 OpenId 冒充绑定）；非管理员
+     * 只看到群昵称、最后活跃、绑定玩家。玩家名反查的 QQ(OpenId) 行
+     * 全员可见（用于核实玩家与账号的对应关系）。
      *
      * 群昵称来自插件维护的 OpenId 目录（从每条群消息的发送者与被 @ 成员积累，
      * 见 OpenIdDirectory）；机器人无法通过接口按 OpenId 查询群资料。
@@ -156,8 +158,8 @@ class PublicCommands : CommandSupport() {
      * 命中绑定即回复并返回 true（调用方不再走 OpenId 反查）；
      * 未找到该玩家 / 该玩家未绑定返回 false（交由 OpenId 反查继续处理）。
      *
-     * OpenId 行仅管理员可见（与 OpenId 反查同口径，防普通群成员收集
-     * OpenId 冒充绑定）；该 QQ 名下绑定多个玩家时全部列出。
+     * QQ(OpenId) 行全员可见（用户指令：QQ 号行不再限管理员，方便普通
+     * 成员核实玩家与账号的对应关系）；该 QQ 名下绑定多个玩家时全部列出。
      * 提示文本模板：player-lookup（messages 段）。
      */
     private fun lookupByPlayerName(plugin: KERONG, event: GroupMessageEvent, playerName: String): Boolean {
@@ -188,7 +190,9 @@ class PublicCommands : CommandSupport() {
         } catch (_: Throwable) {
             emptyList()
         }
-        val openidPart = if (isAdmin(plugin, event)) "QQ(OpenId): $openId\n" else ""
+        // QQ(OpenId) 行全员可见（不再限管理员；OpenId 反查查信息 <OpenId>
+        // / @成员 路径仍保留管理员口径——OpenId 是 admin.openids 的配置凭证）
+        val openidPart = "QQ(OpenId): $openId\n"
         MessageTemplates.sendDirect(event, "player-lookup", mapOf(
             "player" to playerName,
             "openidPart" to openidPart,

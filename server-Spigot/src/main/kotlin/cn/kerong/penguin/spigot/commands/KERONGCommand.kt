@@ -12,8 +12,12 @@ import java.util.Locale
 /**
  * /hbkrg 主命令：reload / info / chs / mem / bpng / bpngsz / qr / help。
  *
- * 1.7.4 新增 qr：凭据未配置时发起/重显 QQ 官方扫码登录；凭据已配置时仅
- * 提示状态（旧版「官网教程二维码 + 教程链接」输出已按用户指令删除）。
+ * 1.7.4 新增 qr：发起 / 重显 QQ 官方扫码登录。凭据未配置时用于首次
+ * 绑定；已配置时也可手动发起，扫码成功后**替换**现有 bot.app-id /
+ * bot.secret 并以新凭据重连（换号 / 凭据失效重新授权都无需改文件重启）。
+ * 二维码每次会话自动刷新上限 3 次，超过后停止自动刷新，可再次执行本
+ * 命令手动重新发起（旧版「官网教程二维码 + 教程链接」输出已按用户
+ * 指令删除）。
  *
  * 注：QQ 群绑定已改为全自动（bot.groups 未填写时群互动消息自动写入白名单
  * 并重载，见 [cn.kerong.bot.events.AutoGroupBinder]），不再需要控制台命令。
@@ -98,17 +102,15 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
                 return true
             }
             "qr" -> {
-                // 1.7.4 覆盖版：凭据未配置 → 发起/重显 QQ 官方扫码登录（授权后
-                // 凭据自动写入并连接；二维码过期自动刷新重发）；已配置 → 纯
-                // 文本状态提示（1.7.4 第三轮覆盖版：旧版「教程二维码 + 教程
-                // 链接」输出已按用户指令删除）
-                if (plugin.botAppId.isBlank() || plugin.botSecret.isBlank()) {
-                    val result = cn.kerong.bot.QrLoginManager.start()
-                    sender.sendMessage("${ChatColor.GREEN}$result")
-                    sender.sendMessage("${ChatColor.YELLOW}请在服务器控制台查看二维码与扫码链接（也支持手动复制链接到手机 QQ 打开）。")
-                } else {
-                    sender.sendMessage("${ChatColor.YELLOW}QQ 机器人凭据已配置（正常连接中）。重新扫码绑定请先清空 bot.app-id / bot.secret 并重启服务器。")
+                // 第五轮覆盖版：手动发起扫码登录（已配置时也可用——扫码成功后
+                // 替换现有凭据并以新凭据重连；未配置时为首次绑定）
+                val configured = plugin.botAppId.isNotBlank() && plugin.botSecret.isNotBlank()
+                val result = cn.kerong.bot.QrLoginManager.start(manual = true)
+                sender.sendMessage("${ChatColor.GREEN}$result")
+                if (configured) {
+                    sender.sendMessage("${ChatColor.RED}注意：当前已配置 QQ 机器人凭据，本次扫码成功后将替换 bot.app-id / bot.secret 并以新凭据重新连接。")
                 }
+                sender.sendMessage("${ChatColor.YELLOW}请在服务器控制台查看二维码与扫码链接（也支持手动复制链接到手机 QQ 打开）。")
                 return true
             }
         }
@@ -258,7 +260,7 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
         sender.sendMessage("${ChatColor.YELLOW}/$label mem${ChatColor.WHITE} - 查看插件内存与缓存诊断（JVM 堆 + 各级缓存）")
         sender.sendMessage("${ChatColor.YELLOW}/$label bpng${ChatColor.WHITE} - 查看可下载的背景图片包；/$label bpng <包ID> 下载到 img/（下载中可再执行一次中断）")
         sender.sendMessage("${ChatColor.YELLOW}/$label bpngsz yes|no${ChatColor.WHITE} - 一键切换全部卡片是否使用 img/ 自定义背景图")
-        sender.sendMessage("${ChatColor.YELLOW}/$label qr${ChatColor.WHITE} - 未配置凭据时发起 QQ 机器人扫码登录（控制台扫码，授权后自动连接）")
+        sender.sendMessage("${ChatColor.YELLOW}/$label qr${ChatColor.WHITE} - 发起 QQ 机器人扫码登录（未配置时首次绑定；已配置时扫码替换现有凭据并重连；自动刷新上限 3 次后需重新执行）")
     }
 
     companion object {

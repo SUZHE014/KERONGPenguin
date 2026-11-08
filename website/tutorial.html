@@ -34,7 +34,7 @@
 <tr><td><code>/签到</code><span class="alias">别名 /sign</span></td><td>每日签到领取奖励（金币、点券等；连续签到有加成）；需要开启 QQ 绑定与签到两个开关；一个 QQ 绑定了多个玩家时先回复数字选择给谁签到</td></tr>
 <tr><td><code>/绑定 &lt;绑定码&gt;</code></td><td>用进服时收到的数字验证码绑定 QQ 与游戏账号；在群里直接发送纯数字验证码效果相同</td></tr>
 <tr><td><code>/重新绑定</code></td><td>解除自己的绑定（会同时踢下线），下次进服重新获取验证码；换 QQ 号时用</td></tr>
-<tr><td><code>/查信息</code></td><td>查询自己的 OpenId 与群 OpenId（配置群白名单、管理员名单用）；后面接玩家名可反查该玩家绑定的 QQ 账号与其名下全部绑定玩家（如 <code>/查信息 Steve</code>，QQ 号仅管理员可见）；也可 <code>/查信息 @成员</code> 查看成员绑定信息</td></tr>
+<tr><td><code>/查信息</code></td><td>查询自己的 OpenId 与群 OpenId（配置群白名单、管理员名单用）；后面接玩家名可反查该玩家绑定的 QQ 账号与其名下全部绑定玩家（如 <code>/查信息 Steve</code>，QQ 号行全员可见）；也可 <code>/查信息 @成员</code> 查看成员绑定信息</td></tr>
 <tr><td><code>/切换服务器</code></td><td>多服务器集群：查看当前连接本机器人的全部服务器并点击按钮切换（未配置集群时提示单服；配置方法见「多服务器集群」设置）</td></tr>
 <tr><td><code>/发信息 &lt;内容&gt;</code></td><td>把一句话发送到游戏内全服聊天，如 /发信息 大家好</td></tr>
 <tr><td><code>/执行 &lt;key&gt;</code></td><td>触发服主预设的自定义命令（见「自定义指令」设置）</td></tr>
@@ -69,7 +69,7 @@
 <tr><td><code>/hbkrg mem</code></td><td>查看插件内存诊断（JVM 堆与各级图片缓存占用）</td></tr>
 <tr><td><code>/hbkrg bpng</code></td><td>列出官网可下载的背景图片包；/hbkrg bpng &lt;包名&gt; 下载指定图片包；/hbkrg bpng stop 中断进行中的下载</td></tr>
 <tr><td><code>/hbkrg bpngsz yes|no</code></td><td>一键开关统计卡片的随机背景图（yes 开 / no 关，自动写回配置）</td></tr>
-<tr><td><code>/hbkrg qr</code></td><td>凭据未配置时发起 / 重显 QQ 机器人扫码登录（控制台二维码 + 扫码链接，扫码后凭据自动写入并连接；过期自动刷新重发）；已配置时仅提示当前凭据状态</td></tr>
+<tr><td><code>/hbkrg qr</code></td><td>发起 / 重显 QQ 机器人扫码登录（控制台二维码 + 扫码链接，扫码后凭据自动写入并连接；过期自动刷新重发，每次会话上限 3 次，超过后重新执行本命令即可）；凭据已配置时同样可用，扫码成功后替换现有凭据并以新凭据重连</td></tr>
 <tr><td><code>/qq rebind</code></td><td>玩家在游戏内自助解除自己的绑定，下次进服重新获取验证码</td></tr>
 <tr><td><code>/qq qxqq &lt;玩家名&gt;</code></td><td>管理员强制解除指定玩家的绑定</td></tr>
 <tr><td><code>/qq skip &lt;玩家名&gt;</code></td><td>把玩家加入跳过绑定名单（不再要求其绑定 QQ）</td></tr>
@@ -95,10 +95,10 @@
 <h3><span class="step-num">2</span>安装并扫码登录（推荐）</h3>
 <ol>
 <li>从 <a href="index.html">下载页面</a> 下载最新的 .jar 文件（插件版放 <code>plugins/</code>，模组版放 <code>mods/</code>）</li>
-<li>启动服务器：未配置凭据时控制台会自动打印<b>扫码登录二维码与扫码链接</b>，手机 QQ 扫码（或复制链接到手机 QQ 打开）确认授权</li>
-<li>授权成功后 AppID / Secret <b>自动写入配置文件并自动连接</b>机器人，无需手动改文件；二维码过期会<b>自动刷新重发新码</b></li>
+<li>启动服务器：未配置凭据时，<b>服务器启动完成后</b>控制台会自动打印<b>扫码登录二维码与扫码链接</b>（不会被启动日志冲掉），手机 QQ 扫码（或复制链接到手机 QQ 打开）确认授权</li>
+<li>授权成功后 AppID / Secret <b>自动写入配置文件并自动连接</b>机器人，无需手动改文件；二维码过期会<b>自动刷新重发新码</b>（每次会话上限 3 次，超过后用 <code>/hbkrg qr</code> 手动重新发起）</li>
 </ol>
-<p>随时可用 <code>/hbkrg qr</code> 重新发起扫码登录（凭据未配置时）。</p>
+<p>随时可用 <code>/hbkrg qr</code> 手动发起扫码登录；凭据已配置时扫码成功后<b>替换现有凭据</b>并以新凭据重连（换号 / 重新授权无需改文件重启）。</p>
 <p>备选（手动填写）：打开配置文件（插件版 <code>plugins/KERONGPenguin/config.yml</code>，模组版 <code>kerongpenguin/config.yml</code>）填入第 1 步保存的机器人信息后重启：</p>
 <div class="config">
 <pre>bot:
