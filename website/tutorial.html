@@ -34,7 +34,7 @@
 <tr><td><code>/签到</code><span class="alias">别名 /sign</span></td><td>每日签到领取奖励（金币、点券等；连续签到有加成）；需要开启 QQ 绑定与签到两个开关；一个 QQ 绑定了多个玩家时先回复数字选择给谁签到</td></tr>
 <tr><td><code>/绑定 &lt;绑定码&gt;</code></td><td>用进服时收到的数字验证码绑定 QQ 与游戏账号；在群里直接发送纯数字验证码效果相同</td></tr>
 <tr><td><code>/重新绑定</code></td><td>解除自己的绑定（会同时踢下线），下次进服重新获取验证码；换 QQ 号时用</td></tr>
-<tr><td><code>/查信息</code></td><td>查询自己的 OpenId 与群 OpenId（配置群白名单、管理员名单用）；管理员发送 /查信息 @成员 可反查成员绑定信息（1.7.4 覆盖版起旧名 /查询open ID 已下线，指令只认现名）</td></tr>
+<tr><td><code>/查信息</code></td><td>查询自己的 OpenId 与群 OpenId（配置群白名单、管理员名单用）；后面接玩家名可反查该玩家绑定的 QQ 账号与其名下全部绑定玩家（如 <code>/查信息 Steve</code>，QQ 号仅管理员可见）；也可 <code>/查信息 @成员</code> 查看成员绑定信息</td></tr>
 <tr><td><code>/切换服务器</code></td><td>多服务器集群：查看当前连接本机器人的全部服务器并点击按钮切换（未配置集群时提示单服；配置方法见「多服务器集群」设置）</td></tr>
 <tr><td><code>/发信息 &lt;内容&gt;</code></td><td>把一句话发送到游戏内全服聊天，如 /发信息 大家好</td></tr>
 <tr><td><code>/执行 &lt;key&gt;</code></td><td>触发服主预设的自定义命令（见「自定义指令」设置）</td></tr>
@@ -147,7 +147,7 @@
 </div>
 
 <div class="cfg-item">
-<h4>多服务器集群 <span class="key">bot.cluster 段（1.7.4 覆盖版新增）</span></h4>
+<h4>多服务器集群 <span class="key">bot.cluster 段</span></h4>
 <div class="config">
 <pre>bot:
   cluster:
@@ -177,21 +177,13 @@
 </div>
 
 <div class="tutorial-step">
-<h3>服务器开关消息（server-notify 段，1.7.4 覆盖版新增）</h3>
+<h3>服务器开关消息（server-notify 段）</h3>
 
 <div class="cfg-item">
-<h4>总开关 <span class="key">server-notify.enabled</span>（默认开启）</h4>
+<h4>开关与文案 <span class="key">server-notify</span></h4>
 <div class="config">
 <pre>server-notify:
-  enabled: true  # 总开关，关闭后关机 / 重启 / 意外关闭都不发送</pre>
-</div>
-<p>服务器关闭 / 重启 / 意外关闭时向 QQ 群发送通知（只发给 bot.groups 里的群）。机制：状态文件记录上次运行如何结束——上次未正常收尾（崩溃 / kill -9 / 断电）下次启动补发「意外关闭」；正常关闭后 restart-window 秒内再启动发「重启完成」；普通开机不发送。插件重载 / 手动停用不会误发关机消息。</p>
-</div>
-
-<div class="cfg-item">
-<h4>三类文案 <span class="key">server-notify.shutdown / restart / crash</span></h4>
-<div class="config">
-<pre>server-notify:
+  enabled: true   # 总开关（默认开启）
   shutdown:
     enabled: true
     message: "服务器已正常关闭"      # 占位符：{server}、{platform}
@@ -201,9 +193,9 @@
   crash:
     enabled: true
     message: "服务器意外关闭（崩溃或被强制结束），请管理员检查控制台"
-  restart-window: 180              # 上次正常关闭后多少秒内再启动算重启</pre>
+  restart-window: 180              # 正常关闭后多少秒内再启动算重启</pre>
 </div>
-<p>每类通知可独立开关与改文案；restart-window 建议 120-300 秒，超过这个时间再启动只当作普通开机不发送。多服务器集群下按群当前选择的服务器路由，不会重复播报。</p>
+<p>服务器关闭 / 重启 / 意外关闭时向 QQ 群发送通知（只发给 bot.groups 里的群）：正常关闭发关机消息、restart-window 秒内重启发重启消息、上次崩溃 / 强制结束后下次启动补发意外通知；普通开机不发送，插件重载不会误发。每类可独立开关改文案。</p>
 </div>
 </div>
 
@@ -225,7 +217,7 @@
 <pre>qq-bind:
   max-players-per-qq: 1  # 每个 QQ 最多绑几个玩家（只能填 ≥1）</pre>
 </div>
-<p>1.7.4 新增。默认 1 = 与旧版一样一个 QQ 只能绑一个玩家；调大后一个 QQ 可以绑多个（比如一个人两个号）。绑了多个玩家时，群里用玩家名片 / 查信息 / 重新绑定 / 签到这类指令，机器人会先列出名下全部玩家让你<b>点击按钮选择</b>（旧版 QQ 客户端不显示按钮时也可回复数字序号，2 分钟内有效；@机器人 发数字不会被当成 AI 对话）。已达上限时绑定码保留，解绑后重发同一码仍可绑定。填 0 / 负数按 1 处理；改完 <code>/hbkrg reload</code> 即时生效。</p>
+<p>默认 1 = 与旧版一样一个 QQ 只能绑一个玩家；调大后一个 QQ 可以绑多个（比如一个人两个号）。绑了多个玩家时，群里用玩家名片 / 重新绑定 / 签到这类指令，机器人会先列出名下全部玩家让你<b>点击按钮选择</b>（旧版 QQ 客户端不显示按钮时也可回复数字序号，2 分钟内有效；@机器人 发数字不会被当成 AI 对话）；玩家名片 @别人查询时对方多绑定同样弹按钮选择。已达上限时绑定码保留，解绑后重发同一码仍可绑定。填 0 / 负数按 1 处理；改完 <code>/hbkrg reload</code> 即时生效。</p>
 </div>
 
 <div class="cfg-item">
@@ -234,7 +226,7 @@
 <pre>qq-bind:
   personal-info: true  # false = 群里不再响应 /玩家名片</pre>
 </div>
-<p><code>/玩家名片</code> 玩家统计卡片命令的总开关（1.7.4 覆盖版前名为 /查信息）。</p>
+<p><code>/玩家名片</code> 玩家统计卡片命令的总开关。</p>
 </div>
 
 <div class="cfg-item">
@@ -616,18 +608,18 @@ coins-leaderboard:
     enabled: true
     format: "[游戏] {name} 离开了服务器"</pre>
 </div>
+<p>同进服播报，控制玩家离服时是否播报与文案。</p>
+</div>
 
 <div class="cfg-item">
 <h4>死亡播报 <span class="key">player-events.death</span></h4>
 <div class="config">
 <pre>player-events:
   death:
-    enabled: false   # 玩家死亡是否向群播报（1.7.4 覆盖版新增，默认关闭）
+    enabled: false   # 玩家死亡是否向群播报（默认关闭）
     format: "[游戏] {message}"</pre>
 </div>
-<p>1.7.4 覆盖版新增（配置口径与 HuHoBot 一致）。除通用变量（<code>{name}</code> / <code>{player}</code> / <code>{server}</code> / <code>{platform}</code>）外还支持：<code>{message}</code> 自动生成的中文死亡描述（如「Steve 被苦力怕杀死了」）、<code>{killer}</code> 击杀者名（环境死亡时为「未知」）。插件版与模组版统一生效；只发给 bot.groups 里的群。</p>
-</div>
-<p>同进服播报，控制玩家离服时是否播报与文案。</p>
+<p>除通用变量外还支持：<code>{message}</code> 自动生成的中文死亡描述（如「Steve 被苦力怕杀死了」）、<code>{killer}</code> 击杀者名（环境死亡为「未知」）。插件版与模组版统一生效；只发给 bot.groups 里的群。</p>
 </div>
 </div>
 
@@ -723,7 +715,7 @@ coins-leaderboard:
   AI对话上下文: true  # /AI对话上下文 开|关
   清除当前上下文: true # /清除当前上下文
   黑名单: true        # /黑名单 @QQ
-  切换服务器: true    # /切换服务器 —— 多服务器集群切换（1.7.4 覆盖版新增）
+  切换服务器: true    # /切换服务器 —— 多服务器集群切换
   解除黑名单: true    # /解除黑名单 @QQ
   签到: true          # /签到 —— 每日签到</pre>
 </div>

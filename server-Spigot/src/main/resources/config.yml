@@ -10,7 +10,7 @@
 # ============================================================
 
 # 配置文件版本号（插件自动维护，勿改）
-config-version: 36
+config-version: 37
 
 # 启动后自动联网检查新版本（改这里需重启才生效）
 update-check:
@@ -37,13 +37,10 @@ bot:
   #   无需手动查 ID；之后要加别的群自行编辑本列表或清空后让新群先互动
   # 每项必须加双引号，如 ["ABC123"]
   groups: []
-  # 多服务器集群（1.7.4 第三轮覆盖版新增，单服部署无需配置）：
-  # 多台服务器共用同一个 QQ 机器人（相同 AppID）时，在每台服都配置：
-  #   name = 本服在「选择服务器」按钮上显示的名称（留空则用上方 bot.name）
-  #   members = 全部成员服务器名称列表（含自己，各服必须完全一致）
-  # 配置后：群里执行命令先弹「选择服务器」按钮，选择后该群的命令、聊天
-  # 转发与进出服 / 死亡播报都由所选服务器处理；/切换服务器 可随时切换。
-  # 参考同类产品 HuHoBot 的多服务器体验
+  # 多服务器集群（单服部署无需配置）：多台服务器共用同一个 QQ 机器人
+  # （相同 AppID）时，在每台服都配置 name（本服显示名，留空用 bot.name）
+  # 与 members（全部成员名称，各服必须一致）；配置后群里执行命令先弹
+  # 「选择服务器」按钮，选择后该群的命令、聊天转发与播报都由所选服处理
   cluster:
     name: ""
     # 示例（去掉行首 # 生效）：members: ["生存服", "创造服"]
@@ -70,8 +67,7 @@ player-events:
   quit:
     enabled: true
     format: "[游戏] {name} 离开了服务器"
-  # 死亡播报（1.7.4 覆盖版新增，参考 HuHoBot 的同名功能与配置口径，
-  # 默认关闭，开启后玩家死亡向群播报）
+  # 死亡播报（默认关闭，开启后玩家死亡向群播报）
   # 除通用占位符外还可用：{message} 自动生成的中文死亡描述（如
   # 「Steve 被苦力怕杀死了」）、{killer} 击杀者名（环境死亡时为「未知」）
   death:
@@ -79,11 +75,9 @@ player-events:
     format: "[游戏] {message}"
 
 # ---------------- 服务器开关消息 ----------------
-# 服务器关闭 / 重启 / 意外关闭时向 QQ 群发送通知（1.7.4 第三轮覆盖版新增，
-# 配置口径与 HuHoBot 一致，默认开启；只发给 bot.groups 里的群）
-# 机制：状态文件记录上次运行如何结束——上次未正常收尾（崩溃 / kill -9 /
-# 断电）下次启动补发「意外关闭」；正常关闭后 restart-window 秒内再启动
-# 发「重启完成」；普通开机不发送。插件重载 / 手动停用不会误发关机消息。
+# 服务器关闭 / 重启 / 意外关闭时向 QQ 群发送通知（默认开启；只发给 bot.groups 里的群）
+# 上次未正常收尾（崩溃 / kill -9 / 断电）下次启动补发「意外关闭」；
+# 正常关闭后 restart-window 秒内再启动发「重启完成」；普通开机不发送
 server-notify:
   # 总开关，关闭后下面三项都不发送
   enabled: true
@@ -147,8 +141,8 @@ render:
   # 项目卡片黑度（0-255，越大越深）：玩家名片统计面板与查在线 / 排行榜 / 查性能的列表容器用
   item-card-gray: 106
   # 副标题灰度（0-255，越大越深）：玩家名片玩家名称项与五张卡片的
-  # 副标题条（服务器 / 更新时间 / 渲染耗时）用，默认 80 与标题框相同
-  subtitle-card-gray: 80
+  # 副标题条（服务器 / 更新时间 / 渲染耗时）用，默认 106 与项目卡片相同
+  subtitle-card-gray: 106
   # 自定义图片渲染线程（高级；默认关闭 = 自动模式：渲染线程按 CPU
   # 核数自动取一半 1~4 条，头像批量下载 8 条）
   # ⚠ 警告：开启后线程数由下方两键指定——渲染线程数越大，同时绘制的
@@ -231,7 +225,7 @@ variable-fetch:
 
 # ---------------- 排行榜 ----------------
 # /在线排行榜：总在线时长排行（排名徽章 + 皮肤头像 + 玩家名 + 时长）
-# /财富榜：金币排行（需 Vault，含离线玩家；1.7.4 移除旧名 /金币榜）
+# /财富榜：金币排行（需 Vault，含离线玩家）
 # 两个排行榜共用同一个「单页上限」配置（page-size，全局生效）
 leaderboard:
   # 单页最多显示多少名（全局：在线排行榜 / 财富榜共用；
@@ -272,12 +266,10 @@ qq-bind:
   # 绑定码有效期（分钟）与位数（4-8）
   code-expire-minutes: 10
   code-length: 5
-  # 每个 QQ 账号最多能绑定多少个玩家（1.7.4；默认 1 = 旧版单绑定行为；
-  # 只能填等于或大于 1 的整数，填 0 / 负数按 1 处理）
-  # 调大后：一个 QQ 可绑定多个玩家；群里用玩家名片 / 查信息 /
-  # 重新绑定 / 签到这类需要找到"对应玩家"的指令时，机器人会先列出
-  # 该 QQ 名下的全部玩家让用户点击按钮选择（旧版客户端也可回复数字，
-  # 直接发数字或 @机器人 发数字都可以，2 分钟内有效）；改完 /hbkrg reload 即时生效
+  # 每个 QQ 账号最多能绑定多少个玩家（默认 1 = 单绑定；只能填 ≥1 的整数）
+  # 调大后：一个 QQ 可绑定多个玩家；群里用玩家名片 / 重新绑定 / 签到
+  # 这类指令时会先列出该 QQ 名下的全部玩家让用户点击按钮选择
+  # （旧版客户端也可回复数字，2 分钟内有效）；改完 /hbkrg reload 即时生效
   max-players-per-qq: 1
   # 每日签到（群里发 /签到）
   checkin:
@@ -327,7 +319,7 @@ messages:
   checkin-reward-invalid: "checkin-reward-invalid.md"  # 奖励数额配置错误（{prefix}）
   checkin-success: "checkin-success.md"              # 签到成功得金币（{prefix} {player} {reward} {streak}）
   checkin-pay-error: "checkin-pay-error.md"          # 奖励未发放到账（{prefix}）
-  # —— 玩家名片（原 /查信息，1.7.4 覆盖版更名）——
+  # —— 玩家名片 ——
   info-bind-disabled: "info-bind-disabled.md"       # 玩家名片未开启
   info-closed: "info-closed.md"                      # 玩家名片被管理员关闭
   info-not-bound: "info-not-bound.md"                # 查自己但未绑定
@@ -345,9 +337,10 @@ messages:
   coins-leaderboard-no-economy: "coins-leaderboard-no-economy.md"  # 未安装 Vault
   coins-leaderboard-no-data: "coins-leaderboard-no-data.md"        # 暂无金币数据
   coins-leaderboard-render-failed: "coins-leaderboard-render-failed.md"  # 金币排行图片生成失败
-  # —— 查询 OpenID ——
+  # —— 查询 OpenID / 玩家反查 ——
   openid-self: "openid-self.md"                     # 自己与群的 OpenId（{openid} {group}）
   openid-lookup: "openid-lookup.md"                 # OpenId 反查结果
+  player-lookup: "player-lookup.md"                 # 玩家名反查结果（{player} {openidPart} {nickname} {players}）
   cluster-single: "cluster-single.md"               # /切换服务器 单服提示（{server}）
   cluster-list-fallback: "cluster-list-fallback.md" # /切换服务器 按钮不可用时的纯文本列表（{list}）
   # —— 发信息 ——
@@ -406,7 +399,7 @@ features:
 # 改动后 /hbkrg reload 立即生效
 commands:
   帮助: true            # /帮助 —— 查看所有命令
-  查信息: true          # /查信息 —— 查 OpenId 与四位数群绑定码（配置 bot.groups 用）
+  查信息: true          # /查信息 —— 查 OpenId（加玩家名可反查其绑定的 QQ）
   玩家名片: true        # /玩家名片 —— 玩家统计卡片（@某人 查别人）
   绑定: true            # /绑定 <绑定码> —— 绑定 QQ（纯数字码直接发送亦可）
   重新绑定: true        # /重新绑定 —— 解绑换号

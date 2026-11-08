@@ -106,22 +106,27 @@ class PublicCommands : CommandSupport() {
     }
 
     /**
-     * /查信息 —— OpenId 查询与反查（1.7.4 覆盖版由「查询open ID」更名而来；
-     * 1.7.4 第三轮覆盖版起旧名变体兜底下线，指令只认现名）。
+     * /查信息 —— OpenId 查询与反查。
      *
-     * 用法（1.5.3）：
+     * 用法：
      * - `/查信息`：显示自己的 OpenId 与群 OpenId（用于配置 bot.groups）；
      *   未配置 bot.groups 时群里任意互动消息会自动完成绑定（见
      *   GroupMessageHandler 的自动绑定逻辑，无需手动填群 ID）；
+     * - `/查信息 <玩家名>`：反查该玩家绑定的 QQ 账号（群昵称 + 该 QQ
+     *   名下绑定的全部玩家；多个绑定玩家同时显示）；
      * - `/查信息 <OpenId>`：反查该 OpenId 对应的 QQ 账号（群昵称 + 绑定玩家）；
      * - `/查信息 @成员`：查看被 @ 成员的绑定信息。
+     *
+     * 参数分派：先按玩家名查绑定（玩家名精确匹配），命中即玩家名反查；
+     * 未命中再按 OpenId 反查（玩家名 ≤16 字符且字符集受限，OpenId 更长，
+     * 两者实际无重叠）。
      *
      * 1.6.5：反查结果中的 OpenId 行仅管理员可见（避免普通群成员批量收集
      * OpenId 冒充绑定）；非管理员只看到群昵称、最后活跃、绑定玩家。
      *
      * 群昵称来自插件维护的 OpenId 目录（从每条群消息的发送者与被 @ 成员积累，
      * 见 OpenIdDirectory）；机器人无法通过接口按 OpenId 查询群资料。
-     * 提示文本模板：openid-self / openid-lookup（messages 段）。
+     * 提示文本模板：openid-self / openid-lookup / player-lookup（messages 段）。
      */
     @Commands("查信息")
     fun queryInfo(plugin: KERONG, event: GroupMessageEvent, params: String) {
@@ -134,9 +139,67 @@ class PublicCommands : CommandSupport() {
             ))
             return
         }
-        // 1.5.3：反查 / 查看 @ 成员
-        val targetOpenId = if (arg.isNotEmpty()) arg else mentioned!!.firstOrNull() ?: return
-        reverseLookupOpenId(plugin, event, targetOpenId)
+        // @成员：查看被 @ 成员的绑定信息
+        if (arg.isEmpty()) {
+            val targetOpenId = mentioned!!.firstOrNull() ?: return
+            reverseLookupOpenId(plugin, event, targetOpenId)
+            return
+        }
+        // 带参数：先按玩家名反查（命中即返回），再按 OpenId 反查
+        if (lookupByPlayerName(plugin, event, arg)) return
+        reverseLookupOpenId(plugin, event, arg)
+    }
+
+    /**
+     * 按玩家名反查：显示该玩家绑定的 QQ 账号与该 QQ 名下绑定的全部玩家。
+     *
+     * 命中绑定即回复并返回 true（调用方不再走 OpenId 反查）；
+     * 未找到该玩家 / 该玩家未绑定返回 false（交由 OpenId 反查继续处理）。
+     *
+     * OpenId 行仅管理员可见（与 OpenId 反查同口径，防普通群成员收集
+     * OpenId 冒充绑定）；该 QQ 名下绑定多个玩家时全部列出。
+     * 提示文本模板：player-lookup（messages 段）。
+     */
+    private fun lookupByPlayerName(plugin: KERONG, event: GroupMessageEvent, playerName: String): Boolean {
+        val bindManager = try {
+            QqBindManager.getInstance()
+        } catch (_: Throwable) {
+            null
+        } ?: return false
+        // 内存索引精确匹配（键为玩家名小写）→ 扫盘按 playerName 字段兜底
+        val quuid = try {
+            bindManager.getQuuid(playerName) ?: bindManager.findQuuidByPlayerName(playerName)
+        } catch (_: Throwable) {
+            null
+        } ?: return false
+        val openId = try {
+            bindManager.readQuuidRecord(quuid)?.getString("qq", null)
+        } catch (_: Throwable) {
+            null
+        } ?: return false
+        val nickname = try {
+            cn.kerong.penguin.spigot.qqbind.OpenIdDirectory.lookupNickname(openId)
+        } catch (_: Throwable) {
+            null
+        }
+        // 该 QQ 名下绑定的全部玩家（多绑定时同时显示）
+        val players = try {
+            bindManager.listBoundPlayersByQq(openId)
+        } catch (_: Throwable) {
+            emptyList()
+        }
+        val openidPart = if (isAdmin(plugin, event)) "QQ(OpenId): $openId\n" else ""
+        MessageTemplates.sendDirect(event, "player-lookup", mapOf(
+            "player" to playerName,
+            "openidPart" to openidPart,
+            "nickname" to (nickname ?: "未知（该账号未在机器人可见的群消息中出现过）"),
+            "players" to if (players.isEmpty()) {
+                "未绑定任何游戏玩家"
+            } else {
+                players.joinToString("、") { it.playerName }
+            },
+        ))
+        return true
     }
 
     /**
@@ -181,6 +244,7 @@ class PublicCommands : CommandSupport() {
     /**
      * 反查 OpenId 对应的 QQ 账号：群昵称 + 最后活跃 + 绑定玩家。
      * 绑定查找（磁盘扫描）在当前消息线程完成，规模小可接受。
+     * 名下绑定多个玩家时全部列出（不再弹选择）。
      *
      * 1.6.5：OpenId 行仅管理员可见——非管理员查询时 {openidPart} 为空
      * （模板整行隐藏），只展示群昵称 / 最后活跃 / 绑定玩家，防止 OpenId
@@ -214,24 +278,16 @@ class PublicCommands : CommandSupport() {
                 "player" to playerText,
             ))
         }
-        // 1.7.4：目标名下绑定多个玩家时先数字选择再展示（查询他人 = 发起者选择；
-        // 查询自己 = 自己选择）；未绑定与旧版一致展示「未绑定任何游戏玩家」
+        // 名下绑定的玩家全部显示（多个绑定时同时列出，不弹选择）
         val players = try {
             bindManager?.listBoundPlayersByQq(openId) ?: emptyList()
         } catch (_: Throwable) {
             emptyList()
         }
-        if (players.isEmpty()) {
-            renderLookup("未绑定任何游戏玩家")
-            return
-        }
-        if (players.size == 1) {
-            renderLookup(players[0].playerName)
-            return
-        }
-        cn.kerong.bot.events.PlayerSelection.selectOrRun(event, players) { selected ->
-            renderLookup(selected.playerName)
-        }
+        renderLookup(
+            if (players.isEmpty()) "未绑定任何游戏玩家"
+            else players.joinToString("、") { it.playerName }
+        )
     }
 
     /** /发信息 <内容> —— 发送消息到游戏内。转发关闭时回复模板 forward-disabled。 */

@@ -52,14 +52,12 @@ object RenderSettings {
      * 副标题卡底色黑度默认值（1.7.3 新增 render.subtitle-card-gray）。
      *
      * 作用于副标题类小卡：玩家名片玩家名称项与五张卡片的副标题条
-     * （服务器 / 更新时间 / 渲染耗时）。1.7.3.1 第二次覆盖版：用户口径
-     * 「把副标题默认灰度改为 80」→ 80（与标题框 [DEFAULT_TITLE_CARD_GRAY]
-     * 相同，接近 1.7.0 查在线状态栏黑 64 的轻卡观感——图片信息过多被
-     * QQ 缩小展示时小灰字更清爽不压底）；历史默认 40（1.7.3 初版）/
-     * 56（覆盖版）/ 106（1.7.3.1 覆盖版对齐项目卡）升级时自动收敛
+     * （服务器 / 更新时间 / 渲染耗时）。默认 106，与项目卡片
+     * [DEFAULT_ITEM_CARD_GRAY] 相同；历史默认 40（1.7.3 初版）/ 56（覆盖版）/
+     * 106（1.7.3.1 覆盖版）/ 80（1.7.3.1 第二次覆盖版）升级时自动收敛
      * （自改值不动）。
      */
-    const val DEFAULT_SUBTITLE_CARD_GRAY = 80
+    const val DEFAULT_SUBTITLE_CARD_GRAY = 106
 
     /** 排行榜单页最大行数默认值（1.7.3 新增 leaderboard.page-size，全局：在线排行榜 / 财富榜共用）。 */
     const val DEFAULT_LEADERBOARD_PAGE_SIZE = 20

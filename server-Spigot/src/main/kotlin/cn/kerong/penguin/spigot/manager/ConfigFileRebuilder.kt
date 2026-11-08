@@ -101,15 +101,13 @@ internal object ConfigFileRebuilder {
             disk.set("render.title-card-gray", 80)
         }
 
-        // 1.7.3.1 第二次覆盖版：副标题灰度改为 80（40 / 56 / 106 → 80）——用户口径
-        // 「把副标题默认灰度改为 80」，80 与标题框 render.title-card-gray 相同，
-        // 回归 1.7.0 轻卡观感；历史默认 40（1.7.3 初版）/ 56（1.7.3 覆盖版）/
-        // 106（1.7.3.1 覆盖版对齐项目卡）是默认写入而非用户意图，升级时
-        // 自动收敛为新默认（自行改过该值的配置不受影响；重建仅在磁盘版本
-        // 低于 34 时触发）
+        // 副标题灰度改为 106（40 / 56 / 80 → 106）——用户口径「副标题灰度
+        // 默认值改为 106」，106 与项目卡 render.item-card-gray 相同；
+        // 历史默认 40 / 56 / 80 是默认写入而非用户意图，升级时自动收敛
+        // 为新默认（自行改过该值的配置不受影响；重建仅在磁盘版本低于 37 时触发）
         val subGrayValue = disk.getInt("render.subtitle-card-gray", -1)
-        if (subGrayValue == 40 || subGrayValue == 56 || subGrayValue == 106) {
-            disk.set("render.subtitle-card-gray", 80)
+        if (subGrayValue == 40 || subGrayValue == 56 || subGrayValue == 80) {
+            disk.set("render.subtitle-card-gray", 106)
         }
 
         // 1.7.0：旧默认值→新默认值的升级收敛已移除（用户要求）——
