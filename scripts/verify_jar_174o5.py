@@ -5,8 +5,8 @@
 A. QQ 号行全员可见：玩家名反查 openidPart 无管理员判断（OpenId 反查保持管理员口径）
 B. 二维码自动刷新上限 3：MAX_REFRESH_COUNT=3 + 提示文案 + 计数重置口径
 C. 已配置手动扫码替换凭据：start(manual) + 头部文案 + 关旧会话重连 + 双端命令
-D. 二维码服务器启动完成后显示：markStartupPending/startIfStartupPending + Spigot
-   ServerLoadEvent 消费 + 兜底线程 + NeoForge ServerStartedEvent 尾部消费
+D. 二维码固定延时 30 秒显示（第五轮修订）：scheduleStartupStart + STARTUP_DELAY_MS
+   + 待发状态机/双端事件消费点全部移除（魔改核心可能没有这些事件）
 E. 文档同步：README / 官网三件（启动后显示 / 上限 3 / 替换凭据 / 全员可见），官网无版本轮次字段
 F. 基线保持：版本 1.7.4 / 776 目录条目 / 第四轮内容（反查 / 灰度 106 / config 37）不回退
 """
@@ -106,21 +106,26 @@ check("Spigot 无「请先清空并重启」旧文案", "请先清空 bot.app-id
 check("NeoForge 无「请先清空并重启」旧文案", "请先清空 bot.app-id / bot.secret 并重启服务器" not in nf_cmd)
 check("Spigot help 行更新（替换现有凭据）", "扫码替换现有凭据并重连" in spigot_cmd)
 
-print("== D. 二维码服务器启动完成后显示 ==")
-check("launchQqClient 改标记待发", "QrLoginManager.markStartupPending()" in kerong
-      and "QrLoginManager.start()" not in kerong)
-check("待发提示文案", "扫码登录二维码将在服务器启动完成后显示" in kerong)
-check("markStartupPending 方法在位", "fun markStartupPending()" in qrm)
-check("startIfStartupPending 方法在位", "fun startIfStartupPending(): Boolean" in qrm)
-check("startIfStartupPending 消费后自动发起", "start(manual = false)" in qrm.split("fun startIfStartupPending")[1][:600])
-check("Spigot ServerLoadEvent 消费点", "QrLoginManager.startIfStartupPending()" in spigot_main)
-check("Spigot 兜底守护线程 KERONG-QrDeferred", "KERONG-QrDeferred" in spigot_main)
-check("NeoForge ServerStarted 尾部消费", "QrLoginManager.startIfStartupPending()" in nf_main)
-check("NeoForge 消费点在 initializeRuntime 之后", nf_main.index("initializeRuntime()") < nf_main.index("QrLoginManager.startIfStartupPending()"))
-check("JAR 字节码含 startIfStartupPending（双端）", class_refs(SPIGOT_JAR, "startIfStartupPending")
-      and class_refs(NF_JAR, "startIfStartupPending"))
-check("JAR 字节码含 KERONG-QrDeferred 线程名", class_refs(SPIGOT_JAR, "KERONG-QrDeferred"))
-check("JAR 字节码待发提示文案", class_refs(SPIGOT_JAR, "扫码登录二维码将在服务器启动完成后显示"))
+print("== D. 二维码固定延时 30 秒显示（第五轮修订） ==")
+check("launchQqClient 改延时发起", "QrLoginManager.scheduleStartupStart()" in kerong
+      and "QrLoginManager.markStartupPending()" not in kerong)
+check("延时提示文案（约 30 秒后）", "扫码登录二维码将在约 30 秒后显示" in kerong)
+check("scheduleStartupStart 方法在位", "fun scheduleStartupStart()" in qrm)
+check("STARTUP_DELAY_MS = 30_000L", "STARTUP_DELAY_MS = 30_000L" in qrm)
+check("延时期间手动发起过则跳过", "if (!isActive) start(manual = false)" in qrm)
+check("旧待发状态机已移除", "markStartupPending" not in qrm and "startIfStartupPending" not in qrm
+      and "startupPending" not in qrm)
+check("延时线程名 KERONG-QrDeferred 在 common 层", "KERONG-QrDeferred" in qrm)
+check("Spigot 主类无 QR 事件消费点", "QrLoginManager" not in spigot_main and "onServerLoadQr" not in spigot_main)
+check("Spigot 仅剩 spark 一个 ServerLoadEvent 监听", spigot_main.count("fun onServerLoad") == 1)
+check("NeoForge 主类无 QR 消费点", "QrLoginManager" not in nf_main)
+check("JAR 字节码含 scheduleStartupStart（双端）", class_refs(SPIGOT_JAR, "scheduleStartupStart")
+      and class_refs(NF_JAR, "scheduleStartupStart"))
+check("JAR 字节码无 startIfStartupPending 残留", not class_refs(SPIGOT_JAR, "startIfStartupPending")
+      and not class_refs(NF_JAR, "startIfStartupPending"))
+check("JAR 字节码延时提示文案", class_refs(SPIGOT_JAR, "扫码登录二维码将在约 30 秒后显示"))
+check("JAR 字节码 KERONG-QrDeferred 线程名（双端）", class_refs(SPIGOT_JAR, "KERONG-QrDeferred")
+      and class_refs(NF_JAR, "KERONG-QrDeferred"))
 
 print("== E. 文档同步 ==")
 readme = src("README.md")
@@ -128,9 +133,12 @@ tutorial = src("website/tutorial.html")
 index = src("website/index.html")
 version = src("website/version.json")
 for label, doc in [("README", readme), ("tutorial", tutorial), ("index", index), ("version.json", version)]:
-    check(f"{label} 启动完成后显示", "服务器启动完成后" in doc)
+    check(f"{label} 启动约 30 秒后显示", "约 30 秒后" in doc)
     check(f"{label} 上限 3 次", "上限 3 次" in doc)
     check(f"{label} 替换凭据口径", "替换现有凭据" in doc)
+check("官网三件无旧机制措辞（服务器启动完成后）",
+      "服务器启动完成后" not in tutorial and "服务器启动完成后" not in index
+      and "服务器启动完成后" not in version)
 for label, doc in [("README", readme), ("tutorial", tutorial), ("index", index), ("version.json", version)]:
     check(f"{label} QQ 号行全员可见", "QQ 号行全员可见" in doc or "QQ 号（OpenId）行全员可见" in doc)
 check("README 第五轮详史段", "1.7.4 第五轮覆盖更新" in readme)

@@ -19,10 +19,10 @@ import javax.crypto.spec.SecretKeySpec
  * QQ 机器人扫码登录（1.7.4 覆盖版新增）。
  *
  * 触发点：
- * - 启动时未配置 bot.app-id / bot.secret → 延迟到**服务器启动完成后**
- *   再显示二维码（Spigot 经 ServerLoadEvent、NeoForge 在 ServerStartedEvent
- *   尾部消费，见 [markStartupPending] / [startIfStartupPending]；避免启动
- *   阶段控制台刷屏把二维码冲掉）；
+ * - 启动时未配置 bot.app-id / bot.secret → **固定延时 30 秒**后再显示
+ *   二维码（插件启动阶段控制台仍在刷启动日志，立即打印会被冲掉；
+ *   不依赖 ServerLoadEvent / ServerStartedEvent——魔改核心可能移除这些
+ *   事件，固定延时不挑核心，见 [scheduleStartupStart]）；
  * - 控制台执行 /hbkrg qr → 随时手动发起（凭据已配置时也可用，扫码成功后
  *   **替换**现有 bot.app-id / bot.secret 并以新凭据重连）。
  *
@@ -70,19 +70,20 @@ object QrLoginManager {
      */
     private const val MAX_REFRESH_COUNT = 3
 
+    /**
+     * 启动延时（毫秒）：未配置凭据时延迟显示二维码——插件 enable 阶段
+     * 控制台仍在刷启动日志（TAB / spark / AuthMe 等），立即打印会被淹没。
+     * 第五轮修订：不依赖 ServerLoadEvent / ServerStartedEvent（魔改核心
+     * 可能移除这些事件），固定延时任何核心都成立；原事件方案兜底 12 秒
+     * 延长到 30 秒，覆盖多数核心的启动尾部日志。
+     */
+    private const val STARTUP_DELAY_MS = 30_000L
+
     private val secureRandom = SecureRandom()
 
     /** 当前授权会话（null = 未在进行）。 */
     @Volatile
     private var session: AuthSession? = null
-
-    /**
-     * 启动待发标记：未配置凭据时启动流程置位，等服务器启动完成后由
-     * [startIfStartupPending] 消费（Spigot ServerLoadEvent / NeoForge
-     * ServerStartedEvent 尾部）。
-     */
-    @Volatile
-    private var startupPending = false
 
     /** 授权会话状态。 */
     private enum class State { WAITING, EXPIRED, SUCCESS, FAILED, CANCELLED }
@@ -158,27 +159,30 @@ object QrLoginManager {
         }
 
     /**
-     * 标记「启动待发」：未配置凭据时由启动流程调用（不立即显示二维码）。
+     * 延时发起扫码登录（未配置凭据时由启动流程调用，不立即显示二维码）。
      *
-     * 二维码改在服务器启动完成后显示（Spigot 的插件 enable 阶段控制台仍
-     * 在刷启动日志，二维码会被淹没；NeoForge 端 initializeRuntime 本就在
-     * ServerStartedEvent 内调用，消费点紧跟其后，时序同样满足）。
+     * 第五轮修订：原「启动待发标记 + Spigot ServerLoadEvent / NeoForge
+     * ServerStartedEvent 尾部消费」方案废弃——魔改 / 极端核心可能移除这些
+     * 事件，标记永远等不到消费；改为守护线程固定延时 [STARTUP_DELAY_MS]，
+     * 任何核心都成立。延时期间已用 /hbkrg qr 手动发起（或会话仍在进行）
+     * 则跳过，不重复打印；插件已卸载等极端情形静默退出。
      */
-    fun markStartupPending() {
-        startupPending = true
-    }
-
-    /**
-     * 服务器启动完成回调（Spigot ServerLoadEvent / NeoForge ServerStartedEvent
-     * 尾部）：消费「启动待发」标记，开始扫码登录会话。
-     *
-     * @return true = 已发起（此前确实有待发标记）
-     */
-    fun startIfStartupPending(): Boolean {
-        if (!startupPending) return false
-        startupPending = false
-        start(manual = false)
-        return true
+    fun scheduleStartupStart() {
+        Thread({
+            try {
+                Thread.sleep(STARTUP_DELAY_MS)
+            } catch (_: InterruptedException) {
+                return@Thread
+            }
+            try {
+                if (!isActive) start(manual = false)
+            } catch (_: Throwable) {
+                // 守护线程兜底：卸载 / 关服后类加载器关闭等，静默退出
+            }
+        }, "KERONG-QrDeferred").apply {
+            isDaemon = true
+            start()
+        }
     }
 
     // ---------- 会话主流程 ----------

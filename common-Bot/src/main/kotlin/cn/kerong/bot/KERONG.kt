@@ -227,12 +227,12 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
             // 自动刷新重发（每次会话自动刷新上限 3 次，超过后可用 /hbkrg qr
             // 手动重新发起；1.7.4 第三轮覆盖版：旧版「官网教程二维码 +
             // 教程链接」手动配置引导已按用户指令删除，不再打印）。
-            // 第五轮覆盖版：二维码延迟到**服务器启动完成后**再显示（本调用
-            // 发生在插件 enable / ServerStarted 阶段，控制台仍在刷启动日志，
-            // 立即打印会被淹没——Spigot 由 ServerLoadEvent、NeoForge 由
-            // ServerStartedEvent 尾部消费待发标记）。
-            QrLoginManager.markStartupPending()
-            PluginFileLog.infoAndKeep("扫码登录二维码将在服务器启动完成后显示（/hbkrg qr 可随时手动发起；已配置时扫码将替换现有凭据）")
+            // 第五轮覆盖版：二维码延迟显示，避免被启动日志淹没——修订为
+            // 固定延时 30 秒（scheduleStartupStart 守护线程），不依赖
+            // ServerLoadEvent / ServerStartedEvent（魔改核心可能移除这些
+            // 事件，待发标记永远等不到消费；固定延时任何核心都成立）。
+            QrLoginManager.scheduleStartupStart()
+            PluginFileLog.infoAndKeep("扫码登录二维码将在约 30 秒后显示（等服务器启动日志刷完；/hbkrg qr 可随时手动发起；已配置时扫码将替换现有凭据）")
             return
         }
         PluginFileLog.infoAndKeep("正在后台启动 QQ 机器人客户端（AppID: $appId）…")

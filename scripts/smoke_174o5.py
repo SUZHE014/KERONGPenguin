@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """1.7.4 第五轮覆盖版冒烟测试（独立 JVM，反射调用真实类）。
 
-覆盖本轮改动的运行时面：
+覆盖本轮改动的运行时面（含第五轮修订：固定延时取代待发状态机）：
 1. QrLoginManager：MAX_REFRESH_COUNT=3 / start(manual) 签名与 $default 合成 /
-   markStartupPending + startIfStartupPending 待发状态机（置位→消费→再消费空操作）
+   scheduleStartupStart 固定延时（旧待发状态机已移除，延时线程可起）
 2. QClient：closeSessionForCredentialSwap 方法在位（无会话空操作不抛异常）
 3. PublicCommands：lookupByPlayerName 反查入口在位（QQ 号行全员可见的载体）
-4. KERONGSpigot：ServerLoadEvent 消费方法与兜底线程字节码在位
+4. 平台主类：无 QR 事件消费点（机制全收在 common 层，不挑核心）
 """
 import subprocess
 import sys
@@ -55,32 +55,36 @@ public class Smoke174o5 {
                 && startDefault.getParameterTypes()[1] == boolean.class,
                 startDefault == null ? "" : java.util.Arrays.toString(startDefault.getParameterTypes()));
 
-        Method markPending = null, consumePending = null;
+        // 2. 修订机制：scheduleStartupStart 固定延时（旧待发状态机已移除）
+        Method schedule = null;
+        boolean legacyMark = false, legacyConsume = false;
         for (Method m : qrm.getDeclaredMethods()) {
-            if (m.getName().equals("markStartupPending") && m.getParameterCount() == 0) markPending = m;
-            if (m.getName().equals("startIfStartupPending") && m.getParameterCount() == 0) consumePending = m;
+            if (m.getName().equals("scheduleStartupStart") && m.getParameterCount() == 0) schedule = m;
+            if (m.getName().equals("markStartupPending")) legacyMark = true;
+            if (m.getName().equals("startIfStartupPending")) legacyConsume = true;
         }
-        check("markStartupPending 方法在位", markPending != null);
-        check("startIfStartupPending 方法在位", consumePending != null);
-
-        // 2. 待发状态机：初始无待发 → 置位 → 消费 true → 再消费 false
-        //    注：消费会触发 start(manual=false) 起后台会话线程；裸 JVM 无插件
-        //    实例，线程在首条日志即退出（生产环境 BotShared.setInstance 先于
-        //    任何 QR 会话执行，不发生）——不影响状态机断言本身
-        if (consumePending != null) {
-            consumePending.setAccessible(true);
-            boolean first = (Boolean) consumePending.invoke(qrmInstance);
-            check("初始无待发标记消费返回 false", !first);
-            if (markPending != null) {
-                markPending.setAccessible(true);
-                markPending.invoke(qrmInstance);
-                // 消费会触发 start(manual=false)：无网络环境下 create_bind_task
-                // 失败 → 会话 FAILED → 线程退出，不抛出（异常已在会话内部兜住）
-                boolean second = (Boolean) consumePending.invoke(qrmInstance);
-                check("置位后消费返回 true", second);
-                Thread.sleep(500);
-                boolean third = (Boolean) consumePending.invoke(qrmInstance);
-                check("消费后标记已清（再消费 false）", !third);
+        check("scheduleStartupStart 方法在位", schedule != null);
+        check("旧待发标记/消费方法已移除", !legacyMark && !legacyConsume);
+        Field delayField = null;
+        try { delayField = qrm.getDeclaredField("STARTUP_DELAY_MS"); delayField.setAccessible(true); } catch (Throwable t) {}
+        check("STARTUP_DELAY_MS = 30000", delayField != null && delayField.getLong(qrmInstance) == 30000L,
+                delayField == null ? "field missing" : String.valueOf(delayField.getLong(qrmInstance)));
+        if (schedule != null) {
+            schedule.setAccessible(true);
+            try {
+                schedule.invoke(qrmInstance);
+                // 延时线程为守护线程：睡 30 秒后才会检查 isActive；裸 JVM
+                // 主线程退出即结束，不会真发起会话（无插件实例环境伪影不出现）
+                boolean deferredRunning = false;
+                for (int i = 0; i < 20 && !deferredRunning; i++) {
+                    Thread.sleep(50);
+                    for (Thread t : Thread.getAllStackTraces().keySet()) {
+                        if (t.isAlive() && "KERONG-QrDeferred".equals(t.getName())) deferredRunning = true;
+                    }
+                }
+                check("调用后 KERONG-QrDeferred 守护线程在跑", deferredRunning);
+            } catch (Throwable t) {
+                check("调用后 KERONG-QrDeferred 守护线程在跑", false, String.valueOf(t));
             }
         }
 
