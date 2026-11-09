@@ -19,11 +19,11 @@ import javax.imageio.ImageIO
  * 每名玩家一行：排名徽章（前三名金 / 银 / 铜配色）+ 真实皮肤头像 + 玩家名 +
  * 右侧总在线时长。
  *
- * 背景（1.5.7）：默认使用内置专属背景图（深灰色主体 + 深绿色装饰，随 JAR 分发，
+ * 背景：默认使用内置专属背景图（深灰色主体 + 深绿色装饰，随 JAR 分发，
  * 零配置零素材）；qq-bind.leaderboard.builtin-background 关闭后改用插件
  * img/ 目录随机图（img 无可用图片时自动回退内置图）。
  *
- * 分段发送（1.5.5）：每页最多 leaderboard.page-size 行（1.7.3 起可配全局
+ * 分段发送：每页最多 leaderboard.page-size 行（可配全局
  * 上限，默认 20；旧版硬编码 15）—— 第一页带完整标题区（眉题 + 主标题 +
  * 右侧统计卡 + 副标题条 + 列表头），后续页只绘制行内容不再绘制标题，
  * 由编排层逐张发送。
@@ -31,7 +31,7 @@ import javax.imageio.ImageIO
  * 字体 / 圆角头像 / 截断策略与 [OnlineListRenderer] / [InfoCardRenderer] 同源；
  * 画布 PNG 写出后立即 flush 释放栅格内存（与其他渲染器一致）。
  *
- * 1.6.9.5：背景统一走共享入口（cover 裁剪铺满：等比放大不足的边 +
+ * 背景统一走共享入口（cover 裁剪铺满：等比放大不足的边 +
  * 图片中心裁剪，不拉伸变形）；毛玻璃模糊度（render.blur-strength）
  * 时卡片背后区域铺背景模糊副本（backdrop-filter 局部模糊，
  * 卡片外背景保持清晰）。
@@ -49,8 +49,8 @@ object LeaderboardRenderer {
     /** 续页顶部留白（无标题区，顶部收窄）。 */
     private const val PAGE_TOP_PAD = 24
 
-    /** 第一页标题区高度（眉题 + 主标题 + 右侧统计卡；1.7.3 覆盖版二轮：150 → 164；
-     * 1.7.3 覆盖版三轮：164 → 182，眉题视觉顶边距 27 → 45px——对齐玩家名片
+ /** 第一页标题区高度（眉题 + 主标题 + 右侧统计卡；二轮：150 → 164；
+ * 三轮：164 → 182，眉题视觉顶边距 27 → 45px——对齐玩家名片
      * 欢迎面板（最上框参照标准，实测 45px），用户反馈二轮 27px 仍太贴边；
      * +18 全部给顶部，底边距 42px 与眉题→主标题间距保持不变）。 */
     private const val HEADER_HEIGHT = 182
@@ -110,7 +110,7 @@ object LeaderboardRenderer {
         val playSeconds: Long,
         val avatar: BufferedImage? = null,
         /**
-         * 右侧数值的自定义展示文本（1.6.0 金币榜新增）。
+ * 右侧数值的自定义展示文本（金币榜新增）。
          * 非 null 时优先于 [formatPlayTime] 绘制（金币榜传入金额，
          * 在线排行不传保持时长文本，旧版渲染逐字节不变）。
          */
@@ -157,9 +157,9 @@ object LeaderboardRenderer {
         return total.coerceAtLeast(if (firstPage) 640 else 200)
     }
 
-    /** 渲染单页并返回 PNG 字节（首页带标题区，续页只画行内容；1.7.3 覆盖版二轮：
+ /** 渲染单页并返回 PNG 字节（首页带标题区，续页只画行内容；二轮：
      * 首页副标题条第三格改「展示玩家」——展示 min(玩家总数, 显示上限) 名
-     * 玩家；覆盖版四轮：数值格式 xTOP → TOP x（TOP 在前，如 TOP 8）；
+ * 玩家；数值格式 xTOP → TOP x（TOP 在前，如 TOP 8）；
      * 覆盖一轮的「渲染耗时」格移除，渲染计时补画逻辑同步删除——
      * 查在线 / 查性能 / 玩家名片三卡保留该格）。 */
     fun renderPage(data: LeaderboardData, firstPage: Boolean): ByteArray {
@@ -171,7 +171,7 @@ object LeaderboardRenderer {
             g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
             g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
 
-            // 1.6.9.5：背景统一走共享入口（cover 裁剪铺满，不再拉伸变形）；
+ // 背景统一走共享入口（cover 裁剪铺满，不再拉伸变形）；
             // 返回卡片背后局部模糊上下文（毛玻璃，模糊度 render.blur-strength）
             val backdrop = InfoCardAssets.drawBackground(g, data.background, WIDTH, height)
             if (firstPage) {
@@ -199,7 +199,7 @@ object LeaderboardRenderer {
 
     /**
      * 秒数格式化为时长文本（与玩家名片卡片「在线时长」同风格）：
-     * 小时 / 分组合（1.6.8 起最大单位为小时，不再展示「天」——
+ * 小时 / 分组合（起最大单位为小时，不再展示「天」——
      * 如 3天5小时20分钟 现展示为 77小时20分钟），全零时显示「暂无记录」。
      */
     fun formatPlayTime(seconds: Long): String {
@@ -214,37 +214,37 @@ object LeaderboardRenderer {
     }
 
     /** 第一页标题区：眉题 + 主标题 + 右侧统计卡（1.6.0：主标题可自定义；
-     * 1.7.3：整块全宽标题卡——背后铺局部模糊 + 标题框黑度 + 圆角边缘，
+ * 整块全宽标题卡——背后铺局部模糊 + 标题框黑度 + 圆角边缘，
      * 与查在线 / 查性能头部同款；旧版标题文字直画在背景上，看不出卡片
-     * 边界，灰度也只作用于右侧统计小卡；1.7.3 覆盖版二轮：眉题 / 主标题
+ * 边界，灰度也只作用于右侧统计小卡；二轮：眉题 / 主标题
      * 基线下移 8px（上边缘间距加大），右上角小方框与标题框四周留 14px
-     * 可见间距——旧版 8/8/0 太贴边看不出内嵌层次；1.7.3 覆盖版三轮：眉题 /
+ * 可见间距——旧版 8/8/0 太贴边看不出内嵌层次；三轮：眉题 /
      * 主标题基线再下移 18px（顶边距 27 → 45px 对齐玩家名片最上框），
      * 副标题框零改动——用户口径：间距调的是主标题框，副标题框一切正常）。 */
     private fun drawHeader(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, title: String, totalPlayers: Long) {
         val top = MARGIN
 
-        // 1.7.3：全宽标题卡（模糊 + 灰度 + 圆角边缘一次到位）
+ // 全宽标题卡（模糊 + 灰度 + 圆角边缘一次到位）
         val headerWidth = (WIDTH - 2 * MARGIN).toFloat()
         backdrop?.paintCard(g, MARGIN.toFloat(), top.toFloat(), headerWidth, HEADER_HEIGHT.toFloat(), 24f)
         // 标题卡底色接标题框黑度（render.title-card-gray，默认 80）
         g.color = Color(0x00, 0x00, 0x00, RenderSettings.titleCardGray())
         g.fill(RoundRectangle2D.Float(MARGIN.toFloat(), top.toFloat(), headerWidth, HEADER_HEIGHT.toFloat(), 24f, 24f))
 
-        // 英文眉题（字距拉宽，与其他卡片统一风格；1.7.3 覆盖版：距卡左缘 28px；
-        // 1.7.3 覆盖版三轮：基线 46 → 64，上边缘视觉间距 27 → 45px，
+ // 英文眉题（字距拉宽，与其他卡片统一风格；距卡左缘 28px；
+ // 三轮：基线 46 → 64，上边缘视觉间距 27 → 45px，
         // 对齐玩家名片欢迎面板眉题顶边距——二轮 27px 用户反馈仍偏贴）
         g.font = InfoCardRenderer.font(26f, true)
         g.color = COLOR_EYEBROW
         g.drawString("M I N E C R A F T   S E R V E R", (MARGIN + 32).toFloat(), (top + 64).toFloat())
 
-        // 主标题（距卡左缘 24px；1.7.3 覆盖版三轮：基线 118 → 136，与眉题
+ // 主标题（距卡左缘 24px；三轮：基线 118 → 136，与眉题
         // 同步 +18——眉题→主标题间距与底边距 42px 均保持不变）
         g.font = InfoCardRenderer.font(58f, true)
         g.color = COLOR_VALUE
         g.drawString(title, (MARGIN + 28).toFloat(), (top + 136).toFloat())
 
-        // 右侧统计卡（参与排行玩家总数；叠在标题卡上；1.7.3 覆盖版二轮：与
+ // 右侧统计卡（参与排行玩家总数；叠在标题卡上；二轮：与
         // 标题框四周留 14px 可见间距——旧版上/下 8px、右侧 0px 贴边）
         val cardWidth = 260
         val cardInset = 14
@@ -252,13 +252,13 @@ object LeaderboardRenderer {
         val cardX = WIDTH - MARGIN - cardInset - cardWidth
         val cardY = top + cardInset
         backdrop?.paintCard(g, cardX.toFloat(), cardY.toFloat(), cardWidth.toFloat(), cardHeight.toFloat(), 20f)
-        // 1.7.3 覆盖版：右上角小方框灰度永远比标题框深一点（render.title-card-gray +36）
+ // 右上角小方框灰度永远比标题框深一点（render.title-card-gray +36）
         // ——旧版与标题框同灰度，叠在同色标题卡上视觉融合看不出边界
         g.color = Color(0x00, 0x00, 0x00, RenderSettings.headerBadgeCardGray())
         g.fill(RoundRectangle2D.Float(cardX.toFloat(), cardY.toFloat(), cardWidth.toFloat(), cardHeight.toFloat(), 20f, 20f))
         g.font = InfoCardRenderer.font(24f, false)
         g.color = COLOR_LABEL
-        // 1.7.3 覆盖版三轮：标题框加高后卡内容整体下移 9px（卡高 136 → 154，
+ // 三轮：标题框加高后卡内容整体下移 9px（卡高 136 → 154，
         // 四周 14px 间距不变），保持标签 / 数值在卡内视觉居中
         g.drawString("统计玩家", (cardX + 28).toFloat(), (cardY + 51).toFloat())
         g.font = InfoCardRenderer.font(64f, true)
@@ -268,12 +268,12 @@ object LeaderboardRenderer {
         g.drawString(countText, (cardX + cardWidth - 28 - countWidth).toFloat(), (cardY + 109).toFloat())
     }
 
-    /** 副标题条：服务器 / 更新时间 / 展示玩家 三张并排小卡（1.7.3 新增，与
+ /** 副标题条：服务器 / 更新时间 / 展示玩家 三张并排小卡（与
      * 查在线状态栏同款；底色接副标题灰度 render.subtitle-card-gray；
-     * 1.7.3 覆盖版二轮：第三格改「展示玩家」——本榜实际展示
-     * min(统计玩家总数, 显示上限) 名玩家；覆盖版四轮：数值格式
+ * 二轮：第三格改「展示玩家」——本榜实际展示
+ * min(统计玩家总数, 显示上限) 名玩家；数值格式
      * xTOP → TOP x（TOP 在前，如 TOP 8；旧 xTOP 废弃）；
-     * 覆盖版一轮的「渲染耗时」格移除（渲染计时补画逻辑同步删除）。 */
+ * 的「渲染耗时」格移除（渲染计时补画逻辑同步删除）。 */
     private fun drawSubtitle(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, serverName: String, updateTime: String, displayedTop: Long) {
         val top = (MARGIN + HEADER_HEIGHT + HEADER_GAP).toFloat()
         val gap = 16f
@@ -289,11 +289,11 @@ object LeaderboardRenderer {
             val x = MARGIN + index * (cardWidth + gap)
             backdrop?.paintCard(g, x, top, cardWidth, cardHeight, 14f)
             // 副标题条接副标题灰度（render.subtitle-card-gray，1.7.3.1 第二次
-            // 覆盖版默认 80，与标题框相同）
+ // 默认 80，与标题框相同）
             g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
             g.fill(RoundRectangle2D.Float(x, top, cardWidth, cardHeight, 14f, 14f))
-            // 1.7.3 覆盖版四轮起：小标签统一走 InfoCardRenderer.drawSubLabel
-            // （1.7.3.1 覆盖版：固定灰 0x9FB3C8，1.7.0 同款）
+ // 四轮起：小标签统一走 InfoCardRenderer.drawSubLabel
+ // （固定灰 0x9FB3C8，1.7.0 同款）
             InfoCardRenderer.drawSubLabel(g, label, x + 26f, top + 34f)
             g.font = InfoCardRenderer.font(30f, true)
             g.color = COLOR_VALUE
@@ -332,7 +332,7 @@ object LeaderboardRenderer {
         // 行容器深色底（整块列表区域裹一层半透明深色底，与在线列表统一）
         val gridHeight = entries.size * ROW_HEIGHT + (entries.size - 1) * ROW_GAP
         backdrop?.paintCard(g, MARGIN.toFloat(), (gridTop - 14).toFloat(), contentWidth.toFloat(), (gridHeight + 28).toFloat(), 18f)
-        // 1.7.2：项目卡片底色黑度可配（render.item-card-gray，默认 106）
+ // 项目卡片底色黑度可配（render.item-card-gray，默认 106）
         g.color = Color(0x00, 0x00, 0x00, RenderSettings.itemCardGray())
         g.fill(RoundRectangle2D.Float(
             MARGIN.toFloat(), (gridTop - 14).toFloat(),
@@ -358,7 +358,7 @@ object LeaderboardRenderer {
             g.drawString(rankText, (badgeX + (badgeSize - rankWidth) / 2).toFloat(), (badgeY + badgeSize / 2 + 10).toFloat())
 
             // 头像（无皮肤数据画占位块：深色圆角 + 名字首字符）；
-            // 1.6.6.1 覆盖版：圆角头像零拷贝直绘（不再先拷一张圆角小图）
+ // 圆角头像零拷贝直绘（不再先拷一张圆角小图）
             val avatarX = badgeX + badgeSize + 16
             val avatarY = rowY + (ROW_HEIGHT - AVATAR_SIZE) / 2
             if (entry.avatar != null) {
@@ -387,7 +387,7 @@ object LeaderboardRenderer {
             g.color = COLOR_VALUE
             g.drawString(clip(g, entry.name, nameMaxWidth), nameX.toFloat(), (rowY + ROW_HEIGHT / 2 + 10).toFloat())
 
-            // 右侧数值（总在线时长或金币金额；1.6.0 起可由调用方自定义文本）
+ // 右侧数值（总在线时长或金币金额；可由调用方自定义文本）
             g.font = InfoCardRenderer.font(26f, false)
             g.color = COLOR_LABEL
             g.drawString(timeText, timeX.toFloat(), (rowY + ROW_HEIGHT / 2 + 10).toFloat())

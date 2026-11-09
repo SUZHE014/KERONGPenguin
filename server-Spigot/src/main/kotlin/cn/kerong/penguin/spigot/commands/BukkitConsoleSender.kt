@@ -23,7 +23,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  * 包装一个 ConsoleCommandSender 捕获命令输出，配合 [CommandOutputAppender]
  * 捕获服务器日志，实现“执行命令并拿到输出文本”。
  *
- * 1.7.2 噪音修复（用户实测：/执行命令 的 QQ 回复里混入与命令无关的
+ * 噪音修复（用户实测：/执行命令 的 QQ 回复里混入与命令无关的
  * 周期性日志——[MediaSource] 媒体刷屏、[Not Secure] 聊天行等）：
  * - 命令改派发给**本自定义 Sender**（旧版派发给真实控制台，输出只能靠
  *   log4j 根 Appender 全量捕窗口内日志，窗口里所有异步日志都进了返回）；
@@ -31,7 +31,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  * - 命令没有 Sender 输出（只往 logger 打的命令）时，才回退到 Appender
  *   捕获的日志行（已带噪音黑名单过滤）。
  *
- * 1.7.2 控制台记录修复（用户实测：QQ 群远程执行的命令执行正确、
+ * 控制台记录修复（用户实测：QQ 群远程执行的命令执行正确、
  * 返回正常，但控制台与 latest.log 里没有任何记录）——旧版派发给真实
  * 控制台时输出自然落控制台；改派发自定义 Sender 后命令输出只进了
  * QQ 回复，运维在服务器侧完全看不到谁执行了什么：
@@ -190,12 +190,12 @@ class BukkitConsoleSender(private val plugin: KERONGSpigot) : ConsoleCommandSend
         outputAppender.startCapture()
         plugin.submit {
             try {
-                // 1.7.2：派发给本自定义 Sender——命令的 sendMessage 反馈
+ // 派发给本自定义 Sender——命令的 sendMessage 反馈
                 // 直接进 messages（只有本 Sender 收到的行才进返回）；
                 // 旧版派发给真实控制台，输出只能靠 log4j Appender 全量
                 // 捕窗口内日志，与命令无关的周期日志（[MediaSource] 等）
                 // 整段混进 QQ 回复。
-                // 1.7.2 控制台记录修复：命令本身先落控制台再派发
+ // 控制台记录修复：命令本身先落控制台再派发
                 try {
                     plugin.logger.info("[QQ 远程命令] 执行: $command")
                 } catch (_: Throwable) {
@@ -203,7 +203,7 @@ class BukkitConsoleSender(private val plugin: KERONGSpigot) : ConsoleCommandSend
                 Bukkit.dispatchCommand(this, command)
                 completeAfterCommandOutput(result)
             } catch (error: Throwable) {
-                // 1.7.0：捕获 Throwable 而非 Exception——命令抛 Error（如其他
+ // 捕获 Throwable 而非 Exception——命令抛 Error（如其他
                 // 插件类的 NoClassDefFoundError）时旧版不完成 future，
                 // QQ 侧表现为「执行完没有任何回复」
                 outputAppender.stopCapture()
@@ -216,15 +216,15 @@ class BukkitConsoleSender(private val plugin: KERONGSpigot) : ConsoleCommandSend
     /**
      * 命令派发后延迟 2 秒收集输出（等待异步反馈落盘）。
      *
-     * 1.7.2 优先级：Sender 收到的行 > Appender 日志行（仅 Sender 无输出时
+ * 优先级：Sender 收到的行 > Appender 日志行（仅 Sender 无输出时
      * 才用日志回退，且日志已过噪音黑名单）。
      */
     private fun completeAfterCommandOutput(result: CompletableFuture<HExecution>) {
-        // 1.5.7.3：经 FoliaCompat 桥接（Folia 全局区域线程延迟，收集双路输出）
+ // 经 FoliaCompat 桥接（Folia 全局区域线程延迟，收集双路输出）
         FoliaCompat.runSyncLater(plugin as Plugin, COMMAND_OUTPUT_DELAY_TICKS) {
             val senderMessages = getAndClearMessages()
             if (senderMessages.isNotEmpty()) {
-                // 只有该 Sender 收到的行才进返回（1.7.2 架构修复主路径）；
+ // 只有该 Sender 收到的行才进返回（架构修复主路径）；
                 // 回放用 recordOnly：控制台转发已在捕获时刻做过，不重复
                 for (message in senderMessages) {
                     replayMessage(message)

@@ -4,7 +4,7 @@ import java.io.File
 import java.net.InetSocketAddress
 
 /**
- * 本服端口读取器（1.7.3.1 第三次覆盖版新增）。
+ * 本服端口读取器。
  *
  * 用途：[cn.kerong.penguin.spigot.stats.MotdDisplayTracker] 本机 SLP 自查询
  * 需要本服端口（对 127.0.0.1:<端口> 发服务器列表 ping 读展示人数）。Spigot

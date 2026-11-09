@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicLong
 /**
  * QQ 快捷菜单（输入面板）管理：启动时按配置同步群快捷命令按钮。
  *
- * 1.6.0 面板同步加固（修复「面板显示没有指定 / 按钮丢失」问题）：
+ * 面板同步加固（修复「面板显示没有指定 / 按钮丢失」问题）：
  * - 全部面板接口调用校验 HTTP 状态码并解析 QQ 错误码（如 40030009 并发冲突、
  *   40030013 超出数量限制、40030020 内容安全拦截），失败明细写入日志；
  * - 面板元素长度预校验：name ≤ 14 单位 / desc ≤ 30 单位（中文按 2 单位），
@@ -26,10 +26,10 @@ import java.util.concurrent.atomic.AtomicLong
  * - 40030009（操作进行中）自动重试（最多 3 次）；
  * - 同步结束后输出面板 ID 与可用按钮数，启动日志与 /hbkrg reload 反馈均可核对。
  *
- * 1.6.9.5：panel 子命令移除——/hbkrg reload 在重载配置后
+ * panel 子命令移除——/hbkrg reload 在重载配置后
  * 一并调用本同步（先删后建，按新配置重建按钮），不再需要单独命令。
  *
- * 1.6.7.9 先删后建（修复「创建面板失败 HTTP 400 code 30013 超出数量限制」）：
+ * 先删后建（修复「创建面板失败 HTTP 400 code 30013 超出数量限制」）：
  * - 同步逻辑改为**先删后建**——不再走 PUT 原地更新：旧版「列表查询失败 →
  *   误判无面板 → 直接创建」的路径会在平台上残留旧面板，累计触发 30013 数量
  *   超限后创建永远被拒；现每次同步前先删除列表里的全部面板（含非本插件
@@ -37,13 +37,13 @@ import java.util.concurrent.atomic.AtomicLong
  * - 创建面板遇 30013（含 40030013 形态）时**自动清空重建**；错误码归一化
  *   （30009/30013/30020 双形态）+ describePanelError 人话如实提示。
  *
- * 1.6.7.10 30013 真根因修复（1.6.7.9 的先删后建没有对症——用户实测列表 0
+ * 30013 真根因修复（旧版先删后建没有对症——用户实测列表 0
  * 面板、清空重建 3 次仍被拒）：
  * - **按钮数量上限裁剪**：QQ 官方文档明确「一个指令面板里最多配置 20 个面板
  *   元素」——1.6.7 加入「查性能」按钮后，全功能开启时面板达 **21 项**，创建
  *   必然被 40030013 拒绝（与平台上有没有旧面板无关，这才是列表为空仍报
  *   超限的根因）。现按按钮优先级自动裁剪到 20 个：全功能开启时优先裁掉低频
- *   管理按钮（查询open ID / 解除黑名单 / AI对话上下文…），被裁命令仍可在群
+ *   管理按钮（查信息 / 解除黑名单 / AI管理…），被裁命令仍可在群
  *   里手动输入，且日志如实列出被裁按钮；
  * - **30013 重试加退避**：旧版三连发在同一秒内全部撞墙；现重试前等待退避
  *   间隔（2.5s / 5s 递增），再走「清空可见面板 → 再创建」恢复路径；
@@ -99,18 +99,18 @@ object MenuManager {
      * 注意：QQ 面板点击后发送的是 name 本身（API 无独立命令字段），
      * 故 name 必须与群命令名一致；参数型命令（如 绑定）点击后仅发送命令名，
      * 玩家自行补参数。
-     * 1.6.0 新增金币榜按钮；1.6.2 更名「财富榜」（命令 /金币榜 同步更名，
+ * 新增金币榜按钮；更名「财富榜」（命令 /金币榜 同步更名，
      * 旧名保留为隐藏别名不出现在菜单）；「在线」为 /查在线 的输入别名，
-     * 按用户要求不出现在快捷菜单；1.6.7 新增「查性能」按钮
-     * （commands.查性能 关闭时同步消失）；1.6.9.3 移除「在线服务器」与
-     * 「motd」两个按钮（对应命令已删除，面板从 21 项降回 19 项，
-     * 不再触发平台上限裁剪）；1.7.4 覆盖版指令改名——「查询open ID」
-     * 按钮更名为「查信息」、「查信息」按钮更名为「玩家名片」。
+     * 按用户要求不出现在快捷菜单；新增「查性能」按钮
+ * （commands.查性能 关闭时同步消失）；移除「在线服务器」与
+     * 「motd」两个按钮（对应命令已删除）；指令改名——「查询open ID」
+     * 按钮更名为「查信息」、「查信息」按钮更名为「玩家名片」；
+ * 原两条 AI 上下文按钮合并为「AI管理」、原「帮助」更名「菜单」。
      */
     private data class PanelItem(val name: String, val desc: String)
 
     private val PANEL_ITEMS = listOf(
-        PanelItem("帮助", "查看所有命令"),
+        PanelItem("菜单", "查看所有命令按钮"),
         PanelItem("查信息", "查询 OpenId"),
         PanelItem("玩家名片", "查询玩家统计卡片"),
         PanelItem("绑定", "绑定 QQ"),
@@ -124,12 +124,11 @@ object MenuManager {
         PanelItem("执行", "执行自定义命令"),
         PanelItem("管理员执行", "管理员执行"),
         PanelItem("全量", "切换全量转发"),
-        PanelItem("AI对话上下文", "AI对话上下文"),
-        PanelItem("清除当前上下文", "AI清除"),
+        PanelItem("AI管理", "AI 上下文管理"),
         PanelItem("黑名单", "黑名单"),
         PanelItem("解除黑名单", "解除黑名单"),
         PanelItem("签到", "每日签到领金币"),
-        // 1.7.4 第三轮覆盖版：多服务器集群按钮（仅集群模式显示，
+ // 多服务器集群按钮（仅集群模式显示，
         // 见 [ClusterState]；点击后发送 /切换服务器 弹出服务器按钮）
         PanelItem("切换服务器", "切换连接的服务器"),
     )
@@ -137,22 +136,21 @@ object MenuManager {
     /**
      * 超出平台上限（20 个）时的裁剪顺序（从本表头部开始裁）：
      * 优先保留玩家常用按钮，低频管理类按钮先让位（对应命令仍可手动输入）。
-     * 1.6.7.10：全功能开启时面板 21 项超限，按此顺序裁掉「查询open ID」（现名查信息）；
-     * 1.6.9.3：移除两个已删除命令的按钮后全功能 19 项，正常不再触发裁剪。
+ * 全功能开启时超出上限的按钮按此顺序裁剪；
+ * 正常配置下不触发裁剪。
      */
     private val PANEL_TRIM_ORDER = listOf(
         "查信息",
         "解除黑名单",
-        "AI对话上下文",
-        "清除当前上下文",
+        "AI管理",
         "全量",
         "黑名单",
-        // 1.7.4 第三轮覆盖版：集群模式下全功能 21 项，切换服务器按钮
+ // 集群模式下全功能超出上限时，切换服务器按钮
         // 优先让位（仍可在群里手动输入 /切换服务器）
         "切换服务器",
     )
 
-    /** 依赖 QQ 绑定功能开启的按钮（绑定关闭时一并隐藏；1.5.2：个人信息按钮更名为查信息；1.7.4 覆盖版：更名玩家名片）。 */
+ /** 依赖 QQ 绑定功能开启的按钮（绑定关闭时一并隐藏；1.5.2：个人信息按钮更名为查信息；更名玩家名片）。 */
     private val QQ_BIND_PANEL_NAMES = setOf("绑定", "重新绑定", "黑名单", "解除黑名单", "玩家名片")
 
     /**
@@ -161,18 +159,17 @@ object MenuManager {
      */
     private val CHECKIN_PANEL_NAMES = setOf("签到")
 
-    /** 依赖经济插件（Vault）开启的按钮（1.6.0 金币榜；1.6.2 更名财富榜）。 */
+ /** 依赖经济插件（Vault）开启的按钮（金币榜；更名财富榜）。 */
     private val ECONOMY_PANEL_NAMES = setOf("财富榜")
 
     /**
-     * 依赖 AI 对话功能（ai.enabled）开启的按钮（1.7.4 修复：AI 未开启时
-     * 「AI对话上下文」「清除当前上下文」两个按钮不再出现在快捷面板——
-     * 旧版未接开关，未配置 AI 的服务器面板里也摆着两条不可用的 AI 指令）。
+ * 依赖 AI 对话功能（ai.enabled）开启的按钮（AI 未开启时「AI管理」按钮
+     * 不出现在快捷面板；/AI管理 命令同样在 AI 关闭时提示不可用）。
      */
-    private val AI_PANEL_NAMES = setOf("AI对话上下文", "清除当前上下文")
+    private val AI_PANEL_NAMES = setOf("AI管理")
 
     /**
-     * 面板同步结果（1.6.7.10）：启动同步与 /hbkrg reload 据此如实反馈，
+ * 面板同步结果：启动同步与 /hbkrg reload 据此如实反馈，
      * 不再无条件报「已重新同步」。
      */
     data class PanelSyncResult(
@@ -200,7 +197,7 @@ object MenuManager {
     }
 
     /**
-     * 同步所有配置群的快捷面板（1.6.7.9 起先删后建，1.6.7.10 起上限裁剪 +
+ * 同步所有配置群的快捷面板（起先删后建，1.6.7.10 起上限裁剪 +
      * 退避重试 + QPM 节流），返回同步结果（成功带面板 ID / 失败带原因）：
      * ① 列出已有面板 → ② 删除全部（含非本插件残留）→ ③ 校验长度并按
      * 优先级裁剪到 20 个后创建新面板（遇 30013 数量超限退避后自动清空重建）
@@ -242,21 +239,21 @@ object MenuManager {
             val visible = PANEL_ITEMS.filter { item ->
                 if (!qqBindEnabled && item.name in QQ_BIND_PANEL_NAMES) return@filter false
                 if (qqBindEnabled && !personalInfoEnabled && item.name == "查信息") return@filter false
-                // 1.7.4：签到按钮同时看签到开关与绑定总开关（与命令侧检查一致；
+ // 签到按钮同时看签到开关与绑定总开关（与命令侧检查一致；
                 // 旧版绑定关闭后按钮仍在，点击才提示未开启）
                 if ((!checkinEnabled || !qqBindEnabled) && item.name in CHECKIN_PANEL_NAMES) return@filter false
                 if (!economyAvailable && item.name in ECONOMY_PANEL_NAMES) return@filter false
-                // 1.7.4：AI 功能未开启时隐藏 AI 相关按钮（旧版恒展示的问题修复）
+ // AI 功能未开启时隐藏 AI 相关按钮（旧版恒展示的问题修复）
                 if (!aiEnabled && item.name in AI_PANEL_NAMES) return@filter false
-                // 1.7.4 第三轮覆盖版：多服务器集群按钮仅集群模式显示
+ // 多服务器集群按钮仅集群模式显示
                 // （未配置 bot.cluster 时隐藏，避免单服用户面板里出现不可用按钮）
                 if (item.name == "切换服务器" && !cn.kerong.bot.ClusterState.isMultiServer) return@filter false
                 val enabled = commandList[item.name]
                 enabled == null || enabled
             }
-            // 1.6.0：长度预校验（中文按 2 单位）——超限按钮跳过并告警，
+ // 长度预校验（中文按 2 单位）——超限按钮跳过并告警，
             // 防止单个按钮把整次面板提交拖垮（面板整体被拒 → 全部按钮消失）
-            // 1.6.1：描述文本应用经济别名（如「金币数量排行」/「每日签到领金币」
+ // 描述文本应用经济别名（如「金币数量排行」/「每日签到领金币」
             // 里的“金币”跟随 economy-alias 配置替换；按钮名即命令名不替换）
             val checked = visible.mapNotNull { item ->
                 val aliasedDesc = EconomyName.apply(item.desc)
@@ -277,7 +274,7 @@ object MenuManager {
                 return PanelSyncResult(null, 0, groupOpenIds.size, "全部按钮被功能开关或长度校验过滤，本次未创建面板")
             }
 
-            // 1.6.7.10：按优先级裁剪到平台上限 20 个（真根因修复——
+ // 按优先级裁剪到平台上限 20 个（真根因修复——
             // 官方限制单个面板最多 20 个元素，21 项创建必然被 30013 拒绝）
             val finalItems = trimToPlatformLimit(checked)
 
@@ -299,7 +296,7 @@ object MenuManager {
                 put("panel", panelJson)
             }
 
-            // 1.6.7.9：先删后建——不再 PUT 原地更新（旧面板在平台上累积触发
+ // 先删后建——不再 PUT 原地更新（旧面板在平台上累积触发
             // 30013 数量超限的根因），每次同步前删除列表里的全部面板（含非本
             // 插件 remark 的残留面板），再按当前配置创建一个新面板；创建遇
             // 30013 时由 createPanelWithLimitRecovery 退避后清空重建兜底
@@ -355,7 +352,7 @@ object MenuManager {
     // ---------- HTTP 调用（全部带响应校验与错误码日志） ----------
 
     /**
-     * 拉取已存在的面板列表（1.6.7.10 起分页完整拉取）。
+ * 拉取已存在的面板列表（起分页完整拉取）。
      * @return 全部面板；**列表查询失败返回 null**（与「确认无面板」的空列表区分）
      */
     private fun listPanels(authHeader: String, scope: String): List<JSONObject>? {
@@ -394,9 +391,9 @@ object MenuManager {
     private class CleanupResult(val deleted: Int, val failed: Int, val listFailed: Boolean)
 
     /**
-     * 删除列表里的全部面板（1.6.7.9 先删后建主体）。
+ * 删除列表里的全部面板（先删后建主体）。
      * 删除失败逐个如实记录（HTTP 状态码 + 错误码 + 人话解释），不阻断后续创建。
-     * 1.6.7.10：列表查询失败时明确说「无法确认/清理旧面板」，不再误报
+ * 列表查询失败时明确说「无法确认/清理旧面板」，不再误报
      * 「平台上无残留面板」。
      */
     private fun deleteAllPanels(authHeader: String): CleanupResult {
@@ -444,7 +441,7 @@ object MenuManager {
      * 创建面板（POST）：
      * - 30009（操作进行中，含 40030009 形态）等待后自动重试；
      * - **30013（超出数量限制，含 40030013 形态）退避后自动清空重建**——
-     *   1.6.7.10：重试前先退避（2.5s / 5s 递增，旧版三连发同一秒内全部
+ * 重试前先退避（2.5s / 5s 递增，旧版三连发同一秒内全部
      *   撞墙），再重新拉取列表删除全部面板后重试；
      * - 每次创建经 [paceCreate] 全局节流（官方 10 QPM）；
      * - 其余失败如实输出 HTTP 状态码 + QQ 错误码 + 平台原始响应。

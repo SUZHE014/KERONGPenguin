@@ -17,13 +17,13 @@ import java.util.concurrent.CopyOnWriteArrayList
  * 服务器控制台命令执行器（等价 Spigot 版 BukkitConsoleSender）：
  * 在服务器线程经 Commands#performPrefixedCommand 派发命令。
  *
- * 1.7.0 修复「/执行命令 执行完没有输出」：旧版在完成回调里先
+ * 修复「/执行命令 执行完没有输出」：旧版在完成回调里先
  * stopCapture()（内部会清空调用方再无法读取）再 complete(result)，
  * 随后读取 rawString 拿到的永远是空列表——命令明明执行了、QQ 群却
  * 收不到任何输出。现在停止捕获时先把已捕获的行落进 [capturedText]，
  * rawString 从这里读取。
  *
- * 1.7.2 噪音修复（用户实测：QQ 回复里混入与命令无关的周期性日志——
+ * 噪音修复（用户实测：QQ 回复里混入与命令无关的周期性日志——
  * NeoForge 模组的 [MediaSource] 媒体刷屏、[Not Secure] 聊天行等）：
  * - 命令源改用**包装的 CommandSourceStack**——withSource(收集器) 把
  *   命令反馈（sendSuccess / sendFailure → CommandSource.sendSystemMessage）
@@ -35,7 +35,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  * - withSource 在个别运行版本缺失时（NoSuchMethodError）自动回退到
  *   未包装源（行为退回旧版 + 黑名单兜底，不会让命令执行失败）。
  *
- * 1.7.2 控制台记录修复（用户实测：QQ 群远程执行的命令执行正确、返回
+ * 控制台记录修复（用户实测：QQ 群远程执行的命令执行正确、返回
  * 正常，但控制台与 latest.log 里没有任何记录）——旧版用真实控制台源时
  * 输出自然落控制台；改用包装源后命令输出只进了 QQ 回复：
  * - execute() 派发前先经 mod logger 记录命令本身（[QQ 远程命令] 执行: /xxx）；
@@ -71,14 +71,14 @@ class NeoForgeConsoleExecutor(private val plugin: KERONGNeoForge) : HExecution {
         server.execute {
             try {
                 val base = server.createCommandSourceStack()
-                // 1.7.2：把命令反馈引到收集源（只有该源收到的行才进返回）；
+ // 把命令反馈引到收集源（只有该源收到的行才进返回）；
                 // withSource 个别版本缺失时回退未包装源（日志黑名单兜底）
                 val target: CommandSourceStack = try {
                     base.withSource(collector)
                 } catch (_: Throwable) {
                     base
                 }
-                // 1.7.2 控制台记录修复：命令本身先落控制台再派发
+ // 控制台记录修复：命令本身先落控制台再派发
                 try {
                     consoleLogger.info("[QQ 远程命令] 执行: $command")
                 } catch (_: Throwable) {
@@ -105,7 +105,7 @@ class NeoForgeConsoleExecutor(private val plugin: KERONGNeoForge) : HExecution {
     }
 
     /**
-     * 收集命令反馈的 CommandSource（1.7.2）。
+ * 收集命令反馈的 CommandSource。
      *
      * - sendSystemMessage 收到的行进 [lines]（命令的全部 sendMessage 反馈）；
      * - acceptsSuccess / acceptsFailure = true（与控制台一致：成功与失败
@@ -122,7 +122,7 @@ class NeoForgeConsoleExecutor(private val plugin: KERONGNeoForge) : HExecution {
             try {
                 val line = component.getString()
                 messages.add(line)
-                // 1.7.2 控制台记录修复：收集的同时转发控制台 / latest.log
+ // 控制台记录修复：收集的同时转发控制台 / latest.log
                 //（剥颜色码；[QQ 远程命令] 前缀已入噪音黑名单，不会经
                 // Appender 回退再混进 QQ 回复）
                 try {

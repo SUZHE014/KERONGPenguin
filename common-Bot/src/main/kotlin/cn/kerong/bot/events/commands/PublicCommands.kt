@@ -12,39 +12,40 @@ import io.github.kloping.qqbot.entities.qqpd.User
 import java.util.concurrent.CompletableFuture
 
 /**
- * 公开命令：帮助 / 玩家名片 / 查信息 / 查在线 / 发信息 / 黑名单 / 重新绑定 / AI 上下文 / 切换服务器等。
+ * 公开命令：菜单 / 玩家名片 / 查信息 / 查在线 / 发信息 / 黑名单 / 重新绑定 / AI 管理 / 切换服务器等。
  *
- * 1.7.4 覆盖版：指令改名（与 HuHoBot 语义对齐）——
+ * 指令改名（与 HuHoBot 语义对齐）——
  * - 旧「查询open ID」改名为「查信息」（查 OpenId，配置 bot.groups 用）;
  * - 旧「查信息」（玩家统计卡片）改名为「玩家名片」。
  *
- * 1.7.4 第三轮覆盖版：
+ * 
  * - 旧版指令兜底全部下线（用户指令：「那些旧版指令兜底都去掉」）——
  *   「查询open ID」及其大小写变体不再是 /查信息 的隐藏别名，指令只认现名；
  * - 新增 /切换服务器（多服务器集群，见 [ClusterState]；与 HuHoBot 的
- *   多服务器概念一致）。
+ *   多服务器概念一致）；
+ * - /帮助 替换为 /菜单（输出全部指令按钮），原 AI 上下文两条命令
+ *   合并为 /AI管理（AI 关闭时同步关闭）。
  *
- * 1.6.0：全部文本回复改走消息模板系统（[MessageTemplates]）——
+ * 全部文本回复改走消息模板系统（[MessageTemplates]）——
  * 每条回复对应数据目录 Markdown/ 下一个 .md 模板文件（配置 messages 段可换文件），
- * 默认模板内容与 1.5.7.3 硬编码文本一字不差；模板渲染出口统一应用经济别名
- * （economy-alias）。
+ * 模板渲染出口统一应用经济别名（economy-alias）。
  *
- * 1.5.7.4：/查在线 新增别名 /在线（不出现在快捷指令菜单，
+ * /查在线 新增别名 /在线（不出现在快捷指令菜单，
  * 命令开关与 commands.查在线 共用）。
  *
- * 1.5.3：/查信息（现玩家名片）@成员 查询该成员绑定的玩家；/查询OpenID（现查信息）反查 QQ 账号。
+ * /查信息（现玩家名片）@成员 查询该成员绑定的玩家；/查询OpenID（现查信息）反查 QQ 账号。
  *
- * 1.6.9.3：移除 /在线服务器 与 /motd 两条命令（用户需求；服务器地址
+ * 移除 /在线服务器 与 /motd 两条命令（用户需求；服务器地址
  * 改由服主自行在群里公告，插件侧不再提供查询）。
  */
 class PublicCommands : CommandSupport() {
 
     /**
      * /玩家名片 —— 查询 QQ 绑定玩家的生涯统计卡片（渲染为图片发送，不 @ 提及）。
-     * 1.5.2 前名为 /个人信息，1.5.2-1.7.4 初版名为 /查信息，1.7.4 覆盖版更名 /玩家名片
+ * 前名为 /个人信息，1.5.2-1.7.4 初版名为 /查信息，更名 /玩家名片
  * （「查信息」名字让位给原 /查询open ID 的 OpenId 查询）。未绑定则提示先完成绑定。
      *
-     * 1.5.3：支持 `/玩家名片 @成员` 查询该成员绑定的玩家信息（
+ * 支持 `/玩家名片 @成员` 查询该成员绑定的玩家信息（
      * 提及数据来自消息 mentions 字段而非命令参数——@ 片段在命令分发前已被剥离）；
      * 未绑定时提示该成员先完成绑定。
      *
@@ -80,12 +81,12 @@ class PublicCommands : CommandSupport() {
             MessageTemplates.sendDirect(event, "qq-unknown")
             return
         }
-        // 1.5.3：若 @ 了其他成员则查询该成员的绑定玩家（排除机器人自身）
+ // 若 @ 了其他成员则查询该成员的绑定玩家（排除机器人自身）
         val mentioned = extractMentionedQqInfo(event)
         if (mentioned != null) {
             val targetId = mentioned.firstOrNull() ?: return
             val targetName = mentioned.getOrNull(1) ?: targetId
-            // 1.7.4：目标成员名下绑定多个玩家时，由发起者点击按钮（或回复数字）选择要查询的玩家
+ // 目标成员名下绑定多个玩家时，由发起者点击按钮（或回复数字）选择要查询的玩家
             cn.kerong.bot.events.PlayerSelection.requireBoundPlayer(
                 event, bindManager, targetId,
                 notBoundTemplate = "info-target-not-bound",
@@ -121,7 +122,7 @@ class PublicCommands : CommandSupport() {
      * 未命中再按 OpenId 反查（玩家名 ≤16 字符且字符集受限，OpenId 更长，
      * 两者实际无重叠）。
      *
-     * 1.6.5：OpenId 反查（`/查信息 <OpenId>` / @成员）结果中的 OpenId 行
+ * OpenId 反查（`/查信息 <OpenId>` / @成员）结果中的 OpenId 行
      * 仅管理员可见（避免普通群成员批量收集 OpenId 冒充绑定）；非管理员
      * 只看到群昵称、最后活跃、绑定玩家。玩家名反查的 QQ(OpenId) 行
      * 全员可见（用于核实玩家与账号的对应关系）。
@@ -208,7 +209,7 @@ class PublicCommands : CommandSupport() {
 
     /**
      * /切换服务器 —— 多服务器集群：展示当前连接本机器人的服务器列表并
-     * 按钮切换（1.7.4 第三轮覆盖版新增，开关 commands.切换服务器）。
+ * 按钮切换（开关 commands.切换服务器）。
      *
      * - 未配置集群（bot.cluster.members 少于 2 个）：回复单服提示；
      * - 已配置：输出成员列表（当前选择带 ✓ 标记）+ 内联键盘按钮，点击后
@@ -250,7 +251,7 @@ class PublicCommands : CommandSupport() {
      * 绑定查找（磁盘扫描）在当前消息线程完成，规模小可接受。
      * 名下绑定多个玩家时全部列出（不再弹选择）。
      *
-     * 1.6.5：OpenId 行仅管理员可见——非管理员查询时 {openidPart} 为空
+ * OpenId 行仅管理员可见——非管理员查询时 {openidPart} 为空
      * （模板整行隐藏），只展示群昵称 / 最后活跃 / 绑定玩家，防止 OpenId
      * 被普通群成员收集冒用（OpenId 是配置 admin.openids 与冒充绑定的凭证）。
      */
@@ -272,7 +273,7 @@ class PublicCommands : CommandSupport() {
         }
         // {lastSeenPart}：有记录时为「\n最后活跃: xxx」，无记录时为空（行不显示）
         val lastSeenPart = if (lastSeen != null) "\n最后活跃: $lastSeen" else ""
-        // {openidPart}（1.6.5）：管理员查询时为「OpenId: xxx\n」，非管理员为空（行不显示）
+ // {openidPart}：管理员查询时为「OpenId: xxx\n」，非管理员为空（行不显示）
         val openidPart = if (isAdmin(plugin, event)) "OpenId: $openId\n" else ""
         fun renderLookup(playerText: String) {
             MessageTemplates.sendDirect(event, "openid-lookup", mapOf(
@@ -318,9 +319,9 @@ class PublicCommands : CommandSupport() {
     }
 
     /**
-     * /查性能 —— 服务器性能监控卡片（1.6.7 新增，渲染图片发送）。
+ * /查性能 —— 服务器性能监控卡片（渲染图片发送）。
      *
-     * 指标：TPS / MSPT / JVM 堆内存 / 进程 CPU（1.6.7.1 起固定四项，
+ * 指标：TPS / MSPT / JVM 堆内存 / 进程 CPU（起固定四项，
      * 不再展示在线人数——查在线已有专门卡片；命令总开关
      * commands.查性能，默认开，关闭后命令失效、快捷菜单按钮同步消失）。
      *
@@ -339,19 +340,19 @@ class PublicCommands : CommandSupport() {
     }
 
     /**
-     * /查在线 —— 查询在线玩家列表：markdown 开启走模板，关闭自动渲染图片（1.5.1）。
+ * /查在线 —— 查询在线玩家列表：markdown 开启走模板，关闭自动渲染图片。
      *
-     * 1.6.7：motd.use-markdown 默认值改为 false —— 新装服务器 / 查在线 默认
+ * motd.use-markdown 默认值改为 false —— 新装服务器 / 查在线 默认
      * 输出渲染图片（毛玻璃卡片 + 真实皮肤头像）；想要简洁文字列表的把
      * motd.use-markdown 改回 true 即可（旧用户已保存的配置不受影响）。
      *
-     * 1.5.7.4：新增别名 /在线（更短的输入变体，与 /查在线 完全同一行为）；
+ * 新增别名 /在线（更短的输入变体，与 /查在线 完全同一行为）；
      * 别名不出现在 QQ 快捷指令菜单（菜单仍只展示 /查在线 按钮），
      * 命令开关与 commands.查在线 共用（关闭 查在线 时 /在线 一并失效）。
      */
     @Commands("查在线", "在线")
     fun queryOnline(plugin: KERONG, event: GroupMessageEvent, params: String) {
-        // 1.5.1：移除 text 模板回退与 query-online.image-output 配置，行为固定二选一：
+ // 移除 text 模板回退与 query-online.image-output 配置，行为固定二选一：
         // motd.use-markdown 开启且模板文件存在 → Markdown 模板输出；
         // 关闭（或模板缺失）→ 自动改用渲染图片输出（见 OnlineListService）。
         val template = if (plugin.motd.useMarkdown) plugin.markdown("queryOnline") else null
@@ -393,14 +394,27 @@ class PublicCommands : CommandSupport() {
         }
     }
 
-    /** /AI对话上下文 开|关 —— 切换全局 AI 对话上下文（管理员）。模板：ai-context-usage/on/off。 */
-    @Commands("AI对话上下文")
-    fun aiContextToggle(plugin: KERONG, event: GroupMessageEvent, params: String) {
+    /**
+     * /AI管理 —— AI 上下文统一管理入口（管理员，合并原「AI对话上下文 开|关」
+     * 与「清除当前上下文」两条命令）。
+     *
+     * - ai.enabled 关闭时本命令一并关闭（回复 ai-manage-disabled 模板）；
+     * - 带参数：/AI管理 开|关 /AI管理 清除 直接执行对应操作；
+     * - 不带参数：回复当前上下文状态并弹出三个**指令按钮**（AI上下文开启 /
+     *   AI上下文关闭 / 清除AI上下文），点击即发送对应子指令（旧客户端不渲染
+     *   按钮时手动输入即可）。模板：ai-context-usage/on/off/cleared、ai-manage-disabled。
+     */
+    @Commands("AI管理")
+    fun aiManage(plugin: KERONG, event: GroupMessageEvent, params: String) {
         if (!requireAdmin(plugin, event)) return
         val manager = try {
             QqBindManager.getInstance()
         } catch (_: Throwable) {
             MessageTemplates.sendDirect(event, "manager-not-ready-bind")
+            return
+        }
+        if (!manager.isAiEnabled) {
+            MessageTemplates.sendDirect(event, "ai-manage-disabled")
             return
         }
         val arg = params?.trim() ?: ""
@@ -415,27 +429,65 @@ class PublicCommands : CommandSupport() {
                 manager.setAiContextEnabled(group, user, false)
                 MessageTemplates.sendDirect(event, "ai-context-off")
             }
+            arg == "清除" || arg.equals("clear", true) -> {
+                manager.clearAiContext(group, user)
+                MessageTemplates.sendDirect(event, "ai-context-cleared")
+            }
             else -> {
+                // 状态 + 三个指令按钮（点击自动发送对应子指令，无需手动输入）
                 val enabled = manager.isAiContextEnabled(group, user)
-                MessageTemplates.sendDirect(event, "ai-context-usage", mapOf(
+                val message = MessageTemplates.render("ai-context-usage", mapOf(
                     "status" to (if (enabled) "开" else "关"),
                 ))
+                if (message.isEmpty()) return
+                val keyboard = cn.kerong.bot.tools.Keyboards.build(
+                    listOf(
+                        cn.kerong.bot.tools.Keyboards.Button(
+                            label = "AI上下文开启",
+                            visitedLabel = "AI上下文开启",
+                            actionData = "/AI管理 开",
+                            style = 1,
+                            actionType = 2,
+                            enter = true,
+                        ),
+                        cn.kerong.bot.tools.Keyboards.Button(
+                            label = "AI上下文关闭",
+                            visitedLabel = "AI上下文关闭",
+                            actionData = "/AI管理 关",
+                            style = 1,
+                            actionType = 2,
+                            enter = true,
+                        ),
+                        cn.kerong.bot.tools.Keyboards.Button(
+                            label = "清除AI上下文",
+                            visitedLabel = "清除AI上下文",
+                            actionData = "/AI管理 清除",
+                            style = 1,
+                            actionType = 2,
+                            enter = true,
+                        ),
+                    )
+                )
+                val user2 = try {
+                    val contact = event.sender
+                    contact?.openid ?: contact?.id ?: ""
+                } catch (_: Throwable) {
+                    ""
+                }
+                val content = if (user2.isNotEmpty()) "<@$user2>\n$message" else message
+                val sent = try {
+                    QClient.replyMarkdown(event, content, keyboard)
+                } catch (_: Throwable) {
+                    false
+                }
+                if (!sent) {
+                    // 键盘发送失败（平台拒收 / 旧客户端）：退纯文本状态提示（用法在模板文案里）
+                    MessageTemplates.sendDirect(event, "ai-context-usage", mapOf(
+                        "status" to (if (enabled) "开" else "关"),
+                    ))
+                }
             }
         }
-    }
-
-    /** /清除当前上下文 —— 清除全局 AI 对话历史（管理员）。模板：ai-context-cleared。 */
-    @Commands("清除当前上下文")
-    fun clearAiContext(plugin: KERONG, event: GroupMessageEvent, params: String) {
-        if (!requireAdmin(plugin, event)) return
-        val manager = try {
-            QqBindManager.getInstance()
-        } catch (_: Throwable) {
-            MessageTemplates.sendDirect(event, "manager-not-ready-bind")
-            return
-        }
-        manager.clearAiContext(groupId(event), userId(event))
-        MessageTemplates.sendDirect(event, "ai-context-cleared")
     }
 
     /**
@@ -469,7 +521,7 @@ class PublicCommands : CommandSupport() {
             return
         }
         manager.addBlacklist(mentionedId, mentionedName)
-        // 1.7.4：多玩家绑定——拉黑时该 QQ 名下全部绑定玩家一并解绑踢出
+ // 多玩家绑定——拉黑时该 QQ 名下全部绑定玩家一并解绑踢出
         val unbound = manager.unbindAllAndKickByQq(mentionedId)
         if (unbound.isNotEmpty()) {
             MessageTemplates.sendDirect(event, "blacklist-added-kicked", mapOf(
@@ -486,7 +538,7 @@ class PublicCommands : CommandSupport() {
     /**
      * /解除黑名单 @QQ —— 从黑名单移除 QQ（管理员）。模板：blacklist-removed/unblacklist-empty/list。
      *
-     * 1.7.4 覆盖版：不带 @ 时列出的清单消息附带**按钮键盘**——每个黑名单条目
+ * 不带 @ 时列出的清单消息附带**按钮键盘**——每个黑名单条目
      * 一个「解除」按钮，点击即移除（交互模式参考 HuHoBot 的消息按钮，
      * 见 [cn.kerong.bot.events.UnblacklistButtons]）；@成员 的直接解除路径不变。
      */
@@ -529,7 +581,7 @@ class PublicCommands : CommandSupport() {
 
     /**
      * /重新绑定 —— 解除当前 QQ 绑定并踢出玩家（自助）。模板：rebind-success/not-bound。
-     * 1.7.4：名下绑定多个玩家时先数字选择，只解绑选中的那一个（其余绑定不受影响）。
+ * 名下绑定多个玩家时先数字选择，只解绑选中的那一个（其余绑定不受影响）。
      */
     @Commands("重新绑定")
     fun rebindQq(plugin: KERONG, event: GroupMessageEvent, params: String) {
@@ -554,26 +606,119 @@ class PublicCommands : CommandSupport() {
     }
 
     /**
-     * /帮助 —— 查看命令列表（1.5.3 重排版，1.6.0 起走 help.md 模板）。
+     * /菜单 —— 输出全部可用命令的**指令按钮**（替代原 /帮助 命令列表）。
      *
-     * 模板 help.md 支持占位符：
-     * - {version}：当前插件版本号；
-     * - {leaderboardLine}：在线排行榜条目行（commands.在线排行榜 关闭时为空，
-     *   开启时为「- /在线排行榜 —— 总在线时长排行\n」）。
-     * 输出 Markdown 格式，纯文本回退时语法符号原样显示，不影响可读性。
+     * - 无需输入参数的命令（查在线 / 查性能 / 玩家名片等）：**指令按钮 +
+     *   自动发送**，点一下直接执行；
+     * - 需要手动补参数或 @ 成员的命令（绑定 / 发信息 / 执行命令 / 执行 /
+     *   管理员执行）：指令按钮**填入输入框**，补全内容后点发送；
+     * - 按钮可见性与 QQ 快捷面板同一套功能开关（commands 段 / QQ 绑定 /
+     *   签到 / 经济 / AI / 集群），关闭的功能按钮同步消失；
+     * - 按钮超上限（5 行 × 5 个）或键盘发送失败时回退纯文本模板（menu.md，
+     *   带 {version} 占位符）。
      */
-    @Commands("帮助")
-    fun help(plugin: KERONG, event: GroupMessageEvent, params: String) {
-        // 1.5.5：在线排行榜条目按命令开关动态显示（commands.在线排行榜 关闭时同步消失）
-        val leaderboardEnabled = try {
-            plugin.commandList()["在线排行榜"] != false
+    @Commands("菜单")
+    fun menu(plugin: KERONG, event: GroupMessageEvent, params: String) {
+        val buttons = buildMenuButtons(plugin, event)
+        var message = MessageTemplates.render("menu", mapOf(
+            "version" to plugin.pluginVersion,
+        ))
+        if (message.isEmpty() && buttons.isEmpty()) return
+        // 模板被清空但按钮仍在：用兜底文案保证按钮消息能发出
+        if (message.isEmpty()) message = "指令菜单：点击下方按钮执行；带参数的指令点击后复制到输入框，补全内容再发送。"
+        val keyboard = if (buttons.isNotEmpty()) cn.kerong.bot.tools.Keyboards.build(buttons) else null
+        val user = try {
+            val contact = event.sender
+            contact?.openid ?: contact?.id ?: ""
+        } catch (_: Throwable) {
+            ""
+        }
+        val content = message
+        val withMention = if (user.isNotEmpty()) "<@$user>\n$content" else content
+        val sent = if (keyboard != null) {
+            try {
+                QClient.replyMarkdown(event, withMention, keyboard)
+            } catch (_: Throwable) {
+                false
+            }
+        } else {
+            false
+        }
+        if (!sent) {
+            // 键盘发送失败（平台拒收 / 旧客户端不渲染）或无按钮：退纯文本菜单
+            try {
+                val delivered = QClient.replyMarkdown(event, withMention, null)
+                if (!delivered) event.sendMessage(withMention)
+            } catch (_: Throwable) {
+                try {
+                    event.sendMessage(withMention)
+                } catch (_: Throwable) {
+                }
+            }
+        }
+    }
+
+    /**
+     * 构建菜单按钮列表（可见性判定与 QQ 快捷面板同一套开关）。
+     *
+     * 直发型（指令按钮 + 自动发送）：无参数即可用的命令；
+     * 填框型（指令按钮 + 填入输入框）：需要补参数 / @ 成员的命令，
+     * actionData 带尾随空格方便用户紧跟输入参数。
+     */
+    private fun buildMenuButtons(plugin: KERONG, event: GroupMessageEvent): List<cn.kerong.bot.tools.Keyboards.Button> {
+        fun commandEnabled(name: String): Boolean = try {
+            plugin.commandList()[name] != false
         } catch (_: Throwable) {
             true
         }
-        MessageTemplates.sendDirect(event, "help", mapOf(
-            "version" to plugin.pluginVersion,
-            "leaderboardLine" to (if (leaderboardEnabled) "- /在线排行榜 —— 总在线时长排行\n" else ""),
-        ))
+        var qqBindEnabled = false
+        var personalInfoEnabled = true
+        var checkinEnabled = false
+        var economyAvailable = false
+        var aiEnabled = false
+        try {
+            val manager = QqBindManager.getInstance()
+            qqBindEnabled = manager.isEnabled
+            personalInfoEnabled = manager.isPersonalInfoEnabled
+            checkinEnabled = manager.isCheckinEnabled
+            economyAvailable = cn.kerong.bot.events.commands.CheckInCommands().isEconomyAvailable()
+            aiEnabled = manager.isAiEnabled
+        } catch (_: Throwable) {
+        }
+        val direct = mutableListOf<Pair<String, String>>() // label → 指令
+        val fillIn = mutableListOf<Pair<String, String>>() // label → 指令（填入输入框）
+        if (commandEnabled("菜单")) direct.add("菜单" to "/菜单")
+        if (commandEnabled("查在线")) direct.add("查在线" to "/查在线")
+        if (commandEnabled("查性能")) direct.add("查性能" to "/查性能")
+        if (commandEnabled("玩家名片") && qqBindEnabled) direct.add("玩家名片" to "/玩家名片")
+        if (commandEnabled("查信息") && qqBindEnabled && personalInfoEnabled) direct.add("查信息" to "/查信息")
+        if (commandEnabled("在线排行榜")) direct.add("在线排行榜" to "/在线排行榜")
+        if (commandEnabled("财富榜") && economyAvailable) direct.add("财富榜" to "/财富榜")
+        if (commandEnabled("签到") && checkinEnabled && qqBindEnabled) direct.add("签到" to "/签到")
+        if (commandEnabled("重新绑定") && qqBindEnabled) direct.add("重新绑定" to "/重新绑定")
+        if (commandEnabled("黑名单") && qqBindEnabled) direct.add("黑名单" to "/黑名单")
+        if (commandEnabled("解除黑名单") && qqBindEnabled) direct.add("解除黑名单" to "/解除黑名单")
+        if (commandEnabled("全量")) direct.add("全量" to "/全量")
+        if (commandEnabled("AI管理") && aiEnabled) direct.add("AI管理" to "/AI管理")
+        if (commandEnabled("切换服务器") && cn.kerong.bot.ClusterState.isMultiServer) {
+            direct.add("切换服务器" to "/切换服务器")
+        }
+        if (commandEnabled("绑定") && qqBindEnabled) fillIn.add("绑定" to "/绑定 ")
+        if (commandEnabled("发信息")) fillIn.add("发信息" to "/发信息 ")
+        if (commandEnabled("执行命令")) fillIn.add("执行命令" to "/执行命令 ")
+        if (commandEnabled("执行")) fillIn.add("执行" to "/执行 ")
+        if (commandEnabled("管理员执行")) fillIn.add("管理员执行" to "/管理员执行 ")
+        return direct.map { (label, data) ->
+            cn.kerong.bot.tools.Keyboards.Button(
+                label = label, visitedLabel = label, actionData = data,
+                style = 1, actionType = 2, enter = true,
+            )
+        } + fillIn.map { (label, data) ->
+            cn.kerong.bot.tools.Keyboards.Button(
+                label = label, visitedLabel = label, actionData = data,
+                style = 1, actionType = 2, enter = false,
+            )
+        }
     }
 
     /** /执行 <key> —— 执行自定义命令（普通权限）。无参数回复模板 invalid-params。 */
@@ -610,7 +755,7 @@ class PublicCommands : CommandSupport() {
     /**
      * 派发命令并带 @ 提及回复执行结果。
      * 回复模板：bridge-error（桥接失败）/ sent-request（已发送）/ execute-failed（异常）。
-     * 1.7.0：回复移到异步线程（完成回调可能在主线程，同步 HTTP 卡主线程）；
+ * 回复移到异步线程（完成回调可能在主线程，同步 HTTP 卡主线程）；
      * replyMarkdown 按平台响应校验真实送达，拒收时回退纯文本（见
      * CommandSupport.clipCommandOutput 与 QClient.replyMarkdown）。
      */
@@ -639,7 +784,7 @@ class PublicCommands : CommandSupport() {
 
     /**
      * 带 @ 提及的纯文本回复（命令执行结果原样转发，非模板内容）。
-     * 1.7.0：回退按 replyMarkdown 的真实送达结果（响应含消息 id 才算成功）。
+ * 回退按 replyMarkdown 的真实送达结果（响应含消息 id 才算成功）。
      */
     private fun sendDirect(event: GroupMessageEvent, message: String) {
         try {

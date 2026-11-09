@@ -16,7 +16,7 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * QQ 机器人扫码登录（1.7.4 覆盖版新增）。
+ * QQ 机器人扫码登录。
  *
  * 触发点：
  * - 启动时未配置 bot.app-id / bot.secret → **固定延时 30 秒**后再显示
@@ -38,7 +38,7 @@ import javax.crypto.spec.SecretKeySpec
  *    （已配置场景先关闭旧 WSS 会话再以新凭据重连）；
  * 5. 二维码过期（status=3）：自动重新创建任务并重发新码，**每次会话自动
  *    刷新上限 3 次**，超过后停止自动刷新，可用 /hbkrg qr 手动重新发起
- *    （1.7.4 第三轮覆盖版：旧版「官网教程二维码 + 教程链接」回落引导
+ * （旧版「官网教程二维码 + 教程链接」回落引导
  *    已按用户指令删除）。
  *
  * 协议参考实现（鸣谢）：

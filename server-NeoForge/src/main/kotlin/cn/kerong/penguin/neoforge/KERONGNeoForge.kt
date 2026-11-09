@@ -82,7 +82,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         configManager.initialize()
         File(dataFolder, "img").mkdirs()
 
-        // 1.7.3.1 第三次覆盖版：注入本服端口（MotdDisplayTracker 本机 SLP
+ // 注入本服端口（MotdDisplayTracker 本机 SLP
         // 自查询——render.performance.max-players-source = motd 时查性能展示
         // 服务器列表的实际展示值，与 Spigot 端同一机制；端口三重策略见
         // NeoPortReader：连接 channel 反射 → 专用服属性反射 → server.properties）
@@ -97,7 +97,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         // 共享实例注册 → 装载状态 → 异步启动 QQ 客户端（与 Spigot onEnable 同序）
         initializeRuntime()
         PlayerStatsManager.initialize()
-        // 1.6.6.2：启动即开启磁盘缓存清扫线程（首轮 10 秒后执行）——
+ // 启动即开启磁盘缓存清扫线程（首轮 10 秒后执行）——
         // 强制关机 / 崩溃后残留的过期头像缓存文件在下次启动 10 秒内
         // 就会被清掉，磁盘清理不依赖运行期状态（与 Spigot 同序）
         try {
@@ -105,15 +105,15 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         } catch (_: Throwable) {
         }
         registerBindLoginGate()
-        // 1.7.4 第三轮覆盖版：服务器开关消息（口径与 HuHoBot 的 server-notify
-        // 一致，默认开启；1.7.4.1 覆盖版：180 秒重启判定窗口）——启动完成时
+ // 服务器开关消息（口径与 HuHoBot 的 server-notify
+ // 一致，默认开启；180 秒重启判定窗口）——启动完成时
         // 检查上次运行如何结束（崩溃补发 / 窗口内发重启 / 超窗发开机）；
         // QQ 异步连接，通知线程就绪后自发
         try {
             cn.kerong.bot.ServerNotifyManager.onServerStarted()
         } catch (_: Throwable) {
         }
-        // 1.6.7.3：spark 接入状态提示；1.6.7.4 三态探测（ServerStarted 即
+ // spark 接入状态提示；1.6.7.4 三态探测（ServerStarted 即
         // 服务器启动成功，延迟 5 秒等 spark 统计窗口积累首批样本；成功提示
         // 受 commands.查性能 开关门控、接入失败无论开关必提示、未安装静默）
         SparkStartupCheck.schedule(SparkStartupCheck.neoforgeDelay()) {
@@ -138,7 +138,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
     }
 
     /**
-     * 挂载绑定登录闸门（1.6.4）：监听 mod 总线的配置阶段事件（20.5+
+ * 挂载绑定登录闸门：监听 mod 总线的配置阶段事件（20.5+
      * RegisterConfigurationTasksEvent / 20.4 OnGameConfigurationEvent，经
      * BindLoginGate 运行时探测），未绑定老玩家在配置阶段（进入世界之前）
      * 直接断开，绑定提示显示在连接失败界面。挂载失败不影响功能（退化为
@@ -164,7 +164,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
 
     /** 服务器停止中（ServerStoppingEvent）：落账并保存。 */
     internal fun onServerStopping() {
-        // 1.7.4 第三轮覆盖版：服务器开关消息——真实关服发「服务器已正常
+ // 服务器开关消息——真实关服发「服务器已正常
         // 关闭」（同步发送，此时 QQ 客户端仍在连接）。必须最先执行（后续
         // shutdownRuntime 会断开 QQ 连接）；ServerStoppingEvent 在 NeoForge
         // 里只会由真实关服触发（模组无插件式热重载），按真实停止处理
@@ -172,7 +172,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             cn.kerong.bot.ServerNotifyManager.onServerStopping(true)
         } catch (_: Throwable) {
         }
-        // 1.7.3.1 第三次覆盖版：清空 motd 展示值捕获器（端口注入与捕获值）
+ // 清空 motd 展示值捕获器（端口注入与捕获值）
         try {
             cn.kerong.penguin.spigot.stats.MotdDisplayTracker.reset()
         } catch (_: Throwable) {
@@ -204,7 +204,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
     }
 
     /**
-     * 关服兑底退出（1.5.4.2，仅专用服）：
+ * 关服兑底退出（仅专用服）：
      *
      * NeoForge 主线程结束后，JVM 须等所有非 daemon 线程结束才退出；
      * 尽管 SptCompat 已回收已知非 daemon 池，仍不排除残留线程
@@ -231,10 +231,10 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
     override fun reloadPluginConfig() {
         configManager.reload()
         reloadRuntimeConfig()
-        // 1.7.4：多玩家选择的待选会话随重载作废（旧闭包可能引用过期配置）
+ // 多玩家选择的待选会话随重载作废（旧闭包可能引用过期配置）
         cn.kerong.bot.events.PlayerSelection.clearAll()
         cn.kerong.bot.events.UnblacklistButtons.clearAll()
-        // 1.7.4 第三轮覆盖版：群自动绑定标记重置（清空 groups 后可再次
+ // 群自动绑定标记重置（清空 groups 后可再次
         // 自动绑定）；多服务器集群重新加载（配置 + 选择状态文件）并清弹窗节流
         cn.kerong.bot.events.AutoGroupBinder.reset()
         cn.kerong.bot.ClusterState.reload()
@@ -284,12 +284,12 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
 
     override fun groupOpenIdList(): List<String> = configManager.groupOpenIds()
 
-    // 1.7.4 第三轮覆盖版：多服务器集群配置（与 Spigot 共用 ConfigManager）
+ // 多服务器集群配置（与 Spigot 共用 ConfigManager）
     override fun clusterName(): String = configManager.clusterName()
 
     override fun clusterMembers(): List<String> = configManager.clusterMembers()
 
-    // 1.7.4.1 覆盖版：服务器开关消息配置接线（此前两端主类都未覆写这些
+ // 服务器开关消息配置接线（此前两端主类都未覆写这些
     // getter，运行时一直走 ConfigProvider 接口硬编码默认值——用户在
     // config.yml 里改 server-notify 段不生效；本轮补上两端委托，配置
     // 文件真正生效；与 Spigot 共用 ConfigManager）
@@ -336,15 +336,15 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         get() = NeoServerRef.server?.playerList?.players?.map { it.gameProfile.name } ?: emptyList()
 
     /**
-     * 服务器性能快照（1.6.7，/查性能 数据源；1.6.7.1 修复读不到；1.6.7.6 增
-     * 在线人数；1.6.7.8 移除延迟项）。
+ * 服务器性能快照（/查性能 数据源；修复读不到；增
+ * 在线人数；移除延迟项）。
      *
      * - MSPT 反射读取 MinecraftServer 的 getAverageTickTimeNanos()
      *   （1.20.5+ Mojang 映射公有方法，纳秒 → 毫秒），失败时回退
      *   tickTimesNanos / tickTimes 数组平均；NeoForge 单一服务器线程，
      *   该读数权威稳定，不需要自采样兜底；
      * - TPS 由 MSPT 换算（1000/mspt 封顶 20）；
-     * - 在线人数（1.6.7.6）：playerList 当前人数（仅人数展示）；
+ * - 在线人数：playerList 当前人数（仅人数展示）；
      * - 1.6.7.8：延迟项移除——玩家 Ping 反映的是「客户端到服务器」连接
      *   的往返，本地 / 同机 / 内网穿透部署下恒为 0ms，数据永远只代表
      *   服务器本地网络，对性能监控无实际意义（用户反馈），
@@ -355,7 +355,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
      */
     override fun performanceSnapshot(): cn.kerong.bot.PerformanceSnapshot? {
         val server = NeoServerRef.server ?: return null
-        // 1.6.7.2：装了 spark 模组时优先直接调用 spark 取数（NeoForge 无
+ // 装了 spark 模组时优先直接调用 spark 取数（NeoForge 无
         // TPS 追踪字段，spark 是最稳的来源）；spark 读不到的项逐项回退
         var sparkTps: Double? = null
         var sparkMspt: Double? = null
@@ -378,7 +378,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             ?: cn.kerong.bot.PerformanceSnapshot.readTps(server)
             ?: cn.kerong.bot.PerformanceSnapshot.tpsFromMspt(mspt)
 
-        // 1.6.7.6：在线人数（仅人数展示）；1.6.7.8 起不再采集延迟——玩家
+ // 在线人数（仅人数展示）；1.6.7.8 起不再采集延迟——玩家
         // Ping 反映的是「客户端到服务器」连接的往返，本地 / 同机 / 内网
         // 穿透部署下恒为 0ms，数据永远只代表服务器本地网络，对性能监控
         // 无实际意义（用户反馈），延迟指标与采集链路整体下线
@@ -389,8 +389,8 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             // 玩家表读取失败：人数保持 null（卡片显示「--」）
         }
 
-        // 1.6.9.3：真实最大人数（查性能卡片在线人数卡展示「N / M」；
-        // 1.7.3.1 第三次覆盖版起 motd 展示值由 MotdDisplayTracker 本机
+ // 真实最大人数（查性能卡片在线人数卡展示「N / M」；
+ // motd 展示值由 MotdDisplayTracker 本机
         // SLP 自查询捕获（双端一致），这里始终提供真实值兜底）
         val realMaxPlayers = try {
             server.playerList?.maxPlayers
@@ -459,9 +459,9 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
 
     // ---------- 日志 ----------
 
-    // 1.6.1：info 级与警告/错误一致双写（控制台 + 插件日志文件），
+ // info 级与警告/错误一致双写（控制台 + 插件日志文件），
     // 保证插件全部控制台输出都能从 logs/qq/qq-bind-日期.log 追溯。
-    // 1.6.6：控制台输出前把 § 颜色码转 ANSI 转义——log4j 不渲染 § 码，
+ // 控制台输出前把 § 颜色码转 ANSI 转义——log4j 不渲染 § 码，
     // 但 Minecraft 控制台（jline 终端）会渲染 ANSI 转义为真实颜色；
     // 终端不支持 ANSI（输出重定向）时自动退化为纯文本；文件日志
     // PluginFileLog.write 本身已剥离，不受影响。
@@ -486,7 +486,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             .resolve("kerongpenguin").toFile()
 
         /** 模组版本（与 neoforge.mods.toml 一致）。 */
-        private const val MOD_VERSION = "1.7.4"
+        private const val MOD_VERSION = "1.7.5"
 
         /** 当前模组实例（命令与事件层访问）。 */
         @Volatile

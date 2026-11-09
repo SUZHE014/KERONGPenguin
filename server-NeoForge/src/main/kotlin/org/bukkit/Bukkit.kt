@@ -41,7 +41,7 @@ object Bukkit {
         return server == null || server.isSameThread
     }
 
-    // ---------- Folia 调度器入口（1.6.0 兼容层桩） ----------
+ // ---------- Folia 调度器入口（兼容层桩） ----------
 
     // NeoForge 永远不是 Folia（FoliaCompat 按反射查找 getGlobalRegionScheduler
     // 方法判定，本平台不存在），以下入口仅让 common-Bot 的 FoliaDelegate

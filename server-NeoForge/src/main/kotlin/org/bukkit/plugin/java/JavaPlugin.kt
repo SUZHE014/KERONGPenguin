@@ -40,7 +40,7 @@ abstract class JavaPlugin : Plugin {
     }
 
     /**
-     * 日志器（java.util.logging 接口 → SLF4J 转发，1.6.3 修复）。
+ * 日志器（java.util.logging 接口 → SLF4J 转发，修复）。
      *
      * 兼容层的 logger 供共享源码（ConfigManager / QqBindManager 等）调用
      * （它们按 Bukkit 习惯调用 JUL 的 info / warning）。旧版直接返回裸
@@ -106,7 +106,7 @@ abstract class JavaPlugin : Plugin {
     val config: org.bukkit.configuration.file.FileConfiguration = org.bukkit.configuration.file.YamlConfiguration()
 
     /**
-     * 配置已从磁盘装载过（1.7.2 覆盖版）：saveConfig 的注释保留路径
+ * 配置已从磁盘装载过：saveConfig 的注释保留路径
      * 只在装载后可用；装载抛异常（文件损坏）时保持 false，避免把
      * 内存里的不完整树整盘覆盖用户文件。
      */
@@ -129,7 +129,7 @@ abstract class JavaPlugin : Plugin {
     }
 
     /**
-     * 读取模组 JAR 内资源（1.6.7.2 新增，对齐 Bukkit JavaPlugin#getResource；
+ * 读取模组 JAR 内资源（对齐 Bukkit JavaPlugin#getResource；
      * 配置版本重建器用它取 JAR 内置 config.yml 全文）。
      */
     fun getResource(name: String): InputStream? {
@@ -151,7 +151,7 @@ abstract class JavaPlugin : Plugin {
     }
 
     /**
-     * 保存配置到磁盘（1.7.2 覆盖版：注释保留保存）。
+ * 保存配置到磁盘（注释保留保存）。
      *
      * 旧版直接整树 dump，config.yml 里的注释全部丢失（bpngsz 一键切换 /
      * 配置升级补齐后文件被剥成光杆键值，教程里按注释找配置无从下手）。
@@ -182,7 +182,7 @@ abstract class JavaPlugin : Plugin {
 }
 
 /**
- * config.yml 注释保留保存（1.7.2 覆盖版，仅本兼容层使用）。
+ * config.yml 注释保留保存（仅本兼容层使用）。
  *
  * 差分思路与 ConfigFileRebuilder 同源：磁盘文本为底 → 快照树 vs 内存
  * 树逐叶子比对 → 差异键走 [YamlTextMerge] 文本合并（替换 / 插入 / 删除）

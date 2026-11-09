@@ -9,7 +9,7 @@ import org.bukkit.plugin.java.JavaPlugin
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * QQ 群自动绑定（1.7.4 第三轮覆盖版新增）。
+ * QQ 群自动绑定。
  *
  * 解决的痛点：旧流程要服主把机器人拉进群后发 /查信息 抄群 OpenId、
  * 手动粘进 config.yml 的 bot.groups 再重启——纯手工、易抄错。

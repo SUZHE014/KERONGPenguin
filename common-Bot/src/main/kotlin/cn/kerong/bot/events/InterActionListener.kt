@@ -5,20 +5,24 @@ import io.github.kloping.qqbot.api.event.InterActionEvent
 import io.github.kloping.qqbot.impl.ListenerHost
 
 /**
- * QQ 消息按钮互动（INTERACTION_CREATE）监听（1.7.4 覆盖版新增）。
+ * QQ 消息按钮互动（INTERACTION_CREATE）监听（兑底路径）。
  *
  * 注册于 QQ 客户端启动时（与群消息监听并列的第二个 ListenerHost），
  * 把按钮点击分派给各按钮流程：
  * - [PlayerSelection]（多绑定玩家选择按钮，前缀 krg:psel:）
  * - [UnblacklistButtons]（解除黑名单按钮，前缀 krg:unban:）
  * - [ServerSelectButtons]（多服务器选择/切换按钮，前缀 krg:cluster:，
- *   1.7.4 第三轮覆盖版新增——多实例集群下每台实例都收到回调并各自记录
- *   群选择，仅按钮持有会话的实例处理其余两类按钮，天然去重）
+ *   多实例集群下每台实例都收到回调并各自记录群选择，仅按钮持有会话的
+ *   实例处理其余两类按钮，天然去重）
  *
- * 官方要求：收到互动事件后必须回应（event.response(code)），否则客户端
- * 一直 loading 到超时；code 0 时客户端弹「操作成功」——只有真正处理成功
- * 才回 0，被拒绝 / 已过期 / 他人点击一律回非零静默。该回应口径与实现
- * 参考 HuHoBot（源码 https://github.com/HuHoBot/PenguinAgent 的 AgentInteractionListener）。
+ * 本监听走 SDK 的共享线程池分发，作为**兑底路径**保留：本插件按钮的
+ * 互动帧优先由 [InteractionFastPath] 在 WSS 帧层接管并即时回应（官方
+ * 要求 3 秒内回应，排队易被命令处理拖超——「第三方连接失败」的根因），
+ * 仅在帧层未接管（依赖未就绪 / 解析失败）时落到本监听。
+ *
+ * 官方回应码：0 = 成功；1 = 操作失败；2 = 操作频繁；3 = 重复操作；
+ * 4 = 没有权限；5 = 仅管理员操作。收到互动事件后必须回应
+ * （event.response(code)），否则客户端一直 loading 到超时。
  */
 class InterActionListener : ListenerHost() {
 

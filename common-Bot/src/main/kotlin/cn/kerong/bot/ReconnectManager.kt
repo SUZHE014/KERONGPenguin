@@ -6,7 +6,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * 机器人重连编排器（1.6.2 新增）。
+ * 机器人重连编排器。
  *
  * ## 背景
  *
@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger
  *   管理员只看到反复的连接日志，不知道机器人正在重试、重试了几次、
  *   还会不会继续重试；
  *
- * ## 新行为（1.6.2）
+ * ## 新行为
  *
  * 1. **重试里程碑可见**：控制台只在关键节点输出——本轮第 1 次重试、
  *    最后一次重试、重连成功、重连超时；中间几次的过程提示只写插件日志文件
@@ -101,7 +101,7 @@ object ReconnectManager {
     private var lastSessionShort = false
 
     /**
-     * 1.7.2：本轮是否把重连过程回显到 QQ 群——仅手动重连（/hbkrg chs）
+ * 本轮是否把重连过程回显到 QQ 群——仅手动重连（/hbkrg chs）
      * 触发的一轮内开启；成功或超时挂起后关闭，自动重连与首次启动不广播。
      */
     @Volatile
@@ -114,7 +114,7 @@ object ReconnectManager {
     fun isSuspended(): Boolean = suspended
 
     /**
-     * 把重连过程里程碑发送到配置的 QQ 群（1.7.2 手动重连回显）。
+ * 把重连过程里程碑发送到配置的 QQ 群（手动重连回显）。
      * 尽力而为：连接断开期间发送失败自然丢弃，不影响重连流程本身。
      */
     private fun announceToGroup(line: String) {
@@ -146,7 +146,7 @@ object ReconnectManager {
      * 防重连风暴刷屏；`bot.reconnect-notify` 关闭时第 1 次也不输出——
      * 最后一次与成功/失败提示始终输出）。
      *
-     * 1.6.6.3：计数已达上限时又开新连接（SDK 已排队的延迟重连无法从外部
+ * 计数已达上限时又开新连接（SDK 已排队的延迟重连无法从外部
      * 取消，挂起后 3 秒仍会触发一次）——按新一轮重新计数，
      * 修复「第 6/5 次」越界显示。
      */
@@ -177,7 +177,7 @@ object ReconnectManager {
     /**
      * READY / RESUMED 到达：本次尝试鉴权成功。
      *
-     * 1.6.5 修复「部分重连成功没有提示」：现改在鉴权完成（READY/RESUMED）时即宣告成功；
+ * 修复「部分重连成功没有提示」：现改在鉴权完成（READY/RESUMED）时即宣告成功；
      * 仅当上一条会话是短命会话（风暴抖动特征）时保持旧版沉默策略，等 90 秒健康判定兜底，
      * 避免风暴场景下成功/失败提示来回刷屏。
      */
@@ -227,7 +227,7 @@ object ReconnectManager {
             onHealthySession()
             return false
         }
-        // 1.6.5：短命会话标记（下一条会话 READY 时不立即宣告成功，防抖）
+ // 短命会话标记（下一条会话 READY 时不立即宣告成功，防抖）
         lastSessionShort = true
         val n = attempt.get()
         if (n < SMALL_RETRY_MAX) {
@@ -263,7 +263,7 @@ object ReconnectManager {
             builder.append("自动重试的 $BIG_ROUND_MAX 轮已全部用尽，此后需要使用 /hbkrg chs 手动恢复。")
         }
         PluginFileLog.errorAndKeep(builder.toString())
-        // 1.7.2：手动重连触发的一轮里，超时结果同步发 QQ 群（之后本轮回显结束）
+ // 手动重连触发的一轮里，超时结果同步发 QQ 群（之后本轮回显结束）
         announceToGroup(builder.toString())
         announceToGroups = false
 
@@ -303,7 +303,7 @@ object ReconnectManager {
             }
             // 期间发生过手动重试或重新挂起：本线程作废
             if (generation.get() != myGen || !suspended) return@Thread
-            // 1.6.5：新一轮开始——清零小轮计数（旧版沿用上一轮 attempt，
+ // 新一轮开始——清零小轮计数（旧版沿用上一轮 attempt，
             // 退避恢复后提示「第 6/5 次」超出上限显示）
             attempt.set(0)
             successAnnounced = false
@@ -318,7 +318,7 @@ object ReconnectManager {
     /**
      * 手动重连（/hbkrg chs）：重置全部计数，立即恢复连接。
      *
-     * 1.7.2：本轮关键里程碑同步发到配置的 QQ 群（在群里远程执行重连时
+ * 本轮关键里程碑同步发到配置的 QQ 群（在群里远程执行重连时
      * 过程可见，不必盯控制台；自动重连不广播）。
      *
      * @return 给命令发送者的结果文本
@@ -331,7 +331,7 @@ object ReconnectManager {
         bigRound.set(0)
         suspended = false
         successAnnounced = false
-        // 1.7.2：开启本轮 QQ 群过程回显
+ // 开启本轮 QQ 群过程回显
         announceToGroups = true
         val launched = QClient.resumeConnection()
         return if (launched) {
@@ -359,7 +359,7 @@ object ReconnectManager {
 }
 
 /**
- * 回复序号守卫（1.6.2 新增）：修复 QQ 官方接口 40054005「消息被去重」。
+ * 回复序号守卫：修复 QQ 官方接口 40054005「消息被去重」。
  *
  * ## 根因
  *

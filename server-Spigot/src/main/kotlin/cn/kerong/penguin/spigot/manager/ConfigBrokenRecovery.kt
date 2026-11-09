@@ -12,7 +12,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 
 /**
- * 配置文件解析失败自动恢复（1.6.7.6 新增）。
+ * 配置文件解析失败自动恢复。
  *
  * ## 修复的问题（用户日志）
  *

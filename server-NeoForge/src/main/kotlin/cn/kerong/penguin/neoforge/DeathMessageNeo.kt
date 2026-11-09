@@ -6,7 +6,7 @@ import net.minecraft.world.entity.Entity
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent
 
 /**
- * 把 NeoForge 死亡事件转成中文播报文案（1.7.4 覆盖版新增，供死亡播报用）。
+ * 把 NeoForge 死亡事件转成中文播报文案（供死亡播报用）。
  *
  * 文案口径与 Spigot 版 [cn.kerong.penguin.spigot.events.DeathMessage] 一致，
  * 两者共同参考 HuHoBot 的死亡播报实现（占位符与中文描述逐分支对齐），

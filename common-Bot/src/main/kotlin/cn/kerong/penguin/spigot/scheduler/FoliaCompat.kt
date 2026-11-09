@@ -9,7 +9,7 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /**
- * Folia 多线程区域化核心兼容桥（1.5.7.3）。
+ * Folia 多线程区域化核心兼容桥。
  *
  * 背景：Folia 是 Paper 的多线程区域化分支——整个世界被划分为多个区域，
  * 每个区域由独立线程 tick，不再存在单一主线程。传统 BukkitScheduler

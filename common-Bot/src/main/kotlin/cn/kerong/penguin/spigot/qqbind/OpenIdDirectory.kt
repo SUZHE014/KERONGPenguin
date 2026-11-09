@@ -18,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap
  * 消息里积累：每条群消息的发送者（sender.openid + username）与被 @ 的
  * 成员（mentions[].id + username）都会带昵称。
  *
- * 存储（1.5.3.1 覆盖版）：**不再有任何独立文件或第二套 ID 键**——
+ * 存储：**不再有任何独立文件或第二套 ID 键**——
  * - 已绑定玩家的昵称 / 最后活跃直接写入其 **QUUID 主文件**
  *   （`QUUID/<QUUID>.yml` 的 nickname / lastSeenAt 字段，与绑定、签到、
  *   统计同一人一文件），经绑定管理器统一锁 + 原子写，与统计等写入方
@@ -123,7 +123,7 @@ object OpenIdDirectory {
         null
     }
 
-    // ---------- 持久化（1.5.3.1 覆盖版：写入各自 QUUID 主文件） ----------
+ // ---------- 持久化（写入各自 QUUID 主文件） ----------
 
     /** 数据目录（插件根目录）。 */
     private fun dataFolder(): File? = try {
@@ -162,7 +162,7 @@ object OpenIdDirectory {
     }
 
     /**
-     * 一次性迁移（1.5.3.1 覆盖版）：把两个历史布局的昵称数据并入各自
+ * 一次性迁移：把两个历史布局的昵称数据并入各自
      * 玩家的 QUUID 主文件——
      * ① 更早的 openids.yml（全部成员合一）；
      * ② 首轮 1.5.3.1 的 QUUID/openid/<OpenId>.yml 子目录（不再使用）。

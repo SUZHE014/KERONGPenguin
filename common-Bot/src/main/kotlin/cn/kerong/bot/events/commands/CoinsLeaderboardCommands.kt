@@ -19,14 +19,14 @@ import java.util.concurrent.ConcurrentHashMap
 import java.awt.image.BufferedImage
 
 /**
- * /财富榜 —— 金币持有量排行榜图片（1.6.0 新增，1.6.2 由 /金币榜 更名）。
+ * /财富榜 —— 金币持有量排行榜图片（由 /金币榜 更名）。
  *
  * 与 /在线排行榜 同一套渲染器（[LeaderboardRenderer]）：每名玩家一行，
  * 排名徽章（前三名金 / 银 / 铜）+ 真实皮肤头像 + 玩家名 + 右侧金币数量；
  * 主标题与列表头使用经济名称（economy-alias 配置别名后自动替换「金币」二字，
  * 默认为「金币排行榜」/「金币 TOP N」）。
  *
- * 1.6.2 更名：命令由 /金币榜 改为 /财富榜，快捷菜单按钮同步更名；
+ * 更名：命令由 /金币榜 改为 /财富榜，快捷菜单按钮同步更名；
  * 旧命令 /金币榜 曾保留为隐藏别名——1.7.4 移除（配置迁移 1.6.2 时已完成，
  * 官网与帮助模板同步清理，命令只保留 /财富榜 一个入口）。
  * 消息模板文件名仍为 coins-leaderboard-*.md
@@ -42,7 +42,7 @@ import java.awt.image.BufferedImage
  * 「未安装经济插件」提示（模板 coins-leaderboard-no-economy）。
  *
  * 命令开关：commands.财富榜（默认 true）。
- * 冷却（1.6.0 起可配置）：render.command-cooldown-seconds（默认 5 秒，0 = 关闭）。
+ * 冷却（可配置）：render.command-cooldown-seconds（默认 5 秒，0 = 关闭）。
  * 提示文本模板：coins-leaderboard-no-economy / coins-leaderboard-no-data /
  * coins-leaderboard-render-failed / manager-not-ready-retry /
  * query-too-frequent / image-send-failed / server-busy（messages 段）。
@@ -67,7 +67,7 @@ class CoinsLeaderboardCommands : CommandSupport() {
     /** 原始条目（扫描 + 余额查询后的数据）。 */
     private data class RawEntry(val name: String, val uuid: UUID?, val balance: Double)
 
-    // 1.7.4：移除旧名别名「金币榜」（1.6.2 更名财富榜后保留至今；官网与配置
+ // 移除旧名别名「金币榜」（更名财富榜后保留至今；官网与配置
     // 注释同步清理，命令只保留「财富榜」一个入口）
     @Commands("财富榜")
     fun coinsLeaderboard(plugin: KERONG, event: GroupMessageEvent, params: String) {
@@ -129,7 +129,7 @@ class CoinsLeaderboardCommands : CommandSupport() {
                     }
 
                     // 4. 主线程快照在线玩家（实时皮肤）+ 并发预热头像；
-                    //    1.6.9.3：变量获取（玩家名 / 金币，同一次主线程语义内
+ // 变量获取（玩家名 / 金币，同一次主线程语义内
                     //    解析，仅对展示的 top 条目）
                     val onlineUuids = snapshotOnlineUuids()
                     val variableOverrides = snapshotVariableOverrides(topEntries)
@@ -143,7 +143,7 @@ class CoinsLeaderboardCommands : CommandSupport() {
                     val pages = ArrayList<ByteArray>(4)
                     var pageStart = 0
                     while (pageStart < topEntries.size) {
-                        // 1.7.3：单页上限改走全局配置 leaderboard.page-size（默认 20）
+ // 单页上限改走全局配置 leaderboard.page-size（默认 20）
                         val pageEnd = minOf(pageStart + RenderSettings.leaderboardPageSize(), topEntries.size)
                         val pageEntries = topEntries.subList(pageStart, pageEnd).mapIndexed { offset, raw ->
                             LeaderboardRenderer.LeaderEntry(
@@ -288,7 +288,7 @@ class CoinsLeaderboardCommands : CommandSupport() {
         if (amount == amount.toLong().toDouble()) amount.toLong().toString() else amount.toString()
 
     /**
-     * 1.6.9.3：主线程快照解析 top 玩家的变量覆盖（玩家名 / 金币）。
+ * 主线程快照解析 top 玩家的变量覆盖（玩家名 / 金币）。
      * 开关关闭或两键均未配置时零开销返回空表；超时 / 异常同样空表
      * （回退插件自带数据，不影响榜单流程）。
      */
@@ -344,7 +344,7 @@ class CoinsLeaderboardCommands : CommandSupport() {
     }
 
     /**
-     * 并发预热头像：统一走 InfoCardAssets.fetchAvatarBatch（1.7.2 重做并发
+ * 并发预热头像：统一走 InfoCardAssets.fetchAvatarBatch（重做并发
      * 策略：8 线程共享池 + 12 秒渲染等待预算，超预算不中断在途下载——后台
      * 完成后进缓存，下一轮查询即显示真实头像）；超预算未取到的玩家本轮
      * 渲染占位块；头像缓存 10 分钟，重复查询秒回。

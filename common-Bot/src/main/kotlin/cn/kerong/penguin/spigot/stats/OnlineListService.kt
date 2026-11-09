@@ -16,12 +16,12 @@ import java.util.concurrent.ConcurrentHashMap
 import java.awt.image.BufferedImage
 
 /**
- * /查在线 命令图片输出服务（1.5.0 覆盖更新新增，1.5.1 起为 markdown 关闭时的默认输出）。
+ * /查在线 命令图片输出服务（为 markdown 关闭时的默认输出）。
  *
- * 触发方式（1.5.1 简化）：motd.use-markdown 关闭（或模板缺失）时由 PublicCommands
+ * 触发方式（简化）：motd.use-markdown 关闭（或模板缺失）时由 PublicCommands
  * 自动分流到本服务，不再需要 query-online.image-output 配置。
  *
- * 1. 全流程异步（1.5.1）：机器人消息线程只做冷却判断（1.6.0 起秒数可配置
+ * 1. 全流程异步：机器人消息线程只做冷却判断（起秒数可配置
  *    render.command-cooldown-seconds，默认 5，0 = 关闭），其余全部进入
  *    [CardRenderPool] —— 包括主线程在线名单快照（异步调用时自动切回主线程，
  *    3 秒超时保护），不再阻塞消息线程；
@@ -33,7 +33,7 @@ import java.awt.image.BufferedImage
  *    img/ 目录图片，img 无可用图片时自动回退内置图；长图背景处理高度封顶
  *    （[InfoCardAssets.ONLINE_BACKGROUND_MAX_HEIGHT]），渲染时拉伸铺满，
  *    控制内存占用；
- * 4. 分段发送（1.5.5）：超过 [OnlineListRenderer.MAX_PLAYERS_PER_PAGE] 人自动
+ * 4. 分段发送：超过 [OnlineListRenderer.MAX_PLAYERS_PER_PAGE] 人自动
  *    切页多张发送 —— 第一张带标题，后续只画内容，相邻间隔 400ms 对频控友好；
  * 5. 渲染走 [CardRenderPool]（硬编码 CPU 上限），完成后自动节流 GC；
  * 6. 结果缓存 20 秒（在线名单不变时重复查询秒回，整组图片复用），
@@ -49,7 +49,7 @@ object OnlineListService {
     /** 结果缓存容量上限（防膨胀；超出先清过期再清空）。 */
     private const val RESULT_CACHE_MAX = 4
 
-    /** 多张图片相邻发送间隔（毫秒），对频控友好（1.5.5 分段发送）。 */
+ /** 多张图片相邻发送间隔（毫秒），对频控友好（分段发送）。 */
     private const val SEND_INTERVAL_MILLIS = 400L
 
     /** 用户冷却记录：OpenId → 上次触发时间。 */
@@ -84,7 +84,7 @@ object OnlineListService {
         }
 
         try {
-            // 1.5.1：全部工作（主线程快照 / 缓存判断 / 头像预热 / 渲染 / 发送）
+ // 全部工作（主线程快照 / 缓存判断 / 头像预热 / 渲染 / 发送）
             // 都在共享渲染池执行，消息线程不等待任何主线程或磁盘操作
             CardRenderPool.submit {
                 try {
@@ -112,12 +112,12 @@ object OnlineListService {
                         OnlineListRenderer.OnlineEntry(it.first, avatars[it.first])
                     }
 
-                    // 4. 背景与渲染（1.5.5 分段发送：人数过多自动切页多张，
+ // 4. 背景与渲染（分段发送：人数过多自动切页多张，
                     //    首页带标题、续页只画内容）；1.5.7 统一背景入口：
                     //    默认内置深灰底图（随 JAR 分发），开关关闭后随机用
                     //    img/ 目录图片，img 无可用图片时回退内置图；
-                    //    背景处理高度封顶（1.5.1 内存限制），渲染时 cover 裁剪铺满。
-                    //    1.7.3.1 第四次覆盖版：多页改为每页独立重新抽背景
+ // 背景处理高度封顶（内存限制），渲染时 cover 裁剪铺满。
+ // 多页改为每页独立重新抽背景
                     //    （backgroundProvider 按各页画布高度各调一次，不再
                     //    整组共用同一张——自定义 img/ 随机图时第 2 页起换图，
                     //    与在线排行榜 / 财富榜分页行为一致；内置背景与单页
@@ -191,12 +191,12 @@ object OnlineListService {
         }
         if (Bukkit.isPrimaryThread()) return snapshot()
         val bukkitPlugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin") ?: return null
-        // 1.5.7.3：经 FoliaCompat 桥接（Folia 全局区域线程限时取值，超时回退 null）
+ // 经 FoliaCompat 桥接（Folia 全局区域线程限时取值，超时回退 null）
         return FoliaCompat.callSync(bukkitPlugin, 3L) { snapshot() }
     }
 
     /**
-     * 并发预热头像：统一走 [InfoCardAssets.fetchAvatarBatch]（1.7.2 重做并发
+ * 并发预热头像：统一走 [InfoCardAssets.fetchAvatarBatch]（重做并发
      * 策略：8 线程共享池 + 12 秒渲染等待预算，超预算不中断在途下载——后台
      * 完成后进缓存，下一轮查询即显示真实头像）；超预算/失败的玩家本轮画
      * 占位块；头像获取本身带 TTL 缓存与失败负缓存（见 InfoCardAssets）。

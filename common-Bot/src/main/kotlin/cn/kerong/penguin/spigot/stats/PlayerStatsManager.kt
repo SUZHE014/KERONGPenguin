@@ -22,13 +22,13 @@ import java.util.concurrent.ConcurrentHashMap
  * 玩家统计数据记录器（/玩家名片 卡片的数据源）。
  *
  * 设计目标：低开销、崩溃安全、按玩家 UUID 一人一条。
- * - 事件实时累计：挖掘残骸 / 击杀怪物 / 屠龙 / 击杀玩家（1.5.2）/ 死亡 / 钓鱼 / 繁殖 / 触发袭击；
+ * - 事件实时累计：挖掘残骸 / 击杀怪物 / 屠龙 / 击杀玩家/ 死亡 / 钓鱼 / 繁殖 / 触发袭击；
  * - 原版统计快照：行走与飞行距离、总伤害（进入时快照 + 每 60 秒增量同步 + 退出结算），
  *   借助 MC 自带的统计系统，读取仅为主线程内几次 int 读取，开销可忽略；
  * - 游戏时间：会话实时累计（显示时加上当前会话未落账部分）；
- * - 记录维度（1.5.3.1 覆盖版）：**按玩家 UUID**——同名玩家 UUID 不同就是两个人，
+ * - 记录维度：**按玩家 UUID**——同名玩家 UUID 不同就是两个人，
  *   各自独立计数互不串数据；
- * - 持久化（1.5.3.1 覆盖版）：统计数据写入玩家自己的 **QUUID 主文件**
+ * - 持久化：统计数据写入玩家自己的 **QUUID 主文件**
  *   （`QUUID/<QUUID>.yml` 的 `stats` 节，与绑定 / 签到 / 昵称同在一人一文件里），
  *   不再有独立的 stats 子目录或第二套 ID 键；内存懒加载（进服 / 查询到该玩家时
  *   才读他那一份主文件），保存只写**有变动**的玩家（脏标记：5 分钟周期 +
@@ -38,7 +38,7 @@ import java.util.concurrent.ConcurrentHashMap
  *   迁移失败下次启动自动重试；
  * - 写入经 QqBindManager 的统一锁与原子写，与签到 / 昵称等写入方互不覆盖。
  *
- * 1.5.4：今日在线时长不再随重启清零——
+ * 今日在线时长不再随重启清零——
  * - `todaySeconds` / `today` 随统计一并持久化到 QUUID 主文件 stats 节
  *   （`stats.today-seconds` / `stats.today` 键，每 60 秒增量落账 + 退出 / 关服结算 +
  *   5 分钟保存周期），同一天内重启 / 重进服务器从上次落账值继续累计；
@@ -98,7 +98,7 @@ object PlayerStatsManager {
     @Volatile
     private var beijingTodayCache: String = ""
 
-    /** 北京日期周期刷新任务（1.5.4）。 */
+ /** 北京日期周期刷新任务。 */
     @Volatile
     private var beijingRefreshTask: Cancelable? = null
 
@@ -109,7 +109,7 @@ object PlayerStatsManager {
     /** 由插件启用时调用：迁移旧数据并启动定时任务。 */
     fun initialize() {
         migrateLegacyData()
-        // 1.5.4：立即异步网络校时一次 + 每 60 秒后台刷新北京日期缓存
+ // 立即异步网络校时一次 + 每 60 秒后台刷新北京日期缓存
         // （BeijingTimeUtil 内部缓存 5 分钟，刷新周期 60 秒时多数为零网络开销）
         refreshBeijingTodayAsync()
         beijingRefreshTask = plugin.submitTimer(20L, 20L * 60) { refreshBeijingTodayAsync() }
@@ -131,7 +131,7 @@ object PlayerStatsManager {
         } else {
             val bukkitPlugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin")
             if (bukkitPlugin != null) {
-                // 1.5.7.3：经 FoliaCompat 桥接（非主线程停用场景）
+ // 经 FoliaCompat 桥接（非主线程停用场景）
                 FoliaCompat.runSync(bukkitPlugin) {
                     flushOnlineSessions()
                     saveToDiskBlocking()
@@ -142,7 +142,7 @@ object PlayerStatsManager {
 
     /** 玩家进入：确保 QUUID 主文件存在（按 UUID，同名不同 UUID 各自独立）并懒加载统计。 */
     fun onJoin(player: Player) {
-        // 1.5.3.1 覆盖版：统计写入玩家自己的 QUUID 主文件，进服时确保存在
+ // 统计写入玩家自己的 QUUID 主文件，进服时确保存在
         val manager = bindManagerOrNull()
         if (manager != null) {
             if (migrationPending) migrateLegacyData()
@@ -173,7 +173,7 @@ object PlayerStatsManager {
      * 主线程同步一次在线玩家的增量（原版统计差量 + 游戏时间落账）。
      * 每次仅做几次 int 读取与减法，开销可忽略。
      *
-     * 1.5.7.3（Folia）：原版统计（getStatistic）属实体状态，必须在玩家
+ * 原版统计（getStatistic）属实体状态，必须在玩家
      * 所属区域线程读取——每个在线玩家的差量读取分别经实体调度器提交；
      * 落账与脏标记（均为并发容器 / 单玩家对象）不受影响。
      */
@@ -222,7 +222,7 @@ object PlayerStatsManager {
     fun onEntityDeath(killer: Player, entityType: EntityType) {
         val stats = loadOrCreate(killer.uniqueId)
         if (entityType == EntityType.PLAYER) {
-            // 1.5.2：击杀玩家单独计数（此前玩家击杀既不计屠龙也不计怪物击杀）；
+ // 击杀玩家单独计数（此前玩家击杀既不计屠龙也不计怪物击杀）；
             // 自伤/自杀已在监听器过滤，不会计入
             stats.playerKills++
         } else if (entityType == EntityType.ENDER_DRAGON) {
@@ -263,7 +263,7 @@ object PlayerStatsManager {
      * 实体线程——原版统计属实体状态）；该玩家尚未在内存时先懒加载他的
      * 数据文件（单个小文件，开销可忽略）。
      *
-     * 1.7.3：修复今日在线跨天误报——玩家全天未上线时，磁盘存档里的
+ * 修复今日在线跨天误报——玩家全天未上线时，磁盘存档里的
      * todaySeconds 停留在最后一次上线的日期（离线路径没人触发跨天重置，
      * 查询会照常展示旧日期的时长）；现在查询快照时按当前北京日期在
      * 副本上归零（存档不动，玩家下次上线时正常重置）。
@@ -275,7 +275,7 @@ object PlayerStatsManager {
         return if (Bukkit.isPrimaryThread()) {
             queryOnMainThread(uuid, session, stored)
         } else {
-            // 1.5.7.3：原版统计读取——非 Folia 主线程限时；Folia 实体线程限时
+ // 原版统计读取——非 Folia 主线程限时；Folia 实体线程限时
             // （超时 / 异常一律回退已存档数据，不拖死消息线程）
             try {
                 FoliaCompat.callOnPlayerByUuid(bukkitPlugin, uuid, 3L) {
@@ -303,10 +303,10 @@ object PlayerStatsManager {
     }
 
     /**
-     * 展示层跨天归零（1.7.3 修复今日在线误报）：存档日期不是今天时
+ * 展示层跨天归零（修复今日在线误报）：存档日期不是今天时
      * 把副本的今日在线归零——玩家全天未上线的场景旧版照常展示旧日期
      * 的时长；只动副本不改存档（存档在下次上线 / 周期落账时正常重置）。
-     * 日期为空的旧记录（1.5.4 前无此键）同样归零——其 todaySeconds
+ * 日期为空的旧记录（前无此键）同样归零——其 todaySeconds
      * 本就无从证明是今天累积的。
      */
     private fun rolledForToday(copy: PlayerStats): PlayerStats {
@@ -342,7 +342,7 @@ object PlayerStatsManager {
         session.lastDamage = damage
     }
 
-    // ---------- 装载（1.5.3.1 覆盖版：读 QUUID 主文件 stats 节） ----------
+ // ---------- 装载（读 QUUID 主文件 stats 节） ----------
 
     /** 绑定管理器（不可用时返回 null，读写方自行降级）。 */
     private fun bindManagerOrNull(): QqBindManager? = try {
@@ -375,7 +375,7 @@ object PlayerStatsManager {
         return statsByUuid.putIfAbsent(uuid, fresh) ?: fresh
     }
 
-    // ---------- 持久化（1.5.3.1 覆盖版：写入各自 QUUID 主文件 stats 节） ----------
+ // ---------- 持久化（写入各自 QUUID 主文件 stats 节） ----------
 
     /** 异步保存。 */
     fun saveToDiskAsync() {
@@ -418,7 +418,7 @@ object PlayerStatsManager {
                     markDirty(uuid) // 写失败：保住脏标记，下轮重试
                 }
             }
-            // 0.1.5.3：数据保存日志——仅一行汇总；0.1.5.4 起仅写插件日志文件不刷控制台
+ // 数据保存日志——仅一行汇总；0.1.5.4 起仅写插件日志文件不刷控制台
             PluginFileLog.write(
                 "[数据保存] 玩家统计数据已保存：$saved 个玩家（写入各自 QUUID 主文件），耗时 ${System.currentTimeMillis() - startedAt}ms"
             )
@@ -428,7 +428,7 @@ object PlayerStatsManager {
     }
 
     /**
-     * 一次性迁移（1.5.3.1 覆盖版）：把两个历史布局的统计数据并入各自玩家的
+ * 一次性迁移：把两个历史布局的统计数据并入各自玩家的
      * QUUID 主文件 stats 节——
      * ① stats.yml（老版全部玩家合一，含已归档的 stats.yml.migrated 前身）；
      * ② 首轮 1.5.3.1 的 QUUID/stats/<UUID>.yml 子目录（本次覆盖发布后不再使用）。
@@ -617,7 +617,7 @@ object PlayerStatsManager {
         flyCm = yaml.getLong("stats.fly-cm"),
         damageDealt = yaml.getLong("stats.damage-dealt"),
     ).also {
-        // 1.5.4：今日在线与日期回读（旧记录无此键 → 空日期，首次跨天判定补齐）
+ // 今日在线与日期回读（旧记录无此键 → 空日期，首次跨天判定补齐）
         it.todaySeconds = yaml.getLong("stats.today-seconds")
         it.today = yaml.getString("stats.today") ?: ""
     }
@@ -636,7 +636,7 @@ object PlayerStatsManager {
         yaml.set("stats.walk-cm", stats.walkCm)
         yaml.set("stats.fly-cm", stats.flyCm)
         yaml.set("stats.damage-dealt", stats.damageDealt)
-        // 1.5.4：今日在线随统计落盘（重启 / 重进不再清零，跨天才重置）
+ // 今日在线随统计落盘（重启 / 重进不再清零，跨天才重置）
         yaml.set("stats.today-seconds", stats.todaySeconds)
         yaml.set("stats.today", stats.today)
     }
@@ -649,7 +649,7 @@ object PlayerStatsManager {
 
 
     /**
-     * 北京当前日期（1.5.4）：优先异步网络校时缓存（与签到同一时间基准）；
+ * 北京当前日期：优先异步网络校时缓存（与签到同一时间基准）；
      * 缓存未就绪（启动初期 / 断网）时本地 Asia/Shanghai 时钟兑底，
      * 主线程调用零网络开销、零阻塞。
      */
@@ -662,7 +662,7 @@ object PlayerStatsManager {
     }
 
     /**
-     * 后台异步刷新北京日期缓存（1.5.4）。网络失败保留旧值（读取方本地兑底），
+ * 后台异步刷新北京日期缓存。网络失败保留旧值（读取方本地兑底），
      * 跨天时写一行日志便于事后核对。
      */
     private fun refreshBeijingTodayAsync() {

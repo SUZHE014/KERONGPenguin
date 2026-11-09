@@ -72,7 +72,7 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         server.pluginManager.registerEvents(GameChat(), this)
         server.pluginManager.registerEvents(PlayerEventsListener(), this)
 
-        // 1.7.3.1 第三次覆盖版：注入本服端口（MotdDisplayTracker 本机 SLP
+ // 注入本服端口（MotdDisplayTracker 本机 SLP
         // 自查询用——render.performance.max-players-source = motd 时查性能
         // 展示服务器列表的实际展示值，双端统一机制）
         cn.kerong.penguin.spigot.stats.MotdDisplayTracker.portProvider = {
@@ -86,7 +86,7 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         // 注册统计记录器（/查信息 数据源）
         PlayerStatsManager.initialize()
 
-        // 1.6.6.2：启动即开启磁盘缓存清扫线程（首轮 10 秒后执行）——
+ // 启动即开启磁盘缓存清扫线程（首轮 10 秒后执行）——
         // 不再等到首次取头像才惰性启动，强制关机 / 崩溃后残留的过期
         // 头像缓存文件在下次启动 10 秒内就会被清掉，磁盘清理不依赖
         // 运行期状态（关机前已过期但未清的文件同样覆盖）
@@ -95,7 +95,7 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         } catch (_: Throwable) {
         }
 
-        // 1.6.4：类预热（停机 zip closed 修复）
+ // 类预热（停机 zip closed 修复）
         // Paper/Purpur 停机阶段会提前关闭插件 jar 的 ZipFile 句柄，此时若
         // onDisable 里首次触发某个类的加载（旧版 CommandOutputAppender 的
         // 伴生对象在从未执行过命令输出捕获时不会被加载），
@@ -107,7 +107,7 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         } catch (_: Throwable) {
         }
 
-        // 1.6.7.6：自采样刻监视器（每 tick 一次轻量采样）——Folia 多线程核心
+ // 自采样刻监视器（每 tick 一次轻量采样）——Folia 多线程核心
         // 上反射链读不到 / 读到的全局区域值忽高忽低，自采样窗口均值是
         // MSPT / TPS 的稳定数据源（非 Folia 核心作反射链的兑底）
         try {
@@ -116,10 +116,10 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         }
 
         logCommandExecutor()
-        // 1.6.6：PlaceholderAPI 依赖检测（异步延迟 12 秒；1.6.7.3 起仅当
+ // PlaceholderAPI 依赖检测（异步延迟 12 秒；1.6.7.3 起仅当
         // 检测到 PlayerTitle 等相关依赖插件时才检测并提示）
         PapiDependencyCheck.scheduleStartupCheck(platform)
-        // 1.6.7.4：spark 接入状态提示改到「服务器启动成功之后」
+ // spark 接入状态提示改到「服务器启动成功之后」
         // （ServerLoadEvent——全部插件 enable 完毕，spark 插件已就位）；
         // 成功提示受 commands.查性能 开关门控，接入失败无论开关必提示，
         // 未安装静默（规则见 SparkStartupCheck KDoc）
@@ -135,8 +135,8 @@ class KERONGSpigot : JavaPlugin(), KERONG {
             SparkStartupCheck.schedule(12_000L) { probeSpark() }
         }
         log_info("KERONG Penguin 已加载")
-        // 1.7.4 第三轮覆盖版：服务器开关消息（口径与 HuHoBot 的 server-notify
-        // 一致，默认开启；1.7.4.1 覆盖版：180 秒重启判定窗口）——启动完成时
+ // 服务器开关消息（口径与 HuHoBot 的 server-notify
+ // 一致，默认开启；180 秒重启判定窗口）——启动完成时
         // 检查上次运行如何结束（崩溃补发 / 窗口内发重启 / 超窗发开机）；
         // QQ 异步连接，通知线程就绪后自发
         try {
@@ -146,11 +146,11 @@ class KERONGSpigot : JavaPlugin(), KERONG {
     }
 
     /**
-     * spark 可用性探测（1.6.7.4 三态 + 1.6.7.6 第四态 + 1.6.7.7 五态融合）。
+ * spark 可用性探测（三态 + 1.6.7.6 第四态 + 1.6.7.7 五态融合）。
      * 本插件名 KERONGPenguin 按字母序先于 spark 加载，onEnable 时 spark 多半
      * 尚未 enable，故仅在 ServerLoadEvent 之后调用。
      *
-     * 探测顺序（1.6.7.7 重做，对齐 1.6.7.6 覆盖版设计并强化）：
+ * 探测顺序（重做并强化）：
      * 1. 插件表查 spark（[findSparkPlugin]，大小写不敏感——Bukkit getPlugin
      *    是精确 equals，变体包名会漏检）；
      * 2. 表中查无 → **内置通道**（[SparkBridge.bundledSparkClassLoader] 在
@@ -165,7 +165,7 @@ class KERONGSpigot : JavaPlugin(), KERONG {
      *    方向而不是笼统的「接入失败」；
      * 4. 全部查无 → 未安装（静默）。
      *
-     * 1.6.7.6：Folia 下 spark 统计整体不可读属平台现状而非故障，第四态按
+ * Folia 下 spark 统计整体不可读属平台现状而非故障，第四态按
      * 信息级提示（内置采样器已兜底），不再误报「接入失败」。
      */
     private fun probeSpark(): SparkStartupCheck.ProbeOutcome = try {
@@ -243,8 +243,8 @@ class KERONGSpigot : JavaPlugin(), KERONG {
     }
 
     /**
-     * plugins 目录里的 spark 相关 JAR 文件名列表（1.6.7.7，对齐 1.6.7.6
-     * 覆盖版形态）。
+ * plugins 目录里的 spark 相关 JAR 文件名列表（对齐 1.6.7.6
+ * 形态）。
      *
      * 过滤：普通文件 + .jar 结尾 + 文件名含 "spark"（均忽略大小写）；
      * 命中文件名 join 成串用于 [SparkStartupCheck.ProbeOutcome.NotLoaded]
@@ -265,7 +265,7 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         }
     }
     override fun onDisable() {
-        // 1.7.4 第三轮覆盖版：服务器开关消息——真实关服时发「服务器已正常
+ // 服务器开关消息——真实关服时发「服务器已正常
         // 关闭」（同步发送，此时 QQ 客户端仍在连接）；插件重载 / 手动停用
         // 不发但记正常收尾，避免之后被误报成崩溃。必须最先执行（后续
         // shutdownRuntime 会断开 QQ 连接）
@@ -273,19 +273,19 @@ class KERONGSpigot : JavaPlugin(), KERONG {
             cn.kerong.bot.ServerNotifyManager.onServerStopping(isRealServerStop())
         } catch (_: Throwable) {
         }
-        // 1.7.3.1 第三次覆盖版：清空 motd 展示值捕获器（端口注入与捕获值）
+ // 清空 motd 展示值捕获器（端口注入与捕获值）
         try {
             cn.kerong.penguin.spigot.stats.MotdDisplayTracker.reset()
         } catch (_: Throwable) {
         }
-        // 1.6.4：每一步都独立捕获——停机阶段任何一步失败（含历史遗留的
+ // 每一步都独立捕获——停机阶段任何一步失败（含历史遗留的
         // 「zip file closed」类加载错误）都不应中断后续清理与服务器关服。
         // 保存统计数据
         try {
             PlayerStatsManager.shutdown()
         } catch (_: Throwable) {
         }
-        // 1.6.7.6：停止自采样刻监视器（清空窗口防下次启动残留）
+ // 停止自采样刻监视器（清空窗口防下次启动残留）
         try {
             TickMonitor.stop()
         } catch (_: Throwable) {
@@ -306,7 +306,7 @@ class KERONGSpigot : JavaPlugin(), KERONG {
     }
 
     /**
-     * 判断本次 onDisable 是否由服务器真实停止触发（1.7.4 第三轮覆盖版，
+ * 判断本次 onDisable 是否由服务器真实停止触发（
      * 服务器开关消息用）：
      * 1. Paper 系核心的 `Server#isStopping()`；
      * 2. Spigot 的 `CraftServer#getServer()` → NMS `MinecraftServer#isRunning()`
@@ -336,10 +336,10 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         configManager.reload()
         reloadRuntimeConfig()
         logCommandExecutor()
-        // 1.7.4：多玩家选择的待选会话随重载作废（旧闭包可能引用过期配置）
+ // 多玩家选择的待选会话随重载作废（旧闭包可能引用过期配置）
         cn.kerong.bot.events.PlayerSelection.clearAll()
         cn.kerong.bot.events.UnblacklistButtons.clearAll()
-        // 1.7.4 第三轮覆盖版：群自动绑定标记重置（清空 groups 后可再次
+ // 群自动绑定标记重置（清空 groups 后可再次
         // 自动绑定）；多服务器集群重新加载（配置 + 选择状态文件）并清弹窗节流
         cn.kerong.bot.events.AutoGroupBinder.reset()
         cn.kerong.bot.ClusterState.reload()
@@ -351,7 +351,7 @@ class KERONGSpigot : JavaPlugin(), KERONG {
     /**
      * 日志提示当前使用的命令执行器。
      *
-     * 修复记录（0.1.5.0）：
+ * 修复记录：
      * 旧版本默认 command-sender=Hybrid，导致纯 Spigot/Paper 服务器
      * 也提示“已启用混合控制台命令执行器”。现在：
      * - Auto（默认）：检测到混合端才使用混合执行器；
@@ -422,7 +422,7 @@ class KERONGSpigot : JavaPlugin(), KERONG {
 
     // ---------- 调度 ----------
 
-    // 1.5.7.3：全部调度经 FoliaCompat 桥接（Folia 多线程区域化核心兼容）：
+ // 全部调度经 FoliaCompat 桥接（Folia 多线程区域化核心兼容）：
     // 非 Folia 服务器行为与旧版完全一致（主线程 / 异步线程池）；
     // Folia 上分别路由到全局区域调度器 / 异步调度器，
     // 实体状态操作（踢人、统计读取）由调用方走实体调度器变体。
@@ -453,7 +453,7 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         get() = server.onlinePlayers.map { it.name }
 
     /**
-     * 服务器性能快照（1.6.7，/查性能 数据源；1.6.7.1 修复读不到；1.6.7.6 重排队列）。
+ * 服务器性能快照（/查性能 数据源；修复读不到；1.6.7.6 重排队列）。
      *
      * 采集优先级（逐项独立，单项读不到回退下一层）：
      * 1. spark（装了且可读时）：TPS / MSPT / CPU——spark 的窗口均值
@@ -487,7 +487,7 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         var sparkMspt: Double? = null
         var sparkCpu: Double? = null
         try {
-            // 1.6.7.7：插件表（大小写不敏感）查无或未启用时，尝试内置 spark
+ // 插件表（大小写不敏感）查无或未启用时，尝试内置 spark
             // 通道（Paper 1.21+ 系核心内置 spark 不注册插件表）——与启动自检
             // 同口径，装不装插件版都能接入
             val sparkPlugin = findSparkPlugin()
@@ -529,7 +529,7 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         //    本地 / 同机连接下恒为 0ms，只代表服务器本地网络，无实际监控意义）
         val onlineCount = readOnlinePlayerCount(folia)
 
-        // 5. 真实最大人数（1.6.9.3 新增：查性能卡片在线人数卡展示「N / M」；
+ // 5. 真实最大人数（查性能卡片在线人数卡展示「N / M」；
         //    render.performance.max-players-source = motd 时由查性能服务侧改用
         //    MotdDisplayTracker 本机 SLP 自查询捕获的展示人数，这里始终提供
         //    真实值兜底）
@@ -547,8 +547,8 @@ class KERONGSpigot : JavaPlugin(), KERONG {
     }
 
     /**
-     * 在线人数采样（1.6.7.6 新增；1.6.7.7 曾修复延迟 0 合法计数；
-     * 1.6.7.8 起延迟采集整体移除——玩家 Ping 只反映客户端到服务器连接
+ * 在线人数采样（曾修复延迟 0 合法计数；
+ * 起延迟采集整体移除——玩家 Ping 只反映客户端到服务器连接
      * 的往返，本地 / 同机连接下恒为 0ms，数据永远只代表服务器本地
      * 网络，对性能监控无实际意义，仅保留人数）。
      *
@@ -603,12 +603,12 @@ class KERONGSpigot : JavaPlugin(), KERONG {
 
     override fun groupOpenIdList(): List<String> = configManager.groupOpenIds()
 
-    // 1.7.4 第三轮覆盖版：多服务器集群配置
+ // 多服务器集群配置
     override fun clusterName(): String = configManager.clusterName()
 
     override fun clusterMembers(): List<String> = configManager.clusterMembers()
 
-    // 1.7.4.1 覆盖版：服务器开关消息配置接线（此前 KERONGSpigot /
+ // 服务器开关消息配置接线（此前 KERONGSpigot /
     // KERONGNeoForge 都未覆写这些 getter，运行时一直走 ConfigProvider 接口
     // 硬编码默认值——用户在 config.yml 里改 server-notify 段不生效；本轮
     // 补上两端委托，配置文件真正生效）
@@ -664,14 +664,14 @@ class KERONGSpigot : JavaPlugin(), KERONG {
 
     // ---------- 日志 ----------
 
-    // 0.1.5.5：警告与错误改为“控制台 + 插件日志文件”双写。
+ // 警告与错误改为“控制台 + 插件日志文件”双写。
     // 此前仅走 Bukkit Logger（只进控制台 / latest.log 路由不稳定的混合端），
     // 渲染失败、发送失败等报错事后无法从文件追溯——即用户反馈的
     // “部分报错没有记录在日志里面”的问题。
-    // 1.6.1：info 级同样双写（用户要求插件全部控制台输出都留档）；
+ // info 级同样双写（用户要求插件全部控制台输出都留档）；
     // 数据保存等“只留档不刷屏”的日志仍走 PluginFileLog.write 仅写文件，
     // 互不影响。
-    // 1.6.6：控制台输出前把 § 颜色码转 ANSI 转义（Bukkit JUL Logger
+ // 控制台输出前把 § 颜色码转 ANSI 转义（Bukkit JUL Logger
     // 直出 § 码不会被渲染，控制台只会显示符号本身）；终端不支持 ANSI
     // （输出重定向到文件）时自动退化为纯文本；文件行自动剥离颜色码
     // （见 PluginFileLog / ConsoleColors）。

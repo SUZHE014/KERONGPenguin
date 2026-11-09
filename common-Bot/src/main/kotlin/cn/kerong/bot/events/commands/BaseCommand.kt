@@ -61,7 +61,7 @@ abstract class BaseCommand {
         for (command in commandMap.keys.sortedByDescending { it.length }) {
             if (cleaned != command && !cleaned.startsWith("$command ")) continue
             if (plugin.commandList()[command] == false) {
-                // 1.6.0：关闭提示改走消息模板 command-disabled.md（messages 段可换文件）
+ // 关闭提示改走消息模板 command-disabled.md（messages 段可换文件）
                 MessageTemplates.sendPlain(event, "command-disabled")
                 return true
             }

@@ -10,10 +10,10 @@ import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import org.bukkit.Bukkit
 
 /**
- * /签到 —— 每日签到领取金币与点券（经济插件检测 + 到账校验，1.7.2 重做）。
+ * /签到 —— 每日签到领取金币与点券（经济插件检测 + 到账校验，重做）。
  * 连续签到按北京时间计算；离线玩家的金币奖励先记账，上线自动补发。
  *
- * 1.7.2 奖励通道（全部余额差值校验，未到账回失败提示）：
+ * 奖励通道（全部余额差值校验，未到账回失败提示）：
  * - 金币：Vault 经济优先；Vault 缺失但 CoinsEngine 可用时改走 CoinsEngine；
  *   都没有 → 沿用 1.5.5 的「无经济」分支（照常累计天数不发放）；
  * - 点券：qq-bind.checkin.points-reward > 0 且 PlayerPoints 可用时发放
@@ -21,11 +21,11 @@ import org.bukkit.Bukkit
  * - 任一通道发放后校验余额差值，未到账 → 部分失败时提示失败项，
  *   全部失败时回复签到失败（不记录今日签到，可重试）。
  *
- * 1.6.0：全部文本回复改走消息模板（checkin-*，配置 messages 段可换文件），
+ * 全部文本回复改走消息模板（checkin-*，配置 messages 段可换文件），
  * 模板渲染出口统一应用经济别名（economy-alias，签到成功文案中的「金币」
  * 二字自动替换为别名，默认不配置时与旧版输出一字不差）。
  *
- * 1.5.5：签到开启但经济插件不可用时自动关闭金币奖励——
+ * 签到开启但经济插件不可用时自动关闭金币奖励——
  * 不入账也不记账，签到照常累计（连续天数 / 总次数），
  * 成功提示不再显示金币数量（检测每次实时进行，中途装 / 卸经济插件即时生效）。
  */
@@ -39,7 +39,7 @@ class CheckInCommands : CommandSupport() {
             MessageTemplates.sendDirect(event, "manager-not-ready")
             return
         }
-        // 1.7.4 修复：QQ 绑定总开关（qq-bind.enabled）关闭时签到命令同样关闭——
+ // 修复：QQ 绑定总开关（qq-bind.enabled）关闭时签到命令同样关闭——
         // 签到建立在 QQ-玩家绑定关系之上（签到天数 / 奖励都记在绑定的玩家档案里），
         // 绑定都没开时签到没有意义（旧版只看 qq-bind.checkin.enabled，绑定关闭后
         // 历史绑定数据仍可签到，与“绑定已关闭”的状态矛盾）；面板按钮同步隐藏
@@ -56,7 +56,7 @@ class CheckInCommands : CommandSupport() {
             MessageTemplates.sendDirect(event, "qq-unknown")
             return
         }
-        // 1.7.4：多玩家绑定——名下多个玩家时先发送选择消息，数字确认后对
+ // 多玩家绑定——名下多个玩家时先发送选择消息，数字确认后对
         // 选中的玩家签到（单个玩家 / 未绑定与旧版行为一致）
         cn.kerong.bot.events.PlayerSelection.requireBoundPlayer(
             event, manager, qq,
@@ -67,7 +67,7 @@ class CheckInCommands : CommandSupport() {
         }
     }
 
-    /** 签到主体（1.7.4 从命令方法抽出：选择确认后以选中的玩家执行）。 */
+ /** 签到主体（从命令方法抽出：选择确认后以选中的玩家执行）。 */
     private fun performCheckin(
         plugin: KERONG,
         event: GroupMessageEvent,
@@ -100,7 +100,7 @@ class CheckInCommands : CommandSupport() {
         val yesterday = BeijingTimeUtil.nextDay(lastDate)
         streak = if (lastDate.isEmpty() || yesterday != today) 1 else streak + 1
 
-        // 1.7.2 奖励通道检测（实时探测，中途装卸插件即时生效）：
+ // 奖励通道检测（实时探测，中途装卸插件即时生效）：
         // - 金币：Vault 优先，缺 Vault 时回退 CoinsEngine；两者都在 → 只走 Vault
         val vaultReady = EconomyRewardService.isEconomyAvailable()
         val coinsEngineReady = !vaultReady && EconomyRewardService.isCoinsEngineAvailable()
@@ -108,7 +108,7 @@ class CheckInCommands : CommandSupport() {
         val pointsReward = EconomyRewardService.checkinPointsReward()
         val pointsReady = pointsReward > 0 && EconomyRewardService.isPointsAvailable()
 
-        // 1.5.5：金币插件全部不可用且无点券奖励 → 无经济分支：
+ // 金币插件全部不可用且无点券奖励 → 无经济分支：
         // 签到照常累计（连续天数 / 总次数），不发放也不记账，提示不显示奖励。
         // NeoForge 平台无 Vault 生态同样走本分支（旧版记入待领字段但永远无法补发，
         // 新版不再积累无效数据）。
@@ -144,7 +144,7 @@ class CheckInCommands : CommandSupport() {
 
         if (hasCoinsReward) {
             // 金币：在线直接入账（Spigot 平台），离线记账待上线补发（记账即视为成功）
-            // 1.5.4：非 Spigot 平台（NeoForge）无 Vault 经济生态，在线也走记账
+ // 非 Spigot 平台（NeoForge）无 Vault 经济生态，在线也走记账
             val online = try {
                 Bukkit.getPlayerExact(playerName) != null
             } catch (_: Throwable) {
@@ -241,7 +241,7 @@ class CheckInCommands : CommandSupport() {
     /**
      * 金币插件（Vault 经济）是否就绪。
      *
-     * 1.7.2：检测链整体移入 [EconomyRewardService]（与点券 / CoinsEngine
+ * 检测链整体移入 [EconomyRewardService]（与点券 / CoinsEngine
      * 检测同处；本方法保留为兼容桥——MenuManager 面板按钮显隐等既有调用方
      * 零改动）。
      */

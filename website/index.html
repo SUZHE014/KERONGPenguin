@@ -20,10 +20,10 @@
 <section>
 <h2>下载</h2>
 <div class="dl-box">
-<p style="font-size:1.3em;font-weight:bold;color:#e8edf2;margin-bottom:5px">版本 1.7.4.1</p>
-<p style="color:#7a848e;margin-bottom:20px">发布于 2026-11-09</p>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.4.1.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.4.1.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
+<p style="font-size:1.3em;font-weight:bold;color:#e8edf2;margin-bottom:5px">版本 1.7.5</p>
+<p style="color:#7a848e;margin-bottom:20px">发布于 2026-11-10</p>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
 <div class="dl-info">支持 MC 的版本请详见下方「支持的插件与兼容性 → 支持的服务端核心」</div>
 </div>
 </section>
@@ -38,12 +38,12 @@
 <span class="core"><i style="background:#a55cff"></i>Purpur</span>
 <span class="core"><i style="background:#3ec96b"></i>Folia（多线程区域化核心）</span>
 </div>
-<p style="color:#9aa4ae;margin-bottom:6px"><b>模组版</b>（MC 1.20.4+：1.20.4 / 1.20.6 / 1.21.x 全区间，Java 21）：</p>
+<p style="color:#9aa4ae;margin-bottom:6px"><b>模组版</b>（MC 1.20.4，1.20.6，1.21.x，Java 21）：</p>
 <div class="core-line">
 <span class="core"><i style="background:#f16436"></i>NeoForge</span>
 </div>
 <p style="font-size:1.05em;font-weight:bold;color:#e8edf2;margin:16px 0 8px">支持的插件（均为可选）</p>
-<p style="color:#9aa4ae;margin-bottom:10px">以下功能需要对应前置插件；未安装时对应统计项自动隐藏，不影响其他功能。<b>PlaceholderAPI 为变量插件，PlayerTitle 称号与「变量获取信息」经它读取；金币（Vault）与 DeluxeTags 称号直连读取、无需它。</b>装了 PlayerTitle 或开启变量获取信息却没装 PlaceholderAPI 时，启动与查询时会给出提示（都没用的服务器保持静默）。</p>
+<p style="color:#9aa4ae;margin-bottom:10px">以下功能需要对应前置插件；未安装时对应统计项自动隐藏，不影响其他功能。</p>
 <table>
 <tr><th>功能</th><th>前置插件</th><th>说明</th></tr>
 <tr><td>金币</td><td><a href="https://www.spigotmc.org/resources/vault.34315/">Vault</a> + 任意经济插件</td><td>经 Vault 经济服务直连读取</td></tr>
@@ -56,6 +56,8 @@
 <h2>历史版本</h2>
 <table>
 <tr><th>版本</th><th>发布日期</th><th>下载</th></tr>
+<tr><td>NeoForge 1.7.5</td><td>2026-11-10</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.jar">下载</a></td></tr>
+<tr><td>Spigot 1.7.5</td><td>2026-11-10</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.jar">下载</a></td></tr>
 <tr><td>NeoForge 1.7.4.1</td><td>2026-11-09</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.4.1.jar">下载</a></td></tr>
 <tr><td>Spigot 1.7.4.1</td><td>2026-11-09</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.4.1.jar">下载</a></td></tr>
 <tr><td>NeoForge 1.7.4</td><td>2026-11-08</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.4.jar">下载</a></td></tr>
@@ -81,8 +83,17 @@
 <section>
 <h2>更新日志</h2>
 <div class="changelog">
+<div class="version"><h3>v1.7.5</h3><span class="date">2026-11-10</span><ul>
+<li><b>新增：/菜单 指令按钮菜单</b>——替换原 /帮助 命令列表。发送 /菜单 输出全部可用命令的<b>指令按钮</b>：无参数指令（查在线 / 查性能 / 玩家名片 / 排行榜 / 签到等）<b>点一下直接执行</b>；需要补参数或 @ 成员的指令（绑定 / 发信息 / 执行命令 / 执行 / 管理员执行）<b>点击后复制到输入框</b>，补全内容再发送。按钮可见性与快捷面板同一套开关，关闭的功能按钮同步消失。</li>
+<li><b>AI 命令合并为 /AI管理</b>——原「/AI对话上下文 开|关」与「/清除当前上下文」两条命令合并为 <code>/AI管理</code>（可带参数 开|关|清除）；发送 /AI管理 弹出三个按钮：AI上下文开启 / AI上下文关闭 / 清除AI上下文，点击即执行。AI 功能（ai.enabled）关闭时该命令同步关闭；QQ 快捷面板按钮同步合并。</li>
+<li><b>修复：按按钮后 QQ 提示「第三方连接失败」</b>——机器人明明正常执行了操作，QQ 客户端却弹报错。根因：官方要求按钮互动必须在 3 秒内回应，而旧版回应排在命令处理线程池里，图片渲染 / AI 对话等长任务一忙就超时。现改为在 WebSocket 帧层<b>第一时间即时回应</b>，不再受任何排队影响；回应语义同步对齐官方（操作成功 / 操作失败 / 重复操作 / 没有权限）。</li>
+<li><b>修复：模组版更新检查一直提示发现 1.7.4.x 新版本</b>——模组版内部版本号常量在 1.7.4.1 时漏升（仍为 1.7.4），导致每次启动都提示有新版；现已与插件版本完全一致。</li>
+<li><b>更新检查的更新日志只显示当前新版本内容</b>，不再输出 1.7.0 以来的历史版本记录。</li>
+<li><b>解除黑名单输出重做</b>——黑名单列表的解除按钮改为<b>逐条竖排</b>（每个条目下方一个对应按钮，超过 5 条自动换网格排布，人人都有按钮）；末尾新增提示「可以按下对应的按钮，或者艾特对方发送 /解除黑名单 解除」。全部消息按钮统一<b>蓝色</b>样式。</li>
+<li><b>官网与源码注释清理</b>——移除全部版本更新轮次与版本新增标注字段。配置版本 40 → 41（<code>commands.帮助</code> → <code>commands.菜单</code>、<code>commands.AI对话上下文</code> + <code>commands.清除当前上下文</code> → <code>commands.AI管理</code>，开关值自动迁移，旧配置无需改动）。</li>
+</ul></div>
 <div class="version"><h3>v1.7.4.1</h3><span class="date">2026-11-09</span><ul>
-<li><b>修复：「@QQ用户 /查在线」这类消息误触发机器人回复</b>——群里 @ 某位成员再跟指令（无论行首还是正文中间，如「@张三 /查在线」「@张三 查信息」）本是成员间的对话，机器人不再执行其中的命令，也不再触发纯数字自动绑定与多玩家选择确认；@机器人 + 指令、直接发指令的行为不变（1.7.4 特性保持）；消息转发到游戏不受影响。</li>
+<li><b>修复：「@QQ用户 /查在线」这类消息误触发机器人回复</b>——群里 @ 某位成员再跟指令（无论行首还是正文中间，如「@张三 /查在线」「@张三 查信息」）本是成员间的对话，机器人不再执行其中的命令，也不再触发纯数字自动绑定与多玩家选择确认；@机器人 + 指令、直接发指令的行为不变（特性保持）；消息转发到游戏不受影响。</li>
 <li><b>服务器开关消息重做</b>——默认播报文案去表情：服务器关闭改「[状态] 服务器已正常关闭」、意外关闭改「[状态] 服务器....」；<b>新增 180 秒重启判定</b>（<code>server-notify.restart-window</code> 默认 180 秒，可配置文件修改）：上次正常关闭后 180 秒内再次开机判定为<b>重启</b>，QQ 群发送「[状态] 服务器重启完毕，已正常运行(o‿∩)」；超过 180 秒再开机按普通开机处理，发送「[状态] 服务器已开启！！(≧∇≦)/」（新增 <code>server-notify.start</code> 段；首次安装不发送）。</li>
 <li><b>修复</b>：1.7.4 起 config.yml 里改 server-notify 文案 / 开关不生效的遗留问题（配置现在真正生效）。历史默认文案升级自动收敛，自改文案不动；配置版本 39 → 40，升级自动补齐，旧配置无需改动。</li>
 </ul></div>

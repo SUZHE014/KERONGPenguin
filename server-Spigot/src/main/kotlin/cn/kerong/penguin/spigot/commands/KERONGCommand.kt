@@ -12,7 +12,7 @@ import java.util.Locale
 /**
  * /hbkrg 主命令：reload / info / chs / mem / bpng / bpngsz / qr / help。
  *
- * 1.7.4 新增 qr：发起 / 重显 QQ 官方扫码登录。凭据未配置时用于首次
+ * qr：发起 / 重显 QQ 官方扫码登录。凭据未配置时用于首次
  * 绑定；已配置时也可手动发起，扫码成功后**替换**现有 bot.app-id /
  * bot.secret 并以新凭据重连（换号 / 凭据失效重新授权都无需改文件重启）。
  * 二维码每次会话自动刷新上限 3 次，超过后停止自动刷新，可再次执行本
@@ -22,24 +22,24 @@ import java.util.Locale
  * 注：QQ 群绑定已改为全自动（bot.groups 未填写时群互动消息自动写入白名单
  * 并重载，见 [cn.kerong.bot.events.AutoGroupBinder]），不再需要控制台命令。
  *
- * 1.7.1 新增 bpng / bpngsz：背景图片包下载与一键切换（共享逻辑在
+ * bpng / bpngsz：背景图片包下载与一键切换（共享逻辑在
  * [cn.kerong.penguin.spigot.render.BackgroundPackService]，双端命令层仅做
  * 线程调度与消息发送）。
  *
- * 1.7.0：主命令更名为 /hbkrg（旧名直接移除、不做兼容——
+ * 主命令更名为 /hbkrg（旧名直接移除、不做兼容——
  * 输入 /kerong 由原版「未知指令」路径处理）。
  *
- * 1.6.9.5：panel 子命令移除——reload 在重载配置后一并重新同步 QQ
+ * panel 子命令移除——reload 在重载配置后一并重新同步 QQ
  * 快捷指令面板（先删后建，按新配置重建按钮），不再需要单独命令。
  *
- * 1.6.2 新增 chs 子命令：机器人重连超时挂起或断线期间，手动重置重连计数
+ * chs 子命令：机器人重连超时挂起或断线期间，手动重置重连计数
  * 并立即重新尝试连接（等价于 30 分钟退避结束后的自动重试，任何时候可用）。
  *
- * 1.6.6.2 覆盖版新增 mem 子命令：内存诊断（JVM 堆存活 / 已提交 / 上限 +
+ * mem 子命令：内存诊断（JVM 堆存活 / 已提交 / 上限 +
  * 插件各级缓存条目），用于排查「面板显示内存高」类问题——已提交堆是
  * JVM 预留量而非插件实际存活占用。
  *
- * 1.6.9.4 reload 子命令改异步执行（配置文件读写 + 模板释放 + 缺失键补齐
+ * reload 子命令改异步执行（配置文件读写 + 模板释放 + 缺失键补齐
  * 保存全是磁盘 IO）；反馈里明确写出重载边界——bot.app-id / bot.secret
  * （QQ 凭据）与 update-check（更新检查）仅启动时读一次，改动后必须重启。
  */
@@ -49,9 +49,9 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
         val sub = if (args.isNotEmpty()) args[0].lowercase(Locale.ROOT) else "help"
         when (sub) {
             "reload" -> {
-                // 1.6.9.4：重载移入异步线程（配置读写 / 模板释放 / 缺失键
+ // 重载移入异步线程（配置读写 / 模板释放 / 缺失键
                 // 补齐保存全部是磁盘 IO，不再占用主线程），完成后反馈结果；
-                // 1.6.9.5：重载完成后顺带重新同步 QQ 快捷面板（先删后建）
+ // 重载完成后顺带重新同步 QQ 快捷面板（先删后建）
                 sender.sendMessage("${ChatColor.YELLOW}正在重载配置文件并重新同步 QQ 快捷面板（异步执行）…")
                 plugin.submitAsync {
                     try {
@@ -79,13 +79,13 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
                 return true
             }
             "chs" -> {
-                // 1.6.2：手动重连（重连超时挂起 / 断线期间随时可用）
+ // 手动重连（重连超时挂起 / 断线期间随时可用）
                 val result = cn.kerong.bot.ReconnectManager.manualReconnect()
                 sender.sendMessage("${ChatColor.GREEN}$result")
                 return true
             }
             "mem" -> {
-                // 1.6.6.2 覆盖版：内存诊断（JVM 堆存活/已提交/上限 + 插件各级缓存条目）
+ // 内存诊断（JVM 堆存活/已提交/上限 + 插件各级缓存条目）
                 sender.sendMessage("${ChatColor.GOLD}===== KERONGPenguin 内存诊断 =====")
                 for (line in cn.kerong.penguin.spigot.render.InfoCardAssets.cacheStats().split('\n')) {
                     sender.sendMessage("${ChatColor.GRAY}$line")
@@ -102,7 +102,7 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
                 return true
             }
             "qr" -> {
-                // 第五轮覆盖版：手动发起扫码登录（已配置时也可用——扫码成功后
+ // 手动发起扫码登录（已配置时也可用——扫码成功后
                 // 替换现有凭据并以新凭据重连；未配置时为首次绑定）
                 val configured = plugin.botAppId.isNotBlank() && plugin.botSecret.isNotBlank()
                 val result = cn.kerong.bot.QrLoginManager.start(manual = true)
@@ -156,13 +156,13 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
         }
     }
 
-    // ---------- 背景图片包（1.7.1） ----------
+ // ---------- 背景图片包 ----------
 
     /**
      * /hbkrg bpng [包ID|stop]：无参列出图片包；带包 ID 下载（再次执行同一
      * 命令或 stop 可中断）；下载中的进度行经主线程发回命令发送者。
      *
-     * 1.7.2：image-download.enabled 关闭时，列表与下载入口直接回复
+ * image-download.enabled 关闭时，列表与下载入口直接回复
      * 「管理员已关闭图片下载功能」并中止（bpng stop 不拦截——下载开关
      * 关闭前已开始的下载仍可中断）。
      */

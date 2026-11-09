@@ -4,13 +4,13 @@ import cn.kerong.bot.provider.plugin
 import cn.kerong.bot.tools.PluginFileLog
 
 /**
- * spark 接入状态提示（1.6.7.3 新增，1.6.7.4 调整提示规则）。
+ * spark 接入状态提示（调整提示规则）。
  *
  * /查性能 自 1.6.7.2 起检测到 spark（Spigot 端为插件、NeoForge 端为模组）
  * 时优先经其公开 API 取 TPS / MSPT / CPU——但接入与否此前只在真正查询时
  * 才能感知。
  *
- * 1.6.7.4 提示规则（用户需求）：
+ * 提示规则（用户需求）：
  * - **时机**：服务器**启动成功之后**再检测提示（Spigot 端挂 ServerLoadEvent
  *   ——全部插件 enable 完毕；NeoForge 端本就挂 ServerStartedEvent），
  *   不再在启动过程中抢跑；
@@ -41,7 +41,7 @@ object SparkStartupCheck {
     private const val RETRY_AFTER_FAILED_MILLIS = 15_000L
 
     /**
-     * spark 探测结果态（1.6.7.4 三态；1.6.7.6 第四态；1.6.7.7 重做五态：
+ * spark 探测结果态（三态；1.6.7.6 第四态；重做五态：
      * 内置 spark 通道接入 + 「文件在但未作插件加载」识别）。
      */
     sealed class ProbeOutcome {
@@ -51,7 +51,7 @@ object SparkStartupCheck {
         /**
          * spark 已接入且至少一项指标可读（携带 [SparkBridge.SparkMetrics]）。
          *
-         * 1.6.7.7 新增 [bundled] 来源标记：true = 服务器核心内置 spark
+ * [bundled] 来源标记：true = 服务器核心内置 spark
          * （Paper 1.21+ / Purpur / Folia 1.21 与 26.x 系把 spark 类挂在系统
          * 类路径上、不注册插件表——插件表查无但内置通道可读，用户没装
          * 插件也能接入）；false = 传统 spark 插件。提示文案区分
@@ -63,7 +63,7 @@ object SparkStartupCheck {
         class Failed(val reason: String) : ProbeOutcome()
 
         /**
-         * spark 已安装且已启用，但其统计在当前核心下整体不可读（1.6.7.6 新增：
+ * spark 已安装且已启用，但其统计在当前核心下整体不可读（
          * Folia 区域化多线程核心下 spark 的 tps/mspt 等统计可能返回空，
          * 不属于接入故障——插件已改用内置采样器 [TickMonitor]，数据照常可用；
          * 按信息级提示一次，不再当作「接入失败」警告，避免「装了 spark
@@ -73,7 +73,7 @@ object SparkStartupCheck {
 
         /**
          * plugins 目录里放着 spark 相关 JAR 但服务器未将其作为插件加载
-         * （1.6.7.7 重做，对齐 1.6.7.6 覆盖版设计）——最常见原因：下载到的
+ * （重做）——最常见原因：下载到的
          * 是模组版 spark（Modrinth 分发的全是 NeoForge/Fabric/Forge 变体，
          * 放进 plugins/ 无法识别，Bukkit 插件版需从 spark.lucko.me 下载）；
          * 或当前核心（Paper 1.21+ 系）已内置 spark 且默认忽略自装插件版
@@ -97,7 +97,7 @@ object SparkStartupCheck {
             }
             try {
                 var outcome = sparkProbe()
-                // 1.6.7.5：接入失败先静默复测一轮再定性——spark 统计窗口在
+ // 接入失败先静默复测一轮再定性——spark 统计窗口在
                 // 启动初期可能尚未积累首批样本（反射链已修复的前提下，
                 // 偶发首轮读不到通常只是窗口未热），避免误报接入失败
                 if (outcome is ProbeOutcome.Failed) {
@@ -114,7 +114,7 @@ object SparkStartupCheck {
                         PluginFileLog.write("[性能数据] 未检测到 spark，/查性能 使用内置反射链读取")
                     }
                     is ProbeOutcome.Installed -> {
-                        // 1.6.7.7：来源标记（核心内置 / 插件）——用户没装插件
+ // 来源标记（核心内置 / 插件）——用户没装插件
                         // 也能接入内置 spark，来源说明防止被当成误报
                         val readable = readableList(outcome.metrics)
                         val source = if (outcome.bundled) "服务器核心内置" else "插件"
@@ -138,7 +138,7 @@ object SparkStartupCheck {
                         )
                     }
                     is ProbeOutcome.NoStatsOnThisCore -> {
-                        // 1.6.7.6：spark 已装但当前核心无统计（如 Folia）——不是接入
+ // spark 已装但当前核心无统计（如 Folia）——不是接入
                         // 故障，/查性能 已用内置采样器正常取数；信息级提示一次，
                         // 不再按接入失败警告（用户反馈「装了还是提示没接入」）
                         PluginFileLog.infoAndKeep(
@@ -146,7 +146,7 @@ object SparkStartupCheck {
                         )
                     }
                     is ProbeOutcome.NotLoaded -> {
-                        // 1.6.7.7：spark 文件在但未作插件加载——给出可操作的排查
+ // spark 文件在但未作插件加载——给出可操作的排查
                         // 方向（模组版误装 / 核心已内置）而不是笼统的「接入失败」
                         PluginFileLog.warnAndKeep(
                             "[性能数据] plugins 目录存在 spark 相关文件（${outcome.fileNames}），但服务器未将它作为插件加载——/查性能 将回退内置反射链读取，功能不受影响。\n" +

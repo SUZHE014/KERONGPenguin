@@ -22,10 +22,10 @@ import java.nio.file.StandardCopyOption
  * 4. 合并结果先试解析校验（解析失败 / 版本号不对则放弃重建走旧流程，
  *   用户旧文件不受影响），再原子替换落盘。
  *
- * 1.7.2 覆盖版：升级备份文件已移除（用户要求）——重建本身先校验后落盘，
+ * 升级备份文件已移除（用户要求）——重建本身先校验后落盘，
  * 失败时旧文件分毫不动，无需额外备份文件。
  *
- * 1.7.0：**旧默认值 → 新默认值的升级机制已移除**（用户要求）——
+ * **旧默认值 → 新默认值的升级机制已移除**（用户要求）——
  * 升级只重建文件结构与注释，用户文件里已有的值一律原样保留，
  * 不再因「仍等于旧默认」而被换成新默认。
  *
@@ -93,9 +93,9 @@ internal object ConfigFileRebuilder {
             if (disk.contains(removed)) disk.set(removed, null)
         }
 
-        // 1.7.2 覆盖版：标题框接线改版的旧默认收敛（96 → 80）——四张卡片顶部
+ // 标题框接线改版的旧默认收敛（96 → 80）——四张卡片顶部
         // 标题区从硬编码改接 render.title-card-gray，默认值 96 → 80；旧版
-        // 1.7.2 的 96 是默认写入而非用户意图，升级时自动收敛为新默认
+ // 的 96 是默认写入而非用户意图，升级时自动收敛为新默认
         // （自行改过该值的配置不受影响；重建仅在磁盘版本低于 30 时触发）
         if (disk.getInt("render.title-card-gray", -1) == 96) {
             disk.set("render.title-card-gray", 80)
@@ -110,7 +110,7 @@ internal object ConfigFileRebuilder {
             disk.set("render.subtitle-card-gray", 106)
         }
 
-        // 服务器开关消息默认文案换新（1.7.4.1 覆盖版：去表情 + 重启 / 开机
+ // 服务器开关消息默认文案换新（去表情 + 重启 / 开机
         // 文案分开）——全部历史默认文案（第三轮初始版 / 第六轮带表情版 /
         // 第六轮误写版 / 第七轮颜文字修正版）都是默认写入而非用户意图，
         // 升级时自动收敛为新默认（自行改过文案的配置不受影响；重建仅在
@@ -134,7 +134,7 @@ internal object ConfigFileRebuilder {
             disk.set("server-notify.crash.message", "[状态]\n服务器....")
         }
 
-        // 1.7.0：旧默认值→新默认值的升级收敛已移除（用户要求）——
+ // 旧默认值→新默认值的升级收敛已移除（用户要求）——
         // 用户文件里已有的值一律原样回填保留，不做「等于旧默认则换成
         // 新默认」的识别（历史上有 from-group / idle-release-minutes /
         // performance.cache-seconds 三处，现全部不再自动升级）
@@ -169,7 +169,7 @@ internal object ConfigFileRebuilder {
             return false
         }
 
-        // 6. 原子写入（1.7.2 覆盖版：不再另存升级备份文件）
+ // 6. 原子写入（不再另存升级备份文件）
         try {
             val tmp = File(file.parentFile, "config.yml.tmp")
             Files.write(tmp.toPath(), merged.toByteArray(StandardCharsets.UTF_8))
@@ -189,7 +189,7 @@ internal object ConfigFileRebuilder {
     /**
      * 解析 YAML 文本（解析失败抛异常，由调用方捕获判定；双端同名 API）。
      *
-     * 1.6.7.2 覆盖版：改用 load(Reader) 实例方法（解析失败抛出）——
+ * 改用 load(Reader) 实例方法（解析失败抛出）——
      * 旧写法 loadConfiguration(Reader) 是“吞异常打 ERROR 返回空配置”的
      * 容错 API，解析失败永远走不到调用方的 catch，只能靠版本号不一致
      * 兼底，且会在控制台刷一大段吓人的异常堆栈。
@@ -226,7 +226,7 @@ internal object ConfigFileRebuilder {
 }
 
 /**
- * YAML 文本合并器（1.6.7.2 新增）：以带注释的模板文本为底，逐行替换 /
+ * YAML 文本合并器：以带注释的模板文本为底，逐行替换 /
  * 插入指定键值，不经 YAML 序列化重写——全部注释与段落结构原样保留。
  *
  * 仅支持本插件 config.yml 的书写风格（块缩进、每行一个 key: value、
@@ -272,7 +272,7 @@ internal object YamlTextMerge {
         merge(templateText, overrides, emptySet())
 
     /**
-     * 合并入口（1.7.2 覆盖版新增 removals）：在替换 / 插入之外，把指定
+ * 合并入口（ removals）：在替换 / 插入之外，把指定
      * 路径的键行连同块体与紧贴上方的注释块一并删除（供注释保留保存的
      * 「内存树已删除键 → 文本同步删除」差分使用）。
      *
@@ -323,7 +323,7 @@ internal object YamlTextMerge {
             findInsertion(lines, kinds, pathIndex, path, value)?.let { edits.add(it) }
         }
 
-        // 2c. 删除指定键（1.7.2 覆盖版）：键行 + 块体 + 紧贴上方无空行间隔的
+ // 2c. 删除指定键：键行 + 块体 + 紧贴上方无空行间隔的
         // 注释块（那些注释属于该键）；被删键的子键若还在 overrides 里一律跳过
         for (path in removals) {
             val line = pathIndex[path] ?: continue
@@ -366,12 +366,12 @@ internal object YamlTextMerge {
     /**
      * 键值 → 行（标量一行；列表一律行内 flow 单行，与模板书写风格一致）。
      *
-     * 1.6.7.2 覆盖版修复：列表按类型分派，不再依赖 dump 结果是否含换行判
+ * 修复：列表按类型分派，不再依赖 dump 结果是否含换行判
      * 分支——单元素列表 dump 出的是单行“- item”（不含换行），旧判式把它
      * 误当标量拼成“key: - item”非法 YAML，单群用户的 bot.groups 回填
      * 恰好踩中（合并结果解析失败 → 配置重建放弃）。
      *
-     * 1.6.7.3 再修（用户反馈「配置更新后格式丢失」）：旧版回填列表统一
+ * 再修（用户反馈「配置更新后格式丢失」）：旧版回填列表统一
      * 输出块状无引号项行（groups 与缩进项分两行写），用户按教程写的
      * 行内带引号格式 `groups: ["xxx"]` 每次升级就被改写成块状裸串，
      * 看着像 groups 值丢失、只剩 OpenID 字符串值保留原样。现改为：

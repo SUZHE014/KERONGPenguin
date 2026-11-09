@@ -8,7 +8,7 @@ import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * /解除黑名单 的按钮交互（1.7.4 覆盖版新增）。
+ * /解除黑名单 的按钮交互。
  *
  * 旧版流程：/解除黑名单 列出黑名单编号清单 → 管理员按清单
  * @ 对应成员或手动输入 OpenId 解除——群里没有可点的入口。
@@ -71,13 +71,16 @@ object UnblacklistButtons {
             "list" to list,
         ))
         if (message.isEmpty()) return false
-        val keyboard = Keyboards.build(
+        // 按钮竖排：每个黑名单条目一行按钮，与清单序号一一对应（条目 ≤ 5 时
+        // 每行一个按钮，顺序同清单；超过 5 行时自动回落横排网格，保证全部
+        // 条目都有对应按钮）；样式统一蓝色线框。
+        val keyboard = Keyboards.buildVertical(
             entries.map { (openId, name) ->
                 Keyboards.Button(
                     label = "解除 $name",
                     visitedLabel = "已解除 $name",
                     actionData = "$ACTION_PREFIX$openId",
-                    style = 0,
+                    style = 1,
                 )
             }
         )
@@ -97,6 +100,10 @@ object UnblacklistButtons {
     /**
      * 按钮点击处理。
      *
+     * 回应码（官方语义）：成功 = 0；会话缺失 / 已过期 = 1（操作失败）；
+     * 点击的条目不在本次清单里（旧消息残留按钮）= 3（重复操作）；
+     * 他人点击 = 4（没有权限）。
+     *
      * @return 是否接管了这次互动（不属于本流程时返回 null）
      */
     fun onInteraction(
@@ -112,7 +119,7 @@ object UnblacklistButtons {
             return true
         }
         if (userOpenId.isBlank()) {
-            respond(1)
+            respond(4)
             return true
         }
         val key = "$groupOpenId\n$userOpenId"
@@ -130,12 +137,12 @@ object UnblacklistButtons {
         val entry = request.entries.firstOrNull { it.first == targetOpenId }
         if (entry == null) {
             // 点击的条目不在本次清单里（旧消息残留按钮）：静默
-            respond(1)
+            respond(3)
             return true
         }
         // 身份校验：只有发起 /解除黑名单 的管理员本人能点（黑名单是管理员操作）
         if (request.initiatorOpenId != userOpenId) {
-            respond(1)
+            respond(4)
             QClient.sendMarkdownToGroup(
                 request.groupOpenId,
                 "<@$userOpenId> 这不是你发起的黑名单操作，请让发起的管理员操作（或自行发送 /解除黑名单）"

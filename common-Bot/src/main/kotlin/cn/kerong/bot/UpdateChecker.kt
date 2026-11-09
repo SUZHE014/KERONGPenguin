@@ -9,7 +9,7 @@ import java.net.URL
 import java.nio.charset.StandardCharsets
 
 /**
- * 更新检查（1.6.2 新增）：插件启动后异步访问官网的版本信息文件，发现新版本时
+ * 更新检查：插件启动后异步访问官网的版本信息文件，发现新版本时
  * 在控制台输出「最新版本号 + 下载页链接 + 简要更新日志」。
  *
  * - 官网版本文件：https://kerong.xin/penguin/version.json（每次发版由官网
@@ -22,7 +22,7 @@ import java.nio.charset.StandardCharsets
  *   （状态码 / 响应体 / 堆栈摘要）写入插件日志文件供排查；
  * - 执行时机：插件启用后异步延迟 8 秒执行（错开启动高峰，不阻塞 onEnable）。
  *
- * 1.6.7.9 镜像回退（修复「更新检测失败」红色告警在部分服务器网络下必现）：
+ * 镜像回退（修复「更新检测失败」红色告警在部分服务器网络下必现）：
  * - 部分部署环境（海外服务器 / DNS 污染 / 域名线路不可达）访问官网域名
  *   kerong.xin 失败，旧版单源访问一失败就报「更新检测失败」，服主以为插件
  *   出了问题；现改为**多源依次回退**：官网域名（主源）→ 官网服务器 IP 直连
@@ -136,8 +136,8 @@ object UpdateChecker {
                     PluginFileLog.infoAndKeep("[更新检查] 当前已是最新版本（$currentVersion）")
                     return
                 }
-                // 1.6.4：更新日志带颜色输出（§ 码）；
-                // 1.6.6：双端平台适配器 log_* 输出前把 § 码转 ANSI 转义，
+ // 更新日志带颜色输出（§ 码）；
+ // 双端平台适配器 log_* 输出前把 § 码转 ANSI 转义，
                 // Minecraft 控制台（jline 终端）渲染为真实颜色；输出重定向
                 // （无彩色终端）时自动退化为纯文本；文件日志始终剥离。
                 val lines = StringBuilder()

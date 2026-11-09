@@ -1,7 +1,7 @@
 package cn.kerong.penguin.spigot.stats
 
 /**
- * spark 性能数据桥（1.6.7.2 新增，1.6.7.5 修复反射链）。
+ * spark 性能数据桥（修复反射链）。
  *
  * /查性能 检测到服务器装了 spark（Spigot 端为插件、NeoForge 端为模组）时，
  * 优先直接调用 spark 的公开 API 读取 TPS / MSPT / CPU——spark 对各核心的
@@ -74,7 +74,7 @@ object SparkBridge {
     private const val DOUBLE_AVERAGE_INFO = "me.lucko.spark.api.statistic.misc.DoubleAverageInfo"
 
     /**
-     * 「内置 spark」通道类加载器解析（1.6.7.7 重做，对齐 1.6.7.6 覆盖版设计）。
+ * 「内置 spark」通道类加载器解析（重做）。
      *
      * Paper 1.21+ 系核心（Paper / Purpur / Folia 1.21 与 26.x）**内置 spark**：
      * 其类直接挂在服务器系统类路径上，不注册 Bukkit 插件表，自装插件版
@@ -138,7 +138,7 @@ object SparkBridge {
 
     /**
      * TPS：Spark#tps() → DoubleStatistic#poll(TicksPerSecond.MINUTES_1)。
-     * 1.6.7.7：读数封顶 20——spark 的 TPS 数据源在部分核心（尤其新版
+ * 读数封顶 20——spark 的 TPS 数据源在部分核心（尤其新版
      * Paper 系与自采样的 Spigot 系）下是对瞬时速率的无上限平均，启动
      * 追赶 / 空闲加速场景会给出 300+ 的异常值，封顶到满速 20（与
      * [cn.kerong.bot.PerformanceSnapshot] 各层一致的三重保险）。

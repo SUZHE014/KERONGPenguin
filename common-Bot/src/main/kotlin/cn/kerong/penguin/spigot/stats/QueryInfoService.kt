@@ -19,12 +19,12 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /**
- * /玩家名片（1.5.2 前名为 /个人信息，1.7.4 覆盖版前名为 /查信息）命令服务：QQ → 玩家 UUID → 数据组装 → 卡片渲染 → 图片发送。
+ * /玩家名片（前名为 /个人信息，前名为 /查信息）命令服务：QQ → 玩家 UUID → 数据组装 → 卡片渲染 → 图片发送。
  *
  * 流程：
  * 1. 通过 QQ OpenId 查找绑定的玩家（未绑定则直接提示；1.5.3 支持 `/玩家名片 @成员`
  *    查询他人，未绑定时指明是谁未绑定）；
- * 2. 汇总数据：金币（Vault）、称号（0.1.5.5 默认 DeluxeTags，含颜色码）、
+ * 2. 汇总数据：金币（Vault）、称号（默认 DeluxeTags，含颜色码）、
  *    在线时长与今日在线（本插件自记录）、累计签到（本插件签到系统）、点券（PlayerPoints）、
  *    屠龙次数 / 击杀玩家次数 / 死亡次数（本插件自记录，1.5.2 起展示）；
  * 3. 异步渲染毛玻璃风格统计卡片（背景从插件目录 img/ 随机挑选，无图用黑色；
@@ -33,13 +33,13 @@ import java.util.concurrent.TimeUnit
  * 4. 以图片消息发送到群（不 @ 提及）；发送失败时以文本回退提示，
  *    与“生成失败”区分开，便于定位是渲染问题还是机器人连接问题。
  *
- * 1.5.3：
+ * 
  * - 依赖插件缺失隐藏统计项：Vault（金币）/ DeluxeTags+Vault（称号）/ PlayerPoints（点券）
  *   任一未安装或未启用（含经济服务未注册）时对应项不渲染，签到未开启同理；
  *   卡片高度随实际项数自适应（满项 760，少一行减 96px），背景按实际高度处理；
  * - 查询他人：`/玩家名片 @成员` 渲染该成员绑定玩家的卡片，冷却按查询发起者计。
  *
- * 1.5.1：
+ * 
  * - 全链路异步：机器人消息线程只做冷却判断，绑定查找（磁盘 IO）、统计 / 称号 /
  *   金币 / 点券 / 皮肤读取（主线程单次跳转，3 秒超时）、头像 / 背景拉取、渲染与
  *   发送全部在 [CardRenderPool] 内完成，主线程只执行一次轻量采集；
@@ -50,25 +50,25 @@ import java.util.concurrent.TimeUnit
  * - 称号 / 金币 / 点券检测结果写入插件日志文件（logs/qq/qq-bind-日期.log），
  *   含检测来源与失败原因，排障时可直接翻日志定位（仅文件不刷控制台）。
  *
- * 1.5.0（覆盖更新）：
+ * 
  * - 渲染 CPU 上限硬编码：全部图片渲染共用 [CardRenderPool]，线程数固定为
  *   主机核数一半（1..4，详见 CardRenderPool，不走配置文件）；
  * - 渲染完成后释放内存：单次渲染图像立即 flush 释放栅格
- *   （1.6.5 起为确定性 flush 释放，旧版节流 GC 提示已废除）；
+ * （为确定性 flush 释放，旧版节流 GC 提示已废除）；
  * - 同一玩家的渲染结果在 TTL 内复用（默认 60 秒，render.result-cache-seconds 可调）。
  *
- * 1.6.0：查询冷却秒数可配置（render.command-cooldown-seconds，默认 5，
+ * 查询冷却秒数可配置（render.command-cooldown-seconds，默认 5，
  * 0 = 关闭）；全部文本提示改走消息模板（info-not-bound /
  * info-target-not-bound / image-send-failed / info-render-failed 等）；
  * 卡片「金币」项标签应用经济别名（economy-alias）。
  *
- * 1.6.9：变量获取信息（variable-fetch，默认关闭）——开启后总在线时长 /
+ * 变量获取信息（variable-fetch，默认关闭）——开启后总在线时长 /
  * 今日在线时长 / 金币 / 点券 / 称号五个项目改为输出服主配置的
  * PlaceholderAPI 变量内容（[PlaceholderVariableService]，在主线程快照内
  * 解析）；变量留空或解析失败自动回退插件自带数据；金币 / 称号 / 点券
  * 项在变量给出内容时即使对应依赖插件未装也展示该项。
  *
- * 1.6.9.3：
+ * 
  * - 显隐规则升级：金币 / 点券 / 称号只要**填写了变量**（无论读取成败）
  *   就展示，依赖插件未装且变量读取失败时显示「未获取成功」而不是隐藏；
  * - 新增玩家名变量（variable-fetch.player-name）：卡片头部玩家名改为
@@ -79,7 +79,7 @@ import java.util.concurrent.TimeUnit
  */
 object QueryInfoService {
 
-    /** 用户冷却记录：OpenId → 上次触发时间（间隔秒数走 RenderSettings，1.6.0 起可配置）。 */
+ /** 用户冷却记录：OpenId → 上次触发时间（间隔秒数走 RenderSettings，可配置）。 */
     private val lastQueryAt = ConcurrentHashMap<String, Long>()
 
     /** 渲染结果缓存容量上限（超出先清过期再整体清空，防膨胀）。 */
@@ -94,7 +94,7 @@ object QueryInfoService {
     /**
      * 主线程一次性采集的数据快照（1.5.1：合并为单次主线程跳转）。
      * 附带各字段的检测说明（写入日志文件，用于称号/金币/点券检测排障）。
-     * 1.5.3：新增依赖可用性标记——对应插件未安装/未启用时，该统计项不展示。
+ * 新增依赖可用性标记——对应插件未安装/未启用时，该统计项不展示。
      */
     private data class MainThreadSnapshot(
         val stats: PlayerStatsManager.PlayerStats,
@@ -110,7 +110,7 @@ object QueryInfoService {
         val titleAvailable: Boolean,
         /** PlayerPoints 是否可用——不可用时卡片不展示“点券”项。 */
         val pointsAvailable: Boolean,
-        /** 1.6.9 变量获取信息（1.6.9.3 扩展为完整上下文）：六个项目的变量
+ /** 1.6.9 变量获取信息（扩展为完整上下文）：六个项目的变量
         * 覆盖值 + 显隐标记 + 自定义项目。开关关闭时为空上下文（全回退），
         * 见 [PlaceholderVariableService]。 */
         val vars: PlaceholderVariableService.Context,
@@ -123,14 +123,14 @@ object QueryInfoService {
     private data class PointsResult(val text: String, val note: String)
 
     /**
-     * 全流程异步执行（1.5.1）：机器人消息线程仅做冷却判断，
+ * 全流程异步执行：机器人消息线程仅做冷却判断，
      * 绑定查找、数据采集、渲染与发送全部在共享渲染池完成。
      *
-     * 1.5.3：支持查询他人——`/玩家名片 @成员` 时 [qqOpenId] 为发起查询者（冷却接其计），
+ * 支持查询他人——`/玩家名片 @成员` 时 [qqOpenId] 为发起查询者（冷却接其计），
      * [targetOpenId] 为被查询成员（未绑定则提示该成员先完成绑定）；
      * 不传 [targetOpenId] 时行为与旧版一致（查询自己）。
      *
-     * 1.7.4：[selectedPlayer] 为多玩家选择确认后传入的玩家（玩家名片命令检测到
+ * [selectedPlayer] 为多玩家选择确认后传入的玩家（玩家名片命令检测到
      * 目标名下多个绑定玩家时先发数字选择消息）；传入时跳过绑定检索与
      * 冷却检查（发起命令时已通过冷却，选择确认属于同一次查询的延续）。
      */
@@ -143,8 +143,8 @@ object QueryInfoService {
         selectedPlayer: cn.kerong.penguin.spigot.qqbind.QqBindManager.BoundPlayer? = null,
     ) {
         // 查询冷却：同一用户冷却间隔内只允许一次，防止刷屏导致渲染风暴（1.5.3：按发起者计；
-        // 1.6.0：秒数可配置 render.command-cooldown-seconds，默认 5，0 = 关闭）
-        // 1.7.4：选择确认路径（selectedPlayer 非空）跳过——原命令已通过冷却检查
+ // 秒数可配置 render.command-cooldown-seconds，默认 5，0 = 关闭）
+ // 选择确认路径（selectedPlayer 非空）跳过——原命令已通过冷却检查
         if (selectedPlayer == null) {
             val cooldownMillis = cn.kerong.penguin.spigot.render.RenderSettings.commandCooldownMillis()
             val now = System.currentTimeMillis()
@@ -166,7 +166,7 @@ object QueryInfoService {
             // 共享渲染池（CardRenderPool：硬编码核数一半 1..4 线程；完成后自动节流 GC）
             CardRenderPool.submit {
                 try {
-                    // 1. 查找绑定的玩家（磁盘 IO，1.5.1 起在渲染池线程执行，不阻塞消息线程）
+ // 1. 查找绑定的玩家（磁盘 IO，在渲染池线程执行，不阻塞消息线程）
                     val bindManager = try {
                         QqBindManager.getInstance()
                     } catch (_: Throwable) {
@@ -181,7 +181,7 @@ object QueryInfoService {
                             "[玩家名片] ${qqOpenId} 查询 ${targetName ?: targetOpenId}（${targetOpenId}）的玩家信息"
                         )
                     }
-                    // 1.7.4：选择确认路径直接用选中的玩家；常规路径自行检索
+ // 选择确认路径直接用选中的玩家；常规路径自行检索
                     val playerName: String?
                     val quuid: String?
                     if (selectedPlayer != null) {
@@ -192,7 +192,7 @@ object QueryInfoService {
                         quuid = bindManager.findQuuidByQq(lookupOpenId)
                     }
                     if (playerName.isNullOrEmpty() || quuid.isNullOrEmpty()) {
-                        // 1.5.3：查询他人未绑定时指明是谁未绑定，避免误以为查询者自己未绑定
+ // 查询他人未绑定时指明是谁未绑定，避免误以为查询者自己未绑定
                         if (targetName != null) {
                             cn.kerong.penguin.spigot.qqbind.MessageTemplates.sendPlain(
                                 event,
@@ -222,14 +222,14 @@ object QueryInfoService {
                     //    旧版为 4 次独立跳转各等 3 秒，现合并为 1 次）
                     val snapshot = gatherOnMainThread(playerName, playerUuid)
 
-                    // 4. 检测日志（1.5.1）：称号 / 金币 / 点券的检测来源与结果写入
+ // 4. 检测日志：称号 / 金币 / 点券的检测来源与结果写入
                     //    插件日志文件（logs/qq/qq-bind-日期.log），仅文件不刷控制台
                     PluginFileLog.write("[检测] 称号: $playerName → ${snapshot.titleSource} → '${snapshot.title}'")
                     PluginFileLog.write("[检测] 金币: $playerName → ${snapshot.balanceNote} → ${snapshot.balance ?: "无"}")
                     PluginFileLog.write("[检测] 点券: $playerName → ${snapshot.pointsNote} → ${snapshot.pointsText}")
 
                     // 5. 累计签到（本插件签到系统；磁盘 IO 同样在池线程执行）
-                    // 1.5.3：签到功能未开启时返回 null → 卡片不展示“累计签到”项
+ // 签到功能未开启时返回 null → 卡片不展示“累计签到”项
                     val checkinTotalText = resolveCheckinTotal(bindManager, quuid)
 
                     // 6. 组装统计项（1.5.3：依赖插件缺失的项不展示；1.6.9.3：
@@ -245,7 +245,7 @@ object QueryInfoService {
                             " 自定义项目=${snapshot.vars.customItems.size} 项）卡片 ${InfoCardRenderer.WIDTH}×$cardHeight"
                     )
                     val dataDirectory = plugin.configFile?.parentFile
-                    // 1.5.7：统一背景入口 —— 默认内置深灰底图（随 JAR 分发）；
+ // 统一背景入口 —— 默认内置深灰底图（随 JAR 分发）；
                     // 开关关闭后随机用 img/ 目录图片，img 无可用图片时回退内置图
                     val background = InfoCardAssets.resolveBackground(
                         dataDirectory,
@@ -256,7 +256,7 @@ object QueryInfoService {
 
                     // 7. 拉取头像并渲染（1.6.9.3：卡片头部玩家名可被玩家名变量覆盖，
                     //    头像 / 统计 / 缓存仍按真实玩家，仅展示名变化）
-                    // 1.7.2：改走 fetchAvatarBatch 有界等待（12 秒渲染预算）——
+ // 改走 fetchAvatarBatch 有界等待（12 秒渲染预算）——
                     //    旧版直接在渲染线程无上限阻塞，头像全链路慢时 QQ 要等
                     //    一分多钟才收到卡片；超预算先渲染发送（占位头像），
                     //    下载后台完成后进缓存，下一轮查询即有真实头像
@@ -268,7 +268,7 @@ object QueryInfoService {
                             )
                         )
                     )[playerName]
-                    // 1.7.3：副标题条（服务器 / 更新时间 / 状态）入参
+ // 副标题条（服务器 / 更新时间 / 状态）入参
                     val updateTime = java.text.SimpleDateFormat("HH:mm").format(java.util.Date())
                     val bytes = InfoCardRenderer.render(
                         InfoCardRenderer.CardData(
@@ -340,14 +340,14 @@ object QueryInfoService {
         snapshot: MainThreadSnapshot,
         checkinTotalText: String?,
     ): List<InfoCardRenderer.CardItem> = buildList {
-        // 1.6.9 变量获取信息：变量给出内容时优先输出变量内容（原文输出，不套
+ // 变量获取信息：变量给出内容时优先输出变量内容（原文输出，不套
         // 插件的数量缩写 / 时长格式化）。
-        // 1.6.9.3 显隐规则：金币 / 称号 / 点券只要填写了变量（configured，与
+ // 显隐规则：金币 / 称号 / 点券只要填写了变量（configured，与
         // 读取成败无关）就展示——依赖插件未装时无自带数据可回退，显示
         // 「未获取成功」而不是隐藏；变量留空（未配置）时与旧版完全一致。
         val vars = snapshot.vars.overrides
         if (snapshot.vaultAvailable || snapshot.vars.coinsConfigured) {
-            // 1.6.0：金币项标签应用经济别名（economy-alias，留空时仍为「金币」）
+ // 金币项标签应用经济别名（economy-alias，留空时仍为「金币」）
             add(InfoCardRenderer.CardItem(
                 cn.kerong.penguin.spigot.qqbind.EconomyName.current(),
                 vars.coins
@@ -378,15 +378,15 @@ object QueryInfoService {
         add(InfoCardRenderer.CardItem("屠龙次数", "${snapshot.stats.dragonKills} 次"))
         add(InfoCardRenderer.CardItem("击杀玩家次数", "${snapshot.stats.playerKills} 次"))
         add(InfoCardRenderer.CardItem("死亡次数", "${snapshot.stats.deaths} 次"))
-        // 1.6.9.3：自定义玩家名片项目追加在末尾（仅正常返回的项；顺序即配置顺序）
+ // 自定义玩家名片项目追加在末尾（仅正常返回的项；顺序即配置顺序）
         for (custom in snapshot.vars.customItems) {
             add(InfoCardRenderer.CardItem(custom.name, custom.value))
         }
     }
 
     /**
-     * 累计签到（1.5.0 覆盖更新）：读取本插件签到系统的累计签到次数。
-     * 1.5.3：签到功能未开启时返回 null（卡片不展示该项）；
+ * 累计签到：读取本插件签到系统的累计签到次数。
+ * 签到功能未开启时返回 null（卡片不展示该项）；
      * 已开启时显示“N 次”；读取异常时返回“暂无”（保留展示便于发现异常）。
      */
     private fun resolveCheckinTotal(bindManager: QqBindManager, quuid: String): String? {
@@ -398,7 +398,7 @@ object QueryInfoService {
         }
     }
 
-    // ---------- 主线程单次采集（1.5.1） ----------
+ // ---------- 主线程单次采集 ----------
 
     /**
      * 单次主线程跳转采集全部数据：统计 / 称号 / 金币 / 点券 / 皮肤。
@@ -423,9 +423,9 @@ object QueryInfoService {
             val title = resolveTitle(playerName, playerUuid, onlinePlayer)
             val balance = queryBalance(playerName, playerUuid)
             val points = if (playerUuid != null) resolvePlayerPoints(playerUuid) else null
-            // 1.5.3：依赖插件可用性检测（与数据同线程采集，避免状态不一致）
+ // 依赖插件可用性检测（与数据同线程采集，避免状态不一致）
             val dependency = detectDependencies()
-            // 1.6.9：变量获取信息（PlaceholderAPI 非线程安全，随主线程快照
+ // 变量获取信息（PlaceholderAPI 非线程安全，随主线程快照
             // 一次解析，不增加额外的主线程往返；关闭时直接返回空上下文）
             val variables = PlaceholderVariableService.snapshotContext(playerName, playerUuid, onlinePlayer)
             MainThreadSnapshot(
@@ -444,7 +444,7 @@ object QueryInfoService {
         }
         if (Bukkit.isPrimaryThread()) return task()
         if (bukkitPlugin == null) return timeoutSnapshot()
-        // 1.5.7.3：经 FoliaCompat 桥接（Folia 全局区域线程限时取值，超时回退快照）
+ // 经 FoliaCompat 桥接（Folia 全局区域线程限时取值，超时回退快照）
         return try {
             FoliaCompat.callSync(bukkitPlugin, 3L) { task() } ?: timeoutSnapshot()
         } catch (_: Exception) {
@@ -453,7 +453,7 @@ object QueryInfoService {
     }
 
     /**
-     * 依赖插件可用性检测（1.5.3）：
+ * 依赖插件可用性检测：
      * - 金币：Vault 已启用且经济服务已注册（只装权限类 Vault 时无经济服务，同样隐藏）；
      * - 称号：DeluxeTags 或 Vault 任一可用（resolveTitle 的回退链两端）；
      * - 点券：PlayerPoints 已启用。
@@ -479,7 +479,7 @@ object QueryInfoService {
 
     /**
      * 主线程繁忙（超时/不可调度）时的兑底快照：字段保留“暂无”并注明原因。
-     * 1.5.3：依赖标记置 true（沿用旧版展示“暂无”的行为，避免超时时误隐藏项）。
+ * 依赖标记置 true（沿用旧版展示“暂无”的行为，避免超时时误隐藏项）。
      */
     private fun timeoutSnapshot(): MainThreadSnapshot = MainThreadSnapshot(
         stats = PlayerStatsManager.PlayerStats(),
@@ -492,18 +492,18 @@ object QueryInfoService {
         vaultAvailable = true,
         titleAvailable = true,
         pointsAvailable = true,
-        // 1.6.9：主线程超时快照不做变量解析（PAPI 未走），全部回退插件自带数据
+ // 主线程超时快照不做变量解析（PAPI 未走），全部回退插件自带数据
         vars = PlaceholderVariableService.EMPTY_CONTEXT,
     )
 
     /**
      * 解析玩家称号（返回值 + 检测来源说明）：
      * 1. DeluxeTags（三层兼容：新版实例 API → 老版静态 API → PlaceholderAPI 占位符）；
-     * 2. PlayerTitle（1.6.4 新增，需 PlaceholderAPI，解析 %playerTitle_use%）；
+ * 2. PlayerTitle（需 PlaceholderAPI，解析 %playerTitle_use%）；
      * 3. Vault Chat 前缀（无 DeluxeTags/PlayerTitle 或无标签时，清理颜色码的纯文本）；
      * 4. 均无 → “暂无”。
      *
-     * 1.5.3.1：移除“主权限组”回退——玩家没有称号时会退回显示权限组名
+ * 移除“主权限组”回退——玩家没有称号时会退回显示权限组名
      * （如 default/member 等英文串），现在无称号一律显示“暂无”。
      */
     private fun resolveTitle(playerName: String, playerUuid: UUID?, onlinePlayer: Player?): TitleResult {
@@ -517,7 +517,7 @@ object QueryInfoService {
         }
     }
 
-    // ---------- DeluxeTags 三层兼容（1.5.1 修复 1.8.x 检测失败） ----------
+ // ---------- DeluxeTags 三层兼容（修复 1.8.x 检测失败） ----------
 
     /** DeluxeTags 玩家明确选择"无标签"时持久化的哨兵值（官方源码常量）。 */
     private const val DELUXETAGS_NO_TAG = "__deluxetags_no_tag__"
@@ -530,7 +530,7 @@ object QueryInfoService {
      * 返回值为称号原文（含 & / § 颜色码，如 "&7[&6Vip&7]&f"），
      * 由 [InfoCardRenderer] 解析后按原色渲染。
      *
-     * 1.5.1 修复 1.8.x 服务器“称号还是检测不到”：
+ * 修复 1.8.x 服务器“称号还是检测不到”：
      * 老版 DeluxeTags（2015-2021 全系，兼容 MC 1.8）与新版（2021+ / 1.8.3-Release）
      * 的 API 完全不同 —— 新版主类有 getTagsHandler() 实例方法，老版主类没有，
      * 标签查询走 me.clip.deluxetags.DeluxeTag 类的静态方法。现按三层依次尝试：
@@ -607,7 +607,7 @@ object QueryInfoService {
     }
 
     /**
-     * 老版 DeluxeTags 静态 API（1.5.1 新增，修复 MC 1.8.x 检测失败）：
+ * 老版 DeluxeTags 静态 API（修复 MC 1.8.x 检测失败）：
      * - 类名 me.clip.deluxetags.DeluxeTag（新版移到了 me.clip.deluxetags.tags 包，
      *   Class.forName 用 DeluxeTags 插件类加载器加载，加载失败自动跳过）；
      * - 在线：getPlayerDisplayTag(Player)（内部应用 PAPI）；
@@ -748,10 +748,10 @@ object QueryInfoService {
         }
     }
 
-    // ---------- PlayerTitle 适配（1.6.4） ----------
+ // ---------- PlayerTitle 适配 ----------
 
     /**
-     * PlayerTitle 插件称号（1.6.4 新增，modrinth.com/plugin/playertitle）。
+ * PlayerTitle 插件称号（modrinth.com/plugin/playertitle）。
      *
      * 官方注册的 PlaceholderAPI 变量：
      * - %playerTitle_use% —— 玩家当前佩戴/展示的称号名称（含颜色码）；
@@ -779,7 +779,7 @@ object QueryInfoService {
             null
         }
         if (papi == null || !papi.isEnabled) {
-            // 1.6.6：装了 PlayerTitle 却缺 PlaceholderAPI —— 运行中提醒一次
+ // 装了 PlayerTitle 却缺 PlaceholderAPI —— 运行中提醒一次
             // （金币走 Vault 直连、DeluxeTags 称号走插件自身 API，均不受影响）
             PapiDependencyCheck.notifyMissingOnce("PlayerTitle 称号读取")
             return null
@@ -805,7 +805,7 @@ object QueryInfoService {
 
     /**
      * Vault 前缀称号（无 DeluxeTags 时的回退链，返回纯文本 + 来源）。
-     * 1.5.3.1：不再回退到主权限组——玩家没有称号时权限组名（default/member
+ * 不再回退到主权限组——玩家没有称号时权限组名（default/member
      * 等英文串）会出现在卡片称号栏，现在无前缀直接返回 null → 显示“暂无”。
      */
     private fun resolveVaultTitle(playerName: String, playerUuid: UUID?): TitleResult? {

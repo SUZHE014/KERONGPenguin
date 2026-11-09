@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * 故默认为：**主机 CPU 核数的一半，至少 1 线程、至多 4 线程**
  * （例：8 核服务器 4 线程、4 核 2 线程、2 核 1 线程）。
  *
- * 1.7.3 覆盖版：新增「自定义图片渲染线程」配置（render.custom-render-threads
+ * 新增「自定义图片渲染线程」配置（render.custom-render-threads
  * 段）：开关开启后线程数改用 render.custom-render-threads.render-threads
  * （1~16）。⚠ 线程数越大同时渲染的图片越多、CPU 争抢越强，核数少的
  * 服务器上可能影响游戏 tick——不建议超过物理核数的一半。线程池在首次
@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * 不会触发拒绝），多个命令（/玩家名片、/查在线 等）共用本池，
  * 全部图片渲染合计占用不超过上述上限。
  *
- * 1.6.5：移除「渲染后 System.gc() 提示」（原 render.gc-after-render 开关一并废除）。
+ * 移除「渲染后 System.gc 提示」（原 render.gc-after-render 开关一并废除）。
  * - System.gc 在默认 JVM 参数下触发一次 Full GC（全停顿标记-压缩，几十到几百毫秒），
  *   在 20 TPS 的游戏服务器上等于凭空丢若干 tick——是渲染链路里最大的自伤性能点；
  * - 内存释放改为**确定性 flush**：单次画布（各渲染器 render() 末尾的 image.flush()）、
@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.AtomicInteger
  *   栅格与绘制缓存即时归还，剩余少量堆内存由 JVM 常规新生代 GC 秒级回收，
  *   不再需要全停顿的显式 GC 兜底。
  *
- * 1.6.6.2：任务收尾时刷新渲染完成时间戳（InfoCardAssets.markRenderCompleted，
+ * 任务收尾时刷新渲染完成时间戳（InfoCardAssets.markRenderCompleted，
  * 空闲释放的判断基准）并维护活跃任务计数（activeRenders，空闲释放与
  * 过期清扫仅在无渲染进行中时执行，避免 flush 正在画布上的图像）。
  */
@@ -64,7 +64,7 @@ object CardRenderPool {
     /**
      * 提交一次图片渲染任务。
      * 任务的异常由调用方自行捕获（渲染失败已有日志与文本回退提示）；
-     * 1.6.6.2：任务真正开始执行时计入活跃数，收尾（含异常收尾）时刷新
+ * 任务真正开始执行时计入活跃数，收尾（含异常收尾）时刷新
      * 渲染完成时间戳——「渲染完图片 N 分钟内无下次渲染即释放内存」的基准。
      */
     fun submit(task: Runnable) {

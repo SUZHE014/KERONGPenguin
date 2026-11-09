@@ -5,15 +5,15 @@ import org.bukkit.Bukkit
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * PlaceholderAPI 依赖检测（1.6.6 新增；1.6.6.1 覆盖版：PlayTimeManager
- * 时长同步功能已删除，检测面相应收窄为 PlayerTitle 称号）。
+ * PlaceholderAPI 依赖检测（PlayTimeManager 时长同步
+ * 功能已删除，检测面相应收窄为 PlayerTitle 称号）。
  *
  * 背景：金币（Vault Economy 直连）与 DeluxeTags 称号（实例 / 静态 API 直连）
  * 都不依赖 PlaceholderAPI；但以下功能需要 PlaceholderAPI 才能读取：
  * - PlayerTitle 称号（%playerTitle_use%）；
  * - DeluxeTags 的占位符兜底层（%deluxetags_tag%，前三层失败才用到）。
  *
- * 1.6.7.3 提示策略调整（用户反馈）：仅当检测到 PlayerTitle 等依赖
+ * 提示策略调整（用户反馈）：仅当检测到 PlayerTitle 等依赖
  * PlaceholderAPI 的功能插件已安装时才进行检测并提示——没装这些插件
  * 的服务器与 PAPI 毫无关系，旧版「未装相关插件也温和提示」属于噪音。
  * 检测到 PlayerTitle 时：
@@ -52,7 +52,7 @@ object PapiDependencyCheck {
      * 启动后延迟检测（Spigot 端 onEnable 挂载，异步延迟 12 秒：
      * 错开启动高峰与更新检查的 8 秒，且确保所有插件已 enable）。
      *
-     * 1.6.7.3：仅当检测到 [papiConsumerPlugins] 里的功能插件已安装时才
+ * 仅当检测到 [papiConsumerPlugins] 里的功能插件已安装时才
      * 检测并提示——未装相关插件的服务器完全静默（PAPI 与它无关，不提示
      * 也不扫日志）；检测到 PlayerTitle 时按 PAPI 有无输出就绪确认或缺失
      * 指引（金币 Vault 直连与 DeluxeTags 称号不受影响在缺失提示中说明）。

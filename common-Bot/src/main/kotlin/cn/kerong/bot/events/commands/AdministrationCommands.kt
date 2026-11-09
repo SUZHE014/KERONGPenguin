@@ -8,7 +8,7 @@ import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 /**
  * 管理员命令：执行服务器命令、管理员自定义命令、全量转发开关。
  *
- * 1.6.0：全部文本回复改走消息模板（invalid-params / bridge-error /
+ * 全部文本回复改走消息模板（invalid-params / bridge-error /
  * sent-request / execute-failed / full-amount-toggled，配置 messages 段可换文件），
  * 默认内容与旧版一致。
  */
@@ -55,7 +55,7 @@ class AdministrationCommands : CommandSupport() {
      * 执行结果本身为动态内容（服务器返回原文），先裁剪（1.6.9.5：超长
      * 输出会被 QQ 平台拒绝）再原样审核后经 Markdown 回复。
      *
-     * 1.7.0：回退链真可达——replyMarkdown 按平台响应校验真实送达
+ * 回退链真可达——replyMarkdown 按平台响应校验真实送达
      * （SDK 对 4xx/5xx 不抛异常，旧版「没抛异常」误判为已送达），拒收时
      * 回退 event.sendMessage 纯文本；回复整体移到异步线程（命令完成
      * 回调在主线程触发，旧版同步 HTTP 会卡服务器主线程）。
@@ -85,7 +85,7 @@ class AdministrationCommands : CommandSupport() {
 
     /**
      * 带 @ 提及的 Markdown 回复（动态内容；失败时退化为纯文本）。
-     * 1.7.0：回退按 replyMarkdown 的真实送达结果（响应含消息 id 才算成功）。
+ * 回退按 replyMarkdown 的真实送达结果（响应含消息 id 才算成功）。
      */
     private fun sendDirect(event: GroupMessageEvent, message: String) {
         try {

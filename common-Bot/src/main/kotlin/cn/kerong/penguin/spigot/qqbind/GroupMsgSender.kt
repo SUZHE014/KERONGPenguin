@@ -15,7 +15,7 @@ import io.github.kloping.qqbot.api.v2.GroupMessageEvent
  * - QClient.replyMarkdown 内部 setMsg_id(msgId) 实现引用；
  * - Markdown 模式（msg_type=2）渲染引用框。
  *
- * 1.5.3：AI 对话回复改为引用发送者的原消息（QQ 官方 MessageReference 协议，
+ * AI 对话回复改为引用发送者的原消息（QQ 官方 MessageReference 协议，
  * 见 QClient.replyMarkdownWithReference），失败自动回退普通被动回复。
  */
 object GroupMsgSender {

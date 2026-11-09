@@ -29,7 +29,7 @@ import java.util.concurrent.TimeoutException
 import javax.imageio.ImageIO
 
 /**
- * 玩家信息卡片渲染器（/玩家名片；1.5.2 前为 /个人信息，1.7.4 覆盖版前为 /查信息）。
+ * 玩家信息卡片渲染器（/玩家名片；1.5.2 前为 /个人信息，前为 /查信息）。
  *
  * 设计参考（issue #1）：图片渲染界面参考自 BaiZhouziYou / 新亭泪
  * 发布在 EasyBot 资源市场的图片模板（https://xintinglei.cn/）——早期版本
@@ -39,40 +39,40 @@ import javax.imageio.ImageIO
  * 以 Java2D 绘制毛玻璃风格统计卡片：
  * - 顶部欢迎区（玩家名 + 问候 + MC 头像正面贴图）
  * - 玩家身份条
- * - 统计面板（1.5.0 起为 6 项：金币 / 称号 / 在线时长 / 今日在线时长 / 累计签到 / 点券，
+ * - 统计面板（为 6 项：金币 / 称号 / 在线时长 / 今日在线时长 / 累计签到 / 点券，
  *   3 列 × 2 行布局）
  *
- * 0.1.5.2 性能修复：
+ * 性能修复：
  * - 背景与头像处理结果按文件 / 玩家缓存，不再每次渲染重新解码处理；
  * - 派生字体缓存，避免重复 deriveFont 分配；
  * - 关闭 ImageIO 磁盘缓存，减少临时文件 churn。
  *
- * 0.1.5.3 随机背景：背景图从 img/ 目录候选图中随机挑选，
+ * 随机背景：背景图从 img/ 目录候选图中随机挑选，
  * 处理结果按张缓存，随机切换零额外解码开销。
  *
- * 0.1.5.5 彩色称号：数值支持 MC 旧版颜色码（&/§ + 0-9a-fk-or 与 &#RRGGBB），
+ * 彩色称号：数值支持 MC 旧版颜色码（&/§ + 0-9a-fk-or 与 &#RRGGBB），
  * 解析为彩色分段后按原色渲染（DeluxeTags 称号颜色得以真实还原）；
  * 背景图改为子采样解码，超长边限制在约 1600px，防止大尺寸照片整图解码导致内存峰值 / OOM。
  *
- * 1.5.0：渲染完成后 flush 单次图像（立即释放栅格占用的堆内存，配合渲染后的
+ * 渲染完成后 flush 单次图像（立即释放栅格占用的堆内存，配合渲染后的
  * 节流 GC 提示降低内存驻留，见 QueryInfoService）。
  *
- * 1.5.2：统计扩为 9 项（新增屠龙次数 / 击杀玩家次数 / 死亡次数），
+ * 统计扩为 9 项（新增屠龙次数 / 击杀玩家次数 / 死亡次数），
  * 布局 3 列 × 3 行，画布高度 660 → 760，其余绘制逻辑不变。
  *
- * 1.5.3：卡片高度随统计项数自适应：
+ * 卡片高度随统计项数自适应：
  * - 依赖插件（Vault 金币 / DeluxeTags 称号 / PlayerPoints 点券 / 签到系统）
  *   未安装或未开启时对应统计项直接不展示（见 QueryInfoService.buildItems）；
  * - 统计面板行数随之减少，画布高度按 472 + 96×行数 自适应
  *   （9/5 项 = 760，6~8 项 = 760 或 664，4 项 = 664，2~3 项 = 664 或 568），
  *   底部不再留白，背景图按实际高度处理与缓存。
  *
- * 1.5.4.4：背景不再模糊，直接叠一层暗色遮罩：
+ * 背景不再模糊，直接叠一层暗色遮罩：
  * - 金字塔模糊整段移除，背景保留原图全部细节与锐度；
  * - 暗色遮罩保持单遍合成（等效总黑度约 41%），前景可读性与历史版本一致
  *   （背景原图直出，毛玻璃观感由卡片背后的局部模糊承担）。
  *
- * 1.5.7：全部图片渲染（玩家名片 / 查在线 / 在线排行榜）默认改用内置背景图
+ * 全部图片渲染（玩家名片 / 查在线 / 在线排行榜）默认改用内置背景图
  * （深灰主体 + 深绿装饰，随 JAR 分发，各自配置开关默认 true，见
  * [InfoCardAssets.resolveBackground]）；img/ 目录随机图改为可选行为
  * （开关关闭），且 img 无可用图片时自动回退内置图。
@@ -87,9 +87,9 @@ object InfoCardRenderer {
     /** 配色（毛玻璃深色系）。 */
     private val COLOR_EYEBROW = Color(0x93, 0xA7, 0xBC)
 
-    /** 小标签填充色（1.7.0 查在线状态栏同款：固定灰 0x9FB3C8，不随背景
-     * 亮度切换——1.7.3 覆盖版五轮~1.7.3.1 的自适应 / 连续对比度配色
-     * （0x5C7288、0xB8C8D8、等比压暗）在 1.7.3.1 覆盖版整体回退：
+ /** 小标签填充色（查在线状态栏同款：固定灰 0x9FB3C8，不随背景
+ * 亮度切换——五轮~1.7.3.1 的自适应 / 连续对比度配色
+ * （0x5C7288、0xB8C8D8、等比压暗）在 整体回退：
      * 用户口径「不要现在的花里胡哨，换回以前版本的（参考 1.7.0 查在线）」。
      * 副标题条小标签（五张卡）与玩家名片身份条「玩家名称」标签共用。 */
     private val COLOR_LABEL = Color(0x9F, 0xB3, 0xC8)
@@ -109,7 +109,7 @@ object InfoCardRenderer {
         ImageIO.setUseCache(false)
     }
 
-    /** 获取缓存过的派生字体（1.5.0 起开放给本模块其他渲染器复用，如在线列表卡片）。 */
+ /** 获取缓存过的派生字体（起开放给本模块其他渲染器复用，如在线列表卡片）。 */
     internal fun font(size: Float, bold: Boolean): Font {
         val key = (if (bold) "B" else "R") + size
         return derivedFontCache.computeIfAbsent(key) {
@@ -137,7 +137,7 @@ object InfoCardRenderer {
 
     /**
      * 卡片高度（1.5.3：随统计项数自适应；1.7.3：插入副标题条后整体 +100；
-     * 1.7.3 覆盖版：统计面板上移 4px（等距微调），高度同步 -4）：
+ * 统计面板上移 4px（等距微调），高度同步 -4）：
      * - 顶部欢迎区 + 身份条 + 副标题条共 428px，底部留白 24px；
      * - 统计面板 = 面板头 84 + 网格行数 × 96 + 底垫 26；
      * - 网格列数与绘制逻辑一致（≥ 6 项 3 列，否则 2 列避免孤项）；
@@ -153,7 +153,7 @@ object InfoCardRenderer {
      * 渲染卡片并返回 PNG 字节。
      */
     fun render(data: CardData): ByteArray {
-        // 1.7.3 覆盖版：渲染耗时计时起点（副标题条第三格展示从开始渲染到
+ // 渲染耗时计时起点（副标题条第三格展示从开始渲染到
         // 全部面板绘制完成的毫秒数——从开始渲染图片起算，不含接收指令后的
         // 取数 / 头像获取 / 排队环节；全部绘制完成后补画，再编码 PNG）
         val renderStart = System.nanoTime()
@@ -174,7 +174,7 @@ object InfoCardRenderer {
             drawSubtitle(g, data.serverName, data.updateTime, backdrop)
             drawStatsPanel(g, data.items, height, backdrop)
 
-            // 1.7.3 覆盖版：补画渲染耗时（全部面板已画完；PNG 编码与发送不预先包含）
+ // 补画渲染耗时（全部面板已画完；PNG 编码与发送不预先包含）
             val elapsedMs = (System.nanoTime() - renderStart) / 1_000_000L
             drawRenderElapsed(g, elapsedMs)
         } finally {
@@ -182,7 +182,7 @@ object InfoCardRenderer {
         }
         val output = ByteArrayOutputStream(256 * 1024)
         ImageIO.write(image, "png", output)
-        // 1.5.0：PNG 已写出，立即释放单次画布的栅格内存（缓存中的背景/头像不受影响）
+ // PNG 已写出，立即释放单次画布的栅格内存（缓存中的背景/头像不受影响）
         image.flush()
         return output.toByteArray()
     }
@@ -194,14 +194,14 @@ object InfoCardRenderer {
         val w = (WIDTH - 48).toFloat()
         val h = 200f
 
-        // 毛玻璃容器（背后先铺模糊背景）；1.7.2 覆盖版：标题框黑度
+ // 毛玻璃容器（背后先铺模糊背景）；标题框黑度
         // 可配（render.title-card-gray，默认 80）——旧版硬编码半透明白，
         // 视觉上「透明」且改配置调不动
         backdrop?.paintCard(g, x, y, w, h, 24f)
         g.color = Color(0x00, 0x00, 0x00, RenderSettings.titleCardGray())
         g.fill(RoundRectangle2D.Float(x, y, w, h, 24f, 24f))
 
-        // 头像（右上角，圆角描边；1.6.6.1 覆盖版：零中间图直接绘制——
+ // 头像（右上角，圆角描边；零中间图直接绘制——
         // 在画布上裁剪圆角区域后直接把头像缩放画进去，不再先拷贝一份
         // 圆角小图，省一次栅格分配与拷贝）
         val avatarSize = 108
@@ -233,9 +233,9 @@ object InfoCardRenderer {
     }
 
     /** 玩家身份条（先铺卡片背后的局部模糊背景，再叠半透明底色；
-     * 1.7.3：玩家名称项底色改接副标题灰度 render.subtitle-card-gray——
-     * 旧版硬编码半透明白 22，灰度配置调不动；1.7.3.1 覆盖版：「玩家名称」
-     * 标签回固定灰 [COLOR_LABEL]（1.7.0 查在线同款；1.7.3.1 曾接自适应
+ * 玩家名称项底色改接副标题灰度 render.subtitle-card-gray——
+ * 旧版硬编码半透明白 22，灰度配置调不动；「玩家名称」
+ * 标签回固定灰 [COLOR_LABEL]（查在线同款；1.7.3.1 曾接自适应
      * 配色，本轮随副标题配色整体回退）。 */
     private fun drawIdentityBar(g: Graphics2D, playerName: String, backdrop: InfoCardAssets.CardBackdropContext?) {
         val x = 24f
@@ -244,7 +244,7 @@ object InfoCardRenderer {
         val h = 64f
 
         backdrop?.paintCard(g, x, y, w, h, 16f)
-        // 1.7.3：玩家名称项属副标题类小卡，接副标题灰度（1.7.3.1 第二次覆盖版
+ // 玩家名称项属副标题类小卡，接副标题灰度（
         // 默认 80，与标题框 render.title-card-gray 相同，回归 1.7.0 轻卡观感）
         g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
         g.fill(RoundRectangle2D.Float(x, y, w, h, 16f, 16f))
@@ -259,9 +259,9 @@ object InfoCardRenderer {
         g.drawString(playerName, 190f, y + 42f)
     }
 
-    /** 副标题条：服务器 / 更新时间 / 渲染耗时 三张并排小卡（1.7.3 新增，与
+ /** 副标题条：服务器 / 更新时间 / 渲染耗时 三张并排小卡（与
      * 其他卡片状态栏同款；底色接副标题灰度 render.subtitle-card-gray；
-     * 1.7.3 覆盖版：第三格改「渲染耗时」——数值在全部面板绘制完成后由
+ * 第三格改「渲染耗时」——数值在全部面板绘制完成后由
      * [drawRenderElapsed] 补画，从开始渲染到绘制完成的毫秒数）。 */
     private fun drawSubtitle(g: Graphics2D, serverName: String, updateTime: String, backdrop: InfoCardAssets.CardBackdropContext?) {
         val y = 328f
@@ -278,10 +278,10 @@ object InfoCardRenderer {
             val x = 24f + index * (cardWidth + gap)
             backdrop?.paintCard(g, x, y, cardWidth, cardHeight, 14f)
             // 副标题条接副标题灰度（render.subtitle-card-gray，1.7.3.1 第二次
-            // 覆盖版默认 80，与标题框相同）
+ // 默认 80，与标题框相同）
             g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
             g.fill(RoundRectangle2D.Float(x, y, cardWidth, cardHeight, 14f, 14f))
-            // 1.7.3 覆盖版四轮起：小标签统一走 drawSubLabel（1.7.3.1 覆盖版：
+ // 四轮起：小标签统一走 drawSubLabel（
             // 固定灰 0x9FB3C8，1.7.0 查在线同款）
             drawSubLabel(g, label, x + 24f, y + 34f)
             g.font = font(30f, true)
@@ -290,10 +290,10 @@ object InfoCardRenderer {
         }
     }
 
-    /** 副标题条小标签绘制（1.7.3 覆盖版四轮新增共享入口；1.7.3.1 覆盖版：
+ /** 副标题条小标签绘制（四轮新增共享入口；
      * 回退 1.7.0 查在线状态栏同款——固定灰 [COLOR_LABEL] 0x9FB3C8 +
      * 22f 常规字重，不随背景亮度切换（四轮近白加粗描边、五轮自适应双色、
-     * 1.7.3.1 连续对比度配色均回退——用户口径「不要现在的花里胡哨」）。
+ * 连续对比度配色均回退——用户口径「不要现在的花里胡哨」）。
      * 五张卡片副标题条标签共用，其他标签色不走此入口。 */
     internal fun drawSubLabel(g: Graphics2D, text: String, x: Float, y: Float) {
         g.font = font(22f, false)
@@ -302,7 +302,7 @@ object InfoCardRenderer {
     }
 
     /**
-     * 补画副标题条「渲染耗时」数值（1.7.3 覆盖版）：全部面板绘制完成后、
+ * 补画副标题条「渲染耗时」数值：全部面板绘制完成后、
      * PNG 编码前写入——从开始渲染（进入 [render]）到此刻的毫秒数；
      * 不含取数 / 头像获取 / 排队环节（用户口径：不是从接收指令开始算）。 */
     private fun drawRenderElapsed(g: Graphics2D, elapsedMs: Long) {
@@ -317,8 +317,8 @@ object InfoCardRenderer {
 
     /**
      * 生涯统计面板（1.5.2：9 项 → 3 列 × 3 行；4-5 项时 2 列避免孤项；
-     * 1.5.3：高度随项数自适应，缺失依赖的项不渲染；
-     * 1.7.3：插入副标题条后下移；1.7.3 覆盖版：436 → 432，与上方三张卡
+ * 高度随项数自适应，缺失依赖的项不渲染；
+ * 插入副标题条后下移；436 → 432，与上方三张卡
      * （欢迎面板 / 身份条 / 副标题条）的 20px 间距全卡等距；
      * 先铺卡片背后的局部模糊背景，再叠半透明底色。 */
     private fun drawStatsPanel(g: Graphics2D, items: List<CardItem>, height: Int, backdrop: InfoCardAssets.CardBackdropContext?) {
@@ -328,7 +328,7 @@ object InfoCardRenderer {
         val h = (height - 24 - 432).toFloat()
 
         backdrop?.paintCard(g, x, y, w, h, 24f)
-        // 1.7.2 覆盖版：统计面板属列表容器，改走项目卡片黑度
+ // 统计面板属列表容器，改走项目卡片黑度
         // （render.item-card-gray，默认 106；标题框黑度让位给顶部欢迎区）
         g.color = Color(0x00, 0x00, 0x00, RenderSettings.itemCardGray())
         g.fill(RoundRectangle2D.Float(x, y, w, h, 24f, 24f))
@@ -401,7 +401,7 @@ object InfoCardRenderer {
         g.drawString(text, x + (size - metrics.stringWidth(text)) / 2f, y + size / 2f + 9f)
     }
 
-    // ---------- 彩色文本（0.1.5.5，称号颜色码还原） ----------
+ // ---------- 彩色文本（称号颜色码还原） ----------
 
     /** MC 旧版 16 色板（索引 0-9a-f）。 */
     private val CHAT_COLORS: Map<Char, Color> = mapOf(
@@ -562,7 +562,7 @@ object InfoCardRenderer {
     }
 
     /**
-     * 圆角头像零拷贝绘制（1.6.6.1 覆盖版，三个渲染器共用）。
+ * 圆角头像零拷贝绘制（三个渲染器共用）。
      *
      * 旧版先 `roundImage` 拷贝一张 size×size ARGB 圆角小图再画到画布，
      * 每页每个头像都多一次栅格分配 + 全图拷贝（在线列表一页 60 人）；
@@ -641,7 +641,7 @@ object InfoCardAssets {
     private const val AVATAR_CACHE_MAX = 128
 
     /**
-     * 头像进内存缓存的单张大小门槛（1.6.6.2 新增）：PNG 编码后超过
+ * 头像进内存缓存的单张大小门槛：PNG 编码后超过
      * 10KB 的头像不进内存缓存，只写入磁盘缓存（下次渲染从磁盘解码，
      * 毫秒级）；磁盘缓存关闭时退回全量内存缓存（避免无任何缓存层）。
      */
@@ -649,7 +649,7 @@ object InfoCardAssets {
 
     /** 查询失败后的短期冷却，避免连续请求打爆外部接口。
      *
-     * 1.6.6.2 修复「极少玩家在清除缓存后头像获取失败」：磁盘缓存整批
+ * 修复「极少玩家在清除缓存后头像获取失败」：磁盘缓存整批
      * 同时到期时，下一张渲染会集中重取几十个头像，容易触发 Mojang
      * 429 / 网络级失败（官方链路进入 5 分钟全局冷却），风暴尾部的少数
      * 玩家本地无数据且外置线路慢 → 获取失败。旧版把这类**网络抖动型
@@ -662,7 +662,7 @@ object InfoCardAssets {
     private const val NEGATIVE_UUID_TTL = 30 * 60_000L
 
     /**
-     * 1.6.4：Mojang 官方接口网络级失败后的全局冷却（5 分钟）。
+ * Mojang 官方接口网络级失败后的全局冷却（5 分钟）。
      *
      * 「大部分玩家头像获取失败」根因：服务器网络访问 sessionserver.mojang.com /
      * api.mojang.com 不稳定（中国大陆线路大面积超时/阻断）时，旧版每个玩家都要
@@ -678,7 +678,7 @@ object InfoCardAssets {
     private var mojangNetworkFailureAt = 0L
 
     /**
-     * 本次头像获取尝试的网络抖动标记（1.6.6.2 新增，ThreadLocal：
+ * 本次头像获取尝试的网络抖动标记（ThreadLocal：
      * 渲染线程一次只处理一个获取请求，无串扰）。任一链路发生网络级
      * 失败（超时 / IO 异常 / 官方链路冷却期内跳过 / 429 / 5xx）时置
      * true：最终失败属于网络抖动型，不写入 missCache，下次查询立即
@@ -713,7 +713,7 @@ object InfoCardAssets {
     private class NegativeEntry(val createdAt: Long)
 
     /**
-     * 带获取方式标签的头像获取结果（1.6.6.2 新增）：标签用于把「头像
+ * 带获取方式标签的头像获取结果：标签用于把「头像
      * 获取用的方法」写进日志（本地贴图 / Mojang 官方 / 各外置线路），
      * 方便运维排查某玩家的头像到底走的哪条链路。
      */
@@ -723,7 +723,7 @@ object InfoCardAssets {
     private class DiskAvatar(val image: BufferedImage, val fileSize: Long)
 
     /**
-     * 进行中的头像获取门闩（1.6.6.2 覆盖版新增）。
+ * 进行中的头像获取门闩。
      *
      * 第一个到达的请求成为「执行者」真正走网络获取；并发到达的其余
      * 请求成为「等待者」，等待执行者完成后直接取其结果——同一玩家
@@ -738,7 +738,7 @@ object InfoCardAssets {
     }
 
     /**
-     * 正在进行的头像获取（key → 门闩）。1.6.6.2 覆盖版：启动 / 刷屏场景
+ * 正在进行的头像获取（key → 门闩）。启动 / 刷屏场景
      * 下多张渲染并发预热同一批玩家的头像时，旧版每个渲染都各自发起一
      * 轮完整获取（N 个并发渲染 = N 倍网络请求、解码与 PNG 编码分配，
      * 是启动期内存与 IO 突增的放大器）；现在同 key 只有一个执行者。
@@ -750,7 +750,7 @@ object InfoCardAssets {
 
     /**
      * 已记录过获取方式的玩家（key → 上次记录的方式）。
-     * 1.6.6.2 覆盖版：获取方式日志改「仅写文件日志 + 会话内按玩家去重」
+ * 获取方式日志改「仅写文件日志 + 会话内按玩家去重」
      * ——同一玩家首次获取与更换线路时各记一条，不再逐次记录（旧版
      * 一页 60 人在线列表即 60 行控制台 + 60 行文件，刷屏且刷盘）。
      */
@@ -775,7 +775,7 @@ object InfoCardAssets {
         @Volatile var lastUsedAt: Long,
     ) {
         /**
-         * 卡片背后局部模糊副本：惰性生成一次（1.7.0 起模糊度可配），
+ * 卡片背后局部模糊副本：惰性生成一次（起模糊度可配），
          * 随本条目淘汰 / 覆盖 / 空闲释放一起 flush，不单独占缓存配额。
          */
         @Volatile
@@ -790,27 +790,27 @@ object InfoCardAssets {
         var backdropStrength: Int = 0
     }
 
-    /** 预处理背景缓存：文件绝对路径 → 条目（0.1.5.3 起支持多张图随机切换）。 */
+ /** 预处理背景缓存：文件绝对路径 → 条目（起支持多张图随机切换）。 */
     private val backgroundCache = ConcurrentHashMap<String, BackgroundEntry>()
 
     /** 背景缓存容量上限（张）；超出时淘汰最久未使用的，控制内存占用。 */
     private const val BACKGROUND_CACHE_MAX = 8
 
     /**
-     * 背景缓存字节预算（1.5.1）：缓存图像栅格总占用上限。
+ * 背景缓存字节预算：缓存图像栅格总占用上限。
      * 大画布（查在线长图）背景单张可达 MB 级，仅按张数限制不足以约束内存，
      * 超预算时按最久未使用淘汰，配合张数上限双保险。
      */
     private const val BACKGROUND_CACHE_MAX_BYTES = 36L * 1024 * 1024
 
     /**
-     * 在线列表背景处理高度上限（1.5.1）：长图背景不再按整幅画布高度处理，
+ * 在线列表背景处理高度上限：长图背景不再按整幅画布高度处理，
      * 而是封顶后由渲染器拉伸铺满（暗色遮罩背景下视觉无差异），
      * 避免百人在线时背景栅格膨胀到数十 MB。
      */
     internal const val ONLINE_BACKGROUND_MAX_HEIGHT = 1600
 
-    /** 背景图子采样解码的最长边限制（像素）：超长边照片降采样后再解码，防整图解码 OOM（0.1.5.5）。 */
+ /** 背景图子采样解码的最长边限制（像素）：超长边照片降采样后再解码，防整图解码 OOM。 */
     private const val BACKGROUND_MAX_DIM = 1600
 
     /**
@@ -827,13 +827,13 @@ object InfoCardAssets {
 
     private fun blurBoxRadiusOf(strength: Int): Int = 1 + Math.round(strength * 2f / 100f).toInt()
 
-    /** 近期解码失败的背景文件（路径 → 失败时间），10 分钟内不再抽中，避免坏图反复触发解码（0.1.5.5）。 */
+ /** 近期解码失败的背景文件（路径 → 失败时间），10 分钟内不再抽中，避免坏图反复触发解码。 */
     private val backgroundFailures = ConcurrentHashMap<String, Long>()
 
     /**
-     * 内置专属背景（1.5.6）：随 JAR 分发的默认底图，深灰色主体 + 深绿色装饰
+ * 内置专属背景：随 JAR 分发的默认底图，深灰色主体 + 深绿色装饰
      * （径向渐变：中心深灰 → 四周渐入深绿）。
-     * 1.5.7：主体由黑色改为深灰色（与半透明卡片叠加色保持 ΔL ≥ 20，
+ * 主体由黑色改为深灰色（与半透明卡片叠加色保持 ΔL ≥ 20，
      * 方框卡片边界清晰可辨），并拆为两张同风格图：
      * - [BUILTIN_BACKGROUND_LEADERBOARD]：排行榜竖图（1200×1800）；
      * - [BUILTIN_BACKGROUND_CARD]：玩家名片卡片 / 查在线列表共用横图（1800×1200）。
@@ -862,7 +862,7 @@ object InfoCardAssets {
      * 线程删除，命中即回填内存）→ 在线获取（外部多线路 → Mojang 官方
      * API 兼底）。
      *
-     * 1.7.0：本地获取链路（在线玩家 Profile / 本服存档 NBT 解析皮肤贴图）
+ * 本地获取链路（在线玩家 Profile / 本服存档 NBT 解析皮肤贴图）
      * 已移除——贴图文件托管在 textures.minecraft.net，国内服务器普遍
      * 不可达导致大部分头像获取失败；现统一走外部头像线路（各线路均带
      * 帽子层/外层贴图），全部失败才记入失败冷却。
@@ -874,7 +874,7 @@ object InfoCardAssets {
     fun fetchAvatar(request: AvatarRequest): BufferedImage? {
         val key = request.uuid?.toString() ?: "name:${request.playerName.lowercase()}"
         val now = System.currentTimeMillis()
-        // 1.6.6.2：每次尝试重置网络抖动标记（渲染线程复用，防上次尝试的
+ // 每次尝试重置网络抖动标记（渲染线程复用，防上次尝试的
         // 抖动状态串扰本次失败分类）
         networkTrouble.set(false)
 
@@ -891,7 +891,7 @@ object InfoCardAssets {
         ensureAvatarSweeper()
         val disk = loadDiskAvatar(key, now)
         if (disk != null) {
-            // 1.6.6.2：超过 10KB 的大头像不进内存缓存（只走磁盘），
+ // 超过 10KB 的大头像不进内存缓存（只走磁盘），
             // 小头像回填内存供后续渲染秒级复用
             if (disk.fileSize <= AVATAR_MEMORY_MAX_BYTES) {
                 avatarCache[key] = CacheEntry(disk.image, now)
@@ -931,7 +931,7 @@ object InfoCardAssets {
                 latch.image = fetched.image
                 return fetched.image
             }
-            // 1.6.6.2 修复「清除缓存后极少玩家头像获取失败」：区分失败类型——
+ // 修复「清除缓存后极少玩家头像获取失败」：区分失败类型——
             // 网络抖动型（任一链路超时 / IO 异常 / 官方链路冷却期内跳过 / 429 / 5xx）
             // 不写 missCache，下次查询立即重试；确定性失败（404 等）才写 60 秒冷却
             if (networkTrouble.get()) {
@@ -969,7 +969,7 @@ object InfoCardAssets {
     private const val AVATAR_BATCH_HARD_CANCEL_MILLIS = 40_000L
 
     /** 头像批量预热共享线程池（在线列表 / 排行榜 / 财富榜 / 玩家名片共用，避免各建一池线程数翻倍；
-     * 1.7.3 覆盖版：线程数可经 render.custom-render-threads.avatar-threads 自定义（重启生效））。 */
+ * 线程数可经 render.custom-render-threads.avatar-threads 自定义（重启生效））。 */
     private val avatarBatchPool by lazy {
         Executors.newFixedThreadPool(AVATAR_THREADS) { runnable ->
             Thread(runnable, "PenguinAvatarFetch").apply { isDaemon = true }
@@ -986,7 +986,7 @@ object InfoCardAssets {
     /**
      * 批量预热头像（在线列表 / 排行榜 / 财富榜 / 玩家名片共用入口）。
      *
-     * 1.7.2 重做并发策略。旧版各服务自建 4 线程小池 + invokeAll(8 秒) 硬预算，
+ * 重做并发策略。旧版各服务自建 4 线程小池 + invokeAll(8 秒) 硬预算，
      * 到点会**中断**在途下载——慢速可用的源读到一半被切断，已下载字节全部
      * 作废，本轮占位块；大名单尾部玩家还排队等不到线程。新版：
      * - 8 线程共享池并行（网络 IO 密集），大名单也几秒内收齐，QQ 回复不久等；
@@ -1049,7 +1049,7 @@ object InfoCardAssets {
     /**
      * 获取成功的来源日志（1.6.6.2：把头像获取用的方法写到日志里）。
      *
-     * 1.6.6.2 覆盖版修复「获取方式日志泄漏到控制台」：
+ * 修复「获取方式日志泄漏到控制台」：
      * - 仅写入插件日志文件（PluginFileLog，logs/qq/qq-bind-日期.log），
      *   不再进控制台——旧版走 log_info 双写，一页 60 人在线列表即向
      *   控制台刷 60 行，刷屏且每行都开一次日志文件句柄；
@@ -1073,10 +1073,10 @@ object InfoCardAssets {
 
     /**
      * 获取失败日志（本地与外置链路均未命中；占位块渲染属正常降级）。
-     * 1.6.6.2：[retryable] = true 表示网络抖动型失败（未写失败冷却，
+ * [retryable] = true 表示网络抖动型失败（未写失败冷却，
      * 下次查询立即重试）；false = 确定性失败（60 秒冷却内不重试）。
      *
-     * 1.6.6.2 覆盖版：同样改仅写文件日志（失败风暴日逐玩家逐次刷控制
+ * 同样改仅写文件日志（失败风暴日逐玩家逐次刷控制
      * 台屏同样是泄漏，且失败已由 missCache 冷却与 networkTrouble 机制
      * 约束，不需要控制台实时提示）。
      */
@@ -1092,7 +1092,7 @@ object InfoCardAssets {
     }
 
     /**
-     * 获取成功后的缓存落位（1.6.6.2）：
+ * 获取成功后的缓存落位：
      * - PNG 编码一次，磁盘写入与 10KB 内存门槛共用同一份数据；
      * - PNG ≤ [AVATAR_MEMORY_MAX_BYTES] → 内存缓存 + 磁盘缓存；
      * - PNG 超门槛 → 只写磁盘缓存（下次渲染从磁盘毫秒级解码）；
@@ -1112,7 +1112,7 @@ object InfoCardAssets {
 
     /** 清空全部素材缓存（插件停用时调用，释放图像内存）。 */
     fun clearCaches() {
-        // 1.6.5：先 flush 再清空——立即释放各图像的栅格与绘制缓存占用的内存，
+ // 先 flush 再清空——立即释放各图像的栅格与绘制缓存占用的内存，
         // 不等 GC 兜底（缓存里的背景长图可达 MB 级）
         for (entry in avatarCache.values) {
             try { entry.image.flush() } catch (_: Throwable) {}
@@ -1132,13 +1132,13 @@ object InfoCardAssets {
         builtinBackgroundResolvedPaths.clear()
         mojangNetworkFailureAt = 0L
         lastRenderCompletedAt = 0L
-        // 1.6.6.2 覆盖版：清空并发获取与来源日志去重表
+ // 清空并发获取与来源日志去重表
         inFlightFetches.clear()
         loggedAvatarSources.clear()
-        // 1.6.6.1：停用磁盘缓存清扫线程（下次使用头像时自动重启）
+ // 停用磁盘缓存清扫线程（下次使用头像时自动重启）
         avatarSweeper?.shutdownNow()
         avatarSweeper = null
-        // 1.6.6.2：停用渲染空闲释放线程（下次渲染完成时自动重启）
+ // 停用渲染空闲释放线程（下次渲染完成时自动重启）
         idleReleaser?.shutdownNow()
         idleReleaser = null
     }
@@ -1207,20 +1207,20 @@ object InfoCardAssets {
      * Mojang 官方原生 API 解析皮肤贴图 URL（用户要求始终保留）：
      * 会话服务器 UUID 直查 + 玩家名反查。
      *
-     * 1.6.2 修复「极少个数玩家头像始终无法获取」：
+ * 修复「极少个数玩家头像始终无法获取」：
      * 旧版第 4 步要求「名字反查到的正版 UUID ≠ 传入 UUID」才查询会话服务器，
      * 而 Mojang 极少数老账号的 UUID 不是 v4（如 v3），第 3 步的 v4 快路径
      * 会跳过它们，第 4 步又因「相同即跳过」被挡——两层全挡 = 头像永远失败；
      * 现在只要名字反查到正版 UUID 就查询会话服务器（传入 UUID 是 v4 且
      * 第 3 步已查过的除外，避免重复请求）。
      *
-     * 1.6.4：官方链路在网络冷却期（见 [MOJANG_NETWORK_COOLDOWN_MS]）内
+ * 官方链路在网络冷却期（见 [MOJANG_NETWORK_COOLDOWN_MS]）内
      * 整体跳过，避免每个玩家都等一次 5 秒超时；跳过时由外部多线路回退
      * 兜底（见 [fetchExternalAvatar]）。
      */
     private fun resolveMojangSkinUrl(request: AvatarRequest): String? {
-        // 官方链路网络冷却期内不再逐玩家等超时（1.6.4）；
-        // 1.6.6.2：冷却期内跳过属于网络抖动型失败（本次尝试标记，
+ // 官方链路网络冷却期内不再逐玩家等超时；
+ // 冷却期内跳过属于网络抖动型失败（本次尝试标记，
         // 最终失败时不写 missCache，下次查询立即重试）
         if (mojangInCooldown()) {
             networkTrouble.set(true)
@@ -1256,7 +1256,7 @@ object InfoCardAssets {
     /**
      * 会话服务器查询贴图 URL。
      *
-     * 1.6.4：超时 5 秒→3 秒（更快释放预热预算），并区分失败类型：
+ * 超时 5 秒→3 秒（更快释放预热预算），并区分失败类型：
      * - 204 / 404：确定性无数据（该 UUID 无皮肤记录），不触发冷却；
      * - 429 / 5xx / 网络异常（超时/连接失败）：网络级失败，开启全局冷却
      *   （[markMojangUnreachable]，5 分钟内后续玩家不再访问官方链路，
@@ -1293,7 +1293,7 @@ object InfoCardAssets {
     /**
      * 按玩家名解析正版 UUID（带正负缓存；非正版名返回 404 → null）。
      *
-     * 1.6.2 修复「极少个数玩家头像始终无法获取」：旧版把 Mojang API 的
+ * 修复「极少个数玩家头像始终无法获取」：旧版把 Mojang API 的
      * 限流（429）/ 5xx / 网络异常与「名字确实不存在（404）」一律写进
      * **永久**负缓存——排行榜并发预热 15+ 个名字很容易触发 Mojang
      * 限流，被 429 的名字从此被判为「无正版账号」，头像永远失败。
@@ -1336,7 +1336,7 @@ object InfoCardAssets {
                 }
                 else -> {
                     // 429 限流 / 5xx / 网络异常（-1）：不写负缓存，下次查询自动重试；
-                    // 1.6.4：同时开启 Mojang 官方链路全局冷却（5 分钟），
+ // 同时开启 Mojang 官方链路全局冷却（5 分钟），
                     // 后续玩家不再逐个等超时（见 [MOJANG_NETWORK_COOLDOWN_MS]）
                     markMojangUnreachable()
                     null
@@ -1359,7 +1359,7 @@ object InfoCardAssets {
     /**
      * 外部头像服务回退链（在线头像获取的主链路）。
      *
-     * 1.7.2 超时重试修复（用户实测：头像下载流读到一部分后触发读超时，
+ * 超时重试修复（用户实测：头像下载流读到一部分后触发读超时，
      * 连接被直接切断，本轮渲染占位块、下一轮查询重试即成功）：
      * - 头像下载 HTTP 的读超时从旧版短超时延长到 25 秒（连接超时保持 5 秒
      *   短平快——慢源连接不上就立刻换源，慢在传数据的源给足时间）；
@@ -1370,7 +1370,7 @@ object InfoCardAssets {
      * - 超时型失败继续不写 60 秒冷却（下次查询立即重试，现逻辑保持）；
      *   只有确定性失败（HTTP 明确无此玩家，404 等）才写冷却。
      *
-     * 1.7.0 外层贴图（帽子层）修复：Minotar 的 /avatar 与 MinePic 的
+ * 外层贴图（帽子层）修复：Minotar 的 /avatar 与 MinePic 的
      * /avatar 端点都只回内层皮肤（实测像素比对确认），玩家头像缺少
      * 外层纹理。现改为：Minotar 走 /helm（带帽子层）；MinePic 改走
      * /skin 原始皮肤贴图 + 本地裁脸（[downloadAndCropFace]，含帽子层
@@ -1394,7 +1394,7 @@ object InfoCardAssets {
     private fun fetchExternalAvatar(request: AvatarRequest): FetchedFace? {
         val first = fetchExternalAvatarOnce(request)
         if (first != null) return first
-        // 1.7.2：第一轮全部失败且属网络抖动/超时型——立即换源补一轮快线路
+ // 第一轮全部失败且属网络抖动/超时型——立即换源补一轮快线路
         // 重试（MC-Heads / Minotar 各一次）；确定性失败（404 无此玩家）
         // 重试没有意义，不补
         if (!networkTrouble.get()) return null
@@ -1471,11 +1471,11 @@ object InfoCardAssets {
      * 通用外部头像下载（PNG 直出，无需裁剪）：尺寸不符时最近邻缩放到
      * [FACE_SIZE]（保持像素风），源图用后即 flush。
      *
-     * 1.7.2：不再接收外部传入的统一超时（旧版连接/读同为 3 秒），改走
+ * 不再接收外部传入的统一超时（旧版连接/读同为 3 秒），改走
      * [httpGetAvatar]——连接 5 秒 / 读 25 秒分开控制（见 KDoc）；读超时
      * 抛出后由调用链立即换下一头像源。
      *
-     * 1.6.6.2：[method] 为线路名，随结果返回用于获取方式日志。
+ * [method] 为线路名，随结果返回用于获取方式日志。
      */
     private fun fetchAvatarFromUrl(url: String, method: String): FetchedFace? {
         return try {
@@ -1494,7 +1494,7 @@ object InfoCardAssets {
         }
     }
 
-    // ---------- 头像磁盘缓存（1.6.6；1.6.6.1 有效期可配置 + 过期清扫） ----------
+ // ---------- 头像磁盘缓存（有效期可配置 + 过期清扫） ----------
 
     /** 磁盘缓存默认有效期（小时）：render.avatar-cache-hours 可改。 */
     internal const val DEFAULT_AVATAR_DISK_TTL_HOURS = 3.0
@@ -1559,7 +1559,7 @@ object InfoCardAssets {
 
     /** 清扫一轮磁盘缓存：删过期文件（缓存关闭时全删）+ 超上限删最旧 + 顺手清内存过期条目。 */
     internal fun sweepDiskCache() {
-        // 1.6.6.2：内存过期条目清理放在最前（不依赖磁盘目录是否可得）
+ // 内存过期条目清理放在最前（不依赖磁盘目录是否可得）
         purgeMemoryAvatarCache()
         try {
             val dir = avatarDiskDir() ?: return
@@ -1577,7 +1577,7 @@ object InfoCardAssets {
     }
 
     /**
-     * 内存缓存及时清理（1.6.6.2）：清除超过 [AVATAR_TTL] 未被使用的
+ * 内存缓存及时清理：清除超过 [AVATAR_TTL] 未被使用的
      * 内存头像条目（flush 后移除，栅格立即释放）。磁盘缓存仍在，后续
      * 渲染从磁盘秒级回填。仅在无渲染进行中时执行，避免 flush 正在
      * 画布上的图像。
@@ -1683,7 +1683,7 @@ object InfoCardAssets {
         }
     }
 
-    // ---------- 渲染空闲内存释放（1.6.6.2 新增） ----------
+ // ---------- 渲染空闲内存释放 ----------
 
     /** 最近一次渲染完成时间戳（0 = 尚未渲染过；CardRenderPool 任务收尾时刷新）。 */
     @Volatile
@@ -1694,7 +1694,7 @@ object InfoCardAssets {
     private var idleReleaser: ScheduledExecutorService? = null
 
     /**
-     * 渲染完成时间戳刷新（1.6.6.2）：[CardRenderPool] 在每个渲染任务
+ * 渲染完成时间戳刷新：[CardRenderPool] 在每个渲染任务
      * 收尾时调用（含异常收尾——渲染尝试结束即可重算空闲起点），并
      * 惰性启动空闲释放检查线程。
      */
@@ -1726,7 +1726,7 @@ object InfoCardAssets {
     }
 
     /**
-     * 空闲释放检查（1.6.6.2）：一次渲染完成后 [RenderSettings.idleReleaseMillis]
+ * 空闲释放检查：一次渲染完成后 [RenderSettings.idleReleaseMillis]
      * （render.idle-release-minutes，默认 5 分钟）内没有下一次渲染、且当前
      * 无进行中的渲染任务时，释放头像 / 背景等图像素材缓存占用的内存
      * （flush + 清空，栅格立即归还；磁盘头像缓存与 miss / UUID 等轻量
@@ -1765,14 +1765,14 @@ object InfoCardAssets {
             builtinBackgroundResolvedPaths.clear()
             // 重置计时基准：释放完成后需等下一次渲染完成才重新开始计时
             lastRenderCompletedAt = 0L
-            // 1.6.6.3：释放动作只写插件日志文件，不上控制台
+ // 释放动作只写插件日志文件，不上控制台
             //（GC 提示与释放属于内部例行维护，控制台仅在排查时才有价值，
             //  完整记录见 logs/qq/qq-bind-日期.log）
             PluginFileLog.write(
                 "[渲染] 已 ${"%.1f".format(idleMillis / 60_000.0)} 分钟无渲染，释放素材缓存内存" +
                     "（头像 $avatars 条 / 背景处理结果 $backgrounds 张 / 背景源图 $sources 张，下次渲染自动从磁盘恢复）"
             )
-            // 1.6.6.4：移除空闲后向 JVM 发 GC 提示（原 render.idle-gc-hint），
+ // 移除空闲后向 JVM 发 GC 提示（原 render.idle-gc-hint），
             // 线上 1.6.6.3 曾短暂引入「已提交超存活自动收缩」（auto-shrink），
             // 连同本 GC 提示一并移除——System.gc 触发的 Full GC 全停顿
             //（0.05~0.6 秒）可能落在玩家正在游玩的时刻（「无渲染」不等于
@@ -1783,11 +1783,11 @@ object InfoCardAssets {
     }
 
     /**
-     * 缓存与内存诊断快照（1.6.6.2 覆盖版：/hbkrg mem 子命令输出）。
+ * 缓存与内存诊断快照（/hbkrg mem 子命令输出）。
      *
      * 用于排查「面板内存高」类问题：JVM 已提交堆 ≠ 插件实际占用的
      * 存活内存（渲染高峰后 G1 扩张的堆按 JVM 自然节奏归还；
-     * 1.6.6.4 起插件不主动触发任何 GC，避免全停顿卡顿）。
+ * 起插件不主动触发任何 GC，避免全停顿卡顿）。
      */
     fun cacheStats(): String {
         val runtime = Runtime.getRuntime()
@@ -1812,7 +1812,7 @@ object InfoCardAssets {
 
     /**
      * Crafatar CDN 头像回退（1.6.4：官方皮肤链路失败后的兜底数据源，
-     * 1.6.6：作为多线路的末位）。
+ * 作为多线路的末位）。
      *
      * `https://crafatar.com/avatars/<uuid>?size=216&overlay` 直接返回该玩家
      * 的头部头像 PNG（含帽子层，与 cropFace 的裁剪结果同观感），Cloudflare
@@ -1824,19 +1824,19 @@ object InfoCardAssets {
      * - 404 / 网络失败 / 解码失败一律返回 null（渲染占位块，不缓存为失败
      *   之外的任何错误状态）；
      * - 离线 UUID（非 v4）玩家无皮肤数据时依然诚实返回 null（占位块），
-     *   不做「人人史蒂夫」的假回退（0.1.5.2 设计决策保持不变）。
+ * 不做「人人史蒂夫」的假回退（设计决策保持不变）。
      */
     private fun fetchCrafatarAvatar(uuid: UUID?): FetchedFace? {
         if (uuid == null || uuid.version() != 4) return null
         return try {
-            // 1.6.6：实测 Crafatar 响应较慢（约 5.8s）；1.7.2 起与其他头像线路
+ // 实测 Crafatar 响应较慢（约 5.8s）；与其他头像线路
             // 同走 httpGetAvatar（连接 5s / 读 25s，末位线路给足读取时间）
             val bytes = httpGetAvatar("https://crafatar.com/avatars/$uuid?size=$FACE_SIZE&overlay") ?: return null
             val image = ImageIO.read(ByteArrayInputStream(bytes)) ?: return null
             when {
                 image.width <= 0 || image.height <= 0 -> null
                 image.width == FACE_SIZE -> FetchedFace(image, "Crafatar")
-                // 1.6.5：缩放完成即释放源图栅格
+ // 缩放完成即释放源图栅格
                 else -> FetchedFace(scaleNearest(image, FACE_SIZE), "Crafatar").also {
                     try { image.flush() } catch (_: Throwable) {}
                 }
@@ -1881,7 +1881,7 @@ object InfoCardAssets {
             val bytes = if (code in 200..299) connection.inputStream.use { it.readBytes() } else null
             code to bytes
         } catch (_: Exception) {
-            // 1.6.6.2：网络级异常（超时 / 连接失败）标记本次尝试为网络抖动型
+ // 网络级异常（超时 / 连接失败）标记本次尝试为网络抖动型
             networkTrouble.set(true)
             -1 to null
         } finally {
@@ -1933,24 +1933,24 @@ object InfoCardAssets {
     /**
      * 获取预处理完成的背景（cover 裁剪 + 暗色遮罩，尺寸 width × height）。
      *
-     * 0.1.5.3：从 img/ 目录全部候选图中随机挑选一张（旧版固定取第一张），
+ * 从 img/ 目录全部候选图中随机挑选一张（旧版固定取第一张），
      * 每张图的处理结果按文件路径 + 修改时间 + 大小缓存；图片更换后自动重新处理。
      * 同一张图重复抽中时直接命中缓存，随机切换不额外增加 CPU 开销。
      *
-     * 0.1.5.5：
+ * 
      * - 解码改用 ImageReader 子采样（最长边限制约 1600px），超大尺寸照片
      *   （如手机原图 4000×3000）不再整图解码，避免内存峰值 / OOM 导致卡片生成失败；
      * - 解码失败的文件进入 10 分钟负缓存，随机挑选时自动跳过。
      *
-     * 1.5.1（内存限制优化）：
+ * 
      * - 缓存除张数上限外增加字节预算（见 [BACKGROUND_CACHE_MAX_BYTES]），
      *   大画布背景超预算时按最久未使用淘汰；
      * - 尺寸签名改用 width * 1_000_000 + height，消除长图高度超过 4096 时的碰撞。
      *
-     * 1.5.4.4：移除背景模糊（金字塔整段删除），背景直接叠暗色遮罩
+ * 移除背景模糊（金字塔整段删除），背景直接叠暗色遮罩
      * ，处理开销与峰值内存进一步降低。
      *
-     * 1.7.0：不再叠暗色遮罩（原版灰色遮罩样式已移除，只保留毛玻璃
+ * 不再叠暗色遮罩（原版灰色遮罩样式已移除，只保留毛玻璃
      * 观感），处理结果即 cover 裁剪后的原图；模糊副本按需另行生成
      * （见 [cardBackdropOf]），缓存键不含样式。
      */
@@ -1969,13 +1969,13 @@ object InfoCardAssets {
         }?.toList() ?: emptyList()
         if (candidates.isEmpty()) return null
 
-        // 0.1.5.3：随机挑选背景图（不再固定第一张）
+ // 随机挑选背景图（不再固定第一张）
         val file = candidates[ThreadLocalRandom.current().nextInt(candidates.size)]
 
         val path = file.absolutePath
         val stamp = file.lastModified() + file.length()
         val sizeKey = width.toLong() * 1_000_000L + height
-        // 1.6.9.5：样式不再进缓存键（两种样式的处理结果相同，见 KDoc）
+ // 样式不再进缓存键（两种样式的处理结果相同，见 KDoc）
         val cached = backgroundCache[path]
         if (cached != null && cached.stamp == stamp && cached.sizeKey == sizeKey) {
             cached.lastUsedAt = now
@@ -1987,15 +1987,15 @@ object InfoCardAssets {
         if (decoded.width <= 0 || decoded.height <= 0) return null
 
         val cover = coverImage(decoded, width, height)
-        // 1.7.0：不再叠整图暗色遮罩（原版灰色遮罩样式已移除）——背景原图
+ // 不再叠整图暗色遮罩（原版灰色遮罩样式已移除）——背景原图
         // 直接作为画布底，观感交给卡片背后的局部模糊（毛玻璃）承担
         val processed = cover
         val bytes = processed.width.toLong() * processed.height * 4
-        // 1.6.5：中间图即用即释（cover 与 scaled 父图共享栅格，flush cover 即一并释放）
+ // 中间图即用即释（cover 与 scaled 父图共享栅格，flush cover 即一并释放）
         try { cover.flush() } catch (_: Throwable) {}
         try { decoded.flush() } catch (_: Throwable) {}
         // 旧条目（文件已更换或尺寸不同）被覆盖前 flush，避免其栅格等 GC；
-        // 1.6.9.5：模糊副本一并释放
+ // 模糊副本一并释放
         val stale = backgroundCache.put(path, BackgroundEntry(stamp, sizeKey, processed, bytes, now))
         if (stale != null) {
             try { stale.image.flush() } catch (_: Throwable) {}
@@ -2006,15 +2006,15 @@ object InfoCardAssets {
     }
 
     /**
-     * 全部图片渲染的统一背景入口（1.5.7）。
+ * 全部图片渲染的统一背景入口。
      *
      * - [useBuiltin] 为 true（默认）→ 直接使用 [builtinResource] 内置背景；
      * - false → 随机取数据目录 img/ 文件夹图片；**img 里没有任何可用图片时
      *   自动回退内置背景**（不再退纯色渐变，保证出图风格统一）；
      * - 长图背景处理高度封顶 [ONLINE_BACKGROUND_MAX_HEIGHT] 防栅格膨胀（1.5.1
-     *   仅随机图封顶；1.6.6.1 覆盖版内置图同样封顶，且不再为每种页高
+ * 仅随机图封顶；内置图同样封顶，且不再为每种页高
      *   各存一张 10MB 级 cover 条目；玩家名片卡片高 ≤ 856px 不受影响），
-     *   渲染时按 cover 裁剪铺满（1.6.9.5 起不再拉伸变形，见
+ * 渲染时按 cover 裁剪铺满（起不再拉伸变形，见
      *   [drawBackground]）；
      * - 卡片矮图不受影响。
      *
@@ -2031,7 +2031,7 @@ object InfoCardAssets {
         useBuiltin: Boolean,
         builtinResource: String = BUILTIN_BACKGROUND_CARD,
     ): BufferedImage? {
-        // 1.6.6.1 覆盖版：背景处理高度统一封顶（详见 KDoc）
+ // 背景处理高度统一封顶（详见 KDoc）
         val cappedHeight = height.coerceAtMost(ONLINE_BACKGROUND_MAX_HEIGHT)
         if (!useBuiltin) {
             val random = dataDirectory?.let { processedBackground(it, width, cappedHeight) }
@@ -2057,7 +2057,7 @@ object InfoCardAssets {
         val now = System.currentTimeMillis()
         val sizeKey = width.toLong() * 1_000_000L + height
         // 键须含宽与高：首页 / 续页同宽不同高，尺寸不同各自缓存互不覆盖；
-        // 1.6.9.5：样式不再进键（两种样式的处理结果相同，见 processedBackground KDoc）
+ // 样式不再进键（两种样式的处理结果相同，见 processedBackground KDoc）
         val cacheKey = "builtin:$resource#${width}x$height"
         val cached = backgroundCache[cacheKey]
         if (cached != null && cached.stamp == 0L && cached.sizeKey == sizeKey) {
@@ -2086,8 +2086,8 @@ object InfoCardAssets {
 
         val processed = coverImage(source, width, height)
         val bytes = processed.width.toLong() * processed.height * 4
-        // 1.6.5：旧条目被覆盖前 flush（尺寸变化重入时旧图不再等 GC）；
-        // 1.6.9.5：模糊副本一并释放
+ // 旧条目被覆盖前 flush（尺寸变化重入时旧图不再等 GC）；
+ // 模糊副本一并释放
         val stale = backgroundCache.put(cacheKey, BackgroundEntry(0L, sizeKey, processed, bytes, now))
         if (stale != null) {
             try { stale.image.flush() } catch (_: Throwable) {}
@@ -2098,7 +2098,7 @@ object InfoCardAssets {
     }
 
     /**
-     * 子采样解码背景图（0.1.5.5）：先读尺寸，再按 2 的幂降采样到
+ * 子采样解码背景图：先读尺寸，再按 2 的幂降采样到
      * 最长边约 [BACKGROUND_MAX_DIM] 以内后读取像素，控制解码内存。
      * 解码失败返回 null（不抛异常）。
      */
@@ -2154,8 +2154,8 @@ object InfoCardAssets {
 
     /**
      * 背景缓存超限淘汰：先按张数上限，再按字节预算（含 1.6.9.5 起
-     * 模糊副本的占用），均淘汰最久未使用的条目（1.5.1；
-     * 1.6.5 淘汰即 flush 释放栅格；1.6.9.5 淘汰连带 flush 模糊副本）。
+ * 模糊副本的占用），均淘汰最久未使用的条目（
+ * 淘汰即 flush 释放栅格；1.6.9.5 淘汰连带 flush 模糊副本）。
      */
     private fun evictBackgroundsIfOversized() {
         val overflow = backgroundCache.size - BACKGROUND_CACHE_MAX
@@ -2188,7 +2188,7 @@ object InfoCardAssets {
     /**
      * cover 铺满裁剪。
      *
-     * 1.5.0 修复：浮点缩放宽度经 toInt() 截断可能比目标小 1px（如 900 * (660/900f) = 659.999…），
+ * 修复：浮点缩放宽度经 toInt 截断可能比目标小 1px（如 900 * (660/900f) = 659.999…），
      * 此时 getSubimage(0, 0, targetW, targetH) 的 (x + width) 会超出 raster 触发
      * RasterFormatException —— 概率随背景图尺寸不同而不同（随机背景下"有概率加载失败"）。
      * 修复：向上取整（ceil）并保证缩放结果不小于目标尺寸，使居中偏移恒为非负且不越界。
@@ -2218,7 +2218,7 @@ object InfoCardAssets {
         return scaled.getSubimage(offsetX, offsetY, targetWidth, targetHeight)
     }
 
-    // ---------- 背景铺放与卡片背后局部模糊（1.6.9.5） ----------
+ // ---------- 背景铺放与卡片背后局部模糊 ----------
 
     /** 背景 cover 铺放参数：源图上被铺到画布的区域（等比缩放 + 中心裁剪）。 */
     class BackgroundPlacement internal constructor(val sx: Int, val sy: Int, val sw: Int, val sh: Int)
@@ -2253,7 +2253,7 @@ object InfoCardAssets {
     }
 
     /**
-     * 计算背景铺满画布的 cover 裁剪区域（1.6.9.5）：取宽高两个方向
+ * 计算背景铺满画布的 cover 裁剪区域：取宽高两个方向
      * 缩放比的较大者等比缩放——图片不够大就整张放大到覆盖画布，
      * 再以图片中心为基准裁掉多余部分；不拉伸变形。
      */
@@ -2350,7 +2350,7 @@ object InfoCardAssets {
 
     /**
      * 背景高斯模糊（卡片背后局部模糊的模糊副本生成，见 [cardBackdropOf]；
-     * 1.7.0 起模糊度由 render.blur-strength 控制）。
+ * 起模糊度由 render.blur-strength 控制）。
      *
      * 实现走「降采样 → 小图盒式模糊 → 双线性放大」三步，而不是整图卷积：
      * - 先双线性缩到小尺寸（背景本就只做底板，细节无意义，降采样本身

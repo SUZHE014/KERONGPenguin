@@ -8,7 +8,7 @@ import org.java_websocket.client.WebSocketClient
 import org.java_websocket.handshake.ServerHandshake
 
 /**
- * WebSocket 连接诊断与自愈（1.5.3）。
+ * WebSocket 连接诊断与自愈。
  *
  * ## 根因修复：钩子返回值语义
  *
@@ -131,7 +131,7 @@ object WssDiagnostics : WebSocketListener {
 
     // ---------- WebSocketListener 回调 ----------
     // 约定：返回 true = 放行 SDK 自身处理（鉴权/心跳/重 close 重连链路）。
-    // 1.5.3 首版误返回 false 拦截了全部协议处理，导致"Hello 后无鉴权 → 60 秒被平台
+ // 首版误返回 false 拦截了全部协议处理，导致"Hello 后无鉴权 → 60 秒被平台
     // 1006 踢线"死循环；所有回调必须返回 true。
 
     override fun onOpen(client: WebSocketClient?, handshake: ServerHandshake?): Boolean {
@@ -145,7 +145,7 @@ object WssDiagnostics : WebSocketListener {
         eventCount = 0L
         ackCount = 0L
         fallbackHeartbeatCount = 0L
-        // 1.6.2：本次连接计入重连编排（首次启动连接也计，输出「第 N 次（1/5）重试连接…」）
+ // 本次连接计入重连编排（首次启动连接也计，输出「第 N 次（1/5）重试连接…」）
         ReconnectManager.onOpen()
         PluginFileLog.write("[WSS] 连接已打开，等待平台下发 Hello(op 10)…")
         return true
@@ -157,8 +157,21 @@ object WssDiagnostics : WebSocketListener {
             // 廉价预检：先扫 op，业务事件帧（op 0 非 READY）不进入 JSON 解析
             when (quickOp(msg)) {
                 10 -> onHello(msg)
-                0 -> onDispatch(msg)
-                // 1.6.6.3：op 7 / op 9 属重连过程的协议细节，仅写文件不刷控制台
+                0 -> {
+                    // 按钮互动帧：本插件按钮在帧层即时接管并回应（官方要求 3 秒内
+                    // 回应，排队走命令线程池易被拖超——「第三方连接失败」的根因）；
+                    // 接管后吞帧（返回 false 拦截 SDK 分发）。业务事件与协议帧不同，
+                    // 吞掉不影响鉴权 / 心跳 / 重连链路；未接管（非本插件按钮 / 依赖
+                    // 未就绪）照旧放行 SDK 旧路径。
+                    if (quickType(msg) == "INTERACTION_CREATE" &&
+                        cn.kerong.bot.events.InteractionFastPath.tryHandle(msg)
+                    ) {
+                        eventCount++
+                        return false
+                    }
+                    onDispatch(msg)
+                }
+                // op 7 / op 9 属重连过程的协议细节，仅写文件不刷控制台
                 7 -> PluginFileLog.write("[WSS] <- 平台要求重连(op 7 Reconnect)，SDK 将自动处理")
                 9 -> PluginFileLog.write(
                     "[WSS] <- 会话无效(op 9 Invalid Session d=${JSON.parseObject(msg)?.get("d")}），平台要求重新鉴权"
@@ -201,12 +214,12 @@ object WssDiagnostics : WebSocketListener {
             PluginFileLog.write(
                 "[WSS] <- $type（鉴权成功，会话已建立）sessionId=$sessionId"
             )
-            // 1.6.2：鉴权成功通知重连编排（健康与否由存活时长判定）
+ // 鉴权成功通知重连编排（健康与否由存活时长判定）
             ReconnectManager.onSessionReady()
         } else {
             // 业务事件：内存计数（volatile 写，单次纳秒级），不解析不落盘
             eventCount++
-            // 1.6.7.5：捕获群 @机器人 事件的消息 ID（GROUP_AT_MESSAGE_CREATE
+ // 捕获群 @机器人 事件的消息 ID（GROUP_AT_MESSAGE_CREATE
             // 的 content 已被平台去除 @前缀、mentions 也不含机器人自身，
             // 事件类型是 AI 对话判定的唯一可靠信号——见 GroupAtTracker）。
             // 本钩子先于 SDK 事件分发执行，标记必然先于消息处理写入；
@@ -253,14 +266,14 @@ object WssDiagnostics : WebSocketListener {
             1000 -> "平台正常关闭（网关定期踢线），SDK 将在 3 秒后自动重连"
             else -> "SDK 将按 anyCloseReconnect 策略在 3 秒后自动重连"
         }
-        // 1.6.6.3：关闭帧细节只写文件（重连风暴防刷屏）；
+ // 关闭帧细节只写文件（重连风暴防刷屏）；
         // 汇总性的「第 N 次重试 / 成功 / 超时」由 ReconnectManager 在控制台输出
         PluginFileLog.write(
             "[WSS] 连接关闭：code=$code 原因=${reason ?: "无"} 由${if (remote) "平台" else "本端"}发起（$hint）" +
                 " [本次连接累计：事件 $eventCount 帧 / 心跳应答 $ackCount 次${if (fallbackHeartbeatCount > 0) " / 插件代发心跳 $fallbackHeartbeatCount 次" else ""}]"
         )
-        // 1.6.2：会话存活交重连编排计数（健康会话重置重试计数并宣告重连成功）
-        // 1.6.6.3：移除互踢证据计数（网关抖动会误判成双服抢占，不再做连接层冲突推断）
+ // 会话存活交重连编排计数（健康会话重置重试计数并宣告重连成功）
+ // 移除互踢证据计数（网关抖动会误判成双服抢占，不再做连接层冲突推断）
         val sessionReadyAt = readyAt
         if (sessionReadyAt > 0) {
             val aliveMs = System.currentTimeMillis() - sessionReadyAt
@@ -277,7 +290,7 @@ object WssDiagnostics : WebSocketListener {
     /**
      * 连接错误：异常类型 + 消息 + 完整堆栈前 15 帧，控制台与日志文件双写。
      *
-     * 1.5.3 修复"堆栈没有记录在日志里面"：SDK 的 onError 只输出"wss error"，
+ * 修复"堆栈没有记录在日志里面"：SDK 的 onError 只输出"wss error"，
      * 异常堆栈走 printStackTrace（仅控制台），此前文件里定位不到任何线索；
      * 现在原始异常在本回调直接落盘。
      */
@@ -325,7 +338,7 @@ object WssDiagnostics : WebSocketListener {
             if (socket == null || !socket.isOpen) continue
             val now = System.currentTimeMillis()
 
-            // 1.6.2：连接处于打开状态且鉴权成功后存活 ≥ 90 秒 → 健康会话，
+ // 连接处于打开状态且鉴权成功后存活 ≥ 90 秒 → 健康会话，
             // 重置重连计数并宣告「重连成功」（看门狗口径与连接关闭时判定口径一致）
             if (readyAt > 0 && now - readyAt >= ReconnectManager.HEALTHY_SESSION_MS) {
                 ReconnectManager.onHealthySession()
@@ -367,7 +380,7 @@ object WssDiagnostics : WebSocketListener {
     /**
      * 主动重连（90 秒限频共用，防重连风暴）。
      *
-     * 1.6.2：重连超时挂起期间（ReconnectManager 已关闭 SDK 自动重连，
+ * 重连超时挂起期间（ReconnectManager 已关闭 SDK 自动重连，
      * 等待 30 分钟退避或 /hbkrg chs）看门狗不再兑底重连。
      */
     private fun forcedReconnect(socket: WebSocketClient, message: String) {
@@ -441,7 +454,7 @@ object WssDiagnostics : WebSocketListener {
 }
 
 /**
- * AppID 凭据健康自检（1.5.3）：启动时直接调用 QQ 开放平台的 token 接口
+ * AppID 凭据健康自检：启动时直接调用 QQ 开放平台的 token 接口
  * （与 SDK AuthV2Base 使用的同一端点），验证 appid + secret 是否有效。
  *
  * 用途：当机器人陷入"鉴权失败 → 4009"循环时，第一步就是确认凭据本身是否可用——

@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit
  * 延迟/周期任务按 1 tick = 50ms 换算后投递回服务器线程执行。
  *
  * common-Bot 用到的面：runTask / runTaskLater / runTaskAsynchronous /
- * runTaskTimer / callSyncMethod（1.6.0 起返回 BukkitTask 句柄，
+ * runTaskTimer / callSyncMethod（起返回 BukkitTask 句柄，
  * 与 Spigot 签名对齐供 FoliaCompat 非 Folia 路径包装取消）。
  */
 object BukkitScheduler {

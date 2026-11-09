@@ -15,8 +15,8 @@ import java.util.function.Consumer
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * QQ 绑定登录闸门（1.6.4，未绑定老玩家的加入前拦截；1.6.7.9 跨版本重做；
- * 1.6.7.11 修复挂载失败的真根因）。
+ * QQ 绑定登录闸门（未绑定老玩家的加入前拦截；1.6.7.9 跨版本重做；
+ * 修复挂载失败的真根因）。
  *
  * 背景：NeoForge 没有登录期玩家事件（PlayerLoggedInEvent 在加入完成
  * 之后才触发），旧版对未绑定玩家的踢出发生在加入后 1 tick——此时客户端仍在
@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 解法：借用原版白名单/封禁的显示路径。配置阶段结束、进入世界之前，以绑定
  * 提示断开连接，客户端会把断开原因显示在“无法连接到服务器”界面上。
  *
- * 1.6.7.9 多版本适配（MC 1.20.4 / 1.20.6 / 1.21.x）——两个时代的配置阶段
+ * 多版本适配（MC 1.20.4 / 1.20.6 / 1.21.x）——两个时代的配置阶段
  * 事件类不同，且任一时代的类在另一时代的运行时不存在，无法编译期同时绑定：
  * - 20.2~20.4（MC 1.20.4）：net.neoforged.neoforge.network.event.
  *   **OnGameConfigurationEvent**（register 参数 ICustomConfigurationTask）；
@@ -36,7 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * getListener()/register() 方法形态一致（已对 20.4.253 / 20.6.144 /
  * 21.1.252 / 21.11.48 构件字节级核实）。
  *
- * 1.6.7.11 挂载修复：1.6.7.9 用「@SubscribeEvent + 事件基类 Event 参数」
+ * 挂载修复：1.6.7.9 用「@SubscribeEvent + 事件基类 Event 参数」
  * 的监听器注册 mod 总线——但 mod 总线以 markerType(IModBusEvent) 构造，
  * EventBus 校验监听参数必须实现 IModBusEvent，基类 Event 不满足，register()
  * 直接抛 IllegalArgumentException（"takes an argument that is not valid for

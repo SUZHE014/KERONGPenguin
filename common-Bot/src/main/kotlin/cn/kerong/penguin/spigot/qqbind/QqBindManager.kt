@@ -30,14 +30,14 @@ import java.util.concurrent.ConcurrentHashMap
  * │   ├── index.yml           # 索引：“玩家名[UUID]” → QUUID
  * │   ├── <QUUID>.yml         # 单个玩家的主文件（一人一文件，全部数据都在这里：
  * │   │                        # qq(OpenId) / playerName / playerUuid / 群昵称 / 签到 /
- * │   │                        # 待补金币 / stats 统计节 —— 1.5.3.1 覆盖版合并存储）
+ * │ │ # 待补金币 / stats 统计节 —— 合并存储）
  * │   ├── skip.yml            # 免验证名单
  * │   └── blacklist.yml       # QQ 黑名单
  * ├── ai-context.yml          # AI 对话上下文开关
  * └── logs/qq/qq-bind-*.log   # 绑定日志（超 1GB 轮转）
  * ```
  *
- * 1.5.3.1 覆盖版：不再有任何子目录 / 第二套 ID 键 —— 统计（stats 节）与
+ * 不再有任何子目录 / 第二套 ID 键 —— 统计（stats 节）与
  * OpenId 昵称（nickname / lastSeenAt）全部写入玩家自己的 QUUID 主文件；
  * 同名玩家 UUID 不同 = 不同 key = 不同 QUUID = 两个人，互不串数据。
  */
@@ -47,7 +47,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
     class PendingBind(val playerName: String, val playerKey: String, val quuid: String, val expireAt: Long)
 
     /**
-     * 一个 QQ 账号名下绑定的一个玩家（1.7.4 多玩家绑定）：
+ * 一个 QQ 账号名下绑定的一个玩家（多玩家绑定）：
      * [playerName] 玩家名 + [quuuid] 其 QUUID 主文件（一人一文件）。
      */
     data class BoundPlayer(val playerName: String, val quuuid: String)
@@ -78,14 +78,14 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
     private val nameToQuuid = ConcurrentHashMap<String, String>()
 
     /**
-     * 玩家 UUID → QUUID 反查索引（内存镜像，1.5.3.1 覆盖版）：
+ * 玩家 UUID → QUUID 反查索引（内存镜像）：
      * 由 index.yml 的 “玩家名[UUID]” 键与主文件的 playerUuid 字段共同构建，
      * 统计存储按玩家 UUID 定位主文件时 O(1) 命中，无需扫目录。
      */
     private val uuidToQuuid = ConcurrentHashMap<String, String>()
 
     /**
-     * QQ OpenId → QUUID 反查索引（内存镜像，1.5.3.1 覆盖版）：
+ * QQ OpenId → QUUID 反查索引（内存镜像）：
      * 启动时扫描全部主文件的 qq 字段一次性构建；绑定 / 解绑时同步维护。
      * findQuuidByQq / findPlayerByQq 从逐文件磁盘扫描降为 O(1)。
      */
@@ -119,7 +119,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         loadBlacklist()
         loadAiContext()
         val boundCount = buildReverseIndexes()
-        // 1.6.3：构造期 instance 尚未赋值（logQuiet 此时退到 println，NeoForge 下
+ // 构造期 instance 尚未赋值（logQuiet 此时退到 println，NeoForge 下
         // 会以 [STDOUT/] 原始格式输出），构造期日志直接走 plugin.logger——
         // Spigot 为 Bukkit 插件日志器、NeoForge 为 JUL→SLF4J 桥接后的标准前缀
         plugin.logger.info("[QQ绑定] ===== QqBindManager 已就绪 (enabled=$isEnabled, 绑定玩家数=$boundCount) =====")
@@ -149,10 +149,10 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
 
         /**
          * 静默日志（控制台 + 文件）。
-         * 1.6.1：控制台行不再拼接 [yyyy-MM-dd HH:mm:ss] 时间戳——服务端控制台
+ * 控制台行不再拼接 [yyyy-MM-dd HH:mm:ss] 时间戳——服务端控制台
          * 本身已按行输出时间，插件再拼一份会出现「[KERONGPenguin] [时间]」重复；
          * 日志文件行保留时间戳（文件没有行级时间信息，需要它定位）。
-         * 1.6.4：instance 未就绪（构造期/静态初始化早期）时不再退到 println——
+ * instance 未就绪（构造期/静态初始化早期）时不再退到 println——
          * 绕过日志器的输出会以裸 [STDOUT/] 格式出现在控制台（与插件日志格式
          * 割裂）；改从 BotShared 拿插件实例走标准 logger（NeoForge 为
          * JUL→SLF4J 桥接的标准前缀），仅完全无插件实例时才 println 兑底。
@@ -308,7 +308,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         return YamlConfiguration.loadConfiguration(file).getString("playerUuid", null)
     }
 
-    // ---------- 主文件统一读写（1.5.3.1 覆盖版） ----------
+ // ---------- 主文件统一读写 ----------
 
     /**
      * 通过玩家 UUID 获取 QUUID（不创建）：同名玩家 UUID 不同即不同人。
@@ -353,7 +353,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
     /**
      * 加锁更新单条 QUUID 主文件（读 → 改 → 原子写）。
      *
-     * 1.5.3.1 覆盖版起，统计 / OpenId 昵称 / 签到 / 金币等多个写入方共用同一份
+ * ，统计 / OpenId 昵称 / 签到 / 金币等多个写入方共用同一份
      * 主文件，全部经本方法串行化，防止并发“各自读旧值再整文件回写”互相覆盖
      * 丢字段；保存先写临时文件再原子改名，读方不会读到写一半的文件。
      *
@@ -413,7 +413,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         }
 
     /**
-     * /玩家名片 统计卡片命令开关（默认开启；1.5.2 前名为 /个人信息，1.7.4 覆盖版前名为 /查信息）。
+ * /玩家名片 统计卡片命令开关（默认开启；1.5.2 前名为 /个人信息，前名为 /查信息）。
      * 前提：QQ 绑定功能（qq-bind.enabled）处于开启状态，否则本开关无效。
      */
     val isPersonalInfoEnabled: Boolean
@@ -440,7 +440,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         }
 
     /**
-     * 每个 QQ 账号最多能绑定多少个玩家（1.7.4 新增，默认 1，只能等于或
+ * 每个 QQ 账号最多能绑定多少个玩家（默认 1，只能等于或
      * 大于 1——配置写 0 / 负数时按 1 处理，避免把所有绑定入口意外关死）。
      */
     val maxPlayersPerQq: Int
@@ -536,7 +536,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             } catch (_: Throwable) {
             }
             if (lines.isEmpty()) {
-                // 1.7.2：验证消息写明「可以直接发送纯数字验证码」
+ // 验证消息写明「可以直接发送纯数字验证码」
                 //（纯数字发送是主路径，/绑定 命令作为备选）
                 lines.add("&c===== QQ 绑定验证 =====")
                 lines.add("&f你还未绑定 QQ，无法进入服务器。")
@@ -570,7 +570,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             100.0
         }
 
-    /** 1.5.5：在线排行榜显示玩家数（1.5.6 起默认 15；配置夹逼 1..100）。1.6.0：配置从 qq-bind.leaderboard.top 迁至顶层 leaderboard.top（查排行榜不依赖 QQ 绑定）。 */
+ /** 1.5.5：在线排行榜显示玩家数（起默认 15；配置夹逼 1..100）。1.6.0：配置从 qq-bind.leaderboard.top 迁至顶层 leaderboard.top（查排行榜不依赖 QQ 绑定）。 */
     val leaderboardTop: Int
         get() = try {
             plugin.config.getInt("leaderboard.top", 15).coerceIn(1, 100)
@@ -579,8 +579,8 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         }
 
     /**
-     * 1.5.7：玩家名片统计卡片是否使用内置背景图（默认 true）。
-     * 1.6.0：配置从 qq-bind.render.info-card-builtin-background 迁至顶层
+ * 玩家名片统计卡片是否使用内置背景图（默认 true）。
+ * 配置从 qq-bind.render.info-card-builtin-background 迁至顶层
      * render.info-card-builtin-background（渲染设置不依赖 QQ 绑定）。
      * true：内置深灰底图（backgrounds/card-default.png，随 JAR 分发，零配置）；
      * false：随机取插件目录 img/ 文件夹图片；img 里没有图片时自动回退内置背景。
@@ -593,8 +593,8 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         }
 
     /**
-     * 1.5.7：查在线列表图片是否使用内置背景图（默认 true）。
-     * 1.6.0：配置从 qq-bind.render.online-list-builtin-background 迁至顶层
+ * 查在线列表图片是否使用内置背景图（默认 true）。
+ * 配置从 qq-bind.render.online-list-builtin-background 迁至顶层
      * render.online-list-builtin-background（查在线不依赖 QQ 绑定）。
      * 语义同 [infoCardBuiltinBackground]，与玩家名片共用横版内置底图。
      */
@@ -606,9 +606,9 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         }
 
     /**
-     * 1.5.7：在线排行榜是否使用内置背景图（默认 true，1.5.6 的
+ * 在线排行榜是否使用内置背景图（默认 true，1.5.6 的
      * random-background 开关反向更名而来：旧值 true（随机图）升级后自动迁移为 false）。
-     * 1.6.0：配置从 qq-bind.leaderboard.builtin-background 迁至顶层
+ * 配置从 qq-bind.leaderboard.builtin-background 迁至顶层
      * leaderboard.builtin-background。
      * true：内置深灰底图（backgrounds/leaderboard-default.png，随 JAR 分发）；
      * false：随机取插件目录 img/ 文件夹图片；img 里没有图片时自动回退内置背景。
@@ -621,7 +621,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         }
 
     /**
-     * 1.6.0：金币排行榜显示玩家数（配置与在线排行榜一致；夹逼 1..100，
+ * 金币排行榜显示玩家数（配置与在线排行榜一致；夹逼 1..100，
      * 超出单页行数自动分段发送）。
      */
     val coinsLeaderboardTop: Int
@@ -632,7 +632,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         }
 
     /**
-     * 1.6.0：金币排行榜是否使用内置背景图（默认 true，与在线排行榜共用
+ * 金币排行榜是否使用内置背景图（默认 true，与在线排行榜共用
      * 竖版内置底图 leaderboard-default.png；false 时随机用 img/ 目录图片）。
      */
     val coinsLeaderboardBuiltinBackground: Boolean
@@ -775,7 +775,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
     }
 
     /**
-     * 1.5.5：列出全部 QUUID 主文件 ID（跳过 index / skip / blacklist 系统文件）。
+ * 列出全部 QUUID 主文件 ID（跳过 index / skip / blacklist 系统文件）。
      *
      * 供在线排行榜等只读全量遍历使用；配合 [readQuuidRecord] 逐条读取，
      * 调用方应处于异步线程（避免批量磁盘 IO 阻塞主线程 / 消息线程）。
@@ -827,7 +827,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
 
     fun getBlacklistName(qq: String?): String? = if (qq == null) null else blacklist[qq]
 
-    // ---------- 反查（1.5.3.1 覆盖版：内存索引 O(1)，不再逐文件扫盘） ----------
+ // ---------- 反查（内存索引 O(1)，不再逐文件扫盘） ----------
 
     /** 通过 QQ OpenId 查找绑定的玩家名。 */
     fun findPlayerByQq(qq: String?): String? {
@@ -853,7 +853,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
     }
 
     /**
-     * 1.5.7.2：通过玩家名查绑定记录里的真实玩家 UUID（纯内存索引，无磁盘 IO）。
+ * 通过玩家名查绑定记录里的真实玩家 UUID（纯内存索引，无磁盘 IO）。
      *
      * 供金币入账等“按名字找玩家”的场景使用：Geyser-Spigot / Floodgate 基岩
      * 玩家的 UUID 是 Floodgate UUID（由 XUID 派生，与名字无关），按名字派生
@@ -984,7 +984,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
     }
 
     /**
-     * 列出一个 QQ 账号（OpenId）名下绑定的全部玩家（1.7.4 多玩家绑定）。
+ * 列出一个 QQ 账号（OpenId）名下绑定的全部玩家（多玩家绑定）。
      *
      * 数据源为 QUUID 主文件逐个扫描（qq 字段非空即已绑定），按绑定时间
      * 升序返回（先绑定的排前面，选择列表顺序稳定）；磁盘异常时尽力返回。
@@ -1053,7 +1053,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         if (currentQq.isNullOrEmpty()) return false
         yaml.set("qq", "")
         yaml.set("boundAt", 0L)
-        // 1.7.4：OpenId → QUUID 反查缓存只在指向本 QUUID 时移除；该 QQ 名下
+ // OpenId → QUUID 反查缓存只在指向本 QUUID 时移除；该 QQ 名下
         // 还有其他绑定玩家时保留（getQuuidByOpenid 的兜底扫描会在 miss 时重建）
         if (openidToQuuid[currentQq] == quuid) {
             openidToQuuid.remove(currentQq)
@@ -1070,7 +1070,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
                 val player: Player? = Bukkit.getPlayerExact(playerName)
                 if (player != null && player.isOnline) {
                     val pluginRef: Plugin = plugin
-                    // 1.5.7.3：踢人属实体状态写操作，经 FoliaCompat 实体调度器
+ // 踢人属实体状态写操作，经 FoliaCompat 实体调度器
                     // （Folia 上在玩家所属区域线程执行；非 Folia 主线程）
                     FoliaCompat.runOnPlayer(pluginRef, player) {
                         player.kickPlayer("§c你的 QQ 已被解除绑定，请重新绑定后进入服务器。")
@@ -1191,7 +1191,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             val quuid = section.getString(key, "")
             if (quuid.isNullOrEmpty()) continue
             nameToQuuid[key] = quuid
-            // 1.5.3.1 覆盖版：解析 “玩家名[UUID]” 键中的 UUID 部分，建 UUID → QUUID 反查
+ // 解析 “玩家名[UUID]” 键中的 UUID 部分，建 UUID → QUUID 反查
             val start = key.lastIndexOf('[')
             val end = key.lastIndexOf(']')
             if (start >= 0 && end > start + 1) {

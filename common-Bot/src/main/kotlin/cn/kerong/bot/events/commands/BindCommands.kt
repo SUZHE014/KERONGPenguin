@@ -8,7 +8,7 @@ import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 /**
  * QQ 绑定命令：玩家进服获取绑定码后在群内发送 /绑定 <绑定码> 完成绑定。
  *
- * 1.6.0：全部文本回复改走消息模板（bind-usage / bind-disabled / bind-error /
+ * 全部文本回复改走消息模板（bind-usage / bind-disabled / bind-error /
  * bind-success / bind-invalid，配置 messages 段可换文件），默认内容与旧版一致。
  */
 class BindCommands : CommandSupport() {
@@ -47,7 +47,7 @@ class BindCommands : CommandSupport() {
                 QqBindManager.logQuiet("[QQ命令] /绑定 成功 code=$code qq=$qq")
                 MessageTemplates.sendDirect(event, "bind-success")
             }
-            // 1.7.4：已达每个 QQ 可绑定玩家数上限（绑定码保留，解绑后重发同一码仍可绑定）
+ // 已达每个 QQ 可绑定玩家数上限（绑定码保留，解绑后重发同一码仍可绑定）
             QqBindManager.BindResult.LIMIT -> {
                 QqBindManager.logQuiet("[QQ命令] /绑定 拒绝：已达绑定上限 code=$code qq=$qq")
                 MessageTemplates.sendDirect(event, "bind-limit", mapOf(

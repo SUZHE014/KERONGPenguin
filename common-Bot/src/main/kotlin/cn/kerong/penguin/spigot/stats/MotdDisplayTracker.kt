@@ -11,15 +11,15 @@ import java.net.Socket
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * MOTD 展示人数捕获器（1.6.9.3 新增；1.7.3.1 第三次覆盖版机制重做）。
+ * MOTD 展示人数捕获器（机制重做）。
  *
  * 用途：/查性能 卡片在线人数卡默认用服务器真实值，服主可把
  * render.performance.max-players-source 改为 motd——改用**服务器列表实际
  * 展示的人数**（其他插件 / 模组改过的值，即玩家在多人游戏服务器列表里
  * 看到的在线 / 最大人数）。
  *
- * 1.7.3.1 第三次覆盖版重做（旧事件捕获机制整体废弃）：
- * - 旧版（1.6.9.3）：Spigot 端监听 ServerListPingEvent（MONITOR）记录
+ * 重做（旧事件捕获机制整体废弃）：
+ * - 旧版：Spigot 端监听 ServerListPingEvent（MONITOR）记录
  *   event.maxPlayers——只捕获最大人数、NeoForge 端无对应事件恒为 null
  *   （模组端配置写 motd 也永远显示真实值，用户实测「配置文件写的是
  *   motd，可展示的人数是服务器真实人数」）、假人数插件用改包

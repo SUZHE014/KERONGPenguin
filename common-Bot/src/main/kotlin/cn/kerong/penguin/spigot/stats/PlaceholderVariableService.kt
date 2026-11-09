@@ -8,7 +8,7 @@ import org.bukkit.plugin.java.JavaPlugin
 import java.util.UUID
 
 /**
- * 变量获取信息（1.6.9 新增，1.6.9.3 扩展）：/玩家名片 卡片的指定项目可改为
+ * 变量获取信息（扩展）：/玩家名片 卡片的指定项目可改为
  * 读取服主在 config.yml variable-fetch 段填写的 PlaceholderAPI 变量输出。
  *
  * 规则（与官网教程一致）：
@@ -122,7 +122,7 @@ object PlaceholderVariableService {
 
     /**
      * 某项目是否填写了变量（总开关开启 + 变量非空；与解析成败无关）。
-     * 1.6.9.3：显隐规则的判定依据——金币 / 点券 / 称号填了变量就展示，
+ * 显隐规则的判定依据——金币 / 点券 / 称号填了变量就展示，
      * 即使对应依赖插件未装（读不到显示「未获取成功」）。
      */
     fun isConfigured(key: String): Boolean = isEnabled() && placeholderOf(key) != null
@@ -220,7 +220,7 @@ object PlaceholderVariableService {
     }
 
     /**
-     * 批量解析排行榜条目的变量覆盖（1.6.9.3 新增，主线程快照内调用）：
+ * 批量解析排行榜条目的变量覆盖（主线程快照内调用）：
      * 变量除了玩家名片以外，排行榜 / 财富榜等有对应数据项的地方同样拉取变量
      * （不返回则用插件自带的）。
      *

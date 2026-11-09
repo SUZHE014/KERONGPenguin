@@ -47,24 +47,24 @@ object QClient {
     /**
      * 启动 QQ 客户端。
      *
-     * 0.1.5.2：移除了 System.out 输出过滤器（旧实现对每次控制台输出
+ * 移除了 System.out 输出过滤器（旧实现对每次控制台输出
      * 都捕获全线程栈，是 CPU / 内存占用的重要来源）；SDK 日志已通过
      * LogSink 全量接管（见运行时初始化 initializeRuntime），不会再进入控制台。
      *
-     * 0.1.5.4：连接生命周期日志（初始化/鉴权/装配/连接成功/超时）改为
+ * 连接生命周期日志（初始化/鉴权/装配/连接成功/超时）改为
      * 控制台 + 插件日志文件双写，不再只留存在控制台，事后可追溯。
      *
-     * 0.1.5.5：断线自动恢复——
+ * 断线自动恢复——
      * 1. 开启 SDK 的 anyCloseReconnect（对任意关闭码，含 QQ 网关正常关闭的 1000，
      *    3 秒后自动重新鉴权重连，修复旧版“wss closed with code 1000 后机器人永久掉线”）
-     *    1.6.2：断线重连改由 [ReconnectManager] 统一编排计数——控制台输出本轮
-     *    第 1 次 / 最后一次 / 成功 / 超时等关键提示（1.6.6.3 起中间过程只写
+ * 断线重连改由 [ReconnectManager] 统一编排计数——控制台输出本轮
+ * 第 1 次 / 最后一次 / 成功 / 超时等关键提示（起中间过程只写
      *    文件，重连风暴不再刷屏），连续 5 次失败暂停自动重连
      *    （提示可用 /hbkrg chs 手动重试，30 分钟后自动再试，最多 3 轮）；
      * 2. 新增常驻连接看门狗：连接持续断开超过约 2 分钟（SDK 自身重连卡死时）
      *    由插件兑底触发重连，并写入日志文件。
      *
-     * 1.5.3 连接诊断与自愈（钩子为纯观察者，放行 SDK 全部协议处理）：
+ * 连接诊断与自愈（钩子为纯观察者，放行 SDK 全部协议处理）：
      * - Starter.Config.webSocketListener 挂载 [WssDiagnostics]，SDK 每帧收发/连接事件都会回调；
      *   连接错误（含完整堆栈）与协议关键帧（Hello/READY/Invalid Session/鉴权包）写入插件
      *   日志文件，事后可从 logs/qq/qq-bind-日期.log 完整还原鉴权过程
@@ -84,7 +84,7 @@ object QClient {
             shuttingDown = false
             lastOpenAt = 0L
             ReconnectManager.onLaunch()
-            // 1.7.4 第三轮覆盖版：启动时预加载多服务器集群状态（配置 + 群
+ // 启动时预加载多服务器集群状态（配置 + 群
             // 选择持久化文件；单服部署仅记录本服名，集群模式输出成员概览）
             try {
                 ClusterState.reload()
@@ -95,14 +95,14 @@ object QClient {
             val session = Starter(appid, "", secret).also { starter = it }
             // 仅订阅群消息相关事件
             session.config.code = Intents.PUBLIC_INTENTS.and(Intents.GROUP_INTENTS)
-            // 0.1.5.5：任意关闭码均自动重连（含 1000 正常关闭；QQ 网关定期踢连接属正常现象，
+ // 任意关闭码均自动重连（含 1000 正常关闭；QQ 网关定期踢连接属正常现象，
             // SDK 会在 3 秒后重新鉴权并恢复会话）
             session.config.anyCloseReconnect = true
-            // 1.5.3：挂载连接诊断钩子（纯观察者，放行 SDK 协议处理；
+ // 挂载连接诊断钩子（纯观察者，放行 SDK 协议处理；
             // 注意 kloping SDK 约定：钩子返回 false 会拦截 SDK 自身逻辑，必须返回 true）
             session.config.webSocketListener = WssDiagnostics
             WssDiagnostics.start()
-            // 1.5.3：AppID 凭据健康自检（异步，不阻塞连接流程）
+ // AppID 凭据健康自检（异步，不阻塞连接流程）
             currentPlugin.submitAsync {
                 try {
                     PluginFileLog.infoAndKeep(QqTokenHealth.check(appid, secret))
@@ -110,7 +110,7 @@ object QClient {
                 }
             }
             PluginFileLog.infoAndKeep("正在连接 QQ 开放平台并鉴权…")
-            // 1.5.4.2：模块化类加载兼容层（NeoForge 模组环境 union: 协议下 SDK 包扫描
+ // 模块化类加载兼容层（NeoForge 模组环境 union: 协议下 SDK 包扫描
             // NPE，导致组件装配失败、命令系统全瘫；兼容层优先走原生扫描，
             // 失败时按 jar 条目枚举兜底，Spigot 行为不变）
             SptCompat.injectModuleCompatScanner(session.APPLICATION)
@@ -131,16 +131,16 @@ object QClient {
             }
 
             session.registerListenerHost(groupMessageHandler)
-            // 1.7.4 覆盖版：消息按钮互动监听（多绑定玩家选择 / 解除黑名单按钮；
+ // 消息按钮互动监听（多绑定玩家选择 / 解除黑名单按钮；
             // 与群消息监听并列的第二个 ListenerHost，事件源 PUBLIC_INTENTS 已含
             // INTERACTION 位，无需改订阅意图）
             session.registerListenerHost(cn.kerong.bot.events.InterActionListener())
-            // 1.6.7.4：注册完成属常规例行信息，仅写文件留档不刷控制台（用户需求）
+ // 注册完成属常规例行信息，仅写文件留档不刷控制台（用户需求）
             PluginFileLog.write("群消息监听已注册（命令系统就绪）")
             session.APPLICATION.logger.setLogLevel(1)
             session.APPLICATION.logger.setOutFile(logFilePattern)
             if (logFilePattern != null) {
-                // 1.6.7.4：SDK 日志去向说明仅写文件留档不刷控制台（用户需求）
+ // SDK 日志去向说明仅写文件留档不刷控制台（用户需求）
                 PluginFileLog.write("QQ 机器人 SDK 日志将写入文件")
             }
             PluginFileLog.infoAndKeep("正在同步群快捷菜单…")
@@ -148,7 +148,7 @@ object QClient {
 
             // 异步轮询 WebSocket 连接状态，输出明确的连接成功/失败日志
             watchConnectionState(currentPlugin)
-            // 常驻看门狗：检测长时断线并兑底重连（0.1.5.5）
+ // 常驻看门狗：检测长时断线并兑底重连
             startConnectionWatchdog(currentPlugin)
         } catch (error: Exception) {
             PluginFileLog.errorAndKeep("QQ 机器人启动异常: ${error.message}")
@@ -185,7 +185,7 @@ object QClient {
     }
 
     /**
-     * 常驻连接看门狗（0.1.5.5）：每 60 秒检查一次 WebSocket 状态。
+ * 常驻连接看门狗：每 60 秒检查一次 WebSocket 状态。
      *
      * 背景：QQ 网关会不定期断开连接（正常关闭 code 1000 / 网络波动），
      * SDK 的 anyCloseReconnect 已开启时会自行在 3 秒后重连；本看门狗只处理
@@ -220,7 +220,7 @@ object QClient {
                 closedChecks++
                 // 首次发现断开先等待下一轮：给 SDK 自身 3 秒重连留出足够窗口
                 if (closedChecks < 2 || lastOpenAt == 0L) continue
-                // 1.6.2：重连超时挂起期间（等待 30 分钟退避或 /hbkrg chs）不兑底重连
+ // 重连超时挂起期间（等待 30 分钟退避或 /hbkrg chs）不兑底重连
                 if (ReconnectManager.isSuspended()) continue
                 PluginFileLog.errorAndKeep(
                     "检测到 QQ 机器人连接已持续断开超过 1 分钟，尝试兑底重连…"
@@ -242,7 +242,7 @@ object QClient {
         if (!format.postChat) return
         if (!message.startsWith(format.startWith)) return
         val messageWithoutPrefix = message.removePrefix(format.startWith)
-        // 1.5.4.5：修复“QQ 消息同步导致服务器内发送消息有延迟”。
+ // 修复“QQ 消息同步导致服务器内发送消息有延迟”。
         // Spigot 的 AsyncPlayerChatEvent 中，所有监听器执行完毕消息才会广播给
         // 服务器内玩家；旧版在此同步执行敏感词审核（OpenAI 兼容接口，
         // connect 5s + read 10s 超时）与每群一次 QQ API 发送，全部阻塞聊天管线，
@@ -259,7 +259,7 @@ object QClient {
     fun broadcastPlayerJoin(playerName: String) {
         if (starter == null) return
         if (!plugin.playerEventFormat().joinEnabled) return
-        // 1.5.4.5：PlayerJoinEvent 在主线程触发，入队发送避免同步 HTTP 阻塞主线程 tick。
+ // PlayerJoinEvent 在主线程触发，入队发送避免同步 HTTP 阻塞主线程 tick。
         OutboxQueue.submit {
             sendTextToGroupsSync(plugin.formatPlayerJoinMessage(playerName), "发送玩家进服通知")
         }
@@ -269,14 +269,14 @@ object QClient {
     fun broadcastPlayerQuit(playerName: String) {
         if (starter == null) return
         if (!plugin.playerEventFormat().quitEnabled) return
-        // 1.5.4.5：同上，主线程事件入队发送。
+ // 同上，主线程事件入队发送。
         OutboxQueue.submit {
             sendTextToGroupsSync(plugin.formatPlayerQuitMessage(playerName), "发送玩家退服通知")
         }
     }
 
     /**
-     * 播报玩家死亡（1.7.4 覆盖版新增，默认关闭——player-events.death.enabled）。
+ * 播报玩家死亡（默认关闭——player-events.death.enabled）。
      *
      * 死亡描述与击杀者名由各平台事件层生成（Spigot / NeoForge 的 DeathMessage
      * 工具，实现与文案口径参考 HuHoBot（
@@ -315,7 +315,7 @@ object QClient {
         val currentPlugin = plugin
         val payloadJson = JSON.toJSONString(payload)
         for (groupId in currentPlugin.groupOpenIdList()) {
-            // 1.7.4 第三轮覆盖版：多服务器集群路由——该群当前归属其他
+ // 多服务器集群路由——该群当前归属其他
             // 服务器时本实例让位（播报 / 转发 / 广播不重复；未配置集群时
             // 恒为 true，单服行为零变化）
             if (!ClusterState.shouldServeGroup(groupId)) continue
@@ -340,7 +340,7 @@ object QClient {
             markdown.keyboard = keyboard
             payload.keyboard = keyboard
         }
-        // 1.5.4.5：主动 Markdown 推送同样经异步发送队列，不阻塞调用线程。
+ // 主动 Markdown 推送同样经异步发送队列，不阻塞调用线程。
         OutboxQueue.submit { sendPayloadToGroupsSync(payload, "发送 Markdown") }
     }
 
@@ -353,7 +353,7 @@ object QClient {
             return
         }
         if (markdownContent.isBlank()) return
-        // 1.7.4 第三轮覆盖版：多服务器集群路由——该群归属其他服务器时让位
+ // 多服务器集群路由——该群归属其他服务器时让位
         if (!ClusterState.shouldServeGroup(groupOpenId)) return
         val markdown = Markdown().setContent(markdownContent)
         val payload = V2MsgData().setContent(markdownContent).setMsg_type(2).setMarkdown(markdown)
@@ -361,7 +361,7 @@ object QClient {
             markdown.keyboard = keyboard
             payload.keyboard = keyboard
         }
-        // 1.5.4.5：入队发送，调用线程（命令/事件处理）零阻塞。
+ // 入队发送，调用线程（命令/事件处理）零阻塞。
         OutboxQueue.submit {
             try {
                 session.bot?.groupBaseV2?.send(groupOpenId, JSON.toJSONString(payload), Channel.SEND_MESSAGE_HEADERS)
@@ -374,12 +374,12 @@ object QClient {
     /**
      * 在群消息事件上下文中回复 Markdown（msg_id 被动回复）。
      *
-     * 1.6.9.5：返回是否发送成功——旧版把发送异常吞在方法内部，调用方
+ * 返回是否发送成功——旧版把发送异常吞在方法内部，调用方
      * 的「失败回退纯文本」分支永远走不到（超长输出被平台拒绝时静默
      * 失败，表现为「/执行命令 执行完没有任何回复」）；现在返回 false
      * 时调用方可自行回退 event.sendMessage。
      *
-     * 1.7.0：送达校验升级——SDK 的 HTTP 代理层对 4xx/5xx **只记日志、
+ * 送达校验升级——SDK 的 HTTP 代理层对 4xx/5xx **只记日志、
      * 不抛异常**（HttpStatusException 仅打印，仍正常返回解析结果），
      * 因此「没有抛异常」不等于「消息送达」。QQ 平台成功送达时响应体
      * 携带消息 id（{"id":"...","timestamp":...}），被拒收时（内容超长 /
@@ -427,7 +427,7 @@ object QClient {
     }
 
     /**
-     * 在群消息事件上下文中回复 Markdown 并引用发送者的原消息（1.5.3，AI 对话引用回复）。
+ * 在群消息事件上下文中回复 Markdown 并引用发送者的原消息（AI 对话引用回复）。
      *
      * 引用原理（QQ 官方机器人文档 MessageReference）：
      * - 请求体附带 message_reference：{"message_id": 被引用消息 ID, "ignore_get_message_error": true}；
@@ -494,7 +494,7 @@ object QClient {
     }
 
     /**
-     * 提取用于引用回复的消息 ID（1.5.3）：
+ * 提取用于引用回复的消息 ID：
      * 1. 深度遍历事件原始 JSON，查找新版平台字段 msg_idx（MessageScene.ext 数组，
      *    key=value 形式，形如 "msg_idx=REFIDX_xxxx"）——命中则直接返回其值；
      * 2. 旧版事件：回退事件顶层 msg_id；
@@ -563,11 +563,11 @@ object QClient {
      * 在群消息事件上下文中回复本地图片（PNG 字节，直接 base64 上传，无需公网托管）。
      * 不附带 @ 提及。
      *
-     * 0.1.5.5：返回是否发送成功（机器人断线 / 上传接口异常时 false），
+ * 返回是否发送成功（机器人断线 / 上传接口异常时 false），
      * 调用方（如 /查信息，1.5.2 前为 /个人信息）据此回退文本提示，与“卡片生成失败”区分开；
      * 失败详情已通过 log_error 双写控制台与插件日志文件。
      *
-     * 1.6.1 修复「图片已发出但仍提示发送失败」：
+ * 修复「图片已发出但仍提示发送失败」：
      * - QQ 群富媒体消息（图片）的发送接口普遍要 10 秒以上才返回应答，而 SDK
      *   （kloping）内置 OkHttp 客户端 readTimeout 硬编码 10 秒——请求已经送达
      *   QQ 侧并实际投递了图片，但客户端等应答先超时抛 SocketTimeoutException，
@@ -639,7 +639,7 @@ object QClient {
     }
 
     /**
-     * 1.6.2：恢复机器人连接（/hbkrg chs 手动重试 / 重连退避结束后自动重试）。
+ * 恢复机器人连接（/hbkrg chs 手动重试 / 重连退避结束后自动重试）。
      *
      * 重新打开 SDK 自动重连（重连超时挂起期间会被关掉），并对当前 socket
      * 触发一次非阻塞重连——连接成功后服务端重新下发 Hello，SDK 自动重新鉴权，
@@ -689,7 +689,7 @@ object QClient {
     }
 
     /**
-     * 1.7.4 第五轮覆盖版：扫码替换凭据——关闭当前 WSS 会话。
+ * 扫码替换凭据——关闭当前 WSS 会话。
      *
      * 已配置状态下经 /hbkrg qr 手动扫码成功后，新凭据写入配置并重连前
      * 调用：只关 WSS 会话与诊断钩子（随后 [launchClient] 会重建），**保留**
@@ -726,7 +726,7 @@ object QClient {
             session?.shutdown()
         } catch (_: Throwable) {
         } finally {
-            // 1.5.4.2：SDK 的 spt 框架与 common 库持有 50+ 个非 daemon 线程
+ // SDK 的 spt 框架与 common 库持有 50+ 个非 daemon 线程
             // （任务队列 40 + 定时器 + Public 静态池 9 + WSS 线程），
             // Starter.shutdown 只关 WSS，不清这些池 → 服务器 stop 后进程永不退出。
             // 此处反射清扫全部 kloping 线程池/Timer/Writer（仅触碰 io.github.kloping.*）
@@ -736,7 +736,7 @@ object QClient {
             }
             starter = null
         }
-        // 1.5.4.5：关闭异步发送队列（尽力清空已排队消息，最多 2 秒，不阻塞关服；
+ // 关闭异步发送队列（尽力清空已排队消息，最多 2 秒，不阻塞关服；
         // 队列线程是 daemon，即使没等到也不阻止 JVM 退出）。
         try {
             OutboxQueue.shutdown()

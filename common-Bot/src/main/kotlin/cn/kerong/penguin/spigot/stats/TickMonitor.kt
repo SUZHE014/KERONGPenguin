@@ -5,7 +5,7 @@ import cn.kerong.penguin.spigot.scheduler.FoliaCompat
 import org.bukkit.plugin.Plugin
 
 /**
- * 自采样服务器刻耗时监视器（1.6.7.6 新增，Folia 多线程核心修复）。
+ * 自采样服务器刻耗时监视器（Folia 多线程核心修复）。
  *
  * ## 为什么需要它
  *

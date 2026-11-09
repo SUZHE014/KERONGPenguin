@@ -17,12 +17,12 @@ import java.util.concurrent.ConcurrentHashMap
 import java.awt.image.BufferedImage
 
 /**
- * /在线排行榜 —— 总在线时长排行榜图片（1.5.5 新增）。
+ * /在线排行榜 —— 总在线时长排行榜图片。
  *
  * 每名玩家一行：排名徽章（前三名金 / 银 / 铜）+ 真实皮肤头像 + 玩家名 +
  * 总在线时长。
  *
- * 背景（1.5.7）：默认使用内置专属背景图（深灰色主体 + 深绿色装饰，随 JAR
+ * 背景：默认使用内置专属背景图（深灰色主体 + 深绿色装饰，随 JAR
  * 分发，零配置零素材）；leaderboard.builtin-background 关闭后改用
  * 插件目录 img/ 随机图（img 无可用图片时自动回退内置图）。
  *
@@ -30,15 +30,15 @@ import java.awt.image.BufferedImage
  * 统计每 60 秒增量落盘，排行榜数值最多滞后一分钟，展示精度足够）。
  *
  * 命令开关：commands.在线排行榜（默认 true，关闭后群命令不再响应，
- * 快捷菜单按钮与 /帮助 里的条目同步消失）；
- * 显示人数：leaderboard.top（1.5.6 起默认 15，自动夹逼 1..100）。
+ * 快捷菜单按钮与 /菜单 里的按钮同步消失）；
+ * 显示人数：leaderboard.top（起默认 15，自动夹逼 1..100）。
  *
- * 冷却（1.6.0 起可配置）：同一用户两次查询的最小间隔秒数，配置
+ * 冷却（可配置）：同一用户两次查询的最小间隔秒数，配置
  * render.command-cooldown-seconds（默认 5 秒，0 = 关闭）。
- * 提示文本模板（1.6.0）：manager-not-ready-retry / leaderboard-no-data /
+ * 提示文本模板：manager-not-ready-retry / leaderboard-no-data /
  * leaderboard-render-failed / image-send-failed / server-busy（messages 段）。
  *
- * 1.6.9.3：变量获取信息同步生效——variable-fetch 开启且填写了
+ * 变量获取信息同步生效——variable-fetch 开启且填写了
  * 玩家名（player-name）/ 总在线时长（total-playtime）变量时，榜单行
  * 展示名与时长文本改为变量返回内容（主线程快照内批量解析，
  * 失败 / 留空回退插件自带数据；头像 / 排名仍按真实玩家）。
@@ -125,7 +125,7 @@ class LeaderboardCommands : CommandSupport() {
                     }
 
                     // 3. 主线程快照在线玩家（头像实时皮肤增强）+ 并发预热头像；
-                    //    1.6.9.3：变量获取（玩家名 / 总在线时长，同一次主线程
+ // 变量获取（玩家名 / 总在线时长，同一次主线程
                     //    语义内解析，仅对展示的 top 条目）
                     val onlineUuids = snapshotOnlineUuids()
                     val variableOverrides = snapshotVariableOverrides(topEntries)
@@ -138,7 +138,7 @@ class LeaderboardCommands : CommandSupport() {
                     val pages = ArrayList<ByteArray>(4)
                     var pageStart = 0
                     while (pageStart < topEntries.size) {
-                        // 1.7.3：单页上限改走全局配置 leaderboard.page-size（默认 20）
+ // 单页上限改走全局配置 leaderboard.page-size（默认 20）
                         val pageEnd = minOf(pageStart + RenderSettings.leaderboardPageSize(), topEntries.size)
                         val pageEntries = topEntries.subList(pageStart, pageEnd).mapIndexed { offset, raw ->
                             LeaderboardRenderer.LeaderEntry(
@@ -150,7 +150,7 @@ class LeaderboardCommands : CommandSupport() {
                             )
                         }
                         val height = LeaderboardRenderer.measurePageHeight(pageEntries.size, pages.isEmpty())
-                        // 背景（1.5.7）：统一走 resolveBackground —— 默认内置专属图
+ // 背景：统一走 resolveBackground —— 默认内置专属图
                         // （深灰主体 + 深绿色装饰，随 JAR 分发）；开关关闭后随机用 img/
                         // 目录图片，img 无可用图片时同样回退内置图（长图封顶 1600px 防栅格膨胀）
                         val background = InfoCardAssets.resolveBackground(
@@ -243,7 +243,7 @@ class LeaderboardCommands : CommandSupport() {
         } catch (_: Throwable) {
             null
         } ?: return emptyMap()
-        // 1.5.7.3：经 FoliaCompat 桥接（Folia 全局区域线程限时取值，超时回退空表）
+ // 经 FoliaCompat 桥接（Folia 全局区域线程限时取值，超时回退空表）
         return try {
             cn.kerong.penguin.spigot.scheduler.FoliaCompat.callSync(bukkitPlugin, 3L) { snapshot() } ?: emptyMap()
         } catch (_: Exception) {
@@ -252,7 +252,7 @@ class LeaderboardCommands : CommandSupport() {
     }
 
     /**
-     * 1.6.9.3：主线程快照解析 top 玩家的变量覆盖（玩家名 / 总在线时长）。
+ * 主线程快照解析 top 玩家的变量覆盖（玩家名 / 总在线时长）。
      * 开关关闭或两键均未配置时零开销返回空表；超时 / 异常同样空表
      * （回退插件自带数据，不影响榜单流程）。
      */
@@ -284,7 +284,7 @@ class LeaderboardCommands : CommandSupport() {
     }
 
     /**
-     * 并发预热头像：统一走 InfoCardAssets.fetchAvatarBatch（1.7.2 重做并发
+ * 并发预热头像：统一走 InfoCardAssets.fetchAvatarBatch（重做并发
      * 策略：8 线程共享池 + 12 秒渲染等待预算，超预算不中断在途下载——后台
      * 完成后进缓存，下一轮查询即显示真实头像）；超预算未取到的玩家本轮
      * 渲染占位块；头像缓存 10 分钟，重复查询秒回。

@@ -12,7 +12,7 @@ import java.util.Date
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * /查性能 命令图片输出服务（1.6.7 新增，1.6.7.1 调整，1.6.7.2 增缓存）。
+ * /查性能 命令图片输出服务（调整，增缓存）。
  *
  * 全流程异步（与 /查在线 一致）：机器人消息线程只做冷却判断
  * （render.command-cooldown-seconds，同一配置共用冷却秒数但独立计数），
@@ -24,14 +24,14 @@ import java.util.concurrent.ConcurrentHashMap
  *    在线人数，单项显隐配置已移除）；
  * 3. [PerformanceRenderer] 渲染卡片（背景与其他渲染共用
  *    [InfoCardAssets.resolveBackground]，render.performance.builtin-background
- *    默认内置底图；1.6.7.2 覆盖版起样式固定原版，透明度由
+ * 默认内置底图；样式固定原版，透明度由
  *    render.global-opacity 统一控制）；
- * 4. 单图发送；性能数据缓存（1.6.7.2 新增 render.performance.cache-seconds，
- *    覆盖版默认 60 秒）：缓存窗口内的重复查询直接复用上一张卡片秒回
+ * 4. 单图发送；性能数据缓存（render.performance.cache-seconds，
+ * 默认 60 秒）：缓存窗口内的重复查询直接复用上一张卡片秒回
  *    （对应 EasyBot 模板「渲染过慢」一节推荐开启的性能数据缓存），
  *    0 = 关闭。
  *
- * 1.6.9.3：
+ * 
  * - 在线人数卡展示「N / M」：M 默认服务器真实最大人数，
  *   render.performance.max-players-source = motd 时改用其他插件修改过的
  *   展示人数（即 MOTD 里显示的人数，[MotdDisplayTracker] 从最近一次
@@ -48,7 +48,7 @@ object PerformanceService {
     /** 用户冷却记录：OpenId → 上次触发时间。 */
     private val lastQueryAt = ConcurrentHashMap<String, Long>()
 
-    // ---------- 性能数据缓存（1.6.7.2 新增） ----------
+ // ---------- 性能数据缓存 ----------
 
     /** 缓存互斥锁（[CardRenderPool] 可能多线程并发提交）。 */
     private val cacheLock = Any()
@@ -120,7 +120,7 @@ object PerformanceService {
                     }
 
                     // 1b. 1.6.9.3：在线人数卡的最大人数（real = 真实值默认；
-                    //     motd = 服务器列表展示值）；1.7.3.1 第三次覆盖版重做：
+ // motd = 服务器列表展示值）；重做：
                     //     人数 N 与最大 M 成对切到展示值，捕获器改本机 SLP 自查询
                     //     （60 秒节流，查不到回退真实值，双端一致）
                     val (onlinePlayers, maxPlayers, fromMotd) =
@@ -136,7 +136,7 @@ object PerformanceService {
                         null
                     }
 
-                    // 2. 固定四项指标（1.6.7.1 起无单项显隐配置）
+ // 2. 固定四项指标（起无单项显隐配置）
                     val height = PerformanceRenderer.measureHeight()
                     val dataDirectory = plugin.configFile?.parentFile
                     val background = InfoCardAssets.resolveBackground(
@@ -183,7 +183,7 @@ object PerformanceService {
     }
 
     /**
-     * 展示值解析（1.6.9.3 新增 max-players-source；1.7.3.1 第三次覆盖版重做）：
+ * 展示值解析（max-players-source；重做）：
      * - real（默认）：人数与最大人数用服务器真实值（快照携带）；
      * - motd：服务器列表展示值（[MotdDisplayTracker] 本机 SLP 自查询最近
      *   捕获，过期现场刷新；人数 N 与最大 M 成对切换，查不到回退真实值）；

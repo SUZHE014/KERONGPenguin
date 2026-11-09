@@ -1,7 +1,7 @@
 package cn.kerong.bot
 
 /**
- * 群「@机器人」事件标记与消息级去重（1.6.7.5 新增）。
+ * 群「@机器人」事件标记与消息级去重。
  *
  * ## 背景：为什么需要帧级捕获
  *
@@ -14,7 +14,7 @@ package cn.kerong.bot
  *   后每条消息都推）：content **原样保留** `<@openid>` 占位前缀，@机器人
  *   时 mentions 里会有 `bot=true` 条目（可检测，旧逻辑只覆盖了这条）。
  *
- * 旧版 AI 对话判定（1.6.7.4 及之前）只看「content 含 `<@` 片段」+ mentions
+ * 旧版 AI 对话判定（及之前）只看「content 含 `<@` 片段」+ mentions
  * 匹配——对 GROUP_AT_MESSAGE_CREATE 事件**永远不成立**（前缀被剥、mentions
  * 无机器人），所以群里 @机器人 发消息从没被判定为 AI 对话，全部落到
  * 全量转发：这就是「AI 聊天艾特发送消息后没有判定为 AI 聊天」的根因。
@@ -76,7 +76,7 @@ object GroupAtTracker {
 }
 
 /**
- * 群消息 msg_id 级处理闸门（1.6.7.5 新增）。
+ * 群消息 msg_id 级处理闸门。
  *
  * 同一 msg_id 只放行一次（[tryAcquire] 返回 true 一次），其余到达一律
  * 拦截。覆盖两类重复：

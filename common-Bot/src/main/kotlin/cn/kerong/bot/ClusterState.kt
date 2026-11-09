@@ -6,7 +6,7 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 多服务器集群状态（1.7.4 第三轮覆盖版新增）。
+ * 多服务器集群状态。
  *
  * ## 背景
  *

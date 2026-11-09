@@ -21,7 +21,7 @@ import org.bukkit.event.raid.RaidTriggerEvent
  * - 游戏时长与原版统计（距离/伤害）由 PlayerStatsManager 周期快照结算，
  *   不依赖事件监听。
  *
- * 1.7.3.1 第三次覆盖版：移除原 ServerListPingEvent 监听（旧 motd 捕获
+ * 移除原 ServerListPingEvent 监听（旧 motd 捕获
  * 机制只记最大人数、模组端无事件恒真实值、改包型假人数读不到）——
  * motd 展示值改由 [cn.kerong.penguin.spigot.stats.MotdDisplayTracker]
  * 本机 SLP 自查询捕获，不再依赖事件。
@@ -54,7 +54,7 @@ class PlayerEventsListener : Listener {
         PlayerStatsManager.onEntityDeath(killer, event.entity.type)
     }
 
-    /** 玩家死亡：统计 + 死亡播报（1.7.4 覆盖版新增播报，默认关闭）。 */
+ /** 玩家死亡：统计 + 死亡播报（播报，默认关闭）。 */
     @EventHandler(priority = EventPriority.MONITOR)
     fun onPlayerDeath(event: PlayerDeathEvent) {
         val player = event.entity.player ?: return

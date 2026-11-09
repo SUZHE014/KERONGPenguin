@@ -26,7 +26,7 @@ import java.util.UUID
  * - 未绑定 QQ 的玩家登录时拒入并发绑定码；
  * - 抑制 Forge 网络日志刷屏。
  *
- * 0.1.5.2：Bot SDK 日志接管统一在运行时初始化（initializeRuntime）中完成
+ * Bot SDK 日志接管统一在运行时初始化（initializeRuntime）中完成
  * （错误上控制台、其余写文件），此处不再重复重定向。
  */
 class GameChat : Listener {
@@ -38,9 +38,9 @@ class GameChat : Listener {
 
         /**
          * Vault 入账（反射，避免编译期依赖）。
-         * 1.5.7.2：入账目标改用 [resolveOfflinePlayer] 按真实玩家 UUID 解析
+ * 入账目标改用 [resolveOfflinePlayer] 按真实玩家 UUID 解析
          * （Geyser/Floodgate 基岩玩家兼容，见该方法注释）。
-         * 1.7.2：改经 EconomyRewardService.depositVaultVerified 发放——
+ * 改经 EconomyRewardService.depositVaultVerified 发放——
          * 增加「发放前后余额差值」到账校验（签到奖励发放检测的补发链路）。
          */
         @JvmStatic
@@ -125,7 +125,7 @@ class GameChat : Listener {
                 QqBindManager.logQuiet("[GameChat] /qq 注册失败: ${safeMessage(t)}")
             }
             // 延迟补注册 /绑定 命令（等待 QQ 客户端启动）
-            // 1.5.7.3：经 FoliaCompat 桥接（Folia 全局区域线程延迟）
+ // 经 FoliaCompat 桥接（Folia 全局区域线程延迟）
             FoliaCompat.runSyncLater(plugin, 40L) {
                 if (!bindRegistered) tryRegisterBind()
             }
@@ -142,7 +142,7 @@ class GameChat : Listener {
         try {
             QClient.registerCommand(BindCommands())
             bindRegistered = true
-            // 1.6.7.4：注册例行信息仅写文件留档，不再刷控制台（用户需求）
+ // 注册例行信息仅写文件留档，不再刷控制台（用户需求）
             QqBindManager.logFileOnly("/绑定 命令已注册 (第 $retryCount 次尝试)")
         } catch (_: Throwable) {
         }
@@ -197,7 +197,7 @@ class GameChat : Listener {
         QClient.broadcastPlayerJoin(playerName)
         val plugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin") ?: return
 
-        // 1.6.4：未绑定的新玩家在此踢出（登录期已放行，服务器已建档 UUID/
+ // 未绑定的新玩家在此踢出（登录期已放行，服务器已建档 UUID/
         // 玩家数据，之后在 QQ 群完成绑定即可正常进服）
         enforceJoinBinding(event.player)
 
@@ -214,7 +214,7 @@ class GameChat : Listener {
                 // 补发离线签到奖励
                 val pending = manager.takePendingCoins(quuid)
                 if (pending > 0) {
-                    // 1.5.7.3：入账经桥接（Folia 全局区域线程，Vault 线程安全）
+ // 入账经桥接（Folia 全局区域线程，Vault 线程安全）
                     FoliaCompat.runSync(plugin) {
                         try {
                             val player = Bukkit.getPlayerExact(playerName)
@@ -243,7 +243,7 @@ class GameChat : Listener {
     }
 
     /**
-     * 未绑定 QQ 玩家登录拦截（1.6.4 双段策略，与 NeoForge 版同源）：
+ * 未绑定 QQ 玩家登录拦截（双段策略，与 NeoForge 版同源）：
      * - 老玩家（服务器已有档案）→ 登录期直接拒入，绑定提示直接显示在
      *   “无法连接到服务器”界面（等价原版白名单/封禁提示的显示路径，
      *   不会被加入流程或“服务器连接失败”覆盖）；
@@ -279,7 +279,7 @@ class GameChat : Listener {
     }
 
     /**
-     * 服务器是否已有该玩家的档案（1.6.4 老玩家判定）：
+ * 服务器是否已有该玩家的档案（老玩家判定）：
      * usercache 有记录（hasPlayedBefore）或世界存档目录存在 playerdata/<uuid>.dat。
      * 两者任一成立即视为老玩家（usercache 被清理时文件判定兜底）。
      */

@@ -32,7 +32,7 @@ abstract class CommandSupport : BaseCommand() {
     /**
      * 静默判定发送者是否具备管理员权限（不输出任何提示）。
      *
-     * 1.6.5 新增：OpenId 反查等「同一命令按身份展示不同内容」的场景使用
+ * OpenId 反查等「同一命令按身份展示不同内容」的场景使用
      * （无权限时不应拒绝执行，只是隐藏敏感字段，因此不能复用会回复提示的
      * [requireAdmin]）。
      */
@@ -56,7 +56,7 @@ abstract class CommandSupport : BaseCommand() {
     protected fun requireAdmin(plugin: KERONG, event: GroupMessageEvent): Boolean {
         val allowed = isAdmin(plugin, event)
         if (!allowed) {
-            // 1.6.0：无权限提示改走消息模板 no-admin-permission.md（messages 段可换文件）
+ // 无权限提示改走消息模板 no-admin-permission.md（messages 段可换文件）
             MessageTemplates.sendPlain(event, "no-admin-permission")
         }
         return allowed
@@ -73,11 +73,11 @@ abstract class CommandSupport : BaseCommand() {
     /**
      * 清洗并裁剪命令执行输出。
      *
-     * 1.6.9.5：超长裁剪——服务器回显可能长达数千行，QQ 群消息内容有
+ * 超长裁剪——服务器回显可能长达数千行，QQ 群消息内容有
      * 长度限制，超长回复会被平台直接拒绝（在敏感词审核之前裁剪，
      * 审核接口同样处理不了超长文本）。
      *
-     * 1.7.0：内容清洗——服务器控制台输出常携带 ANSI 转义序列
+ * 内容清洗——服务器控制台输出常携带 ANSI 转义序列
      * （\u001b[38;2;...m 之类）、Minecraft 旧版 § 颜色码与其他控制
      * 字符，这类内容发到 QQ 平台会被拒收（HTTP 400，表现为「执行完
      * 没有任何回复」）。发送前统一剥离：保留换行与普通可见字符，
@@ -119,7 +119,7 @@ abstract class CommandSupport : BaseCommand() {
 
     companion object {
         /**
-         * 命令执行结果回复的字符上限（1.6.9.5）：QQ 群消息内容有长度
+ * 命令执行结果回复的字符上限：QQ 群消息内容有长度
          * 限制，超长回复被平台拒绝导致「执行完没有回复」，超限截断。
          */
         internal const val COMMAND_OUTPUT_MAX_CHARS = 1200

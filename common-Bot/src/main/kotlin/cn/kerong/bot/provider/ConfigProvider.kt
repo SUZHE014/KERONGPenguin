@@ -38,7 +38,7 @@ data class Motd(
     val serverPort: Int,
     val api: String,
     val postImg: Boolean,
-    /** Markdown 开关：false 时 /查在线 自动改用渲染图片输出（1.5.1）。 */
+ /** Markdown 开关：false 时 /查在线 自动改用渲染图片输出。 */
     val useMarkdown: Boolean,
 )
 
@@ -48,7 +48,7 @@ data class PlayerEventFormat(
     val joinFormat: String,
     val quitEnabled: Boolean,
     val quitFormat: String,
-    /** 死亡播报开关（1.7.4 覆盖版新增，参考 HuHoBot；默认关闭）。 */
+ /** 死亡播报开关（参考 HuHoBot；默认关闭）。 */
     val deathEnabled: Boolean = false,
     /** 死亡播报格式（占位符与 HuHoBot 一致：{name}/{player}/{server}/{platform}/{message}/{killer}）。 */
     val deathFormat: String = "[游戏] {message}",
@@ -150,7 +150,7 @@ interface ConfigProvider {
         formatPlayerEventMessage(playerEventFormat().quitFormat, name)
 
     /**
-     * 玩家死亡播报（1.7.4 覆盖版新增，占位符与 HuHoBot 对齐）。
+ * 玩家死亡播报（占位符与 HuHoBot 对齐）。
      *
      * @param name 死者玩家名
      * @param deathMessage 自动生成的中文死亡描述（如「Steve 被苦力怕杀死了」，不含死者名）
@@ -204,7 +204,7 @@ interface ConfigProvider {
     fun groupOpenIdList(): List<String> = emptyList()
 
     /**
-     * 多服务器集群：本服显示名（1.7.4 第三轮覆盖版）。
+ * 多服务器集群：本服显示名。
      *
      * 多台服务器共用同一 QQ 机器人凭据时，在每台服的 bot.cluster.name
      * 填写本服在「选择服务器」按钮上显示的名称；未配置（空）时集群
@@ -213,21 +213,21 @@ interface ConfigProvider {
     fun clusterName(): String = ""
 
     /**
-     * 多服务器集群：全部成员服务器名列表（1.7.4 第三轮覆盖版）。
+ * 多服务器集群：全部成员服务器名列表。
      *
      * 各服务器必须配置完全一致的列表（含自己）；少于 2 个（或不含
      * 本服）时集群逻辑全部旁路，行为与单服版本完全一致。
      */
     fun clusterMembers(): List<String> = emptyList()
 
-    // ---------- 服务器开关消息（1.7.4 第三轮覆盖版引入；1.7.4.1 覆盖版：去表情 ----------
+ // ---------- 服务器开关消息（引入；去表情 ----------
     // ---------- 文案 + 180 秒重启判定窗口，重启 / 普通开机两类文案分开） ----------
 
     /** 服务器状态通知总开关（关闭后关机 / 重启 / 开机 / 意外关闭都不发送）。 */
     fun isServerNotifyEnabled(): Boolean = true
 
     /**
-     * 重启判定窗口（秒，1.7.4.1 覆盖版恢复该键，默认 180）：
+ * 重启判定窗口（秒，恢复该键，默认 180）：
      * 上次正常关闭后在这个秒数内再次开机判定为「重启」（发 restart 重启文案），
      * 超过这个时长再开机按普通开机处理（发 start 开机文案）；
      * 配 0 = 不判定重启，一律按普通开机播报。

@@ -40,7 +40,7 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
     init {
         commands.add(PublicCommands())
         commands.add(AdministrationCommands())
-        // 1.6.9.3：/motd 与 /在线服务器 命令已移除（MotdCommands 下线）
+ // /motd 与 /在线服务器 命令已移除（MotdCommands 下线）
         commands.add(BindCommands())
         commands.add(CheckInCommands())
         commands.add(LeaderboardCommands())
@@ -55,7 +55,7 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
     @ListenerHost.EventReceiver
     fun onGroupMessage(event: GroupMessageEvent) {
         if (event == null) return
-        // 1.6.2：为本次消息投递分配全局唯一回复序号基数（防 QQ 平台 40054005 消息去重）。
+ // 为本次消息投递分配全局唯一回复序号基数（防 QQ 平台 40054005 消息去重）。
         // QQ 网关弱网 / 会话恢复时会重投递同一条群消息，SDK 为重投递创建全新事件对象
         // （回复序号又从 1 起算），与首次投递的回复序号重复后被平台按重复消息拒收；
         // 此处按 msg_id 计数分配互不重叠的基数（首次 =1，第 N 次重投递 =1+(N-1)×100000），
@@ -69,16 +69,16 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         }
         val groupId: String? = event.groupOpenId ?: event.groupId
         val rawContent = event.rawMessage?.content ?: return
-        // 1.6.7.5：msg_id 级去重——全量模式下同一条 @ 消息可能先后以
+ // msg_id 级去重——全量模式下同一条 @ 消息可能先后以
         // GROUP_MESSAGE_CREATE（带 <@> 前缀）与 GROUP_AT_MESSAGE_CREATE
         //（前缀已剥）两种事件到达；QQ 官方也提示弱网/会话恢复时会重投递
         // 同一 msg_id。不去重会导致同一条消息被回复/转发两次。
         // id 为空的异常事件不去重直接放行。
         if (!RecentMessageGate.tryAcquire(event.rawMessage?.id)) return
-        // 1.6.7.5：剥离行首 @ 占位片段（全量模式 content 原样保留 <@openid>
+ // 剥离行首 @ 占位片段（全量模式 content 原样保留 <@openid>
         // 前缀，导致 /命令 前缀匹配失败——先剥再进命令分发；无片段零开销）。
         //
-        // 1.7.4.1 修复：@其他用户的消息不触发命令——群里发「@张三 /查在线」
+ // 修复：@其他用户的消息不触发命令——群里发「@张三 /查在线」
         // 是成员间的对话（@ 的是人不是机器人），旧版把行首 @ 片段与命令内
         // @ 片段无差别剥掉，照样命中命令，机器人误插嘴。现在按 @ 对象分流：
         // - @机器人（三通道判定 [isMentionedBot]）：行为不变，照旧剥行首
@@ -93,16 +93,16 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
             if (mentionBarred) rawContent
             else QqText.stripLeadingMentionPlaceholders(rawContent)
 
-        // 1.5.3：记录群成员昵称（OpenId → 群昵称目录，供 /查信息（原 /查询OpenID）反查展示），
+ // 记录群成员昵称（OpenId → 群昵称目录，供 /查信息（原 /查询OpenID）反查展示），
         // 失败不影响消息处理（仅内存写入，持久化异步）
         OpenIdDirectory.recordEvent(event)
 
-        // 1.7.4 第三轮覆盖版：群自动绑定——bot.groups 未填写时，任何群互动
+ // 群自动绑定——bot.groups 未填写时，任何群互动
         // 消息（命令 / 聊天均可）自动把该群 OpenId 写入白名单并重载
         // （[AutoGroupBinder]；不拦截消息，本条继续正常处理）
         AutoGroupBinder.tryBind(groupId)
 
-        // 1.7.4：多玩家选择的数字确认拦截——优先级最高（在群白名单检查与
+ // 多玩家选择的数字确认拦截——优先级最高（在群白名单检查与
         // 自动绑定之前：玩家名片 / 查信息在任意群可用，它们触发的选择
         // 会话也应能在任意群确认；只有 1-2 位纯数字且存在同群同人的活跃
         // 会话时才消费，其余消息零影响）。在此拦截意味着 @机器人 + 数字
@@ -112,13 +112,13 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         // 查信息（OpenId 查询）与玩家名片（统计卡片）命令始终放行（任何群
         // 可用）；切换服务器（多服务器集群指令）同样任意群可用；其余命令仅
         // 允许配置的群。
-        // 1.7.4 第三轮覆盖版：旧名「查询open」前缀兼容匹配已按用户指令移除
+ // 旧名「查询open」前缀兼容匹配已按用户指令移除
         // （旧版指令兜底全部下线，指令只认现名）。
         if (!content.contains("查信息") && !content.contains("玩家名片") && !content.contains("切换服务器")) {
             if (groupId == null || !isAllowedGroup(groupId)) return
         }
 
-        // 1.6.0：纯数字消息自动绑定 —— 群里发出一串纯数字（不带任何其他文字）
+ // 纯数字消息自动绑定 —— 群里发出一串纯数字（不带任何其他文字）
         // 时，若该数字恰好是某位玩家当前的绑定码，发送者即完成绑定
         // （与 /绑定 <验证码> 同一回复模板 bind-success）。
         // 不匹配任何绑定码时静默放行（不影响全量转发与 AI 对话）。
@@ -126,7 +126,7 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         // 与群当前选择无关）
         if (tryAutoBindByDigits(event, content)) return
 
-        // 1.7.4 第三轮覆盖版：多服务器集群路由（未配置集群时全部旁路，
+ // 多服务器集群路由（未配置集群时全部旁路，
         // 行为与单服版本完全一致）。
         // - 群未选择：命令 → 按 msg_id 哈希选出的仲裁实例弹「选择服务器」
         //   按钮后全部拦截（等待用户选择）；非命令消息（聊天 / @机器人）→
@@ -138,15 +138,15 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
 
         // 1. 依次尝试命令分发（1.7.4：@机器人 + 指令同样在此命中——消息内
         // 的 @ 片段与前导斜杠在命令匹配前被剥离，与直接发送指令走完全
-        // 同一条路径，因此「@机器人 查信息」「@机器人 /帮助」均可执行；
-        // 1.7.4.1：只 @ 其他人的消息跳过命令分发（见入口 mentionBarred
+        // 同一条路径，因此「@机器人 查信息」「@机器人 /菜单」均可执行；
+ // 只 @ 其他人的消息跳过命令分发（见入口 mentionBarred
         // 注释），“@张三 /查在线”不再触发机器人回复）
         if (!mentionBarred) {
             if (dispatchCommand(event)) return
         }
 
         // 2. @机器人触发 AI 对话（非 / 开头）。
-        //    1.6.7.5 根因修复：QQ 群消息的 content 已被平台去除 @机器人前缀、
+ // 根因修复：QQ 群消息的 content 已被平台去除 @机器人前缀、
         //    mentions 数组也不含机器人自身（官方文档明确「不含@机器人自身」），
         //    旧的「content 含 <@」门槛对群消息永远不成立（频道消息才有效）——
         //    群里 @机器人 发消息从未被判定为 AI 对话。现改为三通道判定
@@ -170,7 +170,7 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
     }
 
     /**
-     * 多服务器集群路由（1.7.4 第三轮覆盖版新增，详见 [ClusterState] KDoc）。
+ * 多服务器集群路由（详见 [ClusterState] KDoc）。
      *
      * @return true = 本实例继续处理这条消息；false = 本实例让位（所选 / 默认
      *   归属其他服务器，或命令已被选择按钮接管）
@@ -202,7 +202,7 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
     }
 
     /**
-     * 1.6.0：纯数字消息自动绑定尝试。
+ * 纯数字消息自动绑定尝试。
      *
      * 仅当消息为 4-12 位纯数字（前后空白除外，不含任何其他文字/符号）时，
      * 按绑定码提交（confirmBinding 内部校验有效期 / 黑名单 / 重复绑定）。
@@ -239,7 +239,7 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
                     MessageTemplates.sendDirect(event, "bind-success")
                     true
                 }
-                // 1.7.4：码匹配但已达绑定上限——用户意图明确，如实提示
+ // 码匹配但已达绑定上限——用户意图明确，如实提示
                 // （码保留，解绑后重发同一码仍可绑定）；黑名单与无效码保持
                 // 静默放行（与旧版一致：不向群里无关数字闲聊回复任何内容）
                 QqBindManager.BindResult.LIMIT -> {
@@ -272,7 +272,7 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
     /**
      * 判断消息是否 @ 了机器人。
      *
-     * 1.6.7.5 三通道（按可靠性排序）：
+ * 三通道（按可靠性排序）：
      * 1. **GROUP_AT_MESSAGE_CREATE 事件标记**：[GroupAtTracker] 在 WSS 帧层
      *    捕获（事件类型是唯一可靠信号——该事件的 content 已被平台剥掉
      *    @前缀、mentions 不含机器人）；
@@ -282,7 +282,7 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
      * 3. 文本里的 <@ 片段匹配机器人 id（频道消息形态，保留兼容）。
      */
     private fun isMentionedBot(event: GroupMessageEvent): Boolean {
-        // 通道一：GROUP_AT 事件标记（1.6.7.5 新增，群消息主判定）
+ // 通道一：GROUP_AT 事件标记（群消息主判定）
         if (GroupAtTracker.isAtBot(event.rawMessage?.id)) return true
         var botSelfId: String? = null
         try {
@@ -329,7 +329,7 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
      * @return true = 消息已消费（AI 已回复或已给出提示）；false = AI 功能
      *   未开启，消息继续走全量转发（1.6.7.5：旧版直接吞掉，@ 消息凭空消失）
      *
-     * 1.6.9.4：AI 调用移出 WSS 消息分发线程——AiChat.chat 是同步 HTTP
+ * AI 调用移出 WSS 消息分发线程——AiChat.chat 是同步 HTTP
      * （connect 10s + read 30s，失败重试更久），旧版在 WSS 读取线程里
      * 直接执行，AI 回复期间同连接上后续所有群消息 / 命令全部排队等它；
      * 现整体移入异步线程（submitAsync），WSS 线程即刻返回继续收消息，
@@ -344,7 +344,7 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
             }
             if (!manager.isAiEnabled) return false
 
-            // 1.5.4：净化 QQ 表情标签（旧实现把 <faceType=...,ext="base64">
+ // 净化 QQ 表情标签（旧实现把 <faceType=...,ext="base64">
             // 原样送给 AI，AI 收到一段乱码）；正文中间 @ 其他人的
             // <@openid> 占位片段同样剥离（行首的机器人占位已在入口剥过）
             var body = QqText.sanitize(content.trim())
@@ -370,9 +370,9 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
                 try {
                     val reply = AiChat.chat(preparedBody, manager, groupId, userId)
                     val aiContent = "${manager.qqAiOutputPrefix} $reply"
-                    // 0.1.5.2：AI 对话日志仅写入文件，不再上控制台（隐私泄露修复）
+ // AI 对话日志仅写入文件，不再上控制台（隐私泄露修复）
                     QqBindManager.logVerbose("[AI对话] 回复内容长度=${aiContent.length} 准备发送")
-                    // 1.5.3：改为引用回复（引用发送者的原消息，QQ 官方 MessageReference 协议），
+ // 改为引用回复（引用发送者的原消息，QQ 官方 MessageReference 协议），
                     // 失败时在 QClient.replyMarkdownWithReference 内部逐级回退，回复不会丢失
                     try {
                         GroupMsgSender.sendReply(event, aiContent)
@@ -414,12 +414,12 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
             val metadata: JSONObject? = baseMessage?.metadata
             val attachments: JSONArray? = metadata?.getJSONArray("attachments")
 
-            // 1.5.4：解析引用消息（message_type=103，被引原文在 msg_elements[0]）
+ // 解析引用消息（message_type=103，被引原文在 msg_elements[0]）
             val quote = QqText.extractQuote(metadata)
 
             val parts = ArrayList<String>()
             val rawContent = event.rawMessage?.content
-            // 1.5.4：净化 QQ 表情标签——旧实现把 <faceType=...,ext="base64…"> 原样
+ // 净化 QQ 表情标签——旧实现把 <faceType=...,ext="base64…"> 原样
             // 转发到游戏聊天，玩家看到一段 base64 乱码串（即“引用消息转发乱码”）
             val trimmed = QqText.sanitize(rawContent ?: "").trim()
 
@@ -434,7 +434,7 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
                     }
                 }
             }
-            // 1.6.9.4：合并转发消息（聊天记录）防刷屏——QQ 会把合并聊天记录
+ // 合并转发消息（聊天记录）防刷屏——QQ 会把合并聊天记录
             // 整段渲染成「=== 消息 N === / [消息内容] / [发送者]」的多行文本
             // 模板（或 message_type=102 聊天记录）下发，旧版原样转发到游戏
             // 聊天一次刷几十上百行；1.6.9.5 起直接以固定占位「[合并聊天记录]」
@@ -479,9 +479,9 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
                         .replace(memberId, "@$memberName")
                 }
             }
-            // 1.5.4：引用消息带被引上下文（[回复 昵称「被引摘要」] 前缀）
+ // 引用消息带被引上下文（[回复 昵称「被引摘要」] 前缀）
             if (quote != null) message = QqText.quotePrefix(quote) + message
-            // 1.5.4.5：敏感词审核（配置审核接口时为同步 HTTP，最坏 15s）移出
+ // 敏感词审核（配置审核接口时为同步 HTTP，最坏 15s）移出
             // WSS 事件分发线程，避免阻塞后续 QQ 消息与命令响应；
             // broadcastMessage 内部自行调度主线程广播进服。
             val capturedMessage = message

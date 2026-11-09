@@ -14,7 +14,7 @@ import java.security.MessageDigest
 import java.util.Locale
 
 /**
- * 背景图片包服务（1.7.1 新增）：/hbkrg bpng 命令的共享实现，
+ * 背景图片包服务：/hbkrg bpng 命令的共享实现，
  * Spigot 插件版与 NeoForge 模组版命令层共用同一套逻辑。
  *
  * 功能：
@@ -27,7 +27,7 @@ import java.util.Locale
  *   查性能 / 在线排行榜 / 财富榜）的背景开关切换为 img/ 自定义背景
  *   或恢复内置背景，写入配置后自动重载（等效 /hbkrg reload 的配置段）。
  *
- * 下载源（1.7.2 起单一官网线路）：
+ * 下载源（起单一官网线路）：
  * https://kerong.xin/penguin/bpng/（官网主源；1.7.1 的 git 仓库 raw
  * 双镜像（gh-proxy 中转 + 直连）已按用户要求删除——镜像与官网内容
  * 无法保持同步时用户会下载到旧图，且 git 仓库不应背负 58MB 图片）。
@@ -38,7 +38,7 @@ import java.util.Locale
  * 下不可达（详见 AI-KNOWLEDGE §6）。
  *
  * 清单格式（由 scripts/make_bpng_manifest.py 或 bpng_upload.py 上传工具生成；
- * 1.7.2 起每包新增 count（文件数）与 bytes（总字节数）两个展示字段，
+ * 起每包新增 count（文件数）与 bytes（总字节数）两个展示字段，
  * 旧清单无这两个字段时自动按 files 数组统计——向后兼容）：
  * {"packs":[{"id":"wl1","name":"蔚蓝档案","description":"…",
  *   "count":29,"bytes":60900000,
@@ -71,7 +71,7 @@ object BackgroundPackService {
     private val IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "bmp", "gif")
 
     /**
-     * 下载源列表（1.7.2 起仅官网单一来源；构造为可注入形参便于独立 JVM
+ * 下载源列表（起仅官网单一来源；构造为可注入形参便于独立 JVM
      * 冒烟测试，默认 [DOWNLOAD_SOURCES]）。
      */
     val DOWNLOAD_SOURCES = listOf(
@@ -98,9 +98,9 @@ object BackgroundPackService {
         val name: String,
         val description: String,
         val files: List<PackFile>,
-        /** 清单里显式记录的文件数（1.7.2 新增；旧清单无此字段按 files 统计）。 */
+ /** 清单里显式记录的文件数（旧清单无此字段按 files 统计）。 */
         val declaredCount: Int,
-        /** 清单里显式记录的总字节数（1.7.2 新增；旧清单无此字段按 files 统计）。 */
+ /** 清单里显式记录的总字节数（旧清单无此字段按 files 统计）。 */
         val declaredBytes: Long,
     ) {
         /** 展示用张数：优先清单显式声明值，缺失回退按 files 统计（向后兼容）。 */
@@ -121,7 +121,7 @@ object BackgroundPackService {
         val failedFiles: List<String>,
     )
 
-    // ---------- 图片下载功能开关（1.7.2 新增配置 image-download.enabled） ----------
+ // ---------- 图片下载功能开关（新增配置 image-download.enabled） ----------
 
     /**
      * 图片下载功能是否开启（image-download.enabled，默认 true）。
@@ -235,7 +235,7 @@ object BackgroundPackService {
                 files.add(PackFile(fileName, fileObj.getLongValue("size"), md5))
             }
             if (files.isNotEmpty()) {
-                // 1.7.2：读取清单显式声明的张数与体积（展示用）；
+ // 读取清单显式声明的张数与体积（展示用）；
                 // 旧清单（或非法值）自动回退按 files 统计——向后兼容
                 val declaredCount = obj.getIntValue("count")
                 val declaredBytes = obj.getLongValue("bytes")

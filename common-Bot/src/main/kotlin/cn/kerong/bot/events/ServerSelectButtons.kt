@@ -7,7 +7,7 @@ import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 多服务器「选择服务器 / 切换服务器」按钮（1.7.4 第三轮覆盖版新增）。
+ * 多服务器「选择服务器 / 切换服务器」按钮。
  *
  * 两个入口共用一套按钮：
  * - 群未选择时执行任意命令 → 按消息哈希选出的仲裁实例弹出选择按钮

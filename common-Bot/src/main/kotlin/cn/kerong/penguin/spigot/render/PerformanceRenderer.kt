@@ -21,13 +21,13 @@ import javax.imageio.ImageIO
  * 进度槽全部为半透明体系，头部卡白 34 / 容器黑 64 / 指标卡白 16 /
  * 胶囊白 30，无面板描边）；字体 / 布局 / 指标口径不变。
  *
- * 半透明卡片风格（1.6.7.5 覆盖版，1350 宽，固定版式单页图）：
+ * 半透明卡片风格（1350 宽，固定版式单页图）：
  * - 顶部标题区（1.7.3：整块全宽标题卡——模糊 + 标题框黑度 + 圆角边缘一次到位；
- *   1.7.3 覆盖版：标题文字 padding 对齐玩家名片欢迎面板（距卡左缘 24~28px），
+ * 标题文字 padding 对齐玩家名片欢迎面板（距卡左缘 24~28px），
  *   右上角小方框改「综合状态」（TPS / MSPT / 内存 / CPU 综合评级，不含人数）
  *   且灰度永远比标题框深一点（同灰度叠加视觉融合看不出边界）；
- * - 副标题条（1.7.3 新增）：服务器 / 更新时间 / 渲染耗时 三张小卡，
- *   副标题灰度 render.subtitle-card-gray；1.7.3 覆盖版：第三格改渲染耗时
+ * - 副标题条：服务器 / 更新时间 / 渲染耗时 三张小卡，
+ * 副标题灰度 render.subtitle-card-gray；第三格改渲染耗时
  *   （开始渲染到本图绘制完成的毫秒数，绘制完成后补画）且与标题框 /
  *   指标网格容器上下等距（视觉间距均为 18px）；
  * - 指标卡网格（2 列网格，1.6.7.8 起固定五项：TPS / MSPT / 内存 / CPU /
@@ -43,7 +43,7 @@ import javax.imageio.ImageIO
  *   TPS 卡支持变量覆盖（variable-fetch.tps，数值改为变量原文输出）；
  * - 背景与其他渲染共用 [InfoCardAssets.resolveBackground]
  *   （render.performance.builtin-background，默认内置底图）；
- *   1.6.9.5：背景统一走共享入口（cover 裁剪铺满：等比放大不足的边 +
+ * 背景统一走共享入口（cover 裁剪铺满：等比放大不足的边 +
  *   图片中心裁剪，不拉伸变形）；毛玻璃模糊度（render.blur-strength）
  *   时卡片背后区域铺背景模糊副本（backdrop-filter 局部模糊，
  *   卡片外背景保持清晰）；
@@ -61,8 +61,8 @@ object PerformanceRenderer {
     /** 页边距。 */
     private const val MARGIN = 40
 
-    /** 顶部标题区高度（眉题 + 主标题 + 右侧时间卡；1.7.3 覆盖版二轮：150 → 164；
-     * 1.7.3 覆盖版三轮：164 → 182，眉题视觉顶边距 27 → 45px——对齐玩家名片
+ /** 顶部标题区高度（眉题 + 主标题 + 右侧时间卡；二轮：150 → 164；
+ * 三轮：164 → 182，眉题视觉顶边距 27 → 45px——对齐玩家名片
      * 欢迎面板（最上框参照标准，实测 45px），用户反馈二轮 27px 仍太贴边；
      * +18 全部给顶部，底边距 42px 与眉题→主标题间距保持不变）。 */
     private const val HEADER_HEIGHT = 182
@@ -74,7 +74,7 @@ object PerformanceRenderer {
     private const val SUBTITLE_HEIGHT = 84
 
     /**
-     * 副标题条与指标卡区间距（1.7.3 覆盖版：18 → 32 = HEADER_GAP 18 +
+ * 副标题条与指标卡区间距（18 → 32 = HEADER_GAP 18 +
      * 网格容器上垫 14——指标卡网格容器比指标卡上扩 14px，旧值 18 时
      * 副标题条到容器的视觉间距只有 4px，与标题框到副标题条的 18px
      * 不等距；补偿后视觉间距两边都是 18px）。 */
@@ -95,7 +95,7 @@ object PerformanceRenderer {
     /** 底部留白。 */
     private const val BOTTOM_PAD = 40
 
-    // ---------- 配色（1.6.7.5 覆盖版：半透明面板，alpha 与其他卡片逐一相同） ----------
+ // ---------- 配色（半透明面板，alpha 与其他卡片逐一相同） ----------
 
     private val COLOR_EYEBROW = Color(0x8A, 0x9B, 0xAE)
     private val COLOR_LABEL = Color(0x9F, 0xB3, 0xC8)
@@ -104,13 +104,13 @@ object PerformanceRenderer {
     private val COLOR_SUB = Color(0x8A, 0x9B, 0xAE)
 
     /**
-     * 头部标题卡底色（半透明黑）。1.7.2 覆盖版起接标题框黑度
+ * 头部标题卡底色（半透明黑）。接标题框黑度
      * （render.title-card-gray，默认 80）；右上角小方框另接徽标灰度
      * （永远比标题框深 +36，防同灰度叠加融合）。
      */
     private val COLOR_HEADER_CARD: Color get() = Color(0x00, 0x00, 0x00, RenderSettings.titleCardGray())
 
-    /** 右上角小方框（徽标卡）底色：永远比标题框深一点（1.7.3 覆盖版）。 */
+ /** 右上角小方框（徽标卡）底色：永远比标题框深一点。 */
     private val COLOR_HEADER_BADGE: Color get() = Color(0x00, 0x00, 0x00, RenderSettings.headerBadgeCardGray())
 
     /** 指标卡底色（半透明白，与玩家名片/查在线/排行榜单元格同款 alpha 16）。 */
@@ -145,16 +145,16 @@ object PerformanceRenderer {
         /** 预处理背景（尺寸可与画布不一致，渲染时拉伸铺满）；null 表示无背景。 */
         val background: BufferedImage? = null,
         /**
-         * 在线人数展示覆盖值（1.7.3.1 第三次覆盖版新增）：非 null 时在线人数卡
+ * 在线人数展示覆盖值：非 null 时在线人数卡
          * 的人数 N 用它（motd 模式 = 服务器列表展示值），不再用快照真实值。
          */
         val onlinePlayersDisplay: Int? = null,
-        /** 在线人数卡展示的最大人数（1.6.9.3 新增；null = 不展示「/ M」部分）。 */
+ /** 在线人数卡展示的最大人数（null = 不展示「/ M」部分）。 */
         val maxPlayers: Int? = null,
         /** 人数与最大人数是否为服务器列表展示值（MOTD 展示值；副说明标记）。 */
         val maxPlayersFromMotd: Boolean = false,
         /**
-         * TPS 变量文本（1.6.9.3 新增，variable-fetch.tps）：非 null 时 TPS 卡
+ * TPS 变量文本（variable-fetch.tps）：非 null 时 TPS 卡
          * 数值改为原文输出该文本（不套 %.1f 格式化）；可解析为数值的同步
          * 用于状态分级与进度条，非数值文本仅展示（状态「已读取」）。
          */
@@ -188,7 +188,7 @@ object PerformanceRenderer {
 
     /** 渲染性能卡片并返回 PNG 字节（单页固定版式）。 */
     fun render(data: PerformanceData): ByteArray {
-        // 1.7.3 覆盖版：渲染耗时计时起点（副标题条「渲染耗时」展示从开始
+ // 渲染耗时计时起点（副标题条「渲染耗时」展示从开始
         // 渲染到全部面板绘制完成的毫秒数——注意不是从接收指令开始，取数 /
         // 排队 / 冷却判断不计入；全部绘制完成后补画进第三格，再编码 PNG）
         val renderStart = System.nanoTime()
@@ -202,14 +202,14 @@ object PerformanceRenderer {
             g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
             g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
 
-            // 1.6.9.5：背景统一走共享入口（cover 裁剪铺满，不再拉伸变形）；
+ // 背景统一走共享入口（cover 裁剪铺满，不再拉伸变形）；
             // 返回卡片背后局部模糊上下文（毛玻璃，模糊度 render.blur-strength）
             val backdrop = InfoCardAssets.drawBackground(g, data.background, WIDTH, height)
             drawHeader(g, backdrop, status)
             drawSubtitle(g, backdrop, data.serverName, data.updateTime)
             drawMetricGrid(g, backdrop, cards)
 
-            // 1.7.3 覆盖版：补画渲染耗时（此时全部面板已画完，毫秒数含背景 /
+ // 补画渲染耗时（此时全部面板已画完，毫秒数含背景 /
             // 标题 / 副标题 / 指标网格的全部绘制耗时；PNG 编码与发送不预先包含）
             val elapsedMs = (System.nanoTime() - renderStart) / 1_000_000L
             drawRenderElapsed(g, elapsedMs)
@@ -231,7 +231,7 @@ object PerformanceRenderer {
         val cards = ArrayList<MetricCard>(CARD_COUNT)
 
         // TPS：满值 20；≥18.5 流畅 / 15~18.5 轻度负载 / <15 过载
-        // 1.6.9.3：TPS 变量（variable-fetch.tps）优先——数值改为变量原文，
+ // TPS 变量（variable-fetch.tps）优先——数值改为变量原文，
         // 可解析为数值的仍用于状态分级与进度条，非数值文本仅展示
         run {
             val variableText = data.tpsVariableText
@@ -349,14 +349,14 @@ object PerformanceRenderer {
             )
         }
 
-        // 在线玩家（仅人数展示，1.6.7.6 新增：名单详情用 /查在线 命令；
-        // 1.6.7.8：原第五位「延迟（玩家平均）」卡已移除——玩家 Ping 只
+ // 在线玩家（仅人数展示，名单详情用 /查在线 命令；
+ // 原第五位「延迟（玩家平均）」卡已移除——玩家 Ping 只
         // 反映客户端到服务器连接的往返，本地 / 同机连接下恒为 0ms，
         // 数据永远只代表服务器本地网络，对性能监控无实际意义；
-        // 1.6.9.3：展示「N / M」——M 为服务器最大人数，默认真实值，
+ // 展示「N / M」——M 为服务器最大人数，默认真实值，
         // render.performance.max-players-source = motd 时用服务器列表展示值
         // （副说明标记「MOTD 展示值」，进度条按 N/M 占比绘制）；
-        // 1.7.3.1 第三次覆盖版：motd 模式下人数 N 与最大 M 成对切换——
+ // motd 模式下人数 N 与最大 M 成对切换——
         // N 用 onlinePlayersDisplay 展示值，状态胶囊与进度条同源）
         run {
             val online = data.onlinePlayersDisplay ?: snapshot.onlinePlayers
@@ -410,13 +410,13 @@ object PerformanceRenderer {
     /** MB 数值转 GB 文本（一位小数；小于 1GB 显示 0.x）。 */
     private fun formatGb(mb: Long): String = String.format("%.1f", mb / 1024.0)
 
-    // ---------- 综合状态（1.7.3 覆盖版：右上角小方框改综合评级，不含人数） ----------
+ // ---------- 综合状态（右上角小方框改综合评级，不含人数） ----------
 
     /** 综合状态评估结果（文字 + 语义色）。 */
     private data class OverallStatus(val text: String, val color: Color)
 
     /**
-     * 综合状态评估（1.7.3 覆盖版）：TPS / MSPT / 内存 / CPU 四项各评
+ * 综合状态评估：TPS / MSPT / 内存 / CPU 四项各评
      * 0（好）/ 1（中）/ 2（差）三级，取最差一项定级（保守口径，任一指标
      * 异常即如实体现）；**不含在线人数**（人数多寡不是性能问题）；
      * 四项全部不可读时返回「暂不可读」（灰色）。
@@ -479,7 +479,7 @@ object PerformanceRenderer {
     // ---------- 面板绘制 ----------
 
     /**
-     * 面板底色（1.6.7.5 覆盖版：半透明圆角面板，无描边，与其他卡片同源）。
+ * 面板底色（半透明圆角面板，无描边，与其他卡片同源）。
      *
      * @param fill 面板半透明底色（背景经 alpha 混合透出，与其他卡片一致）
      */
@@ -498,18 +498,18 @@ object PerformanceRenderer {
 
     /**
      * 顶部标题区：眉题 + 主标题 + 右侧综合状态卡（1.7.3：整块全宽标题卡
-     * ——模糊 + 标题框黑度 + 圆角边缘；1.7.3 覆盖版：标题文字 padding 对齐
+ * ——模糊 + 标题框黑度 + 圆角边缘；标题文字 padding 对齐
      * 玩家名片欢迎面板（眉题距卡左缘 28px、主标题 24px，旧版 8/4px 太贴边）；
      * 右上角小方框改「综合状态」——四项指标综合评级不含人数，灰度永远
-     * 比标题框深一点防融合；1.7.3 覆盖版二轮：眉题 / 主标题基线下移 8px
+ * 比标题框深一点防融合；二轮：眉题 / 主标题基线下移 8px
      * （上边缘间距加大），小方框与标题框四周留 14px 可见间距——旧 8/8/0
-     * 太贴边看不出内嵌层次；1.7.3 覆盖版三轮：眉题 / 主标题基线再下移
+ * 太贴边看不出内嵌层次；三轮：眉题 / 主标题基线再下移
      * 18px（顶边距 27 → 45px 对齐玩家名片最上框），副标题框零改动——
      * 用户口径：间距调的是主标题框）。 */
     private fun drawHeader(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, status: OverallStatus) {
         val top = MARGIN
 
-        // 1.7.3：全宽标题卡（模糊 + 灰度 + 圆角边缘一次到位）
+ // 全宽标题卡（模糊 + 灰度 + 圆角边缘一次到位）
         val headerWidth = (WIDTH - 2 * MARGIN).toFloat()
         backdrop?.paintCard(g, MARGIN.toFloat(), top.toFloat(), headerWidth, HEADER_HEIGHT.toFloat(), 24f)
         paintPanel(
@@ -517,23 +517,23 @@ object PerformanceRenderer {
             COLOR_HEADER_CARD, 24f,
         )
 
-        // 英文眉题（字距拉宽；1.7.3 覆盖版：距卡左缘 28px，与玩家名片欢迎面板一致；
-        // 1.7.3 覆盖版三轮：基线 46 → 64，上边缘视觉间距 27 → 45px，
+ // 英文眉题（字距拉宽；距卡左缘 28px，与玩家名片欢迎面板一致；
+ // 三轮：基线 46 → 64，上边缘视觉间距 27 → 45px，
         // 对齐玩家名片欢迎面板眉题顶边距——二轮 27px 用户反馈仍偏贴）
         g.font = InfoCardRenderer.font(26f, true)
         g.color = COLOR_EYEBROW
         g.drawString("M I N E C R A F T   S E R V E R", (MARGIN + 32).toFloat(), (top + 64).toFloat())
 
         // 主标题（固定；服务器名在副标题条展示；距卡左缘 24px；
-        // 1.7.3 覆盖版三轮：基线 118 → 136，与眉题同步 +18——
+ // 三轮：基线 118 → 136，与眉题同步 +18——
         // 眉题→主标题间距与底边距 42px 均保持不变）
         g.font = InfoCardRenderer.font(58f, true)
         g.color = COLOR_VALUE
         g.drawString("服务器性能监控", (MARGIN + 28).toFloat(), (top + 136).toFloat())
 
-        // 右上角综合状态卡（叠在标题卡上；1.7.3 覆盖版：更新时间→综合状态，
+ // 右上角综合状态卡（叠在标题卡上；更新时间→综合状态，
         // 灰度永远比标题框深一点——同灰度叠加视觉融合看不出边界；
-        // 1.7.3 覆盖版二轮：与标题框四周留 14px 可见间距——旧 8/8/0 贴边）
+ // 二轮：与标题框四周留 14px 可见间距——旧 8/8/0 贴边）
         val cardWidth = 240
         val cardInset = 14
         val cardHeight = HEADER_HEIGHT - 2 * cardInset
@@ -546,7 +546,7 @@ object PerformanceRenderer {
         )
         g.font = InfoCardRenderer.font(24f, false)
         g.color = COLOR_LABEL
-        // 1.7.3 覆盖版三轮：标题框加高后卡内容整体下移 9px（卡高 136 → 154，
+ // 三轮：标题框加高后卡内容整体下移 9px（卡高 136 → 154，
         // 四周 14px 间距不变），保持标签 / 状态文字在卡内视觉居中
         g.drawString("综合状态", (cardX + 28).toFloat(), (cardY + 51).toFloat())
         // 状态文字用语义色（绿 / 黄 / 红 / 灰），右对齐；字号按四字宽度适配卡宽
@@ -556,9 +556,9 @@ object PerformanceRenderer {
         g.drawString(status.text, (cardX + cardWidth - 28 - statusWidth).toFloat(), (cardY + 109).toFloat())
     }
 
-    /** 副标题条：服务器 / 更新时间 / 渲染耗时 三张并排小卡（1.7.3 新增，与
+ /** 副标题条：服务器 / 更新时间 / 渲染耗时 三张并排小卡（与
      * 查在线状态栏同款；底色接副标题灰度 render.subtitle-card-gray；
-     * 1.7.3 覆盖版：第三格改「渲染耗时」——从开始渲染到本图全部面板
+ * 第三格改「渲染耗时」——从开始渲染到本图全部面板
      * 绘制完成的毫秒数，数值在绘制完成后由 [drawRenderElapsed] 补画）。 */
     private fun drawSubtitle(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, serverName: String, updateTime: String) {
         val top = (MARGIN + HEADER_HEIGHT + HEADER_GAP).toFloat()
@@ -575,11 +575,11 @@ object PerformanceRenderer {
             val x = MARGIN + index * (cardWidth + gap)
             backdrop?.paintCard(g, x, top, cardWidth, cardHeight, 14f)
             // 副标题条接副标题灰度（render.subtitle-card-gray，1.7.3.1 第二次
-            // 覆盖版默认 80，与标题框相同）
+ // 默认 80，与标题框相同）
             g.color = Color(0x00, 0x00, 0x00, RenderSettings.subtitleCardGray())
             g.fill(RoundRectangle2D.Float(x, top, cardWidth, cardHeight, 14f, 14f))
-            // 1.7.3 覆盖版四轮起：小标签统一走 InfoCardRenderer.drawSubLabel
-            // （1.7.3.1 覆盖版：固定灰 0x9FB3C8，1.7.0 同款）
+ // 四轮起：小标签统一走 InfoCardRenderer.drawSubLabel
+ // （固定灰 0x9FB3C8，1.7.0 同款）
             InfoCardRenderer.drawSubLabel(g, label, x + 26f, top + 34f)
             g.font = InfoCardRenderer.font(30f, true)
             g.color = COLOR_VALUE
@@ -588,7 +588,7 @@ object PerformanceRenderer {
     }
 
     /**
-     * 补画副标题条「渲染耗时」数值（1.7.3 覆盖版）：全部面板绘制完成后、
+ * 补画副标题条「渲染耗时」数值：全部面板绘制完成后、
      * PNG 编码前写入——从开始渲染（进入 [render]）到此刻的毫秒数；
      * 不含取数 / 排队 / 冷却判断（用户口径：不是从接收指令开始算）。 */
     private fun drawRenderElapsed(g: Graphics2D, elapsedMs: Long) {
@@ -632,7 +632,7 @@ object PerformanceRenderer {
         cards.forEachIndexed { index, card ->
             val col = index % COLUMNS
             val row = index / COLUMNS
-            // 1.6.7.8：末行首列且是最后一张卡时整行通栏（五项布局的
+ // 末行首列且是最后一张卡时整行通栏（五项布局的
             // 在线人数卡）；偶数项布局不受影响
             val lone = index == cards.size - 1 && col == 0
             drawMetricCard(

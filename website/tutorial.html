@@ -19,13 +19,13 @@
 <div class="container">
 <section>
 <h2>命令卡片</h2>
-<p style="color:#aab3bc">机器人的全部命令与用法。群聊命令在机器人所在群里发送（<b>@机器人</b> 直接说话是 AI 对话，需在 ai 段开启）；每条群命令都能在 config.yml 的 <b>commands 段</b>单独开关，关掉后 /帮助 条目与 QQ 快捷面板按钮会同步消失。</p>
+<p style="color:#aab3bc">机器人的全部命令与用法。群聊命令在机器人所在群里发送（<b>@机器人</b> 直接说话是 AI 对话，需在 ai 段开启）；每条群命令都能在 config.yml 的 <b>commands 段</b>单独开关，关掉后 /菜单 里的按钮与 QQ 快捷面板按钮会同步消失。</p>
 
 <div class="tutorial-step">
 <h3>群聊命令 · 所有人可用</h3>
 <table class="cmd-table">
 <tr><th>命令</th><th>功能与用法</th></tr>
-<tr><td><code>/帮助</code></td><td>查看当前可用的命令列表</td></tr>
+<tr><td><code>/菜单</code></td><td>输出全部可用命令的指令按钮：无参数指令点一下直接执行；带参数指令（绑定 / 发信息 / 执行命令等）点击后复制到输入框，补全内容再发送（替代原 /帮助）</td></tr>
 <tr><td><code>/玩家名片</code><span class="alias">/玩家名片 @成员</span></td><td>查询自己的玩家统计卡片（游戏时长、金币、点券、称号、皮肤等）；@某成员 可查对方的卡片；一个 QQ 绑定了多个玩家时先点按钮选择（旧客户端可回复数字）</td></tr>
 <tr><td><code>/查在线</code><span class="alias">别名 /在线</span></td><td>查看在线玩家列表与皮肤头像；默认输出图片卡片，想换成文字列表见「查在线输出」设置</td></tr>
 <tr><td><code>/查性能</code></td><td>服务器性能卡片：TPS、MSPT、内存、CPU 与右上角综合状态</td></tr>
@@ -49,12 +49,11 @@
 <tr><td><code>/执行命令 &lt;命令&gt;</code></td><td>在群里远程执行服务器命令，执行结果原样回传（超长自动截断），如 /执行命令 say 大家好</td></tr>
 <tr><td><code>/管理员执行 &lt;key&gt;</code></td><td>以管理员权限触发自定义命令（预设里 permission 非 0 的条目）</td></tr>
 <tr><td><code>/黑名单 @成员</code></td><td>把成员拉黑并解绑踢出（无法再进服）；不带参数发送则查看黑名单列表</td></tr>
-<tr><td><code>/解除黑名单 @成员</code></td><td>把成员移出黑名单；不带参数发送则查看列表</td></tr>
+<tr><td><code>/解除黑名单 @成员</code></td><td>把成员移出黑名单；不带参数发送则查看列表——每个条目下方有对应的「解除」按钮（逐条竖排），点击即解除，也可以艾特对方发送 /解除黑名单 解除</td></tr>
 <tr><td><code>/认证</code></td><td>查看自己的认证状态；管理员发送 /认证 @成员 或 /认证 &lt;OpenId&gt; 可标记他人</td></tr>
 <tr><td><code>/解除认证 &lt;OpenId&gt;</code></td><td>撤销成员的认证状态</td></tr>
 <tr><td><code>/全量</code></td><td>开 / 关本群的「游戏内聊天 ↔ QQ 群」全量转发</td></tr>
-<tr><td><code>/AI对话上下文 开|关</code></td><td>切换 AI 对话记忆（记住最近几轮对话）；不带参数发送则查看当前状态</td></tr>
-<tr><td><code>/清除当前上下文</code></td><td>清空 AI 对话的历史记忆，重新开始</td></tr>
+<tr><td><code>/AI管理 开|关|清除</code></td><td>AI 上下文管理（合并原「AI对话上下文」「清除当前上下文」两条命令）；不带参数发送则查看当前状态并弹出三个按钮：AI上下文开启 / AI上下文关闭 / 清除AI上下文；AI 功能关闭时本命令不可用</td></tr>
 </table>
 </div>
 
@@ -199,7 +198,7 @@
     enabled: true
     message: "[状态]\n服务器...."</pre>
 </div>
-<p>服务器关闭 / 重启 / 开机 / 意外关闭时向 QQ 群发送通知（只发给 bot.groups 里的群）：正常关闭发关机消息；上次正常关闭后 <b>180 秒内</b>（restart-window 可改）再次开机判定为<b>重启</b>，发「服务器重启完毕，已正常运行(o‿∩)」；超过 180 秒再开机按普通开机发开启消息；上次崩溃 / 强制结束后下次启动补发意外通知；首次安装不发送，插件重载不会误发。每类可独立开关改文案（1.7.4.1 起配置文件里的修改真正生效）。</p>
+<p>服务器关闭 / 重启 / 开机 / 意外关闭时向 QQ 群发送通知（只发给 bot.groups 里的群）：正常关闭发关机消息；上次正常关闭后 <b>180 秒内</b>（restart-window 可改）再次开机判定为<b>重启</b>，发「服务器重启完毕，已正常运行(o‿∩)」；超过 180 秒再开机按普通开机发开启消息；上次崩溃 / 强制结束后下次启动补发意外通知；首次安装不发送，插件重载不会误发。每类可独立开关改文案（配置文件里的修改真正生效）。</p>
 </div>
 </div>
 
@@ -496,7 +495,7 @@ coins-leaderboard:
 <div class="config">
 <pre>economy-alias: ""  # 填 "元宝" 后所有输出里的"金币"都显示为"元宝"</pre>
 </div>
-<p>作用于排行榜标题、玩家名片卡片、签到文案、/帮助、消息模板；命令名不受影响。</p>
+<p>作用于排行榜标题、玩家名片卡片、签到文案、/菜单、消息模板；命令名不受影响。</p>
 </div>
 </div>
 
@@ -530,7 +529,7 @@ coins-leaderboard:
 <pre>messages:
   bind-success: "bind-success.md"          # 绑定成功
   checkin-success: "checkin-success.md"    # 签到成功
-  help: "help.md"                          # /帮助 命令手册
+  menu: "menu.md"                          # /菜单 按钮菜单的头部文案
   # …… 其余各项见 config.yml（每项注释标明对应回复与可用变量）</pre>
 </div>
 <p>机器人在群里发的<b>每条文本回复</b>都对应数据目录 <code>Markdown/</code> 下的一个 .md 模板文件（首次启动自动释放）。改文案直接编辑对应文件；删掉文件重启可恢复默认。</p>
@@ -702,7 +701,7 @@ coins-leaderboard:
 <h4>命令开关 <span class="key">commands 段</span></h4>
 <div class="config">
 <pre>commands:
-  帮助: true          # /帮助 —— 查看所有命令
+  菜单: true          # /菜单 —— 查看全部指令按钮
   查信息: true        # /查信息 —— 查 OpenId
   玩家名片: true      # /玩家名片 —— 玩家统计卡片（可 @某人 查别人）
   绑定: true          # /绑定 <绑定码>
@@ -716,14 +715,13 @@ coins-leaderboard:
   执行: true          # /执行 <key> —— 自定义命令
   管理员执行: true    # /管理员执行 <key>
   全量: true          # /全量 —— 切换全量转发
-  AI对话上下文: true  # /AI对话上下文 开|关
-  清除当前上下文: true # /清除当前上下文
+  AI管理: true        # /AI管理 开|关|清除 —— AI 上下文管理
   黑名单: true        # /黑名单 @QQ
   切换服务器: true    # /切换服务器 —— 多服务器集群切换
   解除黑名单: true    # /解除黑名单 @QQ
   签到: true          # /签到 —— 每日签到</pre>
 </div>
-<p>每条群命令单独开关；关闭后不再响应，快捷菜单按钮与 /帮助 条目同步消失；改完 <code>/hbkrg reload</code> 生效。</p>
+<p>每条群命令单独开关；关闭后不再响应，快捷菜单按钮与 /菜单 按钮同步消失；改完 <code>/hbkrg reload</code> 生效。</p>
 </div>
 </div>
 
@@ -778,7 +776,7 @@ coins-leaderboard:
 <pre>ai:
   context-limit: 6  # 记住最近几轮对话（0 = 不记）</pre>
 </div>
-<p>全局一份记忆，所有群与游戏内共用。<code>/AI对话上下文 开</code> 开启记忆、<code>/清除当前上下文</code> 清空（管理员命令）。</p>
+<p>全局一份记忆，所有群与游戏内共用。<code>/AI管理 开</code> 开启记忆、<code>/AI管理 清除</code> 清空（管理员命令；也可发送 <code>/AI管理</code> 后点按钮操作）。</p>
 </div>
 </div>
 

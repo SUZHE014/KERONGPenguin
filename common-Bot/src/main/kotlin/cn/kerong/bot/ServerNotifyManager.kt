@@ -16,8 +16,8 @@ import java.util.Properties
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * 服务器开关消息发送（1.7.4 第三轮覆盖版新增，配置口径参考 HuHoBot 的
- * server-notify 段；1.7.4.1 覆盖版：默认文案去表情 + 180 秒重启判定窗口，
+ * 服务器开关消息发送（配置口径参考 HuHoBot 的
+ * server-notify 段；默认文案去表情 + 180 秒重启判定窗口，
  * 重启与普通开机两类文案分开）。
  *
  * 机制：
@@ -100,7 +100,7 @@ object ServerNotifyManager {
                     )
                 }
                 // 上次正常收尾且记录过真实停止时间：按重启判定窗口分流
-                //（1.7.4.1 覆盖版：距上次停止 ≤ restart-window 秒判定为「重启」
+ //（距上次停止 ≤ restart-window 秒判定为「重启」
                 //  发重启完毕文案，超过窗口按普通开机发开启文案；插件重载 /
                 //  手动停用的收尾不带停止时间，不会误发）
                 previousStopTime > 0 -> {

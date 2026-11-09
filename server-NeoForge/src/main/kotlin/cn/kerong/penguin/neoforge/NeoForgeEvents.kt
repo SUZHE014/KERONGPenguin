@@ -65,7 +65,7 @@ class NeoForgeEvents(private val plugin: KERONGNeoForge) {
         try {
             QClient.registerCommand(cn.kerong.bot.events.commands.BindCommands())
             bindRegistered = true
-            // 1.6.7.4：注册例行信息仅写文件留档，不再刷控制台（用户需求）
+ // 注册例行信息仅写文件留档，不再刷控制台（用户需求）
             QqBindManager.logFileOnly("/绑定 命令已注册 (第 $bindRetries 次尝试)")
         } catch (_: Throwable) {
             // 客户端尚未启动：稍后重试
@@ -89,7 +89,7 @@ class NeoForgeEvents(private val plugin: KERONGNeoForge) {
     fun onChat(event: ServerChatEvent) {
         val player = event.player
         if (player.level().isClientSide) return
-        // 1.6.7.9 多版本适配备注：getRawText(): String 在 1.20.4 / 1.20.6 /
+ // 多版本适配备注：getRawText: String 在 1.20.4 / 1.20.6 /
         // 1.21.x 三代 NeoForge 字节码签名完全一致（已逐一 javap 核对），
         // 直接调用无需跨版本反射。
         val message = event.rawText ?: return
@@ -138,7 +138,7 @@ class NeoForgeEvents(private val plugin: KERONGNeoForge) {
 
     /**
      * 登录绑定校验（未绑定玩家的加入后踢出，与 Spigot 版 GameChat.enforceJoinBinding 同源）。
-     * 1.6.4 分工：未绑定的老玩家已在配置阶段被 BindLoginGate 拦截（提示直接显示
+ * 分工：未绑定的老玩家已在配置阶段被 BindLoginGate 拦截（提示直接显示
      * 在“无法连接到服务器”界面）；此处负责新玩家（服务器先建档 UUID 再踢出）
      * 与闸门失效（总线挂载失败 / 反射异常）时的兜底——所有走到加入事件的
      * 未绑定玩家一律踢出并展示绑定码。
@@ -181,7 +181,7 @@ class NeoForgeEvents(private val plugin: KERONGNeoForge) {
 
     // ---------- 统计（信息卡数据源） ----------
 
-    /** 死亡：玩家死亡计数；击杀归属（怪物击杀 / 屠龙 / 击杀玩家）；死亡播报（1.7.4 覆盖版）。 */
+ /** 死亡：玩家死亡计数；击杀归属（怪物击杀 / 屠龙 / 击杀玩家）；死亡播报。 */
     @SubscribeEvent
     fun onLivingDeath(event: LivingDeathEvent) {
         val dying = event.entity

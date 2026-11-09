@@ -7,7 +7,7 @@ import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.PlayerDeathEvent
 
 /**
- * 把 Bukkit 死亡事件转成中文播报文案（1.7.4 覆盖版新增，供死亡播报用）。
+ * 把 Bukkit 死亡事件转成中文播报文案（供死亡播报用）。
  *
  * 原版 [PlayerDeathEvent.getDeathMessage] 取自服务端语言包，默认是英文，
  * 直接转发到 QQ 群可读性很差，因此这里按击杀者与死亡原因自行拼装中文描述。

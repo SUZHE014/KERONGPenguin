@@ -8,7 +8,7 @@ import org.bukkit.plugin.java.JavaPlugin
 import java.util.UUID
 
 /**
- * 签到奖品经济发放服务（1.7.2 新增）。
+ * 签到奖品经济发放服务。
  *
  * 背景：签到奖励此前只检测 Vault（金币）一条链路且不校验到账；用户要求
  * 增加点券等经济插件检测——①发放奖品时通过对应插件 API 校验发放到账

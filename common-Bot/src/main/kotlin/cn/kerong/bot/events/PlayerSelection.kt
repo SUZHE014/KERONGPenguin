@@ -8,13 +8,13 @@ import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 多玩家选择会话管理（1.7.4 新增，配合 qq-bind.max-players-per-qq 多玩家绑定）。
+ * 多玩家选择会话管理（配合 qq-bind.max-players-per-qq 多玩家绑定）。
  *
  * 触发场景：QQ 群内用户使用需要「检索对应玩家」的指令（玩家名片 / 查信息 /
  * 重新绑定 / 签到 等），检测到该 QQ 名下绑定了**多个**玩家时，先发送玩家选择
  * 消息；确认后，原命令以选中的玩家继续执行。
  *
- * ## 1.7.4 覆盖版：交互改为按钮（方框可点击）
+ * ## 交互改为按钮（方框可点击）
  *
  * 选择消息带**内联键盘**——每个绑定玩家一个按钮，点击即选择；旧版 QQ
  * 客户端不渲染按钮时仍可用数字回复兜底。交互模式参考 HuHoBot 的消息按钮
@@ -146,7 +146,7 @@ object PlayerSelection {
             "list" to list,
         )
         val message = MessageTemplates.render("select-player", vars)
-        // 按钮键盘：每个绑定玩家一个按钮（1.7.4 覆盖版主交互）
+ // 按钮键盘：每个绑定玩家一个按钮（主交互）
         val keyboard = Keyboards.build(
             players.map { player ->
                 Keyboards.Button(
@@ -230,7 +230,10 @@ object PlayerSelection {
     }
 
     /**
-     * 按钮点击处理（1.7.4 覆盖版主交互）。
+ * 按钮点击处理（主交互）。
+     *
+     * 回应码（官方语义）：成功 = 0；会话缺失 / 已过期 = 1（操作失败）；
+     * 旧卡片残留按钮 / 同卡连点 = 3（重复操作）；无法确认点击者身份 = 4（没有权限）。
      *
      * @param groupOpenId 互动事件所属群
      * @param userOpenId 点击者 OpenId（SDK 偶尔不带，拿不到一律拒绝）
@@ -252,7 +255,7 @@ object PlayerSelection {
         }
         if (userOpenId.isBlank()) {
             // 拿不到点击者身份：一律拒绝（不能替别人完成选择）
-            respond(1)
+            respond(4)
             return true
         }
         val key = "$groupOpenId\n$userOpenId"
@@ -266,12 +269,12 @@ object PlayerSelection {
         val selected = session.entries.firstOrNull { it.playerName == playerName }
         if (selected == null) {
             // 会话已被新命令覆盖，按钮上的玩家不在当前候选里：静默
-            respond(1)
+            respond(3)
             return true
         }
         if (!sessions.remove(key, session)) {
             // 同一张卡片被连点两次：只消费第一次
-            respond(1)
+            respond(3)
             return true
         }
         respond(0)

@@ -8,7 +8,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 
 /**
- * 插件文件日志（0.1.5.4）。
+ * 插件文件日志。
  *
  * 背景：插件自身的连接生命周期日志与数据保存日志此前只走 Bukkit Logger
  * （仅控制台），混合端服务器的 latest.log 路由不稳定，事后无法追溯；
@@ -20,7 +20,7 @@ import java.util.Date
  * 写入为逐行追加、按需打开即关，无后台线程、无内存缓存、无锁竞争
  * （低频日志，单行写入原子性由追加模式保证），开销可忽略。
  *
- * 0.1.5.5：警告/错误统一双写——平台 log_warning/log_error
+ * 警告/错误统一双写——平台 log_warning/log_error
  * 本身已改为“控制台 + 本文件”双写（见平台适配器），
  * 此处 warnAndKeep/errorAndKeep 直接委托，避免双写重复。
  */
@@ -29,7 +29,7 @@ object PluginFileLog {
     /** 颜色代码（§ + 一个字符，Minecraft / Bukkit 控制台颜色）。 */
     private val COLOR_CODE = Regex("§.")
 
-    /** 剥离 § 颜色码（1.6.4 公开：NeoForge 控制台不渲染颜色码，输出前需剥离）。 */
+ /** 剥离 § 颜色码（公开：NeoForge 控制台不渲染颜色码，输出前需剥离）。 */
     fun stripColorCodes(message: String): String = COLOR_CODE.replace(message, "")
 
     /**
@@ -81,7 +81,7 @@ object PluginFileLog {
         try {
             val file = currentFile() ?: return
             val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())
-            // 1.6.1：写入前剥离 § 颜色代码（控制台彩色文本进文件后是乱码字符）
+ // 写入前剥离 § 颜色代码（控制台彩色文本进文件后是乱码字符）
             val plain = COLOR_CODE.replace(message, "")
             PrintWriter(FileWriter(file, true)).use { it.println("[$timestamp] $plain") }
         } catch (_: Throwable) {
@@ -90,7 +90,7 @@ object PluginFileLog {
 
     /**
      * 信息：控制台 + 日志文件双写。
-     * 1.6.1：log_info 本身已双写（平台适配器），直接委托，不再重复写文件。
+ * log_info 本身已双写（平台适配器），直接委托，不再重复写文件。
      */
     fun infoAndKeep(message: String) {
         plugin.log_info(message)

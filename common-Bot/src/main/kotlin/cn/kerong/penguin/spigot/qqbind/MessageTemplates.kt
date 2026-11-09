@@ -9,7 +9,7 @@ import java.nio.file.Files
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 消息模板系统（1.6.0 新增）：机器人在 QQ 发出的每一条文本回复都对应一个
+ * 消息模板系统：机器人在 QQ 发出的每一条文本回复都对应一个
  * Markdown 模板文件，可在配置文件 messages 段改写「这条回复用哪个 .md 文件」。
  *
  * - 模板文件位于数据目录 Markdown/ 下（插件版 plugins/KERONGPenguin/Markdown/，
@@ -78,7 +78,7 @@ object MessageTemplates {
         // —— 在线排行榜 ——
         "leaderboard-no-data",           // 暂无在线时长数据
         "leaderboard-render-failed",     // 排行榜图片生成失败
-        // —— 金币排行榜（1.6.0） ——
+ // —— 金币排行榜 ——
         "coins-leaderboard-no-economy",  // 未安装 Vault 经济插件
         "coins-leaderboard-no-data",     // 暂无金币数据
         "coins-leaderboard-render-failed", // 金币排行图片生成失败
@@ -86,16 +86,17 @@ object MessageTemplates {
         "openid-self",                   // 自己的 OpenId 与群 OpenId
         "openid-lookup",                 // OpenId 反查结果
         "player-lookup",                 // 玩家名反查结果（QQ 账号 + 名下全部绑定玩家）
-        // —— 多服务器集群（1.7.4 第三轮覆盖版） ——
+ // —— 多服务器集群 ——
         "cluster-single",                // 单服模式下的 /切换服务器 提示
         "cluster-list-fallback",         // 按钮不可用时的纯文本服务器列表
         // —— 发信息 ——
         "forward-disabled",              // 群聊转发功能已关闭
         // —— AI 对话 ——
-        "ai-context-usage",              // /AI对话上下文 用法与当前状态
+        "ai-context-usage",              // /AI管理 不带参数时的状态与按钮提示（{status}）
         "ai-context-on",                 // 上下文已开启
         "ai-context-off",                // 上下文已关闭
         "ai-context-cleared",            // 上下文已清除
+        "ai-manage-disabled",            // AI 功能未开启时的 /AI管理 提示
         "ai-chat-empty",                 // @机器人 但没输入内容
         "ai-chat-error",                 // AI 对话失败
         // —— 黑名单 ——
@@ -109,15 +110,15 @@ object MessageTemplates {
         // —— 重新绑定 ——
         "rebind-success",                // 解绑成功并踢出
         "rebind-not-bound",              // QQ 未绑定任何账号
-        // —— 帮助 ——
-        "help",                          // /帮助 全量命令手册
+        // —— 菜单 ——
+        "menu",                          // /菜单 指令按钮菜单的头部文案（{version}）
         // —— 命令执行 ——
         "invalid-params",                // 参数不正确
         "bridge-error",                  // 游戏桥接未配置或执行失败
         "sent-request",                  // 已发送执行请求
         "execute-failed",                // 执行失败（异常）
         "full-amount-toggled",           // 全量转发切换结果
-        // 1.6.9.3：MOTD 查询模板（motd-*）与 server-status 已随 /motd、
+ // MOTD 查询模板（motd-*）与 server-status 已随 /motd、
         // /在线服务器 命令一并移除；已释放到用户数据目录的旧 .md 文件无害
     )
 
@@ -125,14 +126,14 @@ object MessageTemplates {
     private val cache = ConcurrentHashMap<String, Pair<Long, String>>()
 
     /**
-     * 默认模板内容升级表（1.6.5 新增）：旧默认内容 → 新默认内容。
+ * 默认模板内容升级表：旧默认内容 → 新默认内容。
      *
      * 模板文件首次释放后不会覆盖用户修改，但默认内容本身偶尔需要演进
      * （如 1.6.5 OpenId 反查的 OpenId 行改为管理员可见）。仅当磁盘上的
      * 文件仍是**旧默认内容**（未被用户改过）时才替换，自定义内容一律不动。
      */
     private val DEFAULT_CONTENT_UPGRADES: Map<String, Pair<String, String>> = mapOf(
-        // 1.6.5：OpenId 行改为 {openidPart}（管理员查询才显示）
+ // OpenId 行改为 {openidPart}（管理员查询才显示）
         "openid-lookup" to (
             "【OpenID 反查】\nOpenId: {openid}\n群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}" to
                 "【OpenID 反查】\n{openidPart}群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}"
@@ -193,7 +194,7 @@ object MessageTemplates {
                 BotShared.instance?.log_warning("初始化消息模板 $fileName 失败: ${error.message}")
             }
         }
-        // 1.6.5：仍是旧默认内容的模板升级到新默认（用户改过的不动）
+ // 仍是旧默认内容的模板升级到新默认（用户改过的不动）
         upgradedDefaultContents(dir)
         if (released > 0) {
             BotShared.instance?.log_info("已释放 $released 个默认消息模板到 ${dir.path}（可自行编辑，删除后重启恢复默认）")
@@ -265,7 +266,7 @@ object MessageTemplates {
     /**
      * 带 @ 提及的模板回复：Markdown 优先、失败回退纯文本；渲染结果为空串时直接跳过（模板被清空的场景）。
      *
-     * 1.7.0：按 [QClient.replyMarkdown] 的返回值回退——旧版只 catch
+ * 按 [QClient.replyMarkdown] 的返回值回退——旧版只 catch
      * 抛出的异常，但 SDK 的 HTTP 代理对平台拒收（4xx/5xx）不抛异常，
      * 失败时消息静默丢失；现在返回 false 即回退 event.sendMessage。
      */

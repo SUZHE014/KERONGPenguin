@@ -15,19 +15,19 @@ import java.util.Locale
 /**
  * 游戏内命令注册（等价 Spigot 版 plugin.yml 命令 + KERONGCommand / QqCommand）：
  * - /hbkrg：reload / info / chs / bpng / bpngsz / qr / help，需要权限等级 2（OP）；
- *   1.6.2 新增 chs：机器人重连超时挂起或断线期间手动重试连接；
+ * chs：机器人重连超时挂起或断线期间手动重试连接；
  *   注：QQ 群绑定已改为全自动（bot.groups 未填写时群互动消息自动写入
  *   白名单并重载），不再需要控制台命令；
  * - /qq：rebind（玩家自助解绑）与 qxqq / skip / unskip（OP 管理）。
  *
- * 1.6.7.7：移除短别名 /hb（用户需求），主命令唯一；旧输入由原版
+ * 移除短别名 /hb（用户需求），主命令唯一；旧输入由原版
  * “未知指令”路径处理。
  *
- * 1.7.0：主命令更名为 /hbkrg（旧名直接移除不兼容）；
+ * 主命令更名为 /hbkrg（旧名直接移除不兼容）；
  * panel 子命令移除——reload 在重载配置后一并重新同步 QQ 快捷面板
  * （先删后建，按新配置重建按钮）。
  *
- * 1.6.9.4：reload 子命令异步执行（配置读写 / 模板释放全是磁盘
+ * reload 子命令异步执行（配置读写 / 模板释放全是磁盘
  * IO）+ 反馈里写明重载边界（QQ 凭据与更新检查需重启）。
  */
 class NeoForgeCommands(private val plugin: KERONGNeoForge) {
@@ -62,10 +62,10 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
         )
         builder.then(
             Commands.literal("reload").executes { context ->
-                // 1.6.9.4：重载移入异步线程（配置读写 / 模板释放 / 缺失键
+ // 重载移入异步线程（配置读写 / 模板释放 / 缺失键
                 // 补齐保存全部是磁盘 IO，不再占用服务器线程），完成后回
                 // 服务器线程反馈结果与重载边界说明；
-                // 1.6.9.5：重载完成后顺带重新同步 QQ 快捷面板（先删后建，
+ // 重载完成后顺带重新同步 QQ 快捷面板（先删后建，
                 // 原 panel 子命令已移除）
                 context.source.sendSuccess({ Component.literal("§e正在重载配置文件并重新同步 QQ 快捷面板（异步执行）…") }, false)
                 val source = context.source
@@ -108,7 +108,7 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
         )
         builder.then(
             Commands.literal("chs").executes { context ->
-                // 1.6.2：手动重连（重连超时挂起 / 断线期间随时可用）
+ // 手动重连（重连超时挂起 / 断线期间随时可用）
                 val result = cn.kerong.bot.ReconnectManager.manualReconnect()
                 context.source.sendSuccess({ Component.literal("§a$result") }, true)
                 1
@@ -116,7 +116,7 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
         )
         builder.then(
             Commands.literal("mem").executes { context ->
-                // 1.6.6.2 覆盖版：内存诊断（JVM 堆存活/已提交/上限 + 插件各级缓存条目）
+ // 内存诊断（JVM 堆存活/已提交/上限 + 插件各级缓存条目）
                 context.source.sendSuccess({ Component.literal("§6===== KERONGPenguin 内存诊断 =====") }, false)
                 for (lineText in cn.kerong.penguin.spigot.render.InfoCardAssets.cacheStats().split('\n')) {
                     context.source.sendSuccess({ Component.literal("§7$lineText") }, false)
@@ -128,7 +128,7 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
                 1
             },
         )
-        // 第五轮覆盖版：手动发起扫码登录（已配置时也可用——扫码成功后替换
+ // 手动发起扫码登录（已配置时也可用——扫码成功后替换
         // 现有 bot.app-id / bot.secret 并以新凭据重连；未配置时为首次绑定；
         // 二维码每次会话自动刷新上限 3 次，超过后停止自动刷新，可再次执行
         // 本命令手动重新发起）
@@ -150,7 +150,7 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
                 1
             },
         )
-        // 1.7.1：背景图片包（无参列表 / stop 中断 / 包 ID 下载）
+ // 背景图片包（无参列表 / stop 中断 / 包 ID 下载）
         builder.then(
             Commands.literal("bpng")
                 .executes { context ->
@@ -170,7 +170,7 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
                     },
                 ),
         )
-        // 1.7.1：一键切换全部卡片背景（yes = img/ 自定义；no = 内置）
+ // 一键切换全部卡片背景（yes = img/ 自定义；no = 内置）
         builder.then(
             Commands.literal("bpngsz")
                 .executes { context ->
@@ -229,13 +229,13 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
         }
     }
 
-    // ---------- 背景图片包（1.7.1，与 Spigot 版同逻辑） ----------
+ // ---------- 背景图片包（与 Spigot 版同逻辑） ----------
 
     /**
      * /hbkrg bpng [包ID|stop]：无参列出图片包；带包 ID 下载（再次执行同一
      * 命令或 stop 可中断）；进度行转回服务器主线程发送。
      *
-     * 1.7.2：image-download.enabled 关闭时，列表与下载入口直接回复
+ * image-download.enabled 关闭时，列表与下载入口直接回复
      * 「管理员已关闭图片下载功能」并中止（bpng stop 不拦截）。
      */
     private fun handleBpng(source: net.minecraft.commands.CommandSourceStack, argRaw: String) {

@@ -3,19 +3,20 @@ package cn.kerong.bot.tools
 import io.github.kloping.qqbot.entities.ex.Keyboard
 
 /**
- * QQ 群消息按钮（内联键盘）构建工具（1.7.4 覆盖版新增）。
+ * QQ 群消息按钮（内联键盘）构建工具。
  *
- * 交互模式参考同类产品 HuHoBot 的消息按钮（确定 / 取消键盘、点击回调、
- * 权限与身份校验）：文档 、
- * 源码 https://github.com/HuHoBot/PenguinAgent （UnbindConfirmation.kt）。
- *
- * kloping SDK 的键盘构建要点（与 HuHoBot 使用的 API 一致）：
- * - 按钮经 KeyboardBuilder → RowBuilder → ButtonBuilder 链式构建；
- * - actionType 1 = 回调（点击后触发 INTERACTION_CREATE 事件，actionData
- *   原样到达 button_data 字段）；权限 2 = 所有人可点；
- * - **必须调用 row.build() 把行提交回 builder**，否则 content.rows 为空、
- *   QQ 不渲染按钮（HuHoBot 踩过的坑，此处封装保证不漏）；
- * - visitedLabel 为点击者看到的置灰文案（如「已选择」），不影响他人。
+ * 按钮经 KeyboardBuilder → RowBuilder → ButtonBuilder 链式构建：
+ * - actionType 1 = 回调按钮（点击触发 INTERACTION_CREATE 事件，actionData
+ *   原样到达 button_data 字段；官方要求收到事件后 3 秒内回应，超时客户端
+ *   提示「第三方连接失败」——本插件在 WSS 帧层快速回应，见
+ *   [cn.kerong.bot.events.InteractionFastPath]）；
+ * - actionType 2 = 指令按钮（点击把 @机器人 + actionData 插入输入框；
+ *   enter = true 时直接自动发送，无需再点发送键；不触发互动回调事件）；
+ * - 权限 2 = 所有人可点；
+ * - 必须调用 row.build() 把行提交回 builder，否则 content.rows 为空、
+ *   QQ 不渲染按钮（此处封装保证不漏）；
+ * - visitedLabel 为点击者看到的置灰文案（如「已选择」），不影响他人；
+ * - style：0 = 灰色线框，1 = 蓝色线框（本插件按钮统一蓝色）。
  */
 object Keyboards {
 
@@ -27,14 +28,18 @@ object Keyboards {
 
     /** 按钮定义。 */
     data class Button(
-        /** 按钮文案（点击前）。 */
+        /** 按钮文案（点击前；QQ 限制最多 10 字符）。 */
         val label: String,
         /** 点击者看到的置灰文案（如「已选择」）。 */
         val visitedLabel: String,
-        /** 回调数据（到达 INTERACTION_CREATE 的 button_data）。 */
+        /** 回调数据 / 指令内容（回调按钮到达 button_data；指令按钮插入输入框）。 */
         val actionData: String,
-        /** 样式：1 = 主按钮（蓝），0 = 次按钮（灰）。 */
+        /** 样式：1 = 蓝色线框（默认），0 = 灰色线框。 */
         val style: Int = 1,
+        /** 行为类型：1 = 回调按钮（默认），2 = 指令按钮，0 = 跳转按钮。 */
+        val actionType: Int = 1,
+        /** 指令按钮专用：true = 点击直接自动发送；false / null = 填入输入框待补全。 */
+        val enter: Boolean? = null,
     )
 
     /**
@@ -53,18 +58,50 @@ object Keyboards {
                 row = builder.addRow()
                 countInRow = 0
             }
-            row.addButton()
-                .setLabel(button.label)
-                .setVisitedLabel(button.visitedLabel)
-                .setStyle(button.style)
-                .setActionType(1)
-                .setActionData(button.actionData)
-                .setPermissionType(2)
-                .setUnSupportTips("请升级QQ客户端后再操作")
-                .build()
+            addButton(row, button)
             countInRow++
         }
         row.build()
         return builder.build()
+    }
+
+    /**
+     * 构建竖排键盘：每行只放一个按钮（按钮与清单条目一一对应竖排，
+     * 用于「解除黑名单」这类按钮需要逐条对应的场景）。
+     *
+     * 超过 [MAX_ROWS] 行自动回落为横排网格（每行 [BUTTONS_PER_ROW] 个），
+     * 保证条目多时每个按钮仍然放得下（竖排最多 5 个）。
+     */
+    fun buildVertical(buttons: List<Button>): Keyboard {
+        return if (buttons.size <= MAX_ROWS) {
+            val builder = Keyboard.KeyboardBuilder.create()
+            for (button in buttons.take(MAX_ROWS)) {
+                val row = builder.addRow()
+                addButton(row, button)
+                row.build()
+            }
+            builder.build()
+        } else {
+            build(buttons)
+        }
+    }
+
+    /** 按定义给行添加按钮（统一应用样式 / 行为类型 / enter / 权限）。 */
+    private fun addButton(row: Keyboard.RowBuilder, button: Button) {
+        row.addButton()
+            .setLabel(button.label)
+            .setVisitedLabel(button.visitedLabel)
+            .setStyle(button.style)
+            .setActionType(button.actionType)
+            .setActionData(button.actionData)
+            .apply {
+                // 指令按钮才设置 enter（回调 / 跳转按钮无此语义）
+                if (button.actionType == 2 && button.enter != null) {
+                    setActionEnter(button.enter)
+                }
+            }
+            .setPermissionType(2)
+            .setUnSupportTips("请升级QQ客户端后再操作")
+            .build()
     }
 }

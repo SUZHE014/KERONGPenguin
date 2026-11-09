@@ -1,12 +1,12 @@
 package cn.kerong.bot.tools
 
 /**
- * 控制台颜色适配（1.6.6 新增）。
+ * 控制台颜色适配。
  *
  * 背景：共享源码里的彩色控制台文案（如更新检查的更新日志）使用 Minecraft
  * § 颜色码。Bukkit 系的 JUL Logger 直出 § 码时控制台**不会**渲染成颜色，
  * 只会显示符号本身（玩家反馈「输出的是颜色符号而不是颜色」）；NeoForge
- * 侧 log4j 同样不渲染 § 码（1.6.4 的临时方案是输出前剥离，代价是失去颜色）。
+ * 侧 log4j 同样不渲染 § 码（的临时方案是输出前剥离，代价是失去颜色）。
  *
  * 现统一转换为 ANSI 转义序列：Minecraft 服务器控制台（Spigot / Paper /
  * Purpur / Folia / NeoForge）全部经 jline3 终端输出，ANSI 转义会被渲染为

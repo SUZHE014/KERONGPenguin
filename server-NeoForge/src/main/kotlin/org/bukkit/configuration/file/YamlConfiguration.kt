@@ -62,7 +62,7 @@ open class YamlConfiguration : FileConfiguration() {
     }
 
     /**
-     * 从字符流装载（整树替换；1.6.7.2 覆盖版新增：对齐 Bukkit 的 load(Reader)
+ * 从字符流装载（整树替换；对齐 Bukkit 的 load(Reader)
      * 实例方法——解析失败抛出异常而非吞掉，配置重建器用它做可感知失败的
      * 合并结果校验；与 [loadConfiguration] 容错语义的区别见其 KDoc）。
      */

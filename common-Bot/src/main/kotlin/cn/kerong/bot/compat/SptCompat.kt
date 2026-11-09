@@ -19,7 +19,7 @@ import java.util.jar.JarFile
 /**
  * kloping SDK（jv-spt + qqbot）运行时兼容层。
  *
- * 1.5.4.2 引入，解决两个 NeoForge 模组环境（JPMS 模块类加载）特有的问题：
+ * 引入，解决两个 NeoForge 模组环境（JPMS 模块类加载）特有的问题：
  *
  * 问题一：QQ 机器人启动时包扫描 NPE 崩溃
  * - 现象：`PackageScannerImpl.scan` 抛 `NullPointerException: classNames is null`
