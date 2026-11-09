@@ -170,30 +170,38 @@ class ConfigManager(private val plugin: JavaPlugin) {
                 changed = true
             }
         }
-        // 服务器开关消息默认文案换新（用户口径「关机重启播报配置默认文字分别
-        // 改为」）——历史默认文案是默认写入而非用户意图，升级时自动收敛为
-        // 新默认；自行改过文案的配置不受影响（重建器内同款收敛，这里是
-        // 重建失败兑底路径的双保险）
-        if (oldVersion in 1 until 39) {
+        // 服务器开关消息默认文案换新（1.7.4.1 覆盖版：去表情 + 重启 / 开机文案
+        // 分开）——历史默认文案（第三轮初始版 / 第六轮带表情版 / 第六轮误写版 /
+        // 第七轮颜文字修正版）都是默认写入而非用户意图，升级时自动收敛为新
+        // 默认；自行改过文案的配置不受影响（重建器内同款收敛，这里是重建失败
+        // 兑底路径的双保险）
+        if (oldVersion in 1 until 40) {
             var notifyTextUpdated = false
-            if (config.getString("server-notify.shutdown.message") == "服务器已正常关闭") {
-                config.set("server-notify.shutdown.message", "[状态]\n服务器已正常关闭 (╯︵╰,)")
+            val shutdownText = config.getString("server-notify.shutdown.message")
+            if (shutdownText == "服务器已正常关闭" ||
+                shutdownText == "[状态]\n服务器已正常关闭 (╯︵╰,)"
+            ) {
+                config.set("server-notify.shutdown.message", "[状态]\n服务器已正常关闭")
                 notifyTextUpdated = true
             }
-            if (config.getString("server-notify.restart.message") == "服务器已重启完成") {
-                config.set("server-notify.restart.message", "[状态]\n服务器已开启！！(≧∇≦)/")
+            val restartText = config.getString("server-notify.restart.message")
+            if (restartText == "服务器已重启完成" ||
+                restartText == "[状态]\n服务器已开启！！(≧∇≦)/"
+            ) {
+                config.set("server-notify.restart.message", "[状态]\n服务器重启完毕，已正常运行(o‿∩)")
                 notifyTextUpdated = true
             }
-            // 意外关闭：旧默认文案与第六轮默认（颜文字误带「轨迹」二字）一并收敛
+            // 意外关闭：全部历史默认（初始版 / 第六轮误写版 / 第七轮颜文字修正版）一并收敛
             val crashText = config.getString("server-notify.crash.message")
             if (crashText == "服务器意外关闭（崩溃或被强制结束），请管理员检查控制台" ||
-                crashText == "[状态]\n服务器....༽◺_轨迹༼"
+                crashText == "[状态]\n服务器....༽◺_轨迹༼" ||
+                crashText == "[状态]\n服务器....༽◺_◿༼"
             ) {
-                config.set("server-notify.crash.message", "[状态]\n服务器....༽◺_◿༼")
+                config.set("server-notify.crash.message", "[状态]\n服务器....")
                 notifyTextUpdated = true
             }
             if (notifyTextUpdated) {
-                plugin.logger.info("服务器开关消息默认文案已换新（server-notify 三条 message，可自行改回）")
+                plugin.logger.info("服务器开关消息默认文案已换新（server-notify 各 message 去表情 / 重启与开机文案分开，可自行改回）")
                 changed = true
             }
         }
@@ -277,28 +285,46 @@ class ConfigManager(private val plugin: JavaPlugin) {
     /** 多服务器集群：全部成员服务器名列表（各服必须一致；少于 2 个不启用）。 */
     fun clusterMembers(): List<String> = plugin.config.getStringList("bot.cluster.members")
 
-    // ---------- 服务器开关消息（1.7.4 第三轮覆盖版引入；第七轮删除重启时间窗口） ----------
+    // ---------- 服务器开关消息（1.7.4 第三轮覆盖版引入；1.7.4.1 覆盖版：180 秒重启判定窗口 + 重启 / 普通开机文案分开） ----------
 
     fun isServerNotifyEnabled(): Boolean = plugin.config.getBoolean("server-notify.enabled", true)
+
+    /**
+     * 重启判定窗口（秒，1.7.4.1 覆盖版恢复该键，默认 180）：
+     * 上次正常关闭后在这个秒数内再次开机判定为「重启」（发 restart 重启文案），
+     * 超过这个时长再开机按普通开机处理（发 start 开机文案）；
+     * 配 0 = 不判定重启，一律按普通开机播报；负数按 0 处理。
+     */
+    fun serverNotifyRestartWindow(): Int =
+        plugin.config.getInt("server-notify.restart-window", 180).coerceAtLeast(0)
 
     fun isServerNotifyShutdownEnabled(): Boolean =
         isServerNotifyEnabled() && plugin.config.getBoolean("server-notify.shutdown.enabled", true)
 
     fun serverNotifyShutdownMessage(): String =
-        plugin.config.getString("server-notify.shutdown.message", "[状态]\n服务器已正常关闭 (╯︵╰,)") ?: "[状态]\n服务器已正常关闭 (╯︵╰,)"
+        plugin.config.getString("server-notify.shutdown.message", "[状态]\n服务器已正常关闭") ?: "[状态]\n服务器已正常关闭"
 
+    /** 重启通知开关（上次正常关闭后在 restart-window 秒内再次开机时发送）。 */
     fun isServerNotifyRestartEnabled(): Boolean =
         isServerNotifyEnabled() && plugin.config.getBoolean("server-notify.restart.enabled", true)
 
-    /** 开启通知文案（上次正常关闭后本次启动发送，不限间隔时长）。 */
+    /** 重启通知文案（占位符 {server} / {platform}）。 */
     fun serverNotifyRestartMessage(): String =
-        plugin.config.getString("server-notify.restart.message", "[状态]\n服务器已开启！！(≧∇≦)/") ?: "[状态]\n服务器已开启！！(≧∇≦)/"
+        plugin.config.getString("server-notify.restart.message", "[状态]\n服务器重启完毕，已正常运行(o‿∩)") ?: "[状态]\n服务器重启完毕，已正常运行(o‿∩)"
+
+    /** 普通开机通知开关（上次正常关闭后超过 restart-window 秒再开机时发送）。 */
+    fun isServerNotifyStartEnabled(): Boolean =
+        isServerNotifyEnabled() && plugin.config.getBoolean("server-notify.start.enabled", true)
+
+    /** 普通开机通知文案（占位符 {server} / {platform}；首次安装不发送）。 */
+    fun serverNotifyStartMessage(): String =
+        plugin.config.getString("server-notify.start.message", "[状态]\n服务器已开启！！(≧∇≦)/") ?: "[状态]\n服务器已开启！！(≧∇≦)/"
 
     fun isServerNotifyCrashEnabled(): Boolean =
         isServerNotifyEnabled() && plugin.config.getBoolean("server-notify.crash.enabled", true)
 
     fun serverNotifyCrashMessage(): String =
-        plugin.config.getString("server-notify.crash.message", "[状态]\n服务器....༽◺_◿༼") ?: "[状态]\n服务器....༽◺_◿༼"
+        plugin.config.getString("server-notify.crash.message", "[状态]\n服务器....") ?: "[状态]\n服务器...."
 
     /**
      * 命令执行器配置。
@@ -399,6 +425,11 @@ class ConfigManager(private val plugin: JavaPlugin) {
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
 
+        // 1.7.4.1 覆盖版：升 40——服务器开关消息默认文案去表情（shutdown 去
+        // (╯︵╰,) / crash 去 ༽◺_◿༼）+ restart 语义改为「重启完毕」新文案 +
+        // 新增 server-notify.start（普通开机）与 server-notify.restart-window
+        // （180 秒重启判定窗口，1.7.4 第三轮旧键恢复，自废弃清单移除）；
+        // 全部历史默认文案升级自动收敛，自改文案不动。
         // 1.7.4 覆盖版第七轮：升 39——意外关闭默认文案颜文字修正（去掉误写的
         // 「轨迹」二字）+ 删除重启时间窗口（server-notify.restart-window 进
         // 废弃键清单；上次正常关闭后再启动一律发开启通知，不限间隔时长；
@@ -451,7 +482,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // qq-bind.checkin.points-reward（签到点券奖励，默认 0 关闭）
         // 1.7.1：升 28——无新增键纯注释刷新（卡片背景图说明段补 /hbkrg bpng
         // 图片包下载与 /hbkrg bpngsz 一键切换的用法说明）
-        private const val CURRENT_CONFIG_VERSION = 39
+        private const val CURRENT_CONFIG_VERSION = 40
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -491,9 +522,8 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 1.7.0：本地头像获取链路移除（统一在线获取）；
             // 原版遮罩样式与整图透明度移除（只保留毛玻璃，模糊度改 blur-strength）
             "render.avatar-fetch-priority", "render.background-style", "render.global-opacity",
-            // 1.7.4 覆盖版第七轮：重启时间窗口已删除（上次正常关闭后再启动
-            // 一律发开启通知，不限间隔时长），旧配置键一并清理
-            "server-notify.restart-window",
+            // 注：server-notify.restart-window 已在 1.7.4.1 覆盖版恢复
+            //（180 秒重启判定窗口，见上方 CURRENT_CONFIG_VERSION 40 注释）
         )
 
         /**
@@ -586,14 +616,19 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "bot.cluster.name" to "",
             "bot.cluster.members" to emptyList<Any>(),
             // 1.7.4 第三轮覆盖版：服务器开关消息（配置口径与 HuHoBot 的
-            // server-notify 段一致，默认全部开启）
+            // server-notify 段一致，默认全部开启）；1.7.4.1 覆盖版：默认文案
+            // 去表情 + 新增 start 段（普通开机）与 restart-window（180 秒
+            // 重启判定窗口）
             "server-notify.enabled" to true,
+            "server-notify.restart-window" to 180,
             "server-notify.shutdown.enabled" to true,
-            "server-notify.shutdown.message" to "[状态]\n服务器已正常关闭 (╯︵╰,)",
+            "server-notify.shutdown.message" to "[状态]\n服务器已正常关闭",
             "server-notify.restart.enabled" to true,
-            "server-notify.restart.message" to "[状态]\n服务器已开启！！(≧∇≦)/",
+            "server-notify.restart.message" to "[状态]\n服务器重启完毕，已正常运行(o‿∩)",
+            "server-notify.start.enabled" to true,
+            "server-notify.start.message" to "[状态]\n服务器已开启！！(≧∇≦)/",
             "server-notify.crash.enabled" to true,
-            "server-notify.crash.message" to "[状态]\n服务器....༽◺_◿༼",
+            "server-notify.crash.message" to "[状态]\n服务器....",
             // 1.6.2：断线重连过程提示开关（1.6.6.3 起默认防刷屏：控制台只输出本轮第 1 次 /
             // 最后一次 / 成功 / 超时里程碑，中间过程写文件；false = 里程碑过程提示也不输出；
             // 重连成功与重连超时后的 /hbkrg chs 恢复指引不受此开关影响，始终输出）

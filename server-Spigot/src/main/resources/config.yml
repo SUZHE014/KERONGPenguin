@@ -10,7 +10,7 @@
 # ============================================================
 
 # 配置文件版本号（插件自动维护，勿改）
-config-version: 39
+config-version: 40
 
 # 启动后自动联网检查新版本（改这里需重启才生效）
 update-check:
@@ -79,22 +79,31 @@ player-events:
 # 上次未正常收尾（崩溃 / kill -9 / 断电）下次启动补发「意外关闭」；
 # 上次正常关闭后再启动发「服务器已开启」（不限间隔时长）；首次安装不发送
 server-notify:
-  # 总开关，关闭后下面三项都不发送
+  # 总开关，关闭后下面四项都不发送
   enabled: true
+  # 重启判定窗口（秒）：上次正常关闭后在这个秒数内再次开机判定为「重启」，
+  # 发 restart 重启文案；超过这个时长再开机按普通开机处理，发 start 开机文案；
+  # 0 = 不判定重启，一律按普通开机播报
+  restart-window: 180
   shutdown:
     enabled: true
     # 可用占位符：{server}、{platform}
-    message: "[状态]\n服务器已正常关闭 (╯︵╰,)"
+    message: "[状态]\n服务器已正常关闭"
   restart:
     enabled: true
-    # 上次正常关闭后本次启动时发送（不限间隔时长）
+    # 上次正常关闭后在 restart-window 秒内再次开机时发送（判定为重启）
+    # 可用占位符：{server}、{platform}
+    message: "[状态]\n服务器重启完毕，已正常运行(o‿∩)"
+  start:
+    enabled: true
+    # 上次正常关闭后超过 restart-window 秒再开机时发送（普通开机）；首次安装不发送
     # 可用占位符：{server}、{platform}
     message: "[状态]\n服务器已开启！！(≧∇≦)/"
   crash:
     enabled: true
     # 上次运行没有正常关闭（崩溃、kill -9、断电等）时，下次启动后发送
     # 可用占位符：{server}、{platform}
-    message: "[状态]\n服务器....༽◺_◿༼"
+    message: "[状态]\n服务器...."
 
 # ---------------- 查在线输出 ----------------
 # /查在线 输出方式由下方 motd.use-markdown 控制：

@@ -220,28 +220,43 @@ interface ConfigProvider {
      */
     fun clusterMembers(): List<String> = emptyList()
 
-    // ---------- 服务器开关消息（1.7.4 第三轮覆盖版引入；第七轮删除重启时间窗口） ----------
+    // ---------- 服务器开关消息（1.7.4 第三轮覆盖版引入；1.7.4.1 覆盖版：去表情 ----------
+    // ---------- 文案 + 180 秒重启判定窗口，重启 / 普通开机两类文案分开） ----------
 
-    /** 服务器状态通知总开关（关闭后关机 / 重启 / 意外关闭都不发送）。 */
+    /** 服务器状态通知总开关（关闭后关机 / 重启 / 开机 / 意外关闭都不发送）。 */
     fun isServerNotifyEnabled(): Boolean = true
+
+    /**
+     * 重启判定窗口（秒，1.7.4.1 覆盖版恢复该键，默认 180）：
+     * 上次正常关闭后在这个秒数内再次开机判定为「重启」（发 restart 重启文案），
+     * 超过这个时长再开机按普通开机处理（发 start 开机文案）；
+     * 配 0 = 不判定重启，一律按普通开机播报。
+     */
+    fun serverNotifyRestartWindow(): Int = 180
 
     /** 正常关闭通知开关。 */
     fun isServerNotifyShutdownEnabled(): Boolean = true
 
     /** 正常关闭通知文案（占位符 {server} / {platform}）。 */
-    fun serverNotifyShutdownMessage(): String = "[状态]\n服务器已正常关闭 (╯︵╰,)"
+    fun serverNotifyShutdownMessage(): String = "[状态]\n服务器已正常关闭"
 
-    /** 开启通知开关（上次正常关闭后本次启动发送，不限间隔时长）。 */
+    /** 重启通知开关（上次正常关闭后在 [serverNotifyRestartWindow] 秒内再次开机时发送）。 */
     fun isServerNotifyRestartEnabled(): Boolean = true
 
-    /** 开启通知文案（占位符 {server} / {platform}）。 */
-    fun serverNotifyRestartMessage(): String = "[状态]\n服务器已开启！！(≧∇≦)/"
+    /** 重启通知文案（占位符 {server} / {platform}）。 */
+    fun serverNotifyRestartMessage(): String = "[状态]\n服务器重启完毕，已正常运行(o‿∩)"
+
+    /** 普通开机通知开关（上次正常关闭后超过 [serverNotifyRestartWindow] 秒再开机时发送）。 */
+    fun isServerNotifyStartEnabled(): Boolean = true
+
+    /** 普通开机通知文案（占位符 {server} / {platform}；首次安装不发送）。 */
+    fun serverNotifyStartMessage(): String = "[状态]\n服务器已开启！！(≧∇≦)/"
 
     /** 意外关闭（崩溃 / 强制结束）通知开关。 */
     fun isServerNotifyCrashEnabled(): Boolean = true
 
     /** 意外关闭通知文案（占位符 {server} / {platform}）。 */
-    fun serverNotifyCrashMessage(): String = "[状态]\n服务器....༽◺_◿༼"
+    fun serverNotifyCrashMessage(): String = "[状态]\n服务器...."
 
     /** 是否开启全量消息转发。 */
     val fullAmount: Boolean

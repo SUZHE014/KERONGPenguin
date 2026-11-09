@@ -106,8 +106,9 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         }
         registerBindLoginGate()
         // 1.7.4 第三轮覆盖版：服务器开关消息（口径与 HuHoBot 的 server-notify
-        // 一致，默认开启）——启动完成时检查上次运行如何结束（崩溃补发 /
-        // 重启窗口内发重启完成）；QQ 异步连接，通知线程就绪后自发
+        // 一致，默认开启；1.7.4.1 覆盖版：180 秒重启判定窗口）——启动完成时
+        // 检查上次运行如何结束（崩溃补发 / 窗口内发重启 / 超窗发开机）；
+        // QQ 异步连接，通知线程就绪后自发
         try {
             cn.kerong.bot.ServerNotifyManager.onServerStarted()
         } catch (_: Throwable) {
@@ -287,6 +288,30 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
     override fun clusterName(): String = configManager.clusterName()
 
     override fun clusterMembers(): List<String> = configManager.clusterMembers()
+
+    // 1.7.4.1 覆盖版：服务器开关消息配置接线（此前两端主类都未覆写这些
+    // getter，运行时一直走 ConfigProvider 接口硬编码默认值——用户在
+    // config.yml 里改 server-notify 段不生效；本轮补上两端委托，配置
+    // 文件真正生效；与 Spigot 共用 ConfigManager）
+    override fun isServerNotifyEnabled(): Boolean = configManager.isServerNotifyEnabled()
+
+    override fun serverNotifyRestartWindow(): Int = configManager.serverNotifyRestartWindow()
+
+    override fun isServerNotifyShutdownEnabled(): Boolean = configManager.isServerNotifyShutdownEnabled()
+
+    override fun serverNotifyShutdownMessage(): String = configManager.serverNotifyShutdownMessage()
+
+    override fun isServerNotifyRestartEnabled(): Boolean = configManager.isServerNotifyRestartEnabled()
+
+    override fun serverNotifyRestartMessage(): String = configManager.serverNotifyRestartMessage()
+
+    override fun isServerNotifyStartEnabled(): Boolean = configManager.isServerNotifyStartEnabled()
+
+    override fun serverNotifyStartMessage(): String = configManager.serverNotifyStartMessage()
+
+    override fun isServerNotifyCrashEnabled(): Boolean = configManager.isServerNotifyCrashEnabled()
+
+    override fun serverNotifyCrashMessage(): String = configManager.serverNotifyCrashMessage()
 
     override val fullAmount: Boolean
         get() = configManager.fullForwardingByDefault()

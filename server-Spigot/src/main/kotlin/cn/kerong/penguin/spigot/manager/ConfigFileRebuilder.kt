@@ -110,21 +110,28 @@ internal object ConfigFileRebuilder {
             disk.set("render.subtitle-card-gray", 106)
         }
 
-        // 服务器开关消息三条默认文案换新（关机 / 重启 / 意外关闭）——历史
-        // 默认文案与第六轮的意外关闭默认（颜文字误带「轨迹」二字）都是默认
-        // 写入而非用户意图，升级时自动收敛为新默认（自行改过文案的配置不受
-        // 影响；重建仅在磁盘版本低于 39 时触发）
-        if (disk.getString("server-notify.shutdown.message") == "服务器已正常关闭") {
-            disk.set("server-notify.shutdown.message", "[状态]\n服务器已正常关闭 (╯︵╰,)")
+        // 服务器开关消息默认文案换新（1.7.4.1 覆盖版：去表情 + 重启 / 开机
+        // 文案分开）——全部历史默认文案（第三轮初始版 / 第六轮带表情版 /
+        // 第六轮误写版 / 第七轮颜文字修正版）都是默认写入而非用户意图，
+        // 升级时自动收敛为新默认（自行改过文案的配置不受影响；重建仅在
+        // 磁盘版本低于 40 时触发）
+        if (disk.getString("server-notify.shutdown.message") == "服务器已正常关闭" ||
+            disk.getString("server-notify.shutdown.message") == "[状态]\n服务器已正常关闭 (╯︵╰,)"
+        ) {
+            disk.set("server-notify.shutdown.message", "[状态]\n服务器已正常关闭")
         }
-        if (disk.getString("server-notify.restart.message") == "服务器已重启完成") {
-            disk.set("server-notify.restart.message", "[状态]\n服务器已开启！！(≧∇≦)/")
+        val restartTextValue = disk.getString("server-notify.restart.message")
+        if (restartTextValue == "服务器已重启完成" ||
+            restartTextValue == "[状态]\n服务器已开启！！(≧∇≦)/"
+        ) {
+            disk.set("server-notify.restart.message", "[状态]\n服务器重启完毕，已正常运行(o‿∩)")
         }
         val crashText = disk.getString("server-notify.crash.message")
         if (crashText == "服务器意外关闭（崩溃或被强制结束），请管理员检查控制台" ||
-            crashText == "[状态]\n服务器....༽◺_轨迹༼"
+            crashText == "[状态]\n服务器....༽◺_轨迹༼" ||
+            crashText == "[状态]\n服务器....༽◺_◿༼"
         ) {
-            disk.set("server-notify.crash.message", "[状态]\n服务器....༽◺_◿༼")
+            disk.set("server-notify.crash.message", "[状态]\n服务器....")
         }
 
         // 1.7.0：旧默认值→新默认值的升级收敛已移除（用户要求）——

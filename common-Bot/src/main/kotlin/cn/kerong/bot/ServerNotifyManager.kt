@@ -17,14 +17,18 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 服务器开关消息发送（1.7.4 第三轮覆盖版新增，配置口径参考 HuHoBot 的
- * server-notify 段；第七轮覆盖版删除重启时间窗口）。
+ * server-notify 段；1.7.4.1 覆盖版：默认文案去表情 + 180 秒重启判定窗口，
+ * 重启与普通开机两类文案分开）。
  *
  * 机制：
  * - 用状态文件跨进程记录上一次运行是怎么结束的（正常收尾 clean 标记 +
  *   停止时间 + JVM 启动时间）；
  * - 服务器启动完成（QQ 客户端开始异步连接）时读上次状态：
  *   上次未正常收尾 → 崩溃 / kill -9 / 断电，补发「意外关闭」通知；
- *   上次正常收尾（记录过真实停止时间）→ 不限间隔时长，一律发「服务器已开启」；
+ *   上次正常收尾（记录过真实停止时间）→ 按 180 秒重启判定窗口分流：
+ *   距上次停止 ≤ restart-window 秒（默认 180，可配置）判定为「重启」，
+ *   发「服务器重启完毕，已正常运行(o‿∩)」；超过窗口按普通开机处理，
+ *   发「服务器已开启！！(≧∇≦)/」；窗口配 0 = 不判定重启，一律按普通开机；
  *   首次安装（无状态记录）不发送；
  * - 服务器真实停止时（平台层判定，插件重载不算）发「服务器已正常关闭」，
  *   同时记录停止时间；
@@ -95,15 +99,26 @@ object ServerNotifyManager {
                         plugin.serverNotifyCrashMessage(),
                     )
                 }
-                // 上次正常收尾且记录过真实停止时间：不限间隔时长一律发开启通知
-                //（旧版超过 restart-window 秒再启动不播报的机制已删除；插件
-                //  重载 / 手动停用的收尾不带停止时间，不会误发）
+                // 上次正常收尾且记录过真实停止时间：按重启判定窗口分流
+                //（1.7.4.1 覆盖版：距上次停止 ≤ restart-window 秒判定为「重启」
+                //  发重启完毕文案，超过窗口按普通开机发开启文案；插件重载 /
+                //  手动停用的收尾不带停止时间，不会误发）
                 previousStopTime > 0 -> {
-                    PluginFileLog.infoAndKeep("[服务器通知] 检测到上次正常运行后重新启动，将在 QQ 就绪后发送开启通知")
-                    notifyAfterStartup(
-                        plugin.isServerNotifyRestartEnabled(),
-                        plugin.serverNotifyRestartMessage(),
-                    )
+                    val windowMs = plugin.serverNotifyRestartWindow() * 1000L
+                    val elapsedMs = System.currentTimeMillis() - previousStopTime
+                    if (windowMs > 0 && elapsedMs <= windowMs) {
+                        PluginFileLog.infoAndKeep("[服务器通知] 检测到上次正常关闭后 ${elapsedMs / 1000} 秒内重新启动（窗口 ${plugin.serverNotifyRestartWindow()} 秒），判定为重启，将在 QQ 就绪后发送重启通知")
+                        notifyAfterStartup(
+                            plugin.isServerNotifyRestartEnabled(),
+                            plugin.serverNotifyRestartMessage(),
+                        )
+                    } else {
+                        PluginFileLog.infoAndKeep("[服务器通知] 检测到上次正常运行后重新启动（距上次关闭已超过 ${plugin.serverNotifyRestartWindow()} 秒窗口），将在 QQ 就绪后发送开启通知")
+                        notifyAfterStartup(
+                            plugin.isServerNotifyStartEnabled(),
+                            plugin.serverNotifyStartMessage(),
+                        )
+                    }
                 }
             }
         }

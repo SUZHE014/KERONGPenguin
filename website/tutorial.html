@@ -184,17 +184,22 @@
 <div class="config">
 <pre>server-notify:
   enabled: true   # 总开关（默认开启）
+  # 180 秒内再次开机判定为「重启」，超过按普通开机（0 = 不判定重启）
+  restart-window: 180
   shutdown:
     enabled: true
-    message: "[状态]\n服务器已正常关闭 (╯︵╰,)"   # 占位符：{server}、{platform}
+    message: "[状态]\n服务器已正常关闭"   # 占位符：{server}、{platform}
   restart:
+    enabled: true
+    message: "[状态]\n服务器重启完毕，已正常运行(o‿∩)"
+  start:
     enabled: true
     message: "[状态]\n服务器已开启！！(≧∇≦)/"
   crash:
     enabled: true
-    message: "[状态]\n服务器....༽◺_◿༼"</pre>
+    message: "[状态]\n服务器...."</pre>
 </div>
-<p>服务器关闭 / 重启 / 意外关闭时向 QQ 群发送通知（只发给 bot.groups 里的群）：正常关闭发关机消息、上次正常关闭后再启动（不限间隔时长）发开启消息、上次崩溃 / 强制结束后下次启动补发意外通知；首次安装不发送，插件重载不会误发。每类可独立开关改文案。</p>
+<p>服务器关闭 / 重启 / 开机 / 意外关闭时向 QQ 群发送通知（只发给 bot.groups 里的群）：正常关闭发关机消息；上次正常关闭后 <b>180 秒内</b>（restart-window 可改）再次开机判定为<b>重启</b>，发「服务器重启完毕，已正常运行(o‿∩)」；超过 180 秒再开机按普通开机发开启消息；上次崩溃 / 强制结束后下次启动补发意外通知；首次安装不发送，插件重载不会误发。每类可独立开关改文案（1.7.4.1 起配置文件里的修改真正生效）。</p>
 </div>
 </div>
 
