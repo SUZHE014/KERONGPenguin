@@ -76,8 +76,22 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         // id 为空的异常事件不去重直接放行。
         if (!RecentMessageGate.tryAcquire(event.rawMessage?.id)) return
         // 1.6.7.5：剥离行首 @ 占位片段（全量模式 content 原样保留 <@openid>
-        // 前缀，导致 /命令 前缀匹配失败——先剥再进命令分发；无片段零开销）
-        val content = QqText.stripLeadingMentionPlaceholders(rawContent)
+        // 前缀，导致 /命令 前缀匹配失败——先剥再进命令分发；无片段零开销）。
+        //
+        // 1.7.4.1 修复：@其他用户的消息不触发命令——群里发「@张三 /查在线」
+        // 是成员间的对话（@ 的是人不是机器人），旧版把行首 @ 片段与命令内
+        // @ 片段无差别剥掉，照样命中命令，机器人误插嘴。现在按 @ 对象分流：
+        // - @机器人（三通道判定 [isMentionedBot]）：行为不变，照旧剥行首
+        //   片段、命令正常命中（1.7.4「@机器人 + 指令」特性保持）
+        // - 只 @ 其他人：保留消息里的 <@…> 片段不剥——后续命令匹配因片段
+        //   残留自然失败，数字自动绑定 / 多玩家选择确认同样不命中；
+        //   转发到游戏不受影响（转发链路用 rawContent 与 mentions 数组）
+        // - 无任何 @ 片段：零开销快速路径，与旧版完全一致
+        val mentionsBot = isMentionedBot(event)
+        val mentionBarred = !mentionsBot && rawContent.contains("<@")
+        val content =
+            if (mentionBarred) rawContent
+            else QqText.stripLeadingMentionPlaceholders(rawContent)
 
         // 1.5.3：记录群成员昵称（OpenId → 群昵称目录，供 /查信息（原 /查询OpenID）反查展示），
         // 失败不影响消息处理（仅内存写入，持久化异步）
@@ -124,8 +138,12 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
 
         // 1. 依次尝试命令分发（1.7.4：@机器人 + 指令同样在此命中——消息内
         // 的 @ 片段与前导斜杠在命令匹配前被剥离，与直接发送指令走完全
-        // 同一条路径，因此「@机器人 查信息」「@机器人 /帮助」均可执行）
-        if (dispatchCommand(event)) return
+        // 同一条路径，因此「@机器人 查信息」「@机器人 /帮助」均可执行；
+        // 1.7.4.1：只 @ 其他人的消息跳过命令分发（见入口 mentionBarred
+        // 注释），“@张三 /查在线”不再触发机器人回复）
+        if (!mentionBarred) {
+            if (dispatchCommand(event)) return
+        }
 
         // 2. @机器人触发 AI 对话（非 / 开头）。
         //    1.6.7.5 根因修复：QQ 群消息的 content 已被平台去除 @机器人前缀、
