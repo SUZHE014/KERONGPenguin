@@ -152,18 +152,35 @@ object MenuButtons {
      * group_id 与 group_openid，两个读取通道都拿得到。
      *
      * 回复通道同理修复：合成事件本身没有消息 id，被动回复（msg_id 引用）
-     * 无从谈起。现从 [RecentGroupMessages] 取本群最近一条未过期真实消息
+     * 无从谈起。现从 [RecentGroupMessages] 轮转取本群未过期真实消息
      * id 塞进 metadata 的 id 字段与 RawMessage.id，命令回复即走正常
-     * **被动回复**（与手打命令一致，不受主动消息配额限制）；群内超过
-     * 4 分钟没有任何消息时取不到，回复自动落为主动消息（仍可送达）。
+     * **被动回复**（与手打命令一致，不受主动消息配额限制）；连续点击
+     * 依次引用不同的消息 id（被动回复对同一条消息约 5 次上限，轮转分摊
+     * 防平台 40034128 拒收）；群内超过 4 分钟没有任何消息时取不到，回复
+     * 自动落为主动消息（仍可送达）。
      * msg_seq 经 [ReplySeqGuard] 分配新基数，与原消息已用的序号不重叠
      * （防平台 40054005 消息去重拒收）。
+     *
+     * ## 修复「管理员点按钮被判无权限」（1.7.5.1）
+     *
+     * 按钮回调（INTERACTION_CREATE）只带 group_openid + group_member_openid，
+     * **不带 member_role**——群消息事件（GROUP_AT_MESSAGE_CREATE）的
+     * author 块才有；合成事件缺角色字段时 admin.mode=qq 的管理员判定
+     * （[CommandSupport.memberRole]）对群主/管理员一律 false。现从
+     * [MemberRoleCache]（每条真实群消息登记发送者角色）取点击者最近
+     * 已知角色写进 author.member_role，与手打命令判定一致；未知角色
+     * （30 分钟未发言）不写，回退 manual 名单路径。
      */
     private fun dispatchAsClicker(groupOpenId: String, userOpenId: String, commandText: String) {
         try {
             val starter = QClient.starter ?: return
             val bot = starter.bot ?: return
-            val recentMsgId = RecentGroupMessages.latestId(groupOpenId)
+            val recentMsgId = RecentGroupMessages.nextId(groupOpenId)
+            // 点击者群身份：按钮回调（INTERACTION_CREATE）只带 group_member_openid
+            // 不带 member_role，管理员判定（admin.mode=qq）无角色可用——从
+            // [MemberRoleCache] 取该成员最近已知角色写进合成事件（1.7.5.1 修复
+            // 管理员点按钮被判无权限）；未知（30 分钟未发言）不写，回退 manual 名单
+            val clickerRole = MemberRoleCache.roleOf(groupOpenId, userOpenId)
             val raw = RawMessage().setContent(commandText)
             if (recentMsgId != null) raw.setId(recentMsgId)
             val metadata = JSONObject().apply {
@@ -177,6 +194,9 @@ object MenuButtons {
                 put("author", JSONObject().apply {
                     put("id", userOpenId)
                     put("member_openid", userOpenId)
+                    // member_role：CommandSupport.memberRole 的读取字段——群主/
+                    // 管理员点管理类按钮不再被判无权限
+                    if (clickerRole != null) put("member_role", clickerRole)
                 })
             }
             val synthetic = BaseGroupMessageEvent(raw, metadata, bot)
@@ -187,7 +207,8 @@ object MenuButtons {
             val dispatched = QClient.dispatchSynthetic(synthetic)
             QqBindManager.logFileOnly(
                 "[菜单按钮] 群=$groupOpenId 用户=$userOpenId 命令=$commandText " +
-                    "被动id=${recentMsgId ?: "无(主动消息)"} 分发=${if (dispatched) "已执行" else "未命中"}"
+                    "被动id=${recentMsgId ?: "无(主动消息)"} 角色=${clickerRole ?: "未知"} " +
+                    "分发=${if (dispatched) "已执行" else "未命中"}"
             )
         } catch (error: Throwable) {
             QqBindManager.logFileOnly("[菜单按钮] 命令分发异常（$commandText）: ${error.message}")

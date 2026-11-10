@@ -78,6 +78,18 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
  // 可引用的 msg_id 走被动回复（QQ 被动回复只能引用收到的真实消息，
  // 时限约 5 分钟，详见 [RecentGroupMessages]）；失败零影响
         RecentGroupMessages.record(groupId, event.rawMessage?.id)
+ // 登记发送者群身份（author.member_role：owner/admin/member）——按钮
+ // 点击的互动回调不带点击者角色，合成事件靠这里的缓存补上，管理员
+ // 判定（admin.mode=qq）才与手打命令一致（1.7.5.1 修复管理员点按钮
+ // 被判无权限，详见 [MemberRoleCache]）；失败零影响
+        try {
+            MemberRoleCache.record(
+                groupId,
+                event.sender?.openid ?: event.sender?.id,
+                event.sender?.meta?.getString("member_role"),
+            )
+        } catch (_: Throwable) {
+        }
  // 剥离行首 @ 占位片段（全量模式 content 原样保留 <@openid>
         // 前缀，导致 /命令 前缀匹配失败——先剥再进命令分发；无片段零开销）。
         //

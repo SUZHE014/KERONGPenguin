@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "kerongpenguin",
+  "version": "1.7.4.1",
+  "name": "KERONGPenguin",
+  "description": "QQ 机器人模组（测试版）：群聊互通 / 查询命令 / 信息卡渲染 / 绑定与签到 / 服务器状态播报。与 Spigot / NeoForge 版同源。",
+  "authors": [
+    "SUZHE014"
+  ],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "server": [
+      "cn.kerong.penguin.fabric.KERONGFabric"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "fabric-api": "*",
+    "minecraft": ">=1.20.4"
+  }
+}

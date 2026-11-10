@@ -44,7 +44,8 @@ class AdministrationCommands : CommandSupport() {
      * 段）已删除——全量转发只按总配置生效（所有配置群统一开 / 关）。本命令
      * 直接切换总配置并写回 config.yml（注释保留），改完立即生效；总配置
      * 关闭时本命令仍可用（管理员手动输入开启），但菜单按钮与快捷面板按钮
-     * 会同步隐藏。
+     * 会同步隐藏。切换后立即异步重同步快捷面板（全量按钮即时出现 / 消失，
+     * 无需再 /hbkrg reload 或重启）。
      */
     @Commands("全量")
     fun fullAmount(plugin: KERONG, event: GroupMessageEvent, params: String) {
@@ -55,6 +56,35 @@ class AdministrationCommands : CommandSupport() {
             "state" to (if (!enabled) "开启" else "关闭"),
             "writeResult" to (if (written) "" else "；配置文件写入失败，重启后可能还原，请检查文件权限"),
         ))
+ // 切换后立即重同步 QQ 快捷面板（全量按钮随总开关出现 / 消失，
+        // 与 /hbkrg reload 同一套先删后建流程）。面板同步含网络 IO 与
+        // QPM 节流（最坏 20 秒级），必须异步执行，命令回复不被拖慢。
+        refreshPanelsAsync(plugin)
+    }
+
+    /**
+     * 异步重同步快捷面板（后台线程，结果写日志；机器人未连接时静默跳过，
+     * 连接恢复后的启动同步会按最新配置重建面板）。
+     */
+    private fun refreshPanelsAsync(plugin: KERONG) {
+        val starter = try {
+            cn.kerong.bot.QClient.starter
+        } catch (_: Throwable) {
+            null
+        } ?: return
+        val groups = try {
+            plugin.groupOpenIdList()
+        } catch (_: Throwable) {
+            emptyList()
+        }
+        if (groups.isEmpty()) return
+        Thread({
+            try {
+                cn.kerong.bot.MenuManager.syncGroupPanels(starter, groups)
+            } catch (error: Throwable) {
+                cn.kerong.bot.tools.PluginFileLog.write("[全量] 切换后重同步快捷面板失败: ${error.message}")
+            }
+        }, "qq-panel-refresh").apply { isDaemon = true }.start()
     }
 
     /**

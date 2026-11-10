@@ -31,11 +31,18 @@ import java.net.URL
  */
 object InteractionAcker {
 
-    /** 连接超时（毫秒）——回应窗口只有 3 秒，不能在握手上耗太久。 */
-    private const val CONNECT_TIMEOUT_MILLIS = 4_000
+    /**
+     * 连接超时（毫秒）——官方回应窗口只有 3 秒，旧值 4 秒意味着握手一慢
+     * 就算最终成功客户端也早已超时报「第三方连接失败」；收紧到 1.5 秒，
+     * 失败立即快速重试一次，两次机会全部落在窗口内。
+     */
+    private const val CONNECT_TIMEOUT_MILLIS = 1_500
 
-    /** 读取超时（毫秒）。 */
-    private const val READ_TIMEOUT_MILLIS = 6_000
+    /** 读取超时（毫秒）——同上，两次尝试含重试间隔控制在 3 秒窗口内。 */
+    private const val READ_TIMEOUT_MILLIS = 2_500
+
+    /** 网络抖动（连接/读取异常、5xx、429 限频）后的快速重试间隔（毫秒）。 */
+    private const val RETRY_INTERVAL_MILLIS = 400L
 
     /**
      * 发送互动回应。
@@ -55,33 +62,60 @@ object InteractionAcker {
             null
         } ?: return false
         if (headers["Authorization"].isNullOrBlank()) return false
-        var connection: HttpURLConnection? = null
-        return try {
-            connection = (URL(url).openConnection() as HttpURLConnection).apply {
-                requestMethod = "PUT"
-                connectTimeout = CONNECT_TIMEOUT_MILLIS
-                readTimeout = READ_TIMEOUT_MILLIS
-                for ((key, value) in headers) {
-                    if (key.isBlank() || value.isBlank()) continue
-                    setRequestProperty(key, value)
+
+        /**
+         * 单次发送，返回三态：null = 网络抖动（可快速重试）、true = 已受理、
+         * false = 确定性失败（4xx 语义错误，重试无意义）。
+         */
+        fun sendOnce(): Boolean? {
+            var connection: HttpURLConnection? = null
+            return try {
+                connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "PUT"
+                    connectTimeout = CONNECT_TIMEOUT_MILLIS
+                    readTimeout = READ_TIMEOUT_MILLIS
+                    for ((key, value) in headers) {
+                        if (key.isBlank() || value.isBlank()) continue
+                        setRequestProperty(key, value)
+                    }
+                    setRequestProperty("Content-Type", "application/json")
+                    doOutput = true
+                    useCaches = false
                 }
-                setRequestProperty("Content-Type", "application/json")
-                doOutput = true
-                useCaches = false
+                connection.outputStream.use { it.write("{\"code\": $code}".toByteArray(Charsets.UTF_8)) }
+                val status = connection.responseCode
+                when {
+                    status in 200..299 -> true
+                    // 5xx / 429 属平台瞬时状况，400ms 后再试一次仍有救
+                    status >= 500 || status == 429 -> {
+                        PluginFileLog.write("[按钮互动] 回应遇平台瞬时状况（HTTP $status），${RETRY_INTERVAL_MILLIS}ms 后重试（interaction=${interactionId.take(24)}…）")
+                        null
+                    }
+                    else -> {
+                        PluginFileLog.write("[按钮互动] 回应未被受理（HTTP $status，interaction=${interactionId.take(24)}…）")
+                        false
+                    }
+                }
+            } catch (error: Throwable) {
+                // 网络抖动（连接超时/读超时/重置）：快速重试一次（两次总耗时仍在 3 秒窗口内）
+                PluginFileLog.write("[按钮互动] 回应发送异常（${error.javaClass.simpleName}: ${error.message}），快速重试")
+                null
+            } finally {
+                connection?.disconnect()
             }
-            connection.outputStream.use { it.write("{\"code\": $code}".toByteArray(Charsets.UTF_8)) }
-            val status = connection.responseCode
-            if (status in 200..299) {
-                true
-            } else {
-                PluginFileLog.write("[按钮互动] 回应未被受理（HTTP $status，interaction=${interactionId.take(24)}…）")
-                false
+        }
+
+        return when (sendOnce()) {
+            true -> true
+            false -> false
+            null -> {
+                try {
+                    Thread.sleep(RETRY_INTERVAL_MILLIS)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
+                sendOnce() == true
             }
-        } catch (error: Throwable) {
-            PluginFileLog.write("[按钮互动] 回应发送失败（${error.javaClass.simpleName}: ${error.message}）")
-            false
-        } finally {
-            connection?.disconnect()
         }
     }
 

@@ -126,39 +126,71 @@ object MessageTemplates {
     private val cache = ConcurrentHashMap<String, Pair<Long, String>>()
 
     /**
- * 默认模板内容升级表：历代旧默认内容 → 新默认内容。
+     * 单条默认内容升级规则。
+     *
+     * @property olds 历代旧默认内容（normalize 后精确比对，覆盖已知的每一版）
+     * @param features 默认内容特征（当前内容含任一即视为「未被自定义改过的
+     *   默认模板」——兜底收敛表没收录到的中间态默认版本；null = 不做特征匹配）
+     * @property newContent 新默认内容
+     */
+    private class UpgradeSpec(
+        val olds: List<String>,
+        private val features: List<String>?,
+        val newContent: String,
+    ) {
+        /** 当前磁盘内容是否应升级到新默认（幂等：已等于新默认返回 false）。 */
+        fun shouldUpgrade(current: String): Boolean {
+            val normalizedCurrent = normalize(current)
+            if (normalizedCurrent == normalize(newContent)) return false
+            if (olds.any { normalize(it) == normalizedCurrent }) return true
+            val marks = features ?: return false
+            return marks.any { current.contains(it) }
+        }
+    }
+
+    /** 去除全部空白字符（空格 / 制表 / 换行 / 回车）后的比对形态。 */
+    private fun normalize(text: String): String = text.replace(Regex("\\s"), "")
+
+    /**
+     * 默认模板内容升级表：历代旧默认内容 → 新默认内容。
      *
      * 模板文件首次释放后不会覆盖用户修改，但默认内容本身会演进（如菜单
      * 改版、AI 管理命令合并）。仅当磁盘文件内容仍是**某一版旧默认**（未被
      * 用户改过）时才替换为新默认，自定义内容一律不动；一个模板可有多版
      * 历史默认，逐版收敛到最新。
+     *
+     * 匹配除逐版旧默认（空白差异容忍）外，另按**默认特征**兜底——老安装
+     * 磁盘上可能存在收敛表未收录的中间态默认（每一轮部署释放的默认都会
+     * 演进），只要内容仍带着默认模板的特征开头（如 menu 以「### 指令菜单」
+     * 开头、unblacklist-list 以「黑名单列表（{count} 个）」开头）就视为
+     * 默认内容升级到最新，确保老用户看到的一直是当前口径的默认文案。
      */
-    private val DEFAULT_CONTENT_UPGRADES: Map<String, Pair<List<String>, String>> = mapOf(
+    private val DEFAULT_CONTENT_UPGRADES: Map<String, UpgradeSpec> = mapOf(
  // OpenId 行改为 {openidPart}（管理员查询才显示）
-        "openid-lookup" to (listOf(
+        "openid-lookup" to UpgradeSpec(listOf(
             "【OpenID 反查】\nOpenId: {openid}\n群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}",
-        ) to "【OpenID 反查】\n{openidPart}群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}"),
+        ), listOf("【OpenID 反查】"), "【OpenID 反查】\n{openidPart}群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}"),
  // 菜单只留标题 + 当前版本行（指令讲解字段删除，1.7.5 覆盖第三轮）
-        "menu" to (listOf(
+        "menu" to UpgradeSpec(listOf(
             "### 指令菜单\n\n点击下方按钮即可执行；带参数的指令（绑定 / 发信息 / 执行命令等）点击后复制到输入框，补全内容再发送。\n\n---\n**当前插件版本：v{version}**",
             "### 指令菜单（{page}/{pages}）",
-        ) to "### 指令菜单（{page}/{pages}）\n\n**当前插件版本：v{version}**"),
+        ), listOf("### 指令菜单"), "### 指令菜单（{page}/{pages}）\n\n**当前插件版本：v{version}**"),
  // AI 管理合并：旧命令名版本与旧提示句版本收敛为纯状态行（操作都在按钮里）
-        "ai-context-usage" to (listOf(
+        "ai-context-usage" to UpgradeSpec(listOf(
             "用法: /AI对话上下文 开|关\n当前状态: {status}",
             "当前 AI 上下文状态：{status}\n\n可发送 /AI管理 开|关|清除，或点击下方按钮选择操作：",
-        ) to "当前 AI 上下文状态：{status}"),
+        ), listOf("AI 上下文状态", "AI对话上下文"), "当前 AI 上下文状态：{status}"),
  // 解除黑名单清单：历代旧默认收敛到「命令在前、按钮在后」口径（用户口径
  // 「先 /解除黑名单 @对应的人」；1.7.5 覆盖第三轮调序）
-        "unblacklist-list" to (listOf(
+        "unblacklist-list" to UpgradeSpec(listOf(
             "黑名单列表（{count} 个）：\n{list}\n\n解除请发送: /解除黑名单 @QQ",
             "黑名单列表（{count} 个）：\n{list}\n\n点击下方按钮即可解除对应条目（也可发送 /解除黑名单 @QQ）",
             "黑名单列表（{count} 个）：\n{list}\n\n可以按下对应的按钮，或者艾特对方发送 /解除黑名单 解除",
-        ) to "黑名单列表（{count} 个）：\n{list}\n\n发送 /解除黑名单 @对应的人 解除；也可以点击下方对应的按钮解除"),
+        ), listOf("黑名单列表（{count} 个）"), "黑名单列表（{count} 个）：\n{list}\n\n发送 /解除黑名单 @对应的人 解除；也可以点击下方对应的按钮解除"),
  // 全量转发改为总开关口径（群级独立开关删除，1.7.5 覆盖第三轮）
-        "full-amount-toggled" to (listOf(
+        "full-amount-toggled" to UpgradeSpec(listOf(
             "本群全量转发已{state}",
-        ) to "全量转发已{state}（总开关，全部配置群统一生效{writeResult}）"),
+        ), listOf("全量转发已", "本群全量转发已"), "全量转发已{state}（总开关，全部配置群统一生效{writeResult}）"),
     )
 
     /** 平台插件实例（Spigot / NeoForge 适配器均为 JavaPlugin 子类）。 */
@@ -222,7 +254,12 @@ object MessageTemplates {
         }
     }
 
-    /** 旧默认内容 → 新默认内容（仅未修改过的文件替换；幂等）。 */
+    /**
+     * 旧默认内容 → 新默认内容（仅未修改过的文件替换；幂等）。
+     *
+     * 匹配两条路径（见 [UpgradeSpec.shouldUpgrade]）：历代旧默认逐版比对
+     * （空白差异容忍）+ 默认特征兜底（收敛表未收录的中间态默认同样升级）。
+     */
     private fun upgradedDefaultContents(dir: File) {
         for ((id, upgrade) in DEFAULT_CONTENT_UPGRADES) {
             val fileName = fileNameOf(id)
@@ -233,9 +270,9 @@ object MessageTemplates {
             } catch (_: Throwable) {
                 null
             } ?: continue
-            if (upgrade.first.none { it.trim() == current.trim() }) continue
+            if (!upgrade.shouldUpgrade(current)) continue
             try {
-                target.writeText(upgrade.second, Charsets.UTF_8)
+                target.writeText(upgrade.newContent, Charsets.UTF_8)
                 cache.remove(target.path)
                 BotShared.instance?.log_info("消息模板 $fileName 已升级到新默认内容（自定义过的模板不受影响）")
             } catch (error: Exception) {

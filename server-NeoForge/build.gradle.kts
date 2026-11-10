@@ -20,7 +20,7 @@ plugins {
 //   - fml-loader / bus / brigadier / authlib：官方构件（版本随目标 MC）。
 // 分发 JAR 由 scripts/package_jar_neoforge.py 合成（并入 kloping SDK / fastjson /
 // kotlin-stdlib / snakeyaml 等运行时依赖），模块自身产物不含这些依赖。
-version = "1.7.5"
+version = "1.7.5.1"
 
 kotlin {
     jvmToolchain(21)

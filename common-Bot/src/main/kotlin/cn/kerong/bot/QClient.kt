@@ -401,8 +401,14 @@ object QClient {
      * V2Result.id 是否非空判定真实送达，拒收时如实返回 false，调用方
      * 的纯文本回退分支这才真正可达。
      *
-     * @return true = 平台已接收（响应含消息 id）；false = 客户端未启动 /
-     *   内容为空 / 发送异常 / 平台拒收（HTTP 4xx/5xx）
+     * 被动失败主动兜底——按钮点击合成的命令回复、以及同一条消息已回复
+     * 多次的场景，平台会以 40034128「被动回复时间或者次数超过限制」
+     * 拒收（每条消息被动回复约 5 次上限）；拒收或发送异常时改走**主动
+     * 消息**通道向同一群重发一次（不带 msg_id，内容与键盘原样保留），
+     * 重发已排队即视为送达返回 true（主动通道与菜单翻页同路，稳定可用）。
+     *
+     * @return true = 被动送达或已转主动通道重发；false = 客户端未启动 /
+     *   内容为空 / 被动与主动通道全部失败
      */
     fun replyMarkdown(event: GroupMessageEvent, markdownContent: String, keyboard: Keyboard? = null): Boolean {
         val currentPlugin = plugin
@@ -421,21 +427,43 @@ object QClient {
         if (keyboard != null) {
             payload.keyboard = keyboard
         }
+        val groupId = try {
+            event.groupOpenId ?: event.groupId
+        } catch (_: Throwable) {
+            null
+        } ?: return false
         return try {
-            val groupId = event.groupOpenId ?: event.groupId ?: return false
             val bot = session.bot ?: return false
             val result = bot.groupBaseV2.send(groupId, JSON.toJSONString(payload), Channel.SEND_MESSAGE_HEADERS)
             // 平台拒收（HTTP 4xx/5xx）时 SDK 不抛异常只返回无 id 的结果体，
             // 以响应是否携带消息 id 判定真实送达
             val delivered = result != null && !result.id.isNullOrEmpty()
-            if (!delivered) {
+            if (delivered) {
+                true
+            } else {
                 currentPlugin.log_error(
-                    "回复 Markdown 未被平台接收（result=${result?.id ?: "无消息ID"} ret=${result?.ret ?: "?"} msg=${result?.msg ?: "?"}），将回退纯文本"
+                    "回复 Markdown 未被平台接收（result=${result?.id ?: "无消息ID"} ret=${result?.ret ?: "?"} msg=${result?.msg ?: "?"}），转主动消息通道重发"
                 )
+                resendActively(groupId, markdownContent, keyboard)
             }
-            delivered
         } catch (error: Exception) {
-            currentPlugin.log_error("回复 Markdown 失败: ${error.message}")
+            currentPlugin.log_error("回复 Markdown 失败: ${error.message}，转主动消息通道重发")
+            resendActively(groupId, markdownContent, keyboard)
+        }
+    }
+
+    /**
+     * 被动回复被平台拒收（40034128 次数/时限超限等）后的主动重发：
+     * 与 [sendMarkdownToGroup] 同路（无 msg_id 主动消息，入异步发送队列，
+     * 集群路由让位检查在内），内容与按钮键盘原样保留。
+     *
+     * @return true = 重发已排队（最终送达结果见发送日志）
+     */
+    private fun resendActively(groupOpenId: String, markdownContent: String, keyboard: Keyboard?): Boolean {
+        return try {
+            sendMarkdownToGroup(groupOpenId, markdownContent, keyboard)
+            true
+        } catch (_: Throwable) {
             false
         }
     }
