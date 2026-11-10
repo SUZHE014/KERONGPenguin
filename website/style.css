@@ -28,8 +28,14 @@ td{padding:10px 12px;border-bottom:1px solid #262c34;color:#aab3bc;font-size:0.9
 /* 1.7.2：兼容性卡片的核心列表（色块 + 名称）——逐项成组、组间可换行，
    修手机端 &nbsp; 连排导致的整行不可换行、横向溢出屏幕 */
 .core-line{line-height:2.2;color:#9aa4ae;text-align:left}
-.core{display:inline-flex;align-items:center;white-space:nowrap;margin:3px 18px 3px 0}
+/* 1.7.5.1 覆盖版：芯片内允许折行（flex-wrap）——NeoForge 芯片带
+   （MC 1.20.4，1.20.6，1.21.x，Java 21）括号版本标注，nowrap 在手机端
+   整体不可换行、横向溢出屏幕；版本标注包 .core-note（可折行 + 逐词断行），
+   桌面端宽度足够时仍是一行，手机端括号内容自动折到第二行 */
+.core{display:inline-flex;align-items:center;flex-wrap:wrap;margin:3px 18px 3px 0;max-width:100%}
 .core i{display:inline-block;width:13px;height:13px;border-radius:3px;margin-right:6px;flex:none}
+.core .core-name{white-space:nowrap}
+.core .core-note{white-space:normal;overflow-wrap:anywhere;line-height:1.7}
 .tutorial-step{background:#1a1e24;border-radius:12px;padding:25px;margin-bottom:20px;border:1px solid #2a2f36}
 .tutorial-step h3{color:#4da3ff;margin-bottom:12px;font-size:1.15em}
 .tutorial-step .step-num{display:inline-block;background:#2f7ef7;color:#fff;width:28px;height:28px;border-radius:50%;text-align:center;line-height:28px;font-size:0.85em;margin-right:10px}
