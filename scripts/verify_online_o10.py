@@ -10,9 +10,9 @@ import urllib.request
 import zipfile
 
 BASE = "https://kerong.xin/penguin"
-SPIGOT_MD5 = "261adc36365c898b9ba14a68e211c2a6"
-NF_MD5 = "00d775604c85b30be2473d358c5888e0"
-SRC_MD5 = "23a40bea223ed8e62055f65ffdcd2513"
+SPIGOT_MD5 = "66e506a67a3b00f5c2400809d626ec02"
+NF_MD5 = "93fb8249cef95942c1859573d0bb7bf9"
+SRC_MD5 = "9365581ac384117a572904dd678c7edf"
 
 results = []
 
