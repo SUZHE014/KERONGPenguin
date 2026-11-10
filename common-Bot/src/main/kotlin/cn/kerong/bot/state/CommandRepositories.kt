@@ -17,7 +17,7 @@ object CommandRepositories {
     /** 各群已通过身份验证的用户。 */
     val authentication = AuthenticationRepository { save() }
 
-    /** 各群的设置（管理员判定模式 / 全量转发）。 */
+    /** 各群的设置（管理员判定模式）。 */
     val groupSettings = GroupSettingsRepository { save() }
 
     /** 从数据目录加载状态（服务器启动时调用一次）。 */
@@ -26,7 +26,7 @@ object CommandRepositories {
         val snapshot: StoredCommandSettings = stateFile.initialize(dataDirectory)
         administrators.replaceAll(snapshot.administrators)
         authentication.replaceAll(snapshot.authenticatedUsers)
-        groupSettings.replaceAll(snapshot.administratorModes, snapshot.fullForwarding)
+        groupSettings.replaceAll(snapshot.administratorModes)
     }
 
     @Synchronized
@@ -36,7 +36,6 @@ object CommandRepositories {
                 administrators.snapshot(),
                 authentication.snapshot(),
                 groupSettings.administratorModeSnapshot(),
-                groupSettings.fullForwardingSnapshot(),
             )
         )
     }
@@ -119,38 +118,25 @@ class AuthenticationRepository(private val persist: () -> Unit) {
 }
 
 /**
- * 各群设置仓储：管理员判定模式与全量转发开关。
+ * 各群设置仓储：管理员判定模式。
+ *
+ * 1.7.5 覆盖第三轮：群级全量转发开关（full-forwarding）已删除——全量
+ * 转发只按总配置 features.full-amount 生效（/全量 命令切换总配置），
+ * 旧状态文件里的 [full-forwarding] 段不再读取，随下次保存自然消失。
  */
 class GroupSettingsRepository(private val persist: () -> Unit) {
     private val administratorModes = ConcurrentHashMap<String, AdministratorAccessMode>()
-    private val fullForwarding = ConcurrentHashMap<String, Boolean>()
 
     /** 获取 [groupId] 群的管理员判定模式（未配置时返回 [defaultMode]）。 */
     fun administratorMode(groupId: String, defaultMode: AdministratorAccessMode): AdministratorAccessMode =
         administratorModes[groupId] ?: defaultMode
 
-
-    /** 获取 [groupId] 群是否全量转发（未配置时返回 [defaultValue]）。 */
-    fun fullForwarding(groupId: String, defaultValue: Boolean): Boolean =
-        fullForwarding[groupId] ?: defaultValue
-
-    /** 设置 [groupId] 群的全量转发开关。 */
-    fun setFullForwarding(groupId: String, enabled: Boolean) {
-        fullForwarding[groupId] = enabled
-        persist()
-    }
-
     /** 用持久化数据整体替换（加载时调用）。 */
-    fun replaceAll(modes: Map<String, AdministratorAccessMode>, forwarding: Map<String, Boolean>) {
+    fun replaceAll(modes: Map<String, AdministratorAccessMode>) {
         administratorModes.clear()
         administratorModes.putAll(modes)
-        fullForwarding.clear()
-        fullForwarding.putAll(forwarding)
     }
 
     /** 导出管理员判定模式快照。 */
     fun administratorModeSnapshot(): Map<String, AdministratorAccessMode> = administratorModes.toMap()
-
-    /** 导出全量转发快照。 */
-    fun fullForwardingSnapshot(): Map<String, Boolean> = fullForwarding.toMap()
 }

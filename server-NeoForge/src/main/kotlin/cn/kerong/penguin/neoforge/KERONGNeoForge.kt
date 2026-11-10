@@ -316,6 +316,9 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
     override val fullAmount: Boolean
         get() = configManager.fullForwardingByDefault()
 
+    override fun setFullAmountEnabled(enabled: Boolean): Boolean =
+        configManager.setFullAmountEnabled(enabled)
+
     override fun commandList(): Map<String, Boolean> = configManager.commandSwitches()
 
     override fun customCommands(): List<CustomCommandDetail> = configManager.customCommands()

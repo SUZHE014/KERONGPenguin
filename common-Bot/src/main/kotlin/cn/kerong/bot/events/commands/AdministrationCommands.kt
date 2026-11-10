@@ -2,7 +2,6 @@ package cn.kerong.bot.events.commands
 
 import cn.kerong.bot.KERONG
 import cn.kerong.penguin.spigot.qqbind.MessageTemplates
-import cn.kerong.bot.state.CommandRepositories
 import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 
 /**
@@ -37,15 +36,24 @@ class AdministrationCommands : CommandSupport() {
         executeGameCommandWithMention(plugin, event, cmd, true)
     }
 
-    /** /全量 —— 切换本群全量聊天转发（模板 full-amount-toggled，{state} = 开启/关闭）。 */
+    /**
+     * /全量 —— 切换全量聊天转发**总开关**（features.full-amount，管理员；
+     * 模板 full-amount-toggled，{state} = 开启/关闭）。
+     *
+     * 1.7.5 覆盖第三轮：群级独立开关（command-state.ini 的 [full-forwarding]
+     * 段）已删除——全量转发只按总配置生效（所有配置群统一开 / 关）。本命令
+     * 直接切换总配置并写回 config.yml（注释保留），改完立即生效；总配置
+     * 关闭时本命令仍可用（管理员手动输入开启），但菜单按钮与快捷面板按钮
+     * 会同步隐藏。
+     */
     @Commands("全量")
     fun fullAmount(plugin: KERONG, event: GroupMessageEvent, params: String) {
         if (!requireAdmin(plugin, event)) return
-        val group = groupId(event)
-        val enabled = CommandRepositories.groupSettings.fullForwarding(group, plugin.fullAmount)
-        CommandRepositories.groupSettings.setFullForwarding(group, !enabled)
+        val enabled = plugin.fullAmount
+        val written = plugin.setFullAmountEnabled(!enabled)
         MessageTemplates.sendDirect(event, "full-amount-toggled", mapOf(
             "state" to (if (!enabled) "开启" else "关闭"),
+            "writeResult" to (if (written) "" else "；配置文件写入失败，重启后可能还原，请检查文件权限"),
         ))
     }
 

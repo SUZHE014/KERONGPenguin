@@ -383,6 +383,28 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
     fun fullForwardingByDefault(): Boolean = plugin.config.getBoolean("features.full-amount", false)
 
+    /**
+     * 设置全量转发总开关（features.full-amount）并写回配置文件
+     * （1.7.5 覆盖第三轮：/全量 命令改切总配置，群级独立开关已删）。
+     *
+     * 写回走 plugin.saveConfig()——Spigot 端 1.18.1+ 平台自带注释往返、
+     * NeoForge 端兼容层走注释保留保存（差分合并），用户注释不丢。
+     * 内存值随 config.set 即时生效（fullForwardingByDefault 实时读取）。
+     *
+     * @return 是否写入成功（失败时内存值已生效但重启可能还原）
+     */
+    fun setFullAmountEnabled(enabled: Boolean): Boolean {
+        return try {
+            plugin.config.set("features.full-amount", enabled)
+            plugin.saveConfig()
+            plugin.logger.info("全量转发总开关已切换为：${if (enabled) "开启" else "关闭"}（已写回 config.yml，对全部配置群生效）")
+            true
+        } catch (t: Throwable) {
+            plugin.logger.warning("全量转发开关写回配置文件失败（本次已生效，重启后可能还原）: ${t.message}")
+            false
+        }
+    }
+
     /** 命令开关表。 */
     fun commandSwitches(): Map<String, Boolean> {
         val switches = LinkedHashMap<String, Boolean>()
@@ -425,6 +447,14 @@ class ConfigManager(private val plugin: JavaPlugin) {
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
 
+        // 升 43——1.7.5 覆盖第三轮（无新增键，注释刷新 + 语义变更）：
+        // features.full-amount 语义改为全量转发**总开关**（/全量 命令切换它
+        // 并写回本文件，对全部配置群统一生效；群级独立开关已删除——
+        // command-state.ini 的 [full-forwarding] 段不再读取）；commands.全量
+        // 与 commands.菜单 注释同步更新（菜单按钮：无参命令点击即执行、
+        // 带参命令点击复制进输入栏）。
+        // 升 42——菜单按钮化注释刷新（commands 段全部命令注释改为按钮
+        // 交互口径：点击即执行 / 复制到输入栏补全）。
         // 升 41——指令与消息模板键迁移：commands.帮助 → commands.菜单（/帮助
         // 替换为 /菜单，旧键值保留迁移），commands.AI对话上下文 →
         // commands.AI管理（原「AI对话上下文 开|关」与「清除当前上下文」两条
@@ -488,7 +518,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // qq-bind.checkin.points-reward（签到点券奖励，默认 0 关闭）
  // 升 28——无新增键纯注释刷新（卡片背景图说明段补 /hbkrg bpng
         // 图片包下载与 /hbkrg bpngsz 一键切换的用法说明）
-        private const val CURRENT_CONFIG_VERSION = 42
+        private const val CURRENT_CONFIG_VERSION = 43
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；

@@ -23,10 +23,11 @@ import java.util.Properties
  *
  * [administrator-modes]
  * 群OpenId = QQ|MANUAL|BOTH
- *
- * [full-forwarding]
- * 群OpenId = true|false
  * ```
+ *
+ * 1.7.5 覆盖第三轮：群级全量转发开关已删除（全量只按总配置
+ * features.full-amount）——旧文件里的 [full-forwarding] 段不再解析，
+ * 保存时不再写出，随任一次状态保存自然消失。
  */
 class HumanReadableStateFile {
     private var target: File? = null
@@ -65,11 +66,6 @@ class HumanReadableStateFile {
                 "administrator-modes",
                 snapshot.administratorModes.mapValues { it.value.name },
             )
-            writeValueSection(
-                writer,
-                "full-forwarding",
-                snapshot.fullForwarding.mapValues { it.value.toString() },
-            )
         }
         if (outputFile.exists()) outputFile.delete()
         temporaryFile.renameTo(outputFile)
@@ -80,7 +76,6 @@ class HumanReadableStateFile {
         val administrators = linkedMapOf<String, Set<String>>()
         val authenticatedUsers = linkedMapOf<String, Set<String>>()
         val administratorModes = linkedMapOf<String, AdministratorAccessMode>()
-        val fullForwarding = linkedMapOf<String, Boolean>()
 
         var section = ""
         file.readLines(StandardCharsets.UTF_8).forEach { rawLine ->
@@ -101,10 +96,10 @@ class HumanReadableStateFile {
                     val mode = AdministratorAccessMode.entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
                     if (mode != null) administratorModes[groupId] = mode
                 }
-                "full-forwarding" -> value.toBooleanStrictOrNull()?.let { fullForwarding[groupId] = it }
+                // [full-forwarding] 段已废弃（群级全量开关删除）：不解析
             }
         }
-        return StoredCommandSettings(administrators, authenticatedUsers, administratorModes, fullForwarding)
+        return StoredCommandSettings(administrators, authenticatedUsers, administratorModes)
     }
 
     /** 读取旧版 properties 格式。 */
@@ -114,17 +109,16 @@ class HumanReadableStateFile {
         val administrators = linkedMapOf<String, Set<String>>()
         val authenticatedUsers = linkedMapOf<String, Set<String>>()
         val administratorModes = linkedMapOf<String, AdministratorAccessMode>()
-        val fullForwarding = linkedMapOf<String, Boolean>()
         for (key in properties.stringPropertyNames()) {
             val value = properties.getProperty(key) ?: ""
             when {
                 key.startsWith("admins.") -> administrators[key.removePrefix("admins.")] = parseUsers(value)
                 key.startsWith("auth.") -> authenticatedUsers[key.removePrefix("auth.")] = parseUsers(value)
                 key.startsWith("mode.") -> legacyMode(value)?.let { administratorModes[key.removePrefix("mode.")] = it }
-                key.startsWith("full.") -> fullForwarding[key.removePrefix("full.")] = value.toBoolean()
+                // full.* 前缀（旧版群级全量开关）已废弃：不解析
             }
         }
-        return StoredCommandSettings(administrators, authenticatedUsers, administratorModes, fullForwarding)
+        return StoredCommandSettings(administrators, authenticatedUsers, administratorModes)
     }
 
     /** 旧版模式取值映射。 */

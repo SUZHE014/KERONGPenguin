@@ -3,6 +3,7 @@ package cn.kerong.bot.events
 import cn.kerong.bot.ClusterState
 import cn.kerong.bot.KERONG
 import cn.kerong.bot.QClient
+import cn.kerong.bot.ReplySeqGuard
 import cn.kerong.penguin.spigot.qqbind.MessageTemplates
 import cn.kerong.penguin.spigot.qqbind.QqBindManager
 import cn.kerong.bot.tools.Keyboards
@@ -14,16 +15,18 @@ import io.github.kloping.qqbot.impl.message.v2.BaseGroupMessageEvent
 /**
  * /菜单 的按钮键盘与按钮互动处理。
  *
- * ## 按钮形态（QQ 平台限制决定）
+ * ## 按钮形态（两类，按命令是否需要补参数分流）
  *
  * 群聊里「点击即执行」只有**回调按钮**（actionType=1）一种实现方式：
  * 官方文档明确指令按钮的 enter 自动发送仅单聊可用，群聊点击指令按钮只会
- * 把 @机器人 + 命令插进输入框等用户手动发送——这就是此前菜单按钮
- * 「全部都是复制到输入栏」的根因。因此菜单里的全部命令按钮都是回调按钮：
- * 点击 → 机器人收到互动事件 → 3 秒内回应（无「第三方连接失败」弹窗）→
- * 以点击者身份执行命令并正常回复结果。需要补参数的命令（绑定 / 发信息 /
- * 执行命令 / 执行 / 管理员执行）点击后回复该命令的用法提示，同样是
- * 一步到位的直接互动。
+ * 把 @机器人 + 命令插进输入框等用户手动发送。因此：
+ * - **无参命令**（查在线 / 查性能 / 玩家名片 / 排行榜 / 签到 / 全量 /
+ *   AI管理 / 切换服务器 / 重新绑定 / 黑名单 / 解除黑名单…）用回调按钮：
+ *   点击 → 机器人收到互动事件 → 3 秒内回应 → 以点击者身份执行命令并
+ *   正常回复结果，一步到位；
+ * - **需补参数的命令**（绑定 / 发信息 / 执行命令 / 执行 / 管理员执行）用
+ *   **指令按钮**（actionType=2）：点击把命令复制进输入栏，用户补全参数
+ *   后手动发送——这类命令点回调只能得到一句用法提示，不如直接填进输入框。
  *
  * ## 布局与分页
  *
@@ -46,6 +49,13 @@ object MenuButtons {
 
     /** 每页命令按钮数（5 行键盘：4 行命令 + 1 行翻页）。 */
     private const val COMMANDS_PER_PAGE = 4
+
+    /**
+     * 需要用户补参数的命令：菜单里用**指令按钮**（点击复制进输入栏），
+     * 其余命令用回调按钮（点击即执行）。命令名与 [visibleCommands]
+     * 的 label 一致。
+     */
+    private val INPUT_COMMANDS = setOf("绑定", "发信息", "执行命令", "执行", "管理员执行")
 
     // ---------------- 菜单发送 ----------------
 
@@ -128,26 +138,56 @@ object MenuButtons {
     }
 
     /**
-     * 以点击者身份执行命令：构造合成群消息事件（无真实消息 id，命令回复
-     * 走主动消息）后经 [QClient.dispatchSynthetic] 进正常命令分发——
-     * 管理员校验 / 功能开关 / 群白名单 / 多服务器路由与手打命令完全一致。
+     * 以点击者身份执行命令：构造合成群消息事件后经
+     * [QClient.dispatchSynthetic] 进正常命令分发——管理员校验 / 功能开关 /
+     * 群白名单 / 多服务器路由与手打命令完全一致。
+     *
+     * ## 修复「QQ 显示操作成功但机器人没反应」（1.7.5 覆盖第三轮真根因）
+     *
+     * 旧版合成事件的 metadata 只写了 group_openid，而 SDK 的
+     * getGroupOpenId() 实际走 Group.getId()（读 metadata 的 **group_id**
+     * 字段）——取出来是 null，[GroupMessageHandler.dispatchSynthetic] 的
+     * 群白名单检查「groupId == null → 拦截」直接把命令挡下，命令从未
+     * 执行（回应已发出所以 QQ 显示操作成功）。现在 metadata 同时写
+     * group_id 与 group_openid，两个读取通道都拿得到。
+     *
+     * 回复通道同理修复：合成事件本身没有消息 id，被动回复（msg_id 引用）
+     * 无从谈起。现从 [RecentGroupMessages] 取本群最近一条未过期真实消息
+     * id 塞进 metadata 的 id 字段与 RawMessage.id，命令回复即走正常
+     * **被动回复**（与手打命令一致，不受主动消息配额限制）；群内超过
+     * 4 分钟没有任何消息时取不到，回复自动落为主动消息（仍可送达）。
+     * msg_seq 经 [ReplySeqGuard] 分配新基数，与原消息已用的序号不重叠
+     * （防平台 40054005 消息去重拒收）。
      */
     private fun dispatchAsClicker(groupOpenId: String, userOpenId: String, commandText: String) {
         try {
             val starter = QClient.starter ?: return
             val bot = starter.bot ?: return
+            val recentMsgId = RecentGroupMessages.latestId(groupOpenId)
             val raw = RawMessage().setContent(commandText)
+            if (recentMsgId != null) raw.setId(recentMsgId)
             val metadata = JSONObject().apply {
+                // group_id：SDK getGroupOpenId() → Group.getId() 的读取字段
+                //（群白名单 / 集群路由 / 回复目标都靠它，旧版缺失即根因）
+                put("group_id", groupOpenId)
+                // group_openid：Group.getOpenid() → getCid() 的发送目标字段
                 put("group_openid", groupOpenId)
+                // id：BaseMessageEvent.getMsgId() 的读取字段（被动回复 msg_id）
+                if (recentMsgId != null) put("id", recentMsgId)
                 put("author", JSONObject().apply {
                     put("id", userOpenId)
                     put("member_openid", userOpenId)
                 })
             }
             val synthetic = BaseGroupMessageEvent(raw, metadata, bot)
+            if (recentMsgId != null) {
+                // 被动回复序号：与原消息已用序号错开（基数 +100000 递进）
+                synthetic.setMsgSeq(ReplySeqGuard.allocateBase(recentMsgId))
+            }
             val dispatched = QClient.dispatchSynthetic(synthetic)
             QqBindManager.logFileOnly(
-                "[菜单按钮] 群=$groupOpenId 用户=$userOpenId 命令=$commandText 分发=${if (dispatched) "已执行" else "未命中"}"
+                "[菜单按钮] 群=$groupOpenId 用户=$userOpenId 命令=$commandText " +
+                    "被动id=${recentMsgId ?: "无(主动消息)"} 分发=${if (dispatched) "已执行" else "未命中"}"
             )
         } catch (error: Throwable) {
             QqBindManager.logFileOnly("[菜单按钮] 命令分发异常（$commandText）: ${error.message}")
@@ -181,7 +221,7 @@ object MenuButtons {
         } catch (_: Throwable) {
         }
         val list = mutableListOf<Pair<String, String>>()
-        // 查询类在前（最常用），管理类与带参数类在后
+        // 查询类在前（最常用），管理类在后，需补参数的命令最后（指令按钮）
         if (commandEnabled("查在线")) list.add("查在线" to "/查在线")
         if (commandEnabled("查性能")) list.add("查性能" to "/查性能")
         if (commandEnabled("玩家名片") && qqBindEnabled) list.add("玩家名片" to "/玩家名片")
@@ -189,19 +229,27 @@ object MenuButtons {
         if (commandEnabled("在线排行榜")) list.add("在线排行榜" to "/在线排行榜")
         if (commandEnabled("财富榜") && economyAvailable) list.add("财富榜" to "/财富榜")
         if (commandEnabled("签到") && checkinEnabled && qqBindEnabled) list.add("签到" to "/签到")
-        if (commandEnabled("全量")) list.add("全量" to "/全量")
+        // 全量转发总配置关闭时按钮同步消失（与 QQ 快捷面板同口径）
+        if (commandEnabled("全量") && fullAmountEnabled(plugin)) list.add("全量" to "/全量")
         if (commandEnabled("AI管理") && aiEnabled) list.add("AI管理" to "/AI管理")
         if (commandEnabled("切换服务器") && ClusterState.isMultiServer) list.add("切换服务器" to "/切换服务器")
         if (commandEnabled("重新绑定") && qqBindEnabled) list.add("重新绑定" to "/重新绑定")
         if (commandEnabled("黑名单") && qqBindEnabled) list.add("黑名单" to "/黑名单")
         if (commandEnabled("解除黑名单") && qqBindEnabled) list.add("解除黑名单" to "/解除黑名单")
-        // 带参数命令：点击后回复用法提示
+        // 需补参数的命令：点击复制进输入栏（指令按钮），用户补全后手动发送
         if (commandEnabled("绑定") && qqBindEnabled) list.add("绑定" to "/绑定")
         if (commandEnabled("发信息")) list.add("发信息" to "/发信息")
         if (commandEnabled("执行命令")) list.add("执行命令" to "/执行命令")
         if (commandEnabled("执行")) list.add("执行" to "/执行")
         if (commandEnabled("管理员执行")) list.add("管理员执行" to "/管理员执行")
         return list
+    }
+
+    /** 全量转发总配置是否开启（features.full-amount，异常时按关闭处理）。 */
+    private fun fullAmountEnabled(plugin: KERONG): Boolean = try {
+        plugin.fullAmount
+    } catch (_: Throwable) {
+        false
     }
 
     /** 总页数。 */
@@ -211,6 +259,10 @@ object MenuButtons {
     /**
      * 构建第 [pageIndex]（0 起）页的键盘：命令按钮每行一个；多页时末行
      * 放翻页按钮（首页只有「下一页」、末页只有「上一页」、中间页两者都有）。
+     *
+     * 按钮类型按命令分流：需补参数的命令（[INPUT_COMMANDS]）用指令按钮
+     * （actionType=2，点击复制进输入栏），其余用回调按钮（actionType=1，
+     * 点击即执行）。
      */
     private fun pageKeyboard(commands: List<Pair<String, String>>, pageIndex: Int): io.github.kloping.qqbot.entities.ex.Keyboard {
         val pages = pageCount(commands.size)
@@ -218,13 +270,15 @@ object MenuButtons {
         val pageCommands = commands.subList(from, minOf(from + COMMANDS_PER_PAGE, commands.size))
         val rows = mutableListOf<List<Keyboards.Button>>()
         for ((_, entry) in pageCommands.withIndex()) {
-            val commandText = entry.second
+            val isInputCommand = entry.first in INPUT_COMMANDS
             rows.add(listOf(
                 Keyboards.Button(
                     label = entry.first,
                     visitedLabel = entry.first,
-                    actionData = "$ACTION_PREFIX$commandText",
+                    actionData = if (isInputCommand) entry.second else "$ACTION_PREFIX${entry.second}",
                     style = 1,
+                    // 指令按钮（2）= 点击复制进输入栏；回调按钮（1）= 点击即执行
+                    actionType = if (isInputCommand) 2 else 1,
                 )
             ))
         }

@@ -262,6 +262,17 @@ interface ConfigProvider {
     val fullAmount: Boolean
         get() = false
 
+    /**
+     * 设置全量转发总开关（features.full-amount）并写回配置文件。
+     *
+     * 由 /全量 命令调用（1.7.5 覆盖第三轮：群级独立开关已删除，命令直接
+     * 切换总配置，对全部配置群统一生效）。写回走注释保留保存链路
+     * （Spigot 平台自带 / NeoForge 兼容层差分合并），改完即时生效。
+     *
+     * @return 是否写入成功（失败时值已生效但重启可能还原，调用方如实提示）
+     */
+    fun setFullAmountEnabled(enabled: Boolean): Boolean = false
+
     /** QQ 群命令开关表。 */
     fun commandList(): Map<String, Boolean> = emptyMap()
 

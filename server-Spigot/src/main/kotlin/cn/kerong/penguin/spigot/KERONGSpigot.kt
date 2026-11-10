@@ -635,6 +635,9 @@ class KERONGSpigot : JavaPlugin(), KERONG {
     override val fullAmount: Boolean
         get() = configManager.fullForwardingByDefault()
 
+    override fun setFullAmountEnabled(enabled: Boolean): Boolean =
+        configManager.setFullAmountEnabled(enabled)
+
     override fun commandList(): Map<String, Boolean> = configManager.commandSwitches()
 
     override fun auditBaseUrl(): String? = configManager.auditBaseUrl()

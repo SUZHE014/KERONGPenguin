@@ -13,7 +13,6 @@ import cn.kerong.bot.events.commands.CheckInCommands
 import cn.kerong.bot.events.commands.CoinsLeaderboardCommands
 import cn.kerong.bot.events.commands.LeaderboardCommands
 import cn.kerong.bot.events.commands.PublicCommands
-import cn.kerong.bot.state.CommandRepositories
 import cn.kerong.bot.tools.QqText
 import cn.kerong.penguin.spigot.qqbind.AiChat
 import cn.kerong.penguin.spigot.qqbind.GroupMsgSender
@@ -75,6 +74,10 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         // 同一 msg_id。不去重会导致同一条消息被回复/转发两次。
         // id 为空的异常事件不去重直接放行。
         if (!RecentMessageGate.tryAcquire(event.rawMessage?.id)) return
+ // 登记本群最近一条真实消息 id——菜单按钮点击后的合成事件靠它拿到
+ // 可引用的 msg_id 走被动回复（QQ 被动回复只能引用收到的真实消息，
+ // 时限约 5 分钟，详见 [RecentGroupMessages]）；失败零影响
+        RecentGroupMessages.record(groupId, event.rawMessage?.id)
  // 剥离行首 @ 占位片段（全量模式 content 原样保留 <@openid>
         // 前缀，导致 /命令 前缀匹配失败——先剥再进命令分发；无片段零开销）。
         //
@@ -434,7 +437,10 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
     @Suppress("UNCHECKED_CAST")
     private fun forwardFullGroupMessage(groupId: String, event: GroupMessageEvent) {
         try {
-            val enabled = CommandRepositories.groupSettings.fullForwarding(groupId, plugin.fullAmount)
+ // 全量转发只看总配置 features.full-amount（1.7.5 覆盖第三轮：群级
+ // 独立开关已删——旧版 command-state.ini 里的 [full-forwarding] 段
+ // 不再读取，随下次保存自然消失；/全量 命令现在切换总配置本身）
+            val enabled = plugin.fullAmount
             if (!enabled || !plugin.chatFormat.postChat) return
 
             var senderName = "unknown"

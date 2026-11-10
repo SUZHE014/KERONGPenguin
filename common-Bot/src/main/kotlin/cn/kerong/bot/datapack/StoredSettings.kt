@@ -10,10 +10,12 @@ data class ResolvedCommand(
 
 /**
  * 持久化的群命令设置快照。
+ *
+ * 1.7.5 覆盖第三轮：群级全量转发开关（fullForwarding）已删除——全量转发
+ * 只按总配置 features.full-amount 生效，不再按群记忆。
  */
 data class StoredCommandSettings(
     val administrators: Map<String, Set<String>> = emptyMap(),
     val authenticatedUsers: Map<String, Set<String>> = emptyMap(),
     val administratorModes: Map<String, AdministratorAccessMode> = emptyMap(),
-    val fullForwarding: Map<String, Boolean> = emptyMap(),
 )

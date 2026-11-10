@@ -224,6 +224,7 @@ object MenuManager {
             var checkinEnabled = false
             var economyAvailable = false
             var aiEnabled = false
+            var fullAmountEnabled = false
             try {
                 val plugin = cn.kerong.bot.provider.BotShared.instance ?: return PanelSyncResult(null, 0, 0, "插件实例不可用")
                 commandList = plugin.commandList()
@@ -233,6 +234,7 @@ object MenuManager {
                 checkinEnabled = manager.isCheckinEnabled
                 economyAvailable = cn.kerong.bot.events.commands.CheckInCommands().isEconomyAvailable()
                 aiEnabled = manager.isAiEnabled
+                fullAmountEnabled = plugin.fullAmount
             } catch (_: Throwable) {
             }
 
@@ -245,6 +247,10 @@ object MenuManager {
                 if (!economyAvailable && item.name in ECONOMY_PANEL_NAMES) return@filter false
  // AI 功能未开启时隐藏 AI 相关按钮（旧版恒展示的问题修复）
                 if (!aiEnabled && item.name in AI_PANEL_NAMES) return@filter false
+ // 全量转发总配置关闭时隐藏「全量」按钮（1.7.5 覆盖第三轮：
+                // 修复配置关闭时全量指令仍出现在快捷面板的问题；管理员仍可
+                // 手动发 /全量 开启，开启后 reload 面板按钮回来）
+                if (!fullAmountEnabled && item.name == "全量") return@filter false
  // 多服务器集群按钮仅集群模式显示
                 // （未配置 bot.cluster 时隐藏，避免单服用户面板里出现不可用按钮）
                 if (item.name == "切换服务器" && !cn.kerong.bot.ClusterState.isMultiServer) return@filter false

@@ -138,20 +138,27 @@ object MessageTemplates {
         "openid-lookup" to (listOf(
             "【OpenID 反查】\nOpenId: {openid}\n群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}",
         ) to "【OpenID 反查】\n{openidPart}群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}"),
- // 菜单去帮助文字、改分页标题（{page}/{pages}）
+ // 菜单只留标题 + 当前版本行（指令讲解字段删除，1.7.5 覆盖第三轮）
         "menu" to (listOf(
             "### 指令菜单\n\n点击下方按钮即可执行；带参数的指令（绑定 / 发信息 / 执行命令等）点击后复制到输入框，补全内容再发送。\n\n---\n**当前插件版本：v{version}**",
-        ) to "### 指令菜单（{page}/{pages}）"),
+            "### 指令菜单（{page}/{pages}）",
+        ) to "### 指令菜单（{page}/{pages}）\n\n**当前插件版本：v{version}**"),
  // AI 管理合并：旧命令名版本与旧提示句版本收敛为纯状态行（操作都在按钮里）
         "ai-context-usage" to (listOf(
             "用法: /AI对话上下文 开|关\n当前状态: {status}",
             "当前 AI 上下文状态：{status}\n\n可发送 /AI管理 开|关|清除，或点击下方按钮选择操作：",
         ) to "当前 AI 上下文状态：{status}"),
- // 解除黑名单清单：历代旧默认收敛到带按钮提示的新口径
+ // 解除黑名单清单：历代旧默认收敛到「命令在前、按钮在后」口径（用户口径
+ // 「先 /解除黑名单 @对应的人」；1.7.5 覆盖第三轮调序）
         "unblacklist-list" to (listOf(
             "黑名单列表（{count} 个）：\n{list}\n\n解除请发送: /解除黑名单 @QQ",
             "黑名单列表（{count} 个）：\n{list}\n\n点击下方按钮即可解除对应条目（也可发送 /解除黑名单 @QQ）",
-        ) to "黑名单列表（{count} 个）：\n{list}\n\n可以按下对应的按钮，或者艾特对方发送 /解除黑名单 解除"),
+            "黑名单列表（{count} 个）：\n{list}\n\n可以按下对应的按钮，或者艾特对方发送 /解除黑名单 解除",
+        ) to "黑名单列表（{count} 个）：\n{list}\n\n发送 /解除黑名单 @对应的人 解除；也可以点击下方对应的按钮解除"),
+ // 全量转发改为总开关口径（群级独立开关删除，1.7.5 覆盖第三轮）
+        "full-amount-toggled" to (listOf(
+            "本群全量转发已{state}",
+        ) to "全量转发已{state}（总开关，全部配置群统一生效{writeResult}）"),
     )
 
     /** 平台插件实例（Spigot / NeoForge 适配器均为 JavaPlugin 子类）。 */
