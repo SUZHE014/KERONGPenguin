@@ -400,9 +400,10 @@ class PublicCommands : CommandSupport() {
      *
      * - ai.enabled 关闭时本命令一并关闭（回复 ai-manage-disabled 模板）；
      * - 带参数：/AI管理 开|关 /AI管理 清除 直接执行对应操作；
-     * - 不带参数：回复当前上下文状态并弹出三个**指令按钮**（AI上下文开启 /
-     *   AI上下文关闭 / 清除AI上下文），点击即发送对应子指令（旧客户端不渲染
-     *   按钮时手动输入即可）。模板：ai-context-usage/on/off/cleared、ai-manage-disabled。
+     * - 不带参数：回复当前上下文状态并弹出三个**回调按钮**（开启上下文 /
+     *   关闭上下文 / 清除上下文，一行一个），点击即以点击者身份执行对应
+     *   子命令（旧客户端不渲染按钮时手动输入即可）。模板：
+     *   ai-context-usage/on/off/cleared、ai-manage-disabled。
      */
     @Commands("AI管理")
     fun aiManage(plugin: KERONG, event: GroupMessageEvent, params: String) {
@@ -434,37 +435,31 @@ class PublicCommands : CommandSupport() {
                 MessageTemplates.sendDirect(event, "ai-context-cleared")
             }
             else -> {
-                // 状态 + 三个指令按钮（点击自动发送对应子指令，无需手动输入）
+                // 状态 + 三个回调按钮（一行一个，点击即以点击者身份执行子命令）
                 val enabled = manager.isAiContextEnabled(group, user)
                 val message = MessageTemplates.render("ai-context-usage", mapOf(
                     "status" to (if (enabled) "开" else "关"),
                 ))
                 if (message.isEmpty()) return
-                val keyboard = cn.kerong.bot.tools.Keyboards.build(
+                val keyboard = cn.kerong.bot.tools.Keyboards.buildVertical(
                     listOf(
                         cn.kerong.bot.tools.Keyboards.Button(
-                            label = "AI上下文开启",
-                            visitedLabel = "AI上下文开启",
-                            actionData = "/AI管理 开",
+                            label = "开启上下文",
+                            visitedLabel = "开启上下文",
+                            actionData = "${cn.kerong.bot.events.MenuButtons.ACTION_PREFIX}/AI管理 开",
                             style = 1,
-                            actionType = 2,
-                            enter = true,
                         ),
                         cn.kerong.bot.tools.Keyboards.Button(
-                            label = "AI上下文关闭",
-                            visitedLabel = "AI上下文关闭",
-                            actionData = "/AI管理 关",
+                            label = "关闭上下文",
+                            visitedLabel = "关闭上下文",
+                            actionData = "${cn.kerong.bot.events.MenuButtons.ACTION_PREFIX}/AI管理 关",
                             style = 1,
-                            actionType = 2,
-                            enter = true,
                         ),
                         cn.kerong.bot.tools.Keyboards.Button(
-                            label = "清除AI上下文",
-                            visitedLabel = "清除AI上下文",
-                            actionData = "/AI管理 清除",
+                            label = "清除上下文",
+                            visitedLabel = "清除上下文",
+                            actionData = "${cn.kerong.bot.events.MenuButtons.ACTION_PREFIX}/AI管理 清除",
                             style = 1,
-                            actionType = 2,
-                            enter = true,
                         ),
                     )
                 )
@@ -492,7 +487,9 @@ class PublicCommands : CommandSupport() {
 
     /**
      * /黑名单 @QQ —— 将 QQ 加入黑名单并解绑踢出（管理员）。
-     * 无 @ 时列出黑名单。模板：blacklist-empty/list/added-kicked/added。
+     * 无 @ 时列出黑名单（与 /解除黑名单 同一张**按钮清单**：每个条目
+     * 一个「解除」按钮，点击即移除；也可艾特对方发送 /解除黑名单 解除）。
+     * 模板：blacklist-empty/added-kicked/added、unblacklist-list。
      */
     @Commands("黑名单")
     fun blacklist(plugin: KERONG, event: GroupMessageEvent, params: String) {
@@ -511,12 +508,17 @@ class PublicCommands : CommandSupport() {
             if (list.isEmpty()) {
                 MessageTemplates.sendDirect(event, "blacklist-empty")
             } else {
-                MessageTemplates.sendDirect(event, "blacklist-list", mapOf(
-                    "count" to list.size.toString(),
-                    "list" to list.mapIndexed { index, id ->
-                        "${index + 1}. ${manager.getBlacklistName(id) ?: id}"
-                    }.joinToString("\n"),
-                ))
+                // 与 /解除黑名单 一致的按钮清单（每个条目一个解除按钮）
+                val entries = list.map { id -> id to (manager.getBlacklistName(id) ?: id) }
+                val sent = cn.kerong.bot.events.UnblacklistButtons.sendList(event, entries)
+                if (!sent) {
+                    MessageTemplates.sendDirect(event, "blacklist-list", mapOf(
+                        "count" to list.size.toString(),
+                        "list" to entries.mapIndexed { index, (_, name) ->
+                            "${index + 1}. $name"
+                        }.joinToString("\n"),
+                    ))
+                }
             }
             return
         }
@@ -606,118 +608,44 @@ class PublicCommands : CommandSupport() {
     }
 
     /**
-     * /菜单 —— 输出全部可用命令的**指令按钮**（替代原 /帮助 命令列表）。
+     * /菜单 —— 输出全部可用命令的**回调按钮**菜单（替代原 /帮助 命令列表）。
      *
-     * - 无需输入参数的命令（查在线 / 查性能 / 玩家名片等）：**指令按钮 +
-     *   自动发送**，点一下直接执行；
-     * - 需要手动补参数或 @ 成员的命令（绑定 / 发信息 / 执行命令 / 执行 /
-     *   管理员执行）：指令按钮**填入输入框**，补全内容后点发送；
+     * - 群聊里指令按钮的自动发送（enter）仅单聊可用，点击只会把命令填进
+     *   输入框——因此菜单按钮全部改为**回调按钮**：点一下机器人即以点击者
+     *   身份执行命令并回复结果（真正的一步到位）；需要补参数的命令（绑定 /
+     *   发信息 / 执行命令 / 执行 / 管理员执行）点击后回复用法提示；
+     * - 按钮一行一个（键盘上限 5 行 = 4 个命令 + 1 行翻页），全部命令分多页，
+     *   点「下一页」继续翻；
      * - 按钮可见性与 QQ 快捷面板同一套功能开关（commands 段 / QQ 绑定 /
      *   签到 / 经济 / AI / 集群），关闭的功能按钮同步消失；
-     * - 按钮超上限（5 行 × 5 个）或键盘发送失败时回退纯文本模板（menu.md，
-     *   带 {version} 占位符）。
+     * - 键盘发送失败时回退纯文本命令清单（一行一个）。
      */
     @Commands("菜单")
     fun menu(plugin: KERONG, event: GroupMessageEvent, params: String) {
-        val buttons = buildMenuButtons(plugin, event)
-        var message = MessageTemplates.render("menu", mapOf(
-            "version" to plugin.pluginVersion,
-        ))
-        if (message.isEmpty() && buttons.isEmpty()) return
-        // 模板被清空但按钮仍在：用兜底文案保证按钮消息能发出
-        if (message.isEmpty()) message = "指令菜单：点击下方按钮执行；带参数的指令点击后复制到输入框，补全内容再发送。"
-        val keyboard = if (buttons.isNotEmpty()) cn.kerong.bot.tools.Keyboards.build(buttons) else null
-        val user = try {
-            val contact = event.sender
-            contact?.openid ?: contact?.id ?: ""
+        val sent = try {
+            cn.kerong.bot.events.MenuButtons.sendFirstPage(plugin, event)
         } catch (_: Throwable) {
-            ""
-        }
-        val content = message
-        val withMention = if (user.isNotEmpty()) "<@$user>\n$content" else content
-        val sent = if (keyboard != null) {
-            try {
-                QClient.replyMarkdown(event, withMention, keyboard)
-            } catch (_: Throwable) {
-                false
-            }
-        } else {
             false
         }
         if (!sent) {
-            // 键盘发送失败（平台拒收 / 旧客户端不渲染）或无按钮：退纯文本菜单
+            // 键盘发送失败（平台拒收 / 无可用命令）：退纯文本命令清单
+            val fallback = cn.kerong.bot.events.MenuButtons.plainList(plugin)
+            if (fallback.isEmpty()) return
+            val user = try {
+                val contact = event.sender
+                contact?.openid ?: contact?.id ?: ""
+            } catch (_: Throwable) {
+                ""
+            }
+            val content = if (user.isNotEmpty()) "<@$user>\n$fallback" else fallback
             try {
-                val delivered = QClient.replyMarkdown(event, withMention, null)
-                if (!delivered) event.sendMessage(withMention)
+                if (!QClient.replyMarkdown(event, content, null)) event.sendMessage(content)
             } catch (_: Throwable) {
                 try {
-                    event.sendMessage(withMention)
+                    event.sendMessage(content)
                 } catch (_: Throwable) {
                 }
             }
-        }
-    }
-
-    /**
-     * 构建菜单按钮列表（可见性判定与 QQ 快捷面板同一套开关）。
-     *
-     * 直发型（指令按钮 + 自动发送）：无参数即可用的命令；
-     * 填框型（指令按钮 + 填入输入框）：需要补参数 / @ 成员的命令，
-     * actionData 带尾随空格方便用户紧跟输入参数。
-     */
-    private fun buildMenuButtons(plugin: KERONG, event: GroupMessageEvent): List<cn.kerong.bot.tools.Keyboards.Button> {
-        fun commandEnabled(name: String): Boolean = try {
-            plugin.commandList()[name] != false
-        } catch (_: Throwable) {
-            true
-        }
-        var qqBindEnabled = false
-        var personalInfoEnabled = true
-        var checkinEnabled = false
-        var economyAvailable = false
-        var aiEnabled = false
-        try {
-            val manager = QqBindManager.getInstance()
-            qqBindEnabled = manager.isEnabled
-            personalInfoEnabled = manager.isPersonalInfoEnabled
-            checkinEnabled = manager.isCheckinEnabled
-            economyAvailable = cn.kerong.bot.events.commands.CheckInCommands().isEconomyAvailable()
-            aiEnabled = manager.isAiEnabled
-        } catch (_: Throwable) {
-        }
-        val direct = mutableListOf<Pair<String, String>>() // label → 指令
-        val fillIn = mutableListOf<Pair<String, String>>() // label → 指令（填入输入框）
-        if (commandEnabled("菜单")) direct.add("菜单" to "/菜单")
-        if (commandEnabled("查在线")) direct.add("查在线" to "/查在线")
-        if (commandEnabled("查性能")) direct.add("查性能" to "/查性能")
-        if (commandEnabled("玩家名片") && qqBindEnabled) direct.add("玩家名片" to "/玩家名片")
-        if (commandEnabled("查信息") && qqBindEnabled && personalInfoEnabled) direct.add("查信息" to "/查信息")
-        if (commandEnabled("在线排行榜")) direct.add("在线排行榜" to "/在线排行榜")
-        if (commandEnabled("财富榜") && economyAvailable) direct.add("财富榜" to "/财富榜")
-        if (commandEnabled("签到") && checkinEnabled && qqBindEnabled) direct.add("签到" to "/签到")
-        if (commandEnabled("重新绑定") && qqBindEnabled) direct.add("重新绑定" to "/重新绑定")
-        if (commandEnabled("黑名单") && qqBindEnabled) direct.add("黑名单" to "/黑名单")
-        if (commandEnabled("解除黑名单") && qqBindEnabled) direct.add("解除黑名单" to "/解除黑名单")
-        if (commandEnabled("全量")) direct.add("全量" to "/全量")
-        if (commandEnabled("AI管理") && aiEnabled) direct.add("AI管理" to "/AI管理")
-        if (commandEnabled("切换服务器") && cn.kerong.bot.ClusterState.isMultiServer) {
-            direct.add("切换服务器" to "/切换服务器")
-        }
-        if (commandEnabled("绑定") && qqBindEnabled) fillIn.add("绑定" to "/绑定 ")
-        if (commandEnabled("发信息")) fillIn.add("发信息" to "/发信息 ")
-        if (commandEnabled("执行命令")) fillIn.add("执行命令" to "/执行命令 ")
-        if (commandEnabled("执行")) fillIn.add("执行" to "/执行 ")
-        if (commandEnabled("管理员执行")) fillIn.add("管理员执行" to "/管理员执行 ")
-        return direct.map { (label, data) ->
-            cn.kerong.bot.tools.Keyboards.Button(
-                label = label, visitedLabel = label, actionData = data,
-                style = 1, actionType = 2, enter = true,
-            )
-        } + fillIn.map { (label, data) ->
-            cn.kerong.bot.tools.Keyboards.Button(
-                label = label, visitedLabel = label, actionData = data,
-                style = 1, actionType = 2, enter = false,
-            )
         }
     }
 

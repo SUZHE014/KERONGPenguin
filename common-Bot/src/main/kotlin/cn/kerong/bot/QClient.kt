@@ -45,6 +45,20 @@ object QClient {
     }
 
     /**
+     * 按钮互动合成事件分发：菜单按钮点击后以点击者身份执行对应命令
+     * （[cn.kerong.bot.events.MenuButtons] 构造合成事件后走这里）。
+     *
+     * @return 命令是否被执行（处理器未就绪 / 门禁未过返回 false）
+     */
+    fun dispatchSynthetic(event: GroupMessageEvent): Boolean {
+        return try {
+            groupMessageHandler?.dispatchSynthetic(event) ?: false
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /**
      * 启动 QQ 客户端。
      *
  * 移除了 System.out 输出过滤器（旧实现对每次控制台输出

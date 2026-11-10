@@ -126,18 +126,32 @@ object MessageTemplates {
     private val cache = ConcurrentHashMap<String, Pair<Long, String>>()
 
     /**
- * 默认模板内容升级表：旧默认内容 → 新默认内容。
+ * 默认模板内容升级表：历代旧默认内容 → 新默认内容。
      *
-     * 模板文件首次释放后不会覆盖用户修改，但默认内容本身偶尔需要演进
-     * （如 1.6.5 OpenId 反查的 OpenId 行改为管理员可见）。仅当磁盘上的
-     * 文件仍是**旧默认内容**（未被用户改过）时才替换，自定义内容一律不动。
+     * 模板文件首次释放后不会覆盖用户修改，但默认内容本身会演进（如菜单
+     * 改版、AI 管理命令合并）。仅当磁盘文件内容仍是**某一版旧默认**（未被
+     * 用户改过）时才替换为新默认，自定义内容一律不动；一个模板可有多版
+     * 历史默认，逐版收敛到最新。
      */
-    private val DEFAULT_CONTENT_UPGRADES: Map<String, Pair<String, String>> = mapOf(
+    private val DEFAULT_CONTENT_UPGRADES: Map<String, Pair<List<String>, String>> = mapOf(
  // OpenId 行改为 {openidPart}（管理员查询才显示）
-        "openid-lookup" to (
-            "【OpenID 反查】\nOpenId: {openid}\n群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}" to
-                "【OpenID 反查】\n{openidPart}群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}"
-            ),
+        "openid-lookup" to (listOf(
+            "【OpenID 反查】\nOpenId: {openid}\n群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}",
+        ) to "【OpenID 反查】\n{openidPart}群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}"),
+ // 菜单去帮助文字、改分页标题（{page}/{pages}）
+        "menu" to (listOf(
+            "### 指令菜单\n\n点击下方按钮即可执行；带参数的指令（绑定 / 发信息 / 执行命令等）点击后复制到输入框，补全内容再发送。\n\n---\n**当前插件版本：v{version}**",
+        ) to "### 指令菜单（{page}/{pages}）"),
+ // AI 管理合并：旧命令名版本与旧提示句版本收敛为纯状态行（操作都在按钮里）
+        "ai-context-usage" to (listOf(
+            "用法: /AI对话上下文 开|关\n当前状态: {status}",
+            "当前 AI 上下文状态：{status}\n\n可发送 /AI管理 开|关|清除，或点击下方按钮选择操作：",
+        ) to "当前 AI 上下文状态：{status}"),
+ // 解除黑名单清单：历代旧默认收敛到带按钮提示的新口径
+        "unblacklist-list" to (listOf(
+            "黑名单列表（{count} 个）：\n{list}\n\n解除请发送: /解除黑名单 @QQ",
+            "黑名单列表（{count} 个）：\n{list}\n\n点击下方按钮即可解除对应条目（也可发送 /解除黑名单 @QQ）",
+        ) to "黑名单列表（{count} 个）：\n{list}\n\n可以按下对应的按钮，或者艾特对方发送 /解除黑名单 解除"),
     )
 
     /** 平台插件实例（Spigot / NeoForge 适配器均为 JavaPlugin 子类）。 */
@@ -212,7 +226,7 @@ object MessageTemplates {
             } catch (_: Throwable) {
                 null
             } ?: continue
-            if (current.trim() != upgrade.first.trim()) continue
+            if (upgrade.first.none { it.trim() == current.trim() }) continue
             try {
                 target.writeText(upgrade.second, Charsets.UTF_8)
                 cache.remove(target.path)

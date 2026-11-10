@@ -7,16 +7,18 @@ import io.github.kloping.qqbot.entities.ex.Keyboard
  *
  * 按钮经 KeyboardBuilder → RowBuilder → ButtonBuilder 链式构建：
  * - actionType 1 = 回调按钮（点击触发 INTERACTION_CREATE 事件，actionData
- *   原样到达 button_data 字段；官方要求收到事件后 3 秒内回应，超时客户端
- *   提示「第三方连接失败」——本插件在 WSS 帧层快速回应，见
- *   [cn.kerong.bot.events.InteractionFastPath]）；
- * - actionType 2 = 指令按钮（点击把 @机器人 + actionData 插入输入框；
- *   enter = true 时直接自动发送，无需再点发送键；不触发互动回调事件）；
+ *   原样到达 button_data 字段；机器人收到后在 3 秒内回应，客户端无弹窗、
+ *   交互一步到位——群聊里「点击即执行」只能用这一种按钮）；
+ * - actionType 2 = 指令按钮（点击把 @机器人 + actionData 插入输入框，
+ *   需用户自己补全后手动发送；官方文档明确 enter 自动发送**仅单聊可用**，
+ *   群聊设置 enter 也不会自动发送）；
  * - 权限 2 = 所有人可点；
  * - 必须调用 row.build() 把行提交回 builder，否则 content.rows 为空、
  *   QQ 不渲染按钮（此处封装保证不漏）；
  * - visitedLabel 为点击者看到的置灰文案（如「已选择」），不影响他人；
  * - style：0 = 灰色线框，1 = 蓝色线框（本插件按钮统一蓝色）。
+ *
+ * 平台硬限制：键盘最多 5 行、每行最多 5 个按钮（超限整条消息被拒收）。
  */
 object Keyboards {
 
@@ -84,6 +86,25 @@ object Keyboards {
         } else {
             build(buttons)
         }
+    }
+
+    /**
+     * 按显式行布局构建键盘（调用方逐行给出按钮列表，行数 ≤ [MAX_ROWS]、
+     * 每行 ≤ [BUTTONS_PER_ROW]，超出部分截断）。
+     *
+     * 菜单分页用它实现「每行一个命令按钮 + 末行翻页按钮」的混合布局。
+     */
+    fun buildRows(rows: List<List<Button>>): Keyboard {
+        val builder = Keyboard.KeyboardBuilder.create()
+        for (rowButtons in rows.take(MAX_ROWS)) {
+            if (rowButtons.isEmpty()) continue
+            val row = builder.addRow()
+            for (button in rowButtons.take(BUTTONS_PER_ROW)) {
+                addButton(row, button)
+            }
+            row.build()
+        }
+        return builder.build()
     }
 
     /** 按定义给行添加按钮（统一应用样式 / 行为类型 / enter / 权限）。 */

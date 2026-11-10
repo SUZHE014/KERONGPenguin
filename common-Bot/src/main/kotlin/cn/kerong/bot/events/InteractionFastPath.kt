@@ -3,7 +3,6 @@ package cn.kerong.bot.events
 import cn.kerong.bot.QClient
 import cn.kerong.bot.tools.PluginFileLog
 import com.alibaba.fastjson.JSON
-import io.github.kloping.qqbot.http.InterActionBase
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -12,24 +11,23 @@ import java.util.concurrent.Executors
  *
  * ## 背景：修复「按按钮后机器人正常回复操作，但 QQ 提示第三方连接失败」
  *
- * QQ 官方要求：收到消息按钮的互动事件后必须在 **3 秒内**调用
- * PUT /interactions/{interaction_id} 回应，超时后 interaction_id 失效，
- * 客户端弹「第三方连接失败」。SDK 的事件分发走共享 8 线程池——命令处理
- * （图片渲染 / AI 对话 / 反查扫盘）动辄数秒，互动事件排在后面时 3 秒
- * 窗口极易被拖超；回应超时并不影响后续处理，于是出现「机器人正常回复
- * 操作 + QQ 报第三方连接失败」并存的现象。
+ * 官方要求收到按钮互动事件后 **3 秒内** PUT /interactions/{id} 回应，超时后
+ * interaction_id 失效，客户端弹「第三方连接失败」。两重根因都已修复：
  *
- * ## 方案：挂在 WSS 帧层，绕开命令线程池
+ * 1. **回应从未送达（真根因）**——SDK 的 HTTP 代理层只处理 POST 注解，对
+ *    声明 PUT 的互动回应接口既不设方法也不带请求体（实际发出无 body 的
+ *    GET 被平台 405 拒绝），且 4xx/5xx 只记日志不抛异常。现改走
+ *    [InteractionAcker] 直发 PUT（详见其 KDoc）；
+ * 2. **回应排队被拖超（旧诊断，一并规避）**——SDK 事件分发走共享 8 线程池，
+ *    命令处理（图片渲染 / AI 对话 / 反查扫盘）动辄数秒。本路径由
+ *    [cn.kerong.bot.WssDiagnostics] 在**收到帧的第一时间**回调（先于 SDK
+ *    解析与线程池分发），转投专用线程：校验（内存查表，微秒级）→ 立刻
+ *    PUT 回应 → 再做实际操作，全程不与命令线程池竞争。
  *
- * 本路径由 [cn.kerong.bot.WssDiagnostics] 在**收到帧的第一时间**回调
- * （先于 SDK 解析与线程池分发）：检测到本插件按钮（krg: 前缀）的互动帧
- * 时立即转投**专用线程池**执行——校验（内存会话查表，微秒级）→ 立刻
- * PUT 回应 → 再做实际操作（文件读写 / 消息发送入队），全程不与命令
- * 线程池竞争，回应耗时稳定在百毫秒级。接管成功后吞掉该帧（钩子返回
- * false），SDK 不再重复分发。
+ * 接管成功后吞掉该帧（钩子返回 false），SDK 不再重复分发。
  *
  * 解析失败 / 非本插件按钮 / 依赖未就绪时放行给 SDK 旧路径
- * （[InterActionListener] 兜底，行为与旧版一致）。
+ * （[InterActionListener] 兜底，回应同样走 [InteractionAcker]）。
  *
  * 回应码（官方语义）：0 = 成功；1 = 操作失败；2 = 操作频繁；3 = 重复
  * 操作；4 = 没有权限；5 = 仅管理员操作。同一 interaction_id 只能回应
@@ -50,6 +48,7 @@ object InteractionFastPath {
         PlayerSelection.ACTION_PREFIX,
         UnblacklistButtons.ACTION_PREFIX,
         ServerSelectButtons.ACTION_PREFIX,
+        MenuButtons.ACTION_PREFIX,
     )
 
     /**
@@ -82,21 +81,17 @@ object InteractionFastPath {
         if (OWNED_PREFIXES.none { buttonData.startsWith(it) }) return false
         val groupOpenId = data.getString("group_openid") ?: ""
         val userOpenId = data.getString("group_member_openid") ?: ""
-        // 依赖就绪检查：回应走 SDK 的互动回调接口（端点与鉴权头由它封装）
-        val interActionBase = try {
-            QClient.starter?.bot?.interActionBase
-        } catch (_: Throwable) {
-            null
-        } ?: return false
+        // 依赖就绪检查：回应与命令分发都依赖已连接的会话
+        if (QClient.starter == null) return false
         val startedAt = System.currentTimeMillis()
         try {
             executor.execute {
                 try {
-                    dispatch(interActionBase, interactionId, groupOpenId, userOpenId, buttonData, startedAt)
+                    dispatch(interactionId, groupOpenId, userOpenId, buttonData, startedAt)
                 } catch (error: Throwable) {
                     // 任何意外都不让客户端干等：尽力回应操作失败并留档
                     try {
-                        interActionBase.response(interactionId, "{\"code\": 1}")
+                        InteractionAcker.respond(interactionId, 1)
                     } catch (_: Throwable) {
                     }
                     PluginFileLog.write("[按钮互动] 快速路径处理异常: ${error.message}")
@@ -111,11 +106,10 @@ object InteractionFastPath {
 
     /**
      * 分发到各按钮流程（专用线程执行）：先回应后操作——各流程的校验全是
-     * 内存查表，respond 回调在毫秒级内发出 PUT，实际操作（移除黑名单 /
-     * 执行选中命令 / 记录集群选择）在回应之后进行。
+     * 内存查表，回应在毫秒级内发出 PUT，实际操作（移除黑名单 / 执行选中
+     * 命令 / 记录集群选择 / 派发菜单命令）在回应之后进行。
      */
     private fun dispatch(
-        interActionBase: InterActionBase,
         interactionId: String,
         groupOpenId: String,
         userOpenId: String,
@@ -126,13 +120,14 @@ object InteractionFastPath {
         val respondOnce: (Int) -> Unit = { code ->
             if (!responded) {
                 responded = true
-                try {
-                    interActionBase.response(interactionId, "{\"code\": $code}")
+                val delivered = try {
+                    InteractionAcker.respond(interactionId, code)
                 } catch (error: Throwable) {
-                    PluginFileLog.write("[按钮互动] 回应失败（interaction=$interactionId）: ${error.message}")
+                    PluginFileLog.write("[按钮互动] 回应异常（interaction=$interactionId）: ${error.message}")
+                    false
                 }
                 PluginFileLog.write(
-                    "[按钮互动] 快速回应 code=$code button=$buttonData " +
+                    "[按钮互动] 回应 code=$code 送达=$delivered button=$buttonData " +
                         "耗时=${System.currentTimeMillis() - startedAt}ms"
                 )
             }
@@ -144,6 +139,8 @@ object InteractionFastPath {
                 UnblacklistButtons.onInteraction(groupOpenId, userOpenId, buttonData, respondOnce) != null
             buttonData.startsWith(ServerSelectButtons.ACTION_PREFIX) ->
                 ServerSelectButtons.onInteraction(groupOpenId, buttonData, respondOnce) != null
+            buttonData.startsWith(MenuButtons.ACTION_PREFIX) ->
+                MenuButtons.onInteraction(groupOpenId, userOpenId, buttonData, respondOnce) != null
             else -> false
         }
         if (!handled) respondOnce(1)

@@ -270,6 +270,37 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
     }
 
     /**
+     * 按钮互动合成事件入口：菜单按钮点击后以点击者身份执行对应命令。
+     *
+     * 由 [MenuButtons] 构造「合成群消息事件」（群 OpenId + 点击者 OpenId +
+     * 命令文本，无真实消息 id——回复走主动消息）后调用本方法。这里补齐与
+     * 真实消息入口相同的门禁，再进命令分发：
+     * - 多服务器集群：本群不归本服处理时静默让位（互动事件每台实例都会
+     *   收到广播，与消息路由同口径）；
+     * - 群白名单：与真实消息一致（查信息 / 玩家名片 / 切换服务器任意群
+     *   可用，其余命令仅配置的群）。
+     *
+     * @return 命令是否被执行
+     */
+    fun dispatchSynthetic(event: GroupMessageEvent): Boolean {
+        val groupId = try {
+            event.groupOpenId ?: event.groupId
+        } catch (_: Throwable) {
+            null
+        }
+        if (groupId != null && !ClusterState.shouldServeGroup(groupId)) return false
+        val content = try {
+            event.rawMessage?.content.orEmpty()
+        } catch (_: Throwable) {
+            ""
+        }
+        if (!content.contains("查信息") && !content.contains("玩家名片") && !content.contains("切换服务器")) {
+            if (groupId == null || !isAllowedGroup(groupId)) return false
+        }
+        return dispatchCommand(event)
+    }
+
+    /**
      * 判断消息是否 @ 了机器人。
      *
  * 三通道（按可靠性排序）：
