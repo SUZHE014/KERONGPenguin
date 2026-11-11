@@ -1,0 +1,465 @@
+# ============================================================
+#  KERONG Penguin 配置文件
+#
+#  快速上手：
+#  - 改完配置执行 /hbkrg reload 立即生效（绝大多数配置支持，
+#    无需重启服务器；reload 会顺带同步 QQ 快捷指令面板）
+#  - 必须重启才生效的只有两处：bot.app-id / bot.secret、update-check
+#  - 列表每一项都要加双引号，如 ["ABC123", "DEF456"]
+#  - 以 # 开头的行是注释，不影响运行，可放心删改
+# ============================================================
+
+# 配置文件版本号（插件自动维护，勿改）
+config-version: 44
+
+# 启动后自动联网检查新版本（改这里需重启才生效）
+update-check:
+  enabled: true
+  # mirror-url: "off"   # 官网不可达时的备用镜像（off = 关闭回退）
+
+# 服务器显示名称（显示在图片卡片的副标题与进出服播报里；
+# 留空自动使用 bot.name）
+serverName: "KERONGPenguin"
+
+# ---------------- 机器人账号（必填） ----------------
+bot:
+  # 机器人的 AppID 与密钥（QQ 开放平台获取，教程见官网；密钥注意保密）
+  # ⚠ 改这两项后必须重启服务器
+  app-id: ""
+  secret: ""
+  # 机器人名称（仅用于显示）
+  name: "KERONGPenguin"
+  # 断线重连提示开关（false = 过程提示只写日志文件不刷控制台）
+  reconnect-notify: true
+  # 允许响应的群列表：填「群 OpenId」，不是群号！
+  # 自动绑定：留空 [] 时，把机器人拉进群后在群里发任意消息（命令 / 聊天
+  #   均可），插件自动把该群 OpenId 写入本列表并重载（含快捷面板同步），
+  #   无需手动查 ID；之后要加别的群自行编辑本列表或清空后让新群先互动
+  # 每项必须加双引号，如 ["ABC123"]
+  groups: []
+  # 多服务器集群（单服部署无需配置）：多台服务器共用同一个 QQ 机器人
+  # （相同 AppID）时，在每台服都配置 name（本服显示名，留空用 bot.name）
+  # 与 members（全部成员名称，各服必须一致）；配置后群里执行命令先弹
+  # 「选择服务器」按钮，选择后该群的命令、聊天转发与播报都由所选服处理
+  cluster:
+    name: ""
+    # 示例（去掉行首 # 生效）：members: ["生存服", "创造服"]
+    members: []
+
+# ---------------- 聊天转发 ----------------
+chat-format:
+  # 游戏消息转发到群的格式（{name} 玩家名，{message} 内容）
+  from-game: "[游戏] <{name}> {message}"
+  # 群消息转发到游戏的格式
+  from-group: "[§bQQ§r] {name}: {message}"
+  # 双向聊天转发总开关（关闭后仅命令可用）
+  post-chat: true
+  # 游戏内聊天转发前缀：只有 # 开头的消息才转发到群（"" = 全部转发）
+  start-with: "#"
+
+# ---------------- 进出服播报 ----------------
+player-events:
+  # 玩家进服 / 离服 / 死亡是否向群播报（只发给 bot.groups 里的群）
+  # 文案可用：{name} 玩家名、{server} 服务器名、{platform} 平台
+  join:
+    enabled: true
+    format: "[游戏] {name} 加入了服务器"
+  quit:
+    enabled: true
+    format: "[游戏] {name} 离开了服务器"
+  # 死亡播报（默认关闭，开启后玩家死亡向群播报）
+  # 除通用占位符外还可用：{message} 自动生成的中文死亡描述（如
+  # 「Steve 被苦力怕杀死了」）、{killer} 击杀者名（环境死亡时为「未知」）
+  death:
+    enabled: false
+    format: "[游戏] {message}"
+
+# ---------------- 服务器开关消息 ----------------
+# 服务器关闭 / 重启 / 意外关闭时向 QQ 群发送通知（默认开启；只发给 bot.groups 里的群）
+# 上次未正常收尾（崩溃 / kill -9 / 断电）下次启动补发「意外关闭」；
+# 上次正常关闭后再启动发「服务器已开启」（不限间隔时长）；首次安装不发送
+server-notify:
+  # 总开关，关闭后下面四项都不发送
+  enabled: true
+  # 重启判定窗口（秒）：上次正常关闭后在这个秒数内再次开机判定为「重启」，
+  # 发 restart 重启文案；超过这个时长再开机按普通开机处理，发 start 开机文案；
+  # 0 = 不判定重启，一律按普通开机播报
+  restart-window: 180
+  shutdown:
+    enabled: true
+    # 可用占位符：{server}、{platform}
+    message: "[状态]\n服务器已正常关闭"
+  restart:
+    enabled: true
+    # 上次正常关闭后在 restart-window 秒内再次开机时发送（判定为重启）
+    # 可用占位符：{server}、{platform}
+    message: "[状态]\n服务器重启完毕，已正常运行(o‿∩)"
+  start:
+    enabled: true
+    # 上次正常关闭后超过 restart-window 秒再开机时发送（普通开机）；首次安装不发送
+    # 可用占位符：{server}、{platform}
+    message: "[状态]\n服务器已开启！！(≧∇≦)/"
+  crash:
+    enabled: true
+    # 上次运行没有正常关闭（崩溃、kill -9、断电等）时，下次启动后发送
+    # 可用占位符：{server}、{platform}
+    message: "[状态]\n服务器...."
+
+# ---------------- 查在线输出 ----------------
+# /查在线 输出方式由下方 motd.use-markdown 控制：
+#   false = 渲染图片（默认：毛玻璃卡片 + 皮肤头像）
+#   true  = 文字列表（模板 Markdown/online.md，缺文件自动回退图片）
+# 模板可用：{online} 在线人数、{players} 玩家列表、{server} 服务器名
+markdown:
+  # 查在线模板文件名（Markdown/ 目录下）
+  queryOnline: "online.md"
+
+# ---------------- 命令执行方式 ----------------
+# /执行命令 等命令的执行方式（保持默认 Auto 即可）：
+#   Auto = 自动检测（混合端用混合控制台，纯插件端用模拟控制台）
+#   Hybrid = 强制混合控制台（仅 Mohist / CatServer 等混合端）
+command-sender: "Auto"
+
+# ---------------- 服务器状态图 ----------------
+motd:
+  # 服务器公网 IP 与端口（供下方 api 地址里的 {ip} {port} 替换）
+  server-ip: ""
+  server-port: 0
+  # 服务器状态图 API（{ip} {port} 自动替换；不需要状态图可留空）
+  api: "http://motd.txssb.cn/api/app_img?ip={ip}&port={port}&dark=true&lang=zh-CN"
+  # 是否随消息发送状态图片
+  post-img: true
+  # /查在线 输出：false = 渲染图片（默认）；true = 文字列表
+  use-markdown: false
+
+# ---------------- 图片渲染 ----------------
+# 玩家名片卡片、查在线、排行榜、查性能共用本段
+render:
+  # 同一玩家查询结果复用秒数（0 = 每次重新渲染）
+  result-cache-seconds: 60
+  # 头像缓存有效期（小时；换皮肤想立即更新就改小；0 = 不缓存）
+  avatar-cache-hours: 3
+  # 渲染停止多少分钟后自动释放图像缓存内存（0 = 不释放）
+  idle-release-minutes: 15
+  # 毛玻璃模糊度（0-100，越大越模糊，0 = 不模糊）
+  blur-strength: 50
+  # 标题框黑度（0-255，越大越深）：四张卡片顶部标题区用，比项目卡片略浅
+  title-card-gray: 80
+  # 项目卡片黑度（0-255，越大越深）：玩家名片统计面板与查在线 / 排行榜 / 查性能的列表容器用
+  item-card-gray: 106
+  # 副标题灰度（0-255，越大越深）：玩家名片玩家名称项与五张卡片的
+  # 副标题条（服务器 / 更新时间 / 渲染耗时）用，默认 106 与项目卡片相同
+  subtitle-card-gray: 106
+  # 自定义图片渲染线程（高级；默认关闭 = 自动模式：渲染线程按 CPU
+  # 核数自动取一半 1~4 条，头像批量下载 8 条）
+  # ⚠ 警告：开启后线程数由下方两键指定——渲染线程数越大，同时绘制的
+  # 图片越多、CPU 争抢越强，核数少的服务器上可能影响游戏 tick，
+  # 不建议超过物理核数的一半；头像下载线程是网络 IO 型（不占 CPU，
+  # 调大主要是对外部头像接口的并发压力）。
+  # 两个线程池都在首次渲染时创建，修改本段后需重启服务器生效。
+  custom-render-threads:
+    # 自定义开关（false = 自动模式，忽略下面两键）
+    enabled: false
+    # 图片渲染线程数（1-16）：玩家名片 / 查在线 / 排行榜 / 财富榜 / 查性能
+    # 五张卡片的绘制线程；⚠ 调大会抢占游戏 CPU，慎改
+    render-threads: 2
+    # 头像批量下载线程数（1-16）：在线列表 / 排行榜 / 财富榜 / 玩家名片
+    # 批量拉取头像的并行下载数；不影响游戏 tick，调大会增加对外部
+    # 头像接口的并发压力（可能触发限流），调小则大名单收齐变慢
+    avatar-threads: 8
+  # 图片命令冷却秒数（同一用户两次查询的最小间隔，防刷屏；0 = 关闭）
+  command-cooldown-seconds: 5
+  # 各卡片是否用内置背景图（false = 用 img/ 文件夹随机图，无图自动回退）
+  info-card-builtin-background: true
+  online-list-builtin-background: true
+  # 查性能卡片（固定五项：TPS / MSPT / 内存 / CPU / 在线人数）
+  performance:
+    builtin-background: true
+    # 性能数据缓存秒数（0 = 每次实时渲染）
+    cache-seconds: 60
+    # 在线人数卡展示值来源（人数 N 与最大 M 一起生效）：
+    #   real = 真实值（默认）
+    #   motd = 服务器列表展示值（其他插件 / 模组改过的；插件按需本机自
+    #          查询服务器列表，60 秒内复用结果，查不到回退真实值）
+    max-players-source: "real"
+
+# ---------------- 图片下载 ----------------
+# /hbkrg bpng（图片包列表 / 下载）总开关；关闭后命令只回复
+# 「管理员已关闭图片下载功能」；/hbkrg bpngsz 切换背景不受影响
+image-download:
+  enabled: true
+
+# ---------------- 背景图说明（无需配置） ----------------
+# 各卡片默认用内置背景图（随 JAR 自带，零配置即用）。
+# 想用自己的图片：把 jpg / png 放进 img/ 文件夹（插件版
+# plugins/KERONGPenguin/img/，模组版 kerongpenguin/img/，多张随机轮换），
+# 再把对应功能的 builtin-background 开关改为 false（render 段三处、
+# leaderboard 与 coins-leaderboard 各一处）。
+# 没有现成图片：/hbkrg bpng 查看官网图片包，/hbkrg bpng <包ID> 自动下载
+# 到 img/（显示进度，可中断，失败自动跳过）。
+# 一键切换：/hbkrg bpngsz yes 全部改用 img/ 图片，no 恢复内置背景。
+
+# ---------------- 变量获取（需 PlaceholderAPI 插件） ----------------
+# 开启后下列项目优先读取你填写的变量（PlaceholderAPI 占位符）：
+# 玩家名片卡片（时长 / 金币 / 点券 / 称号 / 玩家名 / 自定义项目）、
+# 在线排行榜（玩家名 / 时长）、财富榜（玩家名 / 金币）、查性能（TPS）
+# 变量留空 = 用插件自带数据；读取失败自动回退自带数据
+variable-fetch:
+  # 总开关（默认关闭）
+  enabled: false
+  # 总在线时长变量
+  total-playtime: ""
+  # 今日在线时长变量
+  today-playtime: ""
+  # 金币变量
+  coins: ""
+  # 点券变量
+  points: ""
+  # 称号变量
+  title: ""
+  # 玩家名变量（只改展示名，头像 / 统计 / 排名仍按真实玩家）
+  player-name: ""
+  # TPS 变量
+  tps: ""
+  # 自定义项目（可加任意多个）：段名 = 项目ID（不展示）；
+  # 项目名称 = 卡片上的名字；获取变量 = 要读的变量（读不到不展示）
+  # 示例（去掉行首 # 生效）：
+  # custom-items:
+  #   vip:
+  #     项目名称: "VIP等级"
+  #     获取变量: "%vault_rank%"
+  custom-items: {}
+
+# ---------------- 排行榜 ----------------
+# /在线排行榜：总在线时长排行（排名徽章 + 皮肤头像 + 玩家名 + 时长）
+# /财富榜：金币排行（需 Vault，含离线玩家）
+# 两个排行榜共用同一个「单页上限」配置（page-size，全局生效）
+leaderboard:
+  # 单页最多显示多少名（全局：在线排行榜 / 财富榜共用；
+  # 超出自动分多张图片发送；1-100）
+  page-size: 20
+  # 显示前 N 名（1-100）
+  top: 15
+  # 是否用内置背景图（false = 用 img/ 随机图）
+  builtin-background: true
+
+# /财富榜的显示人数与背景（单页上限共用上方 leaderboard.page-size）
+coins-leaderboard:
+  top: 15
+  builtin-background: true
+
+# 金币显示别名：填 "元宝" 后所有输出里的「金币」都显示为「元宝」
+economy-alias: ""
+
+# ---------------- QQ 绑定 ----------------
+qq-bind:
+  # 绑定总开关：开启后玩家进服必须先绑定 QQ
+  #（群里发 /绑定 <码>，或直接发送纯数字验证码）
+  # ⚠️ 开启前请先关闭服务器自带白名单（white-list）并移除白名单插件——
+  # 未绑定玩家会在白名单阶段先被拦下、拿不到绑定验证码；QQ 绑定本身就是
+  # 准入控制（绑定过的才能进服），不要和任何白名单方案叠用
+  enabled: false
+  # /玩家名片 命令开关
+  personal-info: true
+  # 未绑定玩家进服看到的拦截界面文案（支持 & 颜色代码；
+  # 变量：{code} 绑定码、{name} 玩家名、{expire} 有效期分钟）
+  # 两种写法：多行列表（下行形态）或单行字符串（用 \n 分行）
+  kick-message:
+    - "&c===== QQ 绑定验证 ====="
+    - "&f你还未绑定 QQ，无法进入服务器"
+    - ""
+    - "&e你的专属绑定码: &a&l{code}"
+    - "&7请在 QQ 群发送: &f{code}"
+    - "&7（绑定码 {expire} 分钟内有效）"
+  # 绑定码有效期（分钟）与位数（4-8）
+  code-expire-minutes: 10
+  code-length: 5
+  # 每个 QQ 账号最多能绑定多少个玩家（默认 1 = 单绑定；只能填 ≥1 的整数）
+  # 调大后：一个 QQ 可绑定多个玩家；群里用玩家名片 / 重新绑定 / 签到
+  # 这类指令时会先列出该 QQ 名下的全部玩家让用户点击按钮选择
+  # （旧版客户端也可回复数字，2 分钟内有效）；改完 /hbkrg reload 即时生效
+  max-players-per-qq: 1
+  # 每日签到（群里发 /签到）
+  checkin:
+    enabled: false
+    prefix: "[签到]"
+    # 金币奖励（经 Vault 发放；未装 Vault 但装了 CoinsEngine 时改走它；
+    # 都没装时签到照常累计天数不发放）
+    reward: 100.0
+    # 点券奖励（经 PlayerPoints 发放；0 = 不发；发放后校验到账）
+    points-reward: 0
+
+# ---------------- 消息模板 ----------------
+# 每条文本回复对应 Markdown/ 目录下一个 .md 模板（首次启动自动释放；
+# 改文案直接编辑文件，删掉文件重启恢复默认）。
+# 常用变量：{player} 玩家名 / {prefix} 签到前缀 / {reward} 签到金币 /
+# {streak} 连续签到天数 / {name} 群昵称 / {openid} {group} OpenId /
+# {version} 插件版本号 / {count} {list} 黑名单人数与列表 / {error} 错误信息
+messages:
+  # —— 通用 ——
+  command-disabled: "command-disabled.md"            # 命令已被关闭
+  no-admin-permission: "no-admin-permission.md"      # 无管理员权限
+  query-too-frequent: "query-too-frequent.md"        # 查询太频繁
+  server-busy: "server-busy.md"                      # 渲染队列繁忙
+  image-send-failed: "image-send-failed.md"          # 图片发送失败
+  manager-not-ready: "manager-not-ready.md"          # 数据管理器未就绪
+  manager-not-ready-bind: "manager-not-ready-bind.md"      # 绑定管理器未就绪
+  manager-not-ready-retry: "manager-not-ready-retry.md"    # 未就绪请稍后再试
+  manager-not-ready-bind-retry: "manager-not-ready-bind-retry.md"  # 同上（绑定）
+  qq-unknown: "qq-unknown.md"                        # 无法识别发送者
+  # —— QQ 绑定 ——
+  bind-usage: "bind-usage.md"                        # /绑定 用法提示
+  bind-usage-fallback: "bind-usage-fallback.md"      # /绑定 用法（简短回退）
+  bind-disabled: "bind-disabled.md"                  # QQ 绑定未开启
+  bind-error: "bind-error.md"                        # 绑定处理异常（{error}）
+  bind-success: "bind-success.md"                    # 绑定成功
+  bind-invalid: "bind-invalid.md"                    # 绑定码无效或已过期
+  bind-limit: "bind-limit.md"                        # 已达每 QQ 可绑定玩家上限（{count} {max}）
+  select-player: "select-player.md"                  # 多玩家选择消息（{count} {list}）
+  select-invalid: "select-invalid.md"                # 选择序号超范围（{count}）
+  # —— 签到 ——
+  checkin-disabled: "checkin-disabled.md"            # 签到未开启
+  checkin-not-bound: "checkin-not-bound.md"          # 未绑定玩家签到（{prefix}）
+  checkin-data-error: "checkin-data-error.md"        # 签到数据异常（{prefix}）
+  checkin-time-error: "checkin-time-error.md"        # 获取北京时间失败（{prefix}）
+  checkin-already: "checkin-already.md"              # 今日已签到（{prefix}）
+  checkin-success-no-economy: "checkin-success-no-economy.md"  # 签到成功（无经济插件）
+  checkin-reward-invalid: "checkin-reward-invalid.md"  # 奖励数额配置错误（{prefix}）
+  checkin-success: "checkin-success.md"              # 签到成功得金币（{prefix} {player} {reward} {streak}）
+  checkin-pay-error: "checkin-pay-error.md"          # 奖励未发放到账（{prefix}）
+  # —— 玩家名片 ——
+  info-bind-disabled: "info-bind-disabled.md"       # 玩家名片未开启
+  info-closed: "info-closed.md"                      # 玩家名片被管理员关闭
+  info-not-bound: "info-not-bound.md"                # 查自己但未绑定
+  info-target-not-bound: "info-target-not-bound.md"  # 查他人但对方未绑定（{name}）
+  info-render-failed: "info-render-failed.md"        # 信息卡片生成失败
+  # —— 查在线 ——
+  online-data-unavailable: "online-data-unavailable.md"  # 服务器数据暂不可用
+  online-render-failed: "online-render-failed.md"   # 在线列表图片生成失败
+  # —— 查性能 ——
+  performance-render-failed: "performance-render-failed.md"  # 性能卡片生成失败
+  # —— 在线排行榜 ——
+  leaderboard-no-data: "leaderboard-no-data.md"     # 暂无在线时长数据
+  leaderboard-render-failed: "leaderboard-render-failed.md"  # 排行榜图片生成失败
+  # —— 金币排行榜 ——
+  coins-leaderboard-no-economy: "coins-leaderboard-no-economy.md"  # 未安装 Vault
+  coins-leaderboard-no-data: "coins-leaderboard-no-data.md"        # 暂无金币数据
+  coins-leaderboard-render-failed: "coins-leaderboard-render-failed.md"  # 金币排行图片生成失败
+  # —— 查询 OpenID / 玩家反查 ——
+  openid-self: "openid-self.md"                     # 自己与群的 OpenId（{openid} {group}）
+  openid-lookup: "openid-lookup.md"                 # OpenId 反查结果
+  player-lookup: "player-lookup.md"                 # 玩家名反查结果（{player} {openidPart} {nickname} {players}）
+  cluster-single: "cluster-single.md"               # /切换服务器 单服提示（{server}）
+  cluster-list-fallback: "cluster-list-fallback.md" # /切换服务器 按钮不可用时的纯文本列表（{list}）
+  # —— 发信息 ——
+  forward-disabled: "forward-disabled.md"           # 聊天转发已关闭
+  # —— AI 对话 ——
+  ai-context-usage: "ai-context-usage.md"           # /AI管理 不带参数时的状态与按钮提示（{status}）
+  ai-context-on: "ai-context-on.md"                 # AI 上下文已开启
+  ai-context-off: "ai-context-off.md"               # AI 上下文已关闭
+  ai-context-cleared: "ai-context-cleared.md"       # AI 上下文已清除
+  ai-manage-disabled: "ai-manage-disabled.md"       # AI 功能未开启时的 /AI管理 提示
+  ai-chat-empty: "ai-chat-empty.md"                 # @机器人 但没输入内容
+  ai-chat-error: "ai-chat-error.md"                 # AI 对话失败（{error}）
+  # —— 黑名单 ——
+  blacklist-empty: "blacklist-empty.md"             # 黑名单为空
+  blacklist-list: "blacklist-list.md"               # 黑名单列表（{count} {list}）
+  blacklist-added-kicked: "blacklist-added-kicked.md"  # 拉黑并踢出（{name} {player}）
+  blacklist-added: "blacklist-added.md"             # 拉黑（对方未绑定；{name}）
+  blacklist-removed: "blacklist-removed.md"         # 移出黑名单（{name}）
+  unblacklist-empty: "unblacklist-empty.md"         # 解除黑名单列表为空
+  unblacklist-list: "unblacklist-list.md"           # 解除黑名单列表（{count} {list}；按钮逐条竖排）
+  # —— 重新绑定 ——
+  rebind-success: "rebind-success.md"               # 解绑成功并踢出（{player}）
+  rebind-not-bound: "rebind-not-bound.md"           # QQ 未绑定任何账号
+  # —— 菜单 ——
+  menu: "menu.md"                                   # /菜单 按钮菜单的头部文案（{version}）
+  # —— 命令执行 ——
+  invalid-params: "invalid-params.md"               # 参数为空
+  bridge-error: "bridge-error.md"                   # 游戏桥接未配置或失败
+  sent-request: "sent-request.md"                   # 命令已发送执行请求
+  execute-failed: "execute-failed.md"               # 命令执行异常（{error}）
+  full-amount-toggled: "full-amount-toggled.md"     # /全量 切换结果（{state}）
+
+# ---------------- 消息过滤 ----------------
+# 正则过滤：机器人收发的消息里命中这些正则的部分直接删除，
+# 剩余内容照常转发（双向生效，命令回复同样过滤）
+# 每一项都要加双引号，如 ["(?i)广告", "某敏感词"]
+filter-regex: []
+
+# ---------------- 管理员判定 ----------------
+# 谁可以在 QQ 群使用管理员命令（/执行命令、/黑名单 等）：
+#   qq = 群主与群管理员（推荐，无需配置）
+#   config = 仅下方 openids 名单里的人
+#   both = 满足任一即可
+admin:
+  mode: qq
+  # 管理员名单（填 OpenId，群里发 /查信息 获取；每项加双引号）
+  openids: []
+
+# ---------------- 功能开关 ----------------
+features:
+  # 全量聊天转发：开启后 QQ 群的所有消息（不止命令）都转进游戏
+  #（总开关，对下方 bot.groups 里全部群统一生效；管理员在群里发
+  # /全量 可随时切换，改完写回本文件；关闭时菜单与快捷面板的全量按钮同步隐藏）
+  full-amount: false
+
+# ---------------- QQ 群命令开关 ----------------
+# 关闭某条命令后群里不再响应，快捷菜单按钮与 /菜单 按钮同步消失；
+# 改动后 /hbkrg reload 立即生效
+commands:
+  菜单: true            # /菜单 —— 指令按钮菜单（一行一个；无参命令点击即执行，带参命令点击复制进输入栏；分页展示）
+  查信息: true          # /查信息 —— 查 OpenId（加玩家名可反查其绑定的 QQ）
+  玩家名片: true        # /玩家名片 —— 玩家统计卡片（@某人 查别人）
+  绑定: true            # /绑定 <绑定码> —— 绑定 QQ（纯数字码直接发送亦可）
+  重新绑定: true        # /重新绑定 —— 解绑换号
+  查在线: true          # /查在线 —— 在线玩家列表（别名 /在线）
+  查性能: true          # /查性能 —— 性能卡片（TPS/MSPT/内存/CPU/在线人数）
+  在线排行榜: true      # /在线排行榜 —— 总在线时长排行
+  财富榜: true          # /财富榜 —— 金币排行（需 Vault）
+  发信息: true          # /发信息 <内容> —— 发消息到游戏内
+  执行命令: true        # /执行命令 <命令> —— 管理员执行服务器命令
+  执行: true            # /执行 <key> —— 执行自定义命令
+  管理员执行: true      # /管理员执行 <key> —— 执行管理员限定命令
+  全量: true            # /全量 —— 切换全量转发总开关（管理员；对全部配置群生效并写回配置文件）
+  AI管理: true          # /AI管理 开|关|清除 —— AI 上下文管理（管理员；点击按钮即可操作；AI 关闭时不可用）
+  黑名单: true          # /黑名单 @QQ —— 拉黑（自动解绑并踢出，管理员）；不带 @ 列出清单并附「解除」按钮
+  解除黑名单: true      # /解除黑名单 @QQ —— 解除拉黑（管理员）；不带 @ 列出清单，可点击按钮逐条解除
+  签到: true            # /签到 —— 每日签到领奖励
+  切换服务器: true      # /切换服务器 —— 多服务器集群：查看并切换当前群操作的服务器（未配置集群时提示单服）
+
+# ---------------- AI 对话 ----------------
+# QQ 群里 @机器人 或游戏内输入前缀即可对话（OpenAI / DeepSeek 等兼容接口）
+ai:
+  # AI 对话总开关（关闭后群内与游戏内的 AI 对话都不可用）
+  enabled: false
+  # 游戏内 AI 开关（玩家输入前缀触发；需总开关同时开启）
+  server-enabled: false
+  # 游戏内呼出前缀（玩家输入 "ai 你好" 即触发）
+  server-prefix: "ai"
+  # AI 回复显示前缀（游戏内 / 群内）
+  server-output-prefix: "[AI]"
+  qq-output-prefix: "[AI]"
+  # 接口地址（DeepSeek：https://api.deepseek.com；OpenAI 记得加 /v1）
+  base-url: "https://api.deepseek.com"
+  # API Key（服务商后台生成，注意保密）
+  api-key: ""
+  # 模型名称（DeepSeek 填 deepseek-chat；OpenAI 填 gpt-4o-mini 等）
+  model: "deepseek-chat"
+  # AI 的角色设定（决定回复风格与身份）
+  system-prompt: "你是一个友好的游戏群助手，请简洁回答。"
+  # 自动补接口地址后缀（部分接口需要补 /v1，保持默认即可）
+  url-auto-append: true
+  # 记住最近几轮对话（全局一份记忆，所有群与游戏内共用；0 = 不记）
+  context-limit: 6
+
+# ---------------- 自定义指令 ----------------
+# 群里发 /执行 <key> 触发预设的服务器命令，每条三个字段：
+#   key        触发名称
+#   command    实际执行的命令（{params} = 命令后面跟的内容）
+#   permission 0 或不填 = 所有人可用；其他值 = 仅管理员
+custom-commands: []
+# 示例（去掉每行开头的 # 即生效）：
+# - key: "公告"
+#   command: "say {params}"
+#   permission: 1

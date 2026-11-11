@@ -14,7 +14,7 @@ import io.github.kloping.qqbot.impl.ListenerHost
  * - [ServerSelectButtons]（多服务器选择/切换按钮，前缀 krg:cluster:，
  *   多实例集群下每台实例都收到回调并各自记录群选择，仅按钮持有会话的
  *   实例处理其余两类按钮，天然去重）
- * - [MenuButtons]（菜单命令/翻页按钮，前缀 krg:cmd: / krg:menu:）
+ * - [MenuButtons]（菜单命令/翻页按钮，前缀 krg:cmd: / krg:acmd: / krg:menu:）
  *
  * 本监听走 SDK 的共享线程池分发，作为**兑底路径**保留：本插件按钮的
  * 互动帧优先由 [InteractionFastPath] 在 WSS 帧层接管并即时回应（官方
@@ -79,7 +79,8 @@ class InterActionListener : ListenerHost() {
                     UnblacklistButtons.onInteraction(groupOpenId, userOpenId, buttonData, respondOnce) != null
                 buttonData.startsWith(ServerSelectButtons.ACTION_PREFIX) ->
                     ServerSelectButtons.onInteraction(groupOpenId, buttonData, respondOnce) != null
-                buttonData.startsWith(MenuButtons.ACTION_PREFIX) ->
+                buttonData.startsWith(MenuButtons.ACTION_PREFIX) ||
+                    buttonData.startsWith(MenuButtons.ACMD_PREFIX) ->
                     MenuButtons.onInteraction(groupOpenId, userOpenId, buttonData, respondOnce) != null
                 else -> false
             }

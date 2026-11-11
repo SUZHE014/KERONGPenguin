@@ -12,7 +12,9 @@ import io.github.kloping.qqbot.entities.ex.Keyboard
  * - actionType 2 = 指令按钮（点击把 @机器人 + actionData 插入输入框，
  *   需用户自己补全后手动发送；官方文档明确 enter 自动发送**仅单聊可用**，
  *   群聊设置 enter 也不会自动发送）；
- * - 权限 2 = 所有人可点；
+ * - 权限 2 = 所有人可点；权限 1 = 仅群主 / 群管理员可点（**平台侧点击时
+ *   实时校验**，撤掉管理员立即点不了，无需机器人接口权限——1.7.5.2 覆盖；
+ *   插件侧不缓存任何群角色）；
  * - 必须调用 row.build() 把行提交回 builder，否则 content.rows 为空、
  *   QQ 不渲染按钮（此处封装保证不漏）；
  * - visitedLabel 为点击者看到的置灰文案（如「已选择」），不影响他人；
@@ -42,6 +44,16 @@ object Keyboards {
         val actionType: Int = 1,
         /** 指令按钮专用：true = 点击直接自动发送；false / null = 填入输入框待补全。 */
         val enter: Boolean? = null,
+        /**
+         * 操作权限类型（官方按钮协议 permission.type）：
+         * 2 = 所有人可点（默认）；1 = 仅群主 / 群管理员可点（平台点击时
+         * 实时校验，非管理员点不动，撤权立即生效）。
+         *
+         * 管理类按钮在 admin.mode=qq/both 下用 1（平台门禁，替代旧版
+         * 接口实时查询 / 30 分钟缓存方案）；admin.mode=config 下保持 2，
+         * 由插件按 admin.openids 名单实时判定。
+         */
+        val permissionType: Int = 2,
     )
 
     /**
@@ -121,7 +133,7 @@ object Keyboards {
                     setActionEnter(button.enter)
                 }
             }
-            .setPermissionType(2)
+            .setPermissionType(button.permissionType)
             .setUnSupportTips("请升级QQ客户端后再操作")
             .build()
     }

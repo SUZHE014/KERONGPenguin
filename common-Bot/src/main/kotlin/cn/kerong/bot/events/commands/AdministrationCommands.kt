@@ -14,7 +14,7 @@ import io.github.kloping.qqbot.api.v2.GroupMessageEvent
 class AdministrationCommands : CommandSupport() {
 
     /** /执行命令 <命令> —— 向服务器控制台派发命令。 */
-    @Commands("执行命令")
+    @Commands("执行命令", adminOnly = true)
     fun runServerCommand(plugin: KERONG, event: GroupMessageEvent, params: String) {
         if (!requireAdmin(plugin, event)) return
         if (params.trim().isEmpty()) {
@@ -25,7 +25,7 @@ class AdministrationCommands : CommandSupport() {
     }
 
     /** /管理员执行 <key> —— 以管理员身份执行自定义命令。 */
-    @Commands("管理员执行")
+    @Commands("管理员执行", adminOnly = true)
     fun runAdminCustomCommand(plugin: KERONG, event: GroupMessageEvent, params: String) {
         if (!requireAdmin(plugin, event)) return
         if (params.trim().isEmpty()) {
@@ -47,7 +47,7 @@ class AdministrationCommands : CommandSupport() {
      * 会同步隐藏。切换后立即异步重同步快捷面板（全量按钮即时出现 / 消失，
      * 无需再 /hbkrg reload 或重启）。
      */
-    @Commands("全量")
+    @Commands("全量", adminOnly = true)
     fun fullAmount(plugin: KERONG, event: GroupMessageEvent, params: String) {
         if (!requireAdmin(plugin, event)) return
         val enabled = plugin.fullAmount

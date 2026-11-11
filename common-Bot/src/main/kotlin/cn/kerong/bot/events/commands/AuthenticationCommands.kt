@@ -24,8 +24,11 @@ class AuthenticationCommands : CommandSupport() {
         reply(plugin, event, "认证状态已更新")
     }
 
-    /** /解除认证 <OpenId> —— 管理员撤销用户认证。 */
-    @Commands("解除认证")
+    /**
+     * /解除认证 <OpenId> —— 管理员撤销用户认证。
+     *（认证命令本身不带参数时人人可查自己状态，不标记 adminOnly）
+     */
+    @Commands("解除认证", adminOnly = true)
     fun removeAuthentication(plugin: KERONG, event: GroupMessageEvent, params: String) {
         if (!requireAdmin(plugin, event)) return
         if (params.isBlank()) {

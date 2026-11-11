@@ -1,0 +1,30 @@
+name: KERONGPenguin
+version: '1.7.5.2'
+main: cn.kerong.penguin.spigot.KERONGSpigot
+api-version: '1.18'
+# 声明支持 Folia 多线程区域化核心——调度全部经 FoliaCompat 桥接
+# （全局区域/异步/实体三类调度器），实体状态操作走实体调度器；
+# 非 Folia 服务器（Spigot/Paper/混合端）行为与旧版完全一致
+folia-supported: true
+# 软依赖 Vault（金币/前缀）与 DeluxeTags（称号），确保本插件在其后加载
+# 软依赖 PlayerPoints（点券统计）
+# 软依赖 CoinsEngine（签到金币的备用经济通道，未装时自动跳过）
+softdepend: [Vault, DeluxeTags, PlayerPoints, CoinsEngine]
+description: KERONG Penguin - QQ bot integration with QQ binding, check-in and player stats
+author: KERONG
+
+commands:
+  # 主命令 /hbkrg（更名；旧名已移除不兼容）；reload / info / chs / mem / bpng / bpngsz / help
+  # reload 会在重载配置后一并重新同步 QQ 快捷指令面板（先删后建）
+  hbkrg:
+    description: KERONG Penguin control command
+    usage: "/hbkrg reload|info|chs|mem|bpng|bpngsz|help"
+    permission: kerong.command
+  qq:
+    description: QQ binding management command
+    usage: "/qq help|rebind|qxqq|skip|unskip"
+
+permissions:
+  kerong.command:
+    description: Allows use of KERONG Penguin control commands
+    default: op

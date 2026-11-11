@@ -52,43 +52,67 @@ MC_VERSION = "1.20.4"
 NEOFORGE_VERSION = "20.4.253"
 FML_LOADER_VERSION = "2.0.17"
 BUS_VERSION = "7.2.0"
-# ART（ForgeAutoRenamingTool）：反向重映射官方 ProGuard 映射
-ART_VERSION = "1.1.2"
+# ART（AutoRenamingTool，原 ForgeAutoRenamingTool）：反向重映射官方 ProGuard 映射。
+# 2026-11 起改用 Maven Central 的 net.neoforged:AutoRenamingTool 2.0.x
+#（BMCLAPI 的 /maven 段已不回源 net.minecraftforge 树，CLI 参数兼容 1.x）
+ART_VERSION = "2.0.12"
 
 MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 
 # BMCLAPI 镜像重写（构建机对 Mojang / NeoForge / Forge 官方域名不可达或极慢）
 BMCLAPI = "https://bmclapi2.bangbang93.com"
+# 2026-11 起 BMCLAPI 的 /maven 段不再回源 net.neoforged / net.minecraftforge 树
+#（metadata 仍可读但构件一律 404）——备用社区镜像：CleanroomMC maven
+# 全量代理这两个官方 maven（同路径直代，已验证 20.4.253-universal 可取）
+CLEANROOM = "https://maven.cleanroommc.com"
+
+
+# 官方域名 → BMCLAPI 路径前缀映射
+_BMCLAPI_PREFIX = {
+    "https://piston-meta.mojang.com": "",
+    "https://piston-data.mojang.com": "",
+    "https://libraries.minecraft.net": "/libraries",
+    "https://maven.neoforged.net": "/maven",
+    "https://maven.minecraftforge.net": "/maven",
+}
 
 
 def mirror(url: str) -> str:
-    """把官方源 URL 重写为 BMCLAPI 镜像 URL。"""
-    for host in ("https://piston-meta.mojang.com", "https://piston-data.mojang.com"):
+    """把官方源 URL 重写为 BMCLAPI 镜像 URL（无可重写原样返回）。"""
+    for host, prefix in _BMCLAPI_PREFIX.items():
         if url.startswith(host):
-            return BMCLAPI + url[len(host):]
-    for host in ("https://libraries.minecraft.net",
-                 "https://maven.neoforged.net",
-                 "https://maven.minecraftforge.net"):
-        if url.startswith(host):
-            return BMCLAPI + {"https://libraries.minecraft.net": "/libraries",
-                              "https://maven.neoforged.net": "/maven",
-                              "https://maven.minecraftforge.net": "/maven"}[host] + url[len(host):]
+            return BMCLAPI + prefix + url[len(host):]
     return url
 
 
+def mirror_candidates(url: str) -> list:
+    """下载候选源列表（依次尝试：BMCLAPI → CleanroomMC → 原始 URL）。
+
+    BMCLAPI 对 Mojang 域名仍稳定；neoforged / forge 域名 2026-11 起
+    构件 404，由 CleanroomMC 兑底。"""
+    candidates = [mirror(url)]
+    for host in ("https://maven.neoforged.net", "https://maven.minecraftforge.net"):
+        if url.startswith(host):
+            candidates.append(CLEANROOM + url[len(host):])
+    if url not in candidates:
+        candidates.append(url)
+    return candidates
+
+
 def fetch(url: str, timeout: int = 180, retries: int = 5) -> bytes:
-    """带重试的 URL 抓取（BMCLAPI 302 节点偶发握手超时/慢节点，轮换重试可恢复）。"""
-    real_url = mirror(url)
+    """带重试的 URL 抓取（多镜像候选依次尝试；BMCLAPI 302 节点偶发
+    握手超时/慢节点，轮换重试可恢复）。"""
     last_err: Exception = RuntimeError("unreachable")
-    for attempt in range(1, retries + 1):
-        try:
-            request = urllib.request.Request(
-                real_url, headers={"User-Agent": "KERONGPenguin-build/1.6.0"})
-            with urllib.request.urlopen(request, timeout=timeout) as resp:
-                return resp.read()
-        except Exception as e:  # noqa: BLE001 - 节点抖动统一重试
-            last_err = e
-            print(f"  第 {attempt}/{retries} 次尝试失败（{e}），{'重试' if attempt < retries else '放弃'}")
+    for real_url in mirror_candidates(url):
+        for attempt in range(1, retries + 1):
+            try:
+                request = urllib.request.Request(
+                    real_url, headers={"User-Agent": "KERONGPenguin-build/1.6.0"})
+                with urllib.request.urlopen(request, timeout=timeout) as resp:
+                    return resp.read()
+            except Exception as e:  # noqa: BLE001 - 节点抖动统一重试
+                last_err = e
+                print(f"  第 {attempt}/{retries} 次尝试失败（{e}），{'重试' if attempt < retries else '换下一源'}")
     raise last_err
 
 
@@ -168,9 +192,9 @@ def main() -> None:
     mojmap = LIBS / f"minecraft-{mc}-mojmap.jar"
     if args.force or not mojmap.is_file():
         art = CACHE / f"ART-{ART_VERSION}.jar"
-        download(f"https://maven.minecraftforge.net/net/minecraftforge/ForgeAutoRenamingTool/"
-                 f"{ART_VERSION}/ForgeAutoRenamingTool-{ART_VERSION}-all.jar", art,
-                 "ForgeAutoRenamingTool")
+        download(f"https://repo1.maven.org/maven2/net/neoforged/AutoRenamingTool/"
+                 f"{ART_VERSION}/AutoRenamingTool-{ART_VERSION}-all.jar", art,
+                 "AutoRenamingTool")
         print(f"ART 反向重映射 client.jar（{mc}，obf → mojang 命名）…")
         subprocess.run(
             ["java", "-jar", str(art),

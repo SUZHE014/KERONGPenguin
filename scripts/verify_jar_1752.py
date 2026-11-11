@@ -90,22 +90,28 @@ def main():
         check(f"C6 {tag} QClient launchClient 启动保活接线",
               has_str(jar, "cn/kerong/bot/QClient", "ConnectionWarmer"))
 
-    print("== D. 按钮管理员实时判定（需求 3+7） ==")
+    print("== D. 按钮管理员平台门禁（需求 3+7，覆盖版：零接口零缓存） ==")
+    MB = "cn/kerong/bot/events/MenuButtons"
     for tag, jar in (("Spigot", SPIGOT), ("NeoForge", NEOFORGE)):
-        check(f"D1 {tag} GroupMemberLookup 类存在", entry_exists(jar, "cn/kerong/bot/events/GroupMemberLookup.class"))
-        gm = "cn/kerong/bot/events/GroupMemberLookup"
-        check(f"D2 {tag} 官方群成员接口端点", has_str(jar, gm, "/v2/groups/")
-              and has_str(jar, gm, "/members/"))
-        check(f"D3 {tag} 11253 无权限提示文案", has_str(jar, gm, "11253")
-              and has_str(jar, gm, "机器人无群成员信息查询权限"))
-        check(f"D4 {tag} MemberRoleCache 已删除",
+        check(f"D1 {tag} GroupMemberLookup 已删除（覆盖版去接口方案）",
+              not entry_exists(jar, "cn/kerong/bot/events/GroupMemberLookup.class"))
+        leftovers = scan_all_kerong(jar, "GroupMemberLookup")
+        check(f"D2 {tag} 全部类零 GroupMemberLookup 残留引用", not leftovers, str(leftovers))
+        check(f"D3 {tag} MemberRoleCache 保持已删除",
               not entry_exists(jar, "cn/kerong/bot/events/MemberRoleCache.class"))
-        leftovers = scan_all_kerong(jar, "MemberRoleCache")
-        check(f"D5 {tag} 全部类零 MemberRoleCache 残留引用", not leftovers, str(leftovers))
-        check(f"D6 {tag} MenuButtons 走实时查询",
-              has_str(jar, "cn/kerong/bot/events/MenuButtons", "GroupMemberLookup")
-              and has_str(jar, "cn/kerong/bot/events/MenuButtons", "fetchRole"))
-        check(f"D7 {tag} 分发日志保留角色字段", has_str(jar, "cn/kerong/bot/events/MenuButtons", "角色="))
+        check(f"D4 {tag} 平台门禁回调前缀 krg:acmd:", has_str(jar, MB, "krg:acmd:"))
+        check(f"D5 {tag} 管理员门禁模式判定（adminGateFor）", has_str(jar, MB, "adminGateFor"))
+        check(f"D6 {tag} 平台已验管理员身份标记", has_str(jar, MB, "平台已验管理员"))
+        check(f"D7 {tag} 命令注册表 adminOnly 自动标记",
+              has_str(jar, "cn/kerong/bot/events/commands/BaseCommand", "adminOnly")
+              and has_str(jar, "cn/kerong/bot/events/commands/BaseCommand", "CommandAdminRegistry"))
+        check(f"D8 {tag} Keyboards 权限类型参数化（Button.permissionType 字段）",
+              has_str(jar, "cn/kerong/bot/tools/Keyboards$Button", "permissionType")
+              and has_str(jar, "cn/kerong/bot/tools/Keyboards$Button", "getPermissionType"))
+        check(f"D9 {tag} 快速路径接管 acmd 前缀（内联常量 krg:acmd:）",
+              has_str(jar, "cn/kerong/bot/events/InteractionFastPath", "krg:acmd:")
+              and has_str(jar, "cn/kerong/bot/events/InterActionListener", "krg:acmd:"))
+        check(f"D10 {tag} 分发日志保留身份字段", has_str(jar, MB, "身份="))
 
     print("== E. 绑定文案 + 白名单检测 + 单行配置（需求 4/5/6） ==")
     QM = "cn/kerong/penguin/spigot/qqbind/QqBindManager"

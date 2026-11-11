@@ -15,7 +15,15 @@ REPO = Path("/home/z/my-project/penguin-git")
 NEOFORGE_JAR = REPO / "build" / "dist" / "KERONGPenguin_NeoForge-1.20.4-1.7.5.2.jar"
 SLF4J_API = REPO / "scripts" / "slf4j-api-2.0.13.jar"
 SLF4J_NOP = REPO / "scripts" / "slf4j-nop-2.0.13.jar"
-JAVA = "/home/z/my-project/tooling/jdk21full/bin"
+# JDK：优先历史构建机 tooling 全量 JDK；不存在时回退系统 JDK（javac/java 同源）
+_TOOLING = Path("/home/z/my-project/tooling/jdk21full/bin")
+if (_TOOLING / "javac").is_file():
+    JAVA = str(_TOOLING)
+elif Path("/usr/lib/jvm/java-21-openjdk-amd64/bin/javac").is_file():
+    JAVA = "/usr/lib/jvm/java-21-openjdk-amd64/bin"
+else:
+    import shutil
+    JAVA = str(Path(shutil.which("javac")).parent)
 SRC = REPO / "scripts" / "smoke1752"
 OUT = Path("/tmp/smoke1752")
 

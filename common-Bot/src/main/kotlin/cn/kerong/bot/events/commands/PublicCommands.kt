@@ -405,7 +405,7 @@ class PublicCommands : CommandSupport() {
      *   子命令（旧客户端不渲染按钮时手动输入即可）。模板：
      *   ai-context-usage/on/off/cleared、ai-manage-disabled。
      */
-    @Commands("AI管理")
+    @Commands("AI管理", adminOnly = true)
     fun aiManage(plugin: KERONG, event: GroupMessageEvent, params: String) {
         if (!requireAdmin(plugin, event)) return
         val manager = try {
@@ -491,7 +491,7 @@ class PublicCommands : CommandSupport() {
      * 一个「解除」按钮，点击即移除；也可艾特对方发送 /解除黑名单 解除）。
      * 模板：blacklist-empty/added-kicked/added、unblacklist-list。
      */
-    @Commands("黑名单")
+    @Commands("黑名单", adminOnly = true)
     fun blacklist(plugin: KERONG, event: GroupMessageEvent, params: String) {
         if (!requireAdmin(plugin, event)) return
         val manager = try {
@@ -544,7 +544,7 @@ class PublicCommands : CommandSupport() {
      * 一个「解除」按钮，点击即移除（交互模式参考 HuHoBot 的消息按钮，
      * 见 [cn.kerong.bot.events.UnblacklistButtons]）；@成员 的直接解除路径不变。
      */
-    @Commands("解除黑名单")
+    @Commands("解除黑名单", adminOnly = true)
     fun unblacklist(plugin: KERONG, event: GroupMessageEvent, params: String) {
         if (!requireAdmin(plugin, event)) return
         val manager = try {

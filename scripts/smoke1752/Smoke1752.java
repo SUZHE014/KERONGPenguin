@@ -236,6 +236,54 @@ public class Smoke1752 {
         shared.enforceNoNativeWhitelist();
         check("W4 绑定未开启 → 零操作零输出", !shared.disableCalled && shared.warnings.isEmpty());
 
+        // ---------- 6. 按钮管理员平台门禁（覆盖版：注册表标记 + 门禁判定 + 权限透传） ----------
+        cn.kerong.bot.events.commands.CommandAdminRegistry reg =
+                cn.kerong.bot.events.commands.CommandAdminRegistry.INSTANCE;
+        // 6.1 注册表自动标记（@Commands adminOnly 单一事实来源）
+        boolean adminOk = reg.isAdminCommand("执行命令") && reg.isAdminCommand("管理员执行")
+                && reg.isAdminCommand("全量") && reg.isAdminCommand("AI管理")
+                && reg.isAdminCommand("黑名单") && reg.isAdminCommand("解除黑名单")
+                && reg.isAdminCommand("解除认证");
+        check("6.1 注册表标记管理命令（执行命令/管理员执行/全量/AI管理/黑名单/解除黑名单/解除认证）", adminOk);
+        boolean publicOk = !reg.isAdminCommand("查在线") && !reg.isAdminCommand("查性能")
+                && !reg.isAdminCommand("签到") && !reg.isAdminCommand("绑定")
+                && !reg.isAdminCommand("执行") && !reg.isAdminCommand("重新绑定")
+                && !reg.isAdminCommand("发信息") && !reg.isAdminCommand("菜单")
+                && !reg.isAdminCommand("玩家名片") && !reg.isAdminCommand("认证");
+        check("6.2 注册表不误标公共命令（查在线/查性能/签到/绑定/执行/重新绑定/发信息/菜单/玩家名片/认证）", publicOk);
+
+        // 6.3 门禁模式判定（qq/both 开门禁，config 关门禁走名单）
+        cn.kerong.bot.events.MenuButtons mb = cn.kerong.bot.events.MenuButtons.INSTANCE;
+        shared.adminModeValue = "qq";
+        boolean gateQq = mb.adminGateFor(shared, "smoke-group-1");
+        shared.adminModeValue = "both";
+        boolean gateBoth = mb.adminGateFor(shared, "smoke-group-1");
+        shared.adminModeValue = "config";
+        boolean gateConfig = mb.adminGateFor(shared, "smoke-group-1");
+        check("6.3 门禁判定：qq/both 开门禁、config 关门禁",
+                gateQq && gateBoth && !gateConfig,
+                "qq=" + gateQq + " both=" + gateBoth + " config=" + gateConfig);
+
+        // 6.4 键盘权限字段透传：permissionType=1 序列化后 permission.type=1（平台门禁）
+        //（NeoForge 分发 JAR 内 fastjson 已重定位到 cn.kerong.shaded.com.alibaba.fastjson）
+        io.github.kloping.qqbot.entities.ex.Keyboard gatedKb = cn.kerong.bot.tools.Keyboards.INSTANCE.build(
+                java.util.Collections.singletonList(new cn.kerong.bot.tools.Keyboards.Button(
+                        "黑名单", "黑名单", "krg:acmd:/黑名单", 1, 1, null, 1)));
+        String gatedJson = cn.kerong.shaded.com.alibaba.fastjson.JSON.toJSONString(gatedKb);
+        io.github.kloping.qqbot.entities.ex.Keyboard openKb = cn.kerong.bot.tools.Keyboards.INSTANCE.build(
+                java.util.Collections.singletonList(new cn.kerong.bot.tools.Keyboards.Button(
+                        "查在线", "查在线", "krg:cmd:/查在线", 1, 1, null, 2)));
+        String openJson = cn.kerong.shaded.com.alibaba.fastjson.JSON.toJSONString(openKb);
+        boolean gatedHasPerm1 = gatedJson.contains("\"type\":1") || gatedJson.contains("\"type\": 1");
+        boolean openHasPerm2 = openJson.contains("\"type\":2") || openJson.contains("\"type\": 2");
+        check("6.4 键盘权限透传：门禁按钮 permission.type=1 / 公开按钮 permission.type=2",
+                gatedHasPerm1 && openHasPerm2, "gated=" + gatedJson + " open=" + openJson);
+
+        // 6.5 门禁回调前缀与普通前缀并存（路由分流）
+        check("6.5 回调前缀：krg:acmd:（门禁）与 krg:cmd:（公开）",
+                cn.kerong.bot.events.MenuButtons.ACMD_PREFIX.equals("krg:acmd:")
+                        && cn.kerong.bot.events.MenuButtons.ACTION_PREFIX.equals("krg:cmd:"));
+
         System.out.println();
         System.out.println("共 " + (passed + failed) + " 项，通过 " + passed + "，失败 " + failed);
         if (failed > 0) System.exit(1);

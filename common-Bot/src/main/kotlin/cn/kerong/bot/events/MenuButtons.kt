@@ -4,6 +4,7 @@ import cn.kerong.bot.ClusterState
 import cn.kerong.bot.KERONG
 import cn.kerong.bot.QClient
 import cn.kerong.bot.ReplySeqGuard
+import cn.kerong.bot.events.commands.CommandAdminRegistry
 import cn.kerong.penguin.spigot.qqbind.MessageTemplates
 import cn.kerong.penguin.spigot.qqbind.QqBindManager
 import cn.kerong.bot.tools.Keyboards
@@ -36,13 +37,23 @@ import io.github.kloping.qqbot.impl.message.v2.BaseGroupMessageEvent
  *
  * ## 回调数据
  *
- * - 命令按钮：[CMD_PREFIX] + 命令文本（如 `krg:cmd:/查在线`）
+ * - 普通命令按钮：[CMD_PREFIX] + 命令文本（如 `krg:cmd:/查在线`）
+ * - 平台门禁管理按钮：[ACMD_PREFIX] + 命令文本（如 `krg:acmd:/黑名单`，
+ *   仅 admin.mode=qq/both 下使用，配合 permission.type=1——非管理员点不动）
  * - 翻页按钮：[PAGE_PREFIX] + 页码（如 `krg:menu:page:2`）
  */
 object MenuButtons {
 
     /** 命令按钮回调前缀（互动事件据此识别本流程）。 */
     const val ACTION_PREFIX = "krg:cmd:"
+
+    /**
+     * 平台门禁管理命令按钮回调前缀（1.7.5.2 覆盖）：这类按钮带
+     * permission.type=1 下发，点击到达即意味着 QQ 平台已实时校验过
+     * 点击者是现任群主 / 群管理员（撤权立即点不动）——分发时直接把
+     * 平台已验身份写进合成事件，不再查询任何接口。
+     */
+    const val ACMD_PREFIX = "krg:acmd:"
 
     /** 翻页按钮回调前缀。 */
     const val PAGE_PREFIX = "krg:menu:page:"
@@ -67,7 +78,12 @@ object MenuButtons {
     fun sendFirstPage(plugin: KERONG, event: GroupMessageEvent): Boolean {
         val commands = visibleCommands(plugin)
         if (commands.isEmpty()) return false
-        val keyboard = pageKeyboard(commands, 0)
+        val gate = adminGateFor(plugin, try {
+            event.groupOpenId ?: event.groupId ?: ""
+        } catch (_: Throwable) {
+            ""
+        })
+        val keyboard = pageKeyboard(commands, 0, gate)
         val message = pageText(plugin, 0, pageCount(commands.size))
         val user = try {
             val contact = event.sender
@@ -111,8 +127,9 @@ object MenuButtons {
             sendPage(groupOpenId, page)
             return true
         }
-        if (!buttonData.startsWith(ACTION_PREFIX)) return null
-        val commandText = buttonData.removePrefix(ACTION_PREFIX).trim()
+        val isAdminGated = buttonData.startsWith(ACMD_PREFIX)
+        if (!isAdminGated && !buttonData.startsWith(ACTION_PREFIX)) return null
+        val commandText = buttonData.removePrefix(if (isAdminGated) ACMD_PREFIX else ACTION_PREFIX).trim()
         if (commandText.isEmpty() || groupOpenId.isEmpty()) {
             respond(1)
             return true
@@ -123,7 +140,7 @@ object MenuButtons {
             return true
         }
         respond(0)
-        dispatchAsClicker(groupOpenId, userOpenId, commandText)
+        dispatchAsClicker(groupOpenId, userOpenId, commandText, isAdminGated)
         return true
     }
 
@@ -134,7 +151,11 @@ object MenuButtons {
         if (commands.isEmpty()) return
         val pages = pageCount(commands.size)
         val index = page.coerceIn(0, pages - 1)
-        QClient.sendMarkdownToGroup(groupOpenId, pageText(plugin, index, pages), pageKeyboard(commands, index))
+        QClient.sendMarkdownToGroup(
+            groupOpenId,
+            pageText(plugin, index, pages),
+            pageKeyboard(commands, index, adminGateFor(plugin, groupOpenId)),
+        )
     }
 
     /**
@@ -161,28 +182,39 @@ object MenuButtons {
      * msg_seq 经 [ReplySeqGuard] 分配新基数，与原消息已用的序号不重叠
      * （防平台 40054005 消息去重拒收）。
      *
-     * ## 管理员判定（1.7.5.2 改实时查询）
+     * ## 管理员判定（1.7.5.2 覆盖：平台门禁，零接口零缓存）
      *
      * 按钮回调（INTERACTION_CREATE）只带 group_openid + group_member_openid，
-     * **不带 member_role**——合成事件缺角色字段时 admin.mode=qq 的管理员判定
-     * （[CommandSupport.memberRole]）对群主/管理员一律 false。现从
-     * [GroupMemberLookup] **实时查询官方群成员接口**取点击者当前角色写进
-     * author.member_role，与手打命令判定一致且撤权立即生效；查询发生在
-     * 回应之后的命令阶段，不拖慢按钮回应；机器人无该接口权限（平台
-     * 白名单能力，错误码 11253）或查询失败时不写角色字段，回退 manual
-     * 名单路径。
+     * **不带 member_role**——旧版为此先后用过 30 分钟角色缓存（撤权有
+     * 30 分钟窗口，安全隐患）与官方群成员接口实时查询（需平台白名单
+     * 接口权限，申请麻烦），均已移除。现改为**双门禁**：
+     *
+     * 1. **平台门禁（主判定）**——admin.mode=qq/both 下，管理类按钮
+     *    （[CommandAdminRegistry] 注解自动标记）以 permission.type=1 下发，
+     *    QQ 平台在点击时实时校验点击者是否现任群主 / 群管理员：撤掉
+     *    管理员立即点不动，回调根本不会到达机器人；点击到达即代表
+     *    平台已验身（[ACMD_PREFIX] 回调携带这一事实），分发时把
+     *    member_role=admin 写进合成事件，与手打命令判定完全一致；
+     * 2. **插件门禁（兑底）**——命令分发链路内的 requireAdmin 原样生效：
+     *    admin.mode=config 下按钮人人可点，由 [CommandSupport.isAdmin]
+     *    按 admin.openids 名单实时判定（名单增删立即生效，无缓存）；
+     *    平台门禁下发的旧菜单在群模式切换后点击，同样由命令链路按
+     *    当前模式重新判定，不首平台旧门禁放行。
+     *
+     * 已知边界：both 模式下仅往 admin.openids 名单里（非群管理员）的人
+     * 点不动管理按钮（平台权限字段只认群角色，无法表达「群管理员 ∪
+     * 名单」并集）——手打命令不受影响，补救办法是给其群管理员身份。
      */
-    private fun dispatchAsClicker(groupOpenId: String, userOpenId: String, commandText: String) {
+    private fun dispatchAsClicker(
+        groupOpenId: String,
+        userOpenId: String,
+        commandText: String,
+        platformVerifiedAdmin: Boolean,
+    ) {
         try {
             val starter = QClient.starter ?: return
             val bot = starter.bot ?: return
             val recentMsgId = RecentGroupMessages.nextId(groupOpenId)
-            // 点击者群身份：按钮回调（INTERACTION_CREATE）只带 group_member_openid
-            // 不带 member_role，管理员判定（admin.mode=qq）无角色可用——实时
-            // 查询官方群成员接口取当前角色写进合成事件（1.7.5.2：替代
-            // 30 分钟角色缓存，撤权立即生效）；查不到（无接口权限 / 网络异常）
-            // 不写，回退 manual 名单路径
-            val clickerRole = GroupMemberLookup.fetchRole(groupOpenId, userOpenId)
             val raw = RawMessage().setContent(commandText)
             if (recentMsgId != null) raw.setId(recentMsgId)
             val metadata = JSONObject().apply {
@@ -196,9 +228,10 @@ object MenuButtons {
                 put("author", JSONObject().apply {
                     put("id", userOpenId)
                     put("member_openid", userOpenId)
-                    // member_role：CommandSupport.memberRole 的读取字段——群主/
-                    // 管理员点管理类按钮不再被判无权限（实时查询结果）
-                    if (clickerRole != null) put("member_role", clickerRole)
+                    // member_role：平台门禁按钮（krg:acmd:）点击到达 = QQ
+                    // 已实时验身（点击者此刻是群主/群管理员，撤权立即点
+                    // 不动）；未门禁按钮不写角色，管理员判定按名单路径走
+                    if (platformVerifiedAdmin) put("member_role", "admin")
                 })
             }
             val synthetic = BaseGroupMessageEvent(raw, metadata, bot)
@@ -209,7 +242,8 @@ object MenuButtons {
             val dispatched = QClient.dispatchSynthetic(synthetic)
             QqBindManager.logFileOnly(
                 "[菜单按钮] 群=$groupOpenId 用户=$userOpenId 命令=$commandText " +
-                    "被动id=${recentMsgId ?: "无(主动消息)"} 角色=${clickerRole ?: "未知"} " +
+                    "被动id=${recentMsgId ?: "无(主动消息)"} " +
+                    "身份=${if (platformVerifiedAdmin) "平台已验管理员" else "未验(名单判定)"} " +
                     "分发=${if (dispatched) "已执行" else "未命中"}"
             )
         } catch (error: Throwable) {
@@ -275,6 +309,24 @@ object MenuButtons {
         false
     }
 
+    /**
+     * 本群管理类按钮是否走**平台门禁**（permission.type=1 + [ACMD_PREFIX]）：
+     * admin.mode=qq/both 时开启（QQ 平台点击时实时校验群主/群管理员，
+     * 撤权立即点不动）；admin.mode=config 时关闭（按钮人人可点，由命令
+     * 链路按 admin.openids 名单实时判定）。
+     *
+     * 群级模式覆盖（历史遗留状态段）只影响按钮门禁，不影响手打命令。
+     */
+    fun adminGateFor(plugin: KERONG, groupOpenId: String): Boolean = try {
+        val defaultMode = cn.kerong.bot.datapack.AdministratorAccessMode.fromConfig(plugin.adminMode())
+        val effective = cn.kerong.bot.state.CommandRepositories.groupSettings
+            .administratorMode(groupOpenId, defaultMode)
+        effective != cn.kerong.bot.datapack.AdministratorAccessMode.MANUAL
+    } catch (_: Throwable) {
+        // 读取失败按开启门禁处理（更保守：qq/both 是推荐默认）
+        true
+    }
+
     /** 总页数。 */
     private fun pageCount(commandCount: Int): Int =
         if (commandCount == 0) 0 else (commandCount + COMMANDS_PER_PAGE - 1) / COMMANDS_PER_PAGE
@@ -286,22 +338,43 @@ object MenuButtons {
      * 按钮类型按命令分流：需补参数的命令（[INPUT_COMMANDS]）用指令按钮
      * （actionType=2，点击复制进输入栏），其余用回调按钮（actionType=1，
      * 点击即执行）。
+     *
+     * ## 管理类按钮门禁（1.7.5.2 覆盖，[adminGate] 开启时）
+     *
+     * [CommandAdminRegistry] 标记的管理类命令按钮统一加**平台权限门禁**
+     * （permission.type=1，仅群主/群管理员可点，QQ 点击时实时校验）；
+     * 回调按钮的回调数据改用 [ACMD_PREFIX]（点击到达 = 平台已验身，
+     * 分发时直接写 member_role=admin，零接口零缓存）。指令型按钮（执行
+     * 命令 / 管理员执行，点击仅复制进输入栏）同样加权限门禁但回调数据
+     * 保持原样——命令最终由用户手动发送，走正常消息路径自带真实角色。
      */
-    private fun pageKeyboard(commands: List<Pair<String, String>>, pageIndex: Int): io.github.kloping.qqbot.entities.ex.Keyboard {
+    private fun pageKeyboard(
+        commands: List<Pair<String, String>>,
+        pageIndex: Int,
+        adminGate: Boolean,
+    ): io.github.kloping.qqbot.entities.ex.Keyboard {
         val pages = pageCount(commands.size)
         val from = pageIndex * COMMANDS_PER_PAGE
         val pageCommands = commands.subList(from, minOf(from + COMMANDS_PER_PAGE, commands.size))
         val rows = mutableListOf<List<Keyboards.Button>>()
         for ((_, entry) in pageCommands.withIndex()) {
             val isInputCommand = entry.first in INPUT_COMMANDS
+            // 管理类命令且本群开启平台门禁：按钮仅群主/群管理员可点
+            val isAdminGated = adminGate && CommandAdminRegistry.isAdminCommand(entry.first)
             rows.add(listOf(
                 Keyboards.Button(
                     label = entry.first,
                     visitedLabel = entry.first,
-                    actionData = if (isInputCommand) entry.second else "$ACTION_PREFIX${entry.second}",
+                    actionData = when {
+                        isInputCommand -> entry.second
+                        isAdminGated -> "$ACMD_PREFIX${entry.second}"
+                        else -> "$ACTION_PREFIX${entry.second}"
+                    },
                     style = 1,
                     // 指令按钮（2）= 点击复制进输入栏；回调按钮（1）= 点击即执行
                     actionType = if (isInputCommand) 2 else 1,
+                    // 权限：2 = 所有人；1 = 仅群主/群管理员（平台实时校验）
+                    permissionType = if (isAdminGated) 1 else 2,
                 )
             ))
         }

@@ -13,7 +13,8 @@ import cn.kerong.bot.provider.Motd;
  * 冒烟专用假 KERONG 运行时（1.7.5.2）：
  * 继承 NF 兼容层 JavaPlugin（内存 config + dataFolder 可指定）并实现
  * KERONG 接口；白名单三方法带可翻转状态与调用记录（验证接口默认方法
- * enforceNoNativeWhitelist 的完整判定链）。
+ * enforceNoNativeWhitelist 的完整判定链）；adminMode 字段供按钮门禁
+ * 判定链切换 qq/config/both 三模式（覆盖版需求 3）。
  */
 public final class FakeKeronRuntime extends org.bukkit.plugin.java.JavaPlugin implements cn.kerong.bot.KERONG {
 
@@ -21,6 +22,8 @@ public final class FakeKeronRuntime extends org.bukkit.plugin.java.JavaPlugin im
     public volatile boolean nativeWhitelistOn = false;
     public volatile boolean disableCalled = false;
     public final List<String> warnings = new ArrayList<>();
+    /** 管理员判定模式（qq / config / both），供 MenuButtons.adminGateFor 判定链切换。 */
+    public volatile String adminModeValue = "qq";
 
     public FakeKeronRuntime(File folder) {
         this.folder = folder;
@@ -171,5 +174,14 @@ public final class FakeKeronRuntime extends org.bukkit.plugin.java.JavaPlugin im
     @Override
     public void disableNativeWhitelist() {
         disableCalled = true;
+    }
+
+    // ---------- 管理员判定模式（1.7.5.2 覆盖：按钮门禁判定链） ----------
+
+    @Override
+    public cn.kerong.bot.provider.AdminMode adminMode() {
+        cn.kerong.bot.provider.AdminMode mode =
+                cn.kerong.bot.provider.AdminMode.Companion.from(adminModeValue);
+        return mode == null ? cn.kerong.bot.provider.AdminMode.QQ : mode;
     }
 }

@@ -49,6 +49,7 @@ object InteractionFastPath {
         UnblacklistButtons.ACTION_PREFIX,
         ServerSelectButtons.ACTION_PREFIX,
         MenuButtons.ACTION_PREFIX,
+        MenuButtons.ACMD_PREFIX,
         MenuButtons.PAGE_PREFIX,
     )
 
@@ -140,7 +141,9 @@ object InteractionFastPath {
                 UnblacklistButtons.onInteraction(groupOpenId, userOpenId, buttonData, respondOnce) != null
             buttonData.startsWith(ServerSelectButtons.ACTION_PREFIX) ->
                 ServerSelectButtons.onInteraction(groupOpenId, buttonData, respondOnce) != null
-            buttonData.startsWith(MenuButtons.ACTION_PREFIX) || buttonData.startsWith(MenuButtons.PAGE_PREFIX) ->
+            buttonData.startsWith(MenuButtons.ACTION_PREFIX) ||
+                buttonData.startsWith(MenuButtons.ACMD_PREFIX) ||
+                buttonData.startsWith(MenuButtons.PAGE_PREFIX) ->
                 MenuButtons.onInteraction(groupOpenId, userOpenId, buttonData, respondOnce) != null
             else -> false
         }
