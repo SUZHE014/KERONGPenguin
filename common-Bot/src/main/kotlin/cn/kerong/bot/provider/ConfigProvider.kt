@@ -200,6 +200,18 @@ interface ConfigProvider {
     /** 手动配置的管理员名单。 */
     fun adminList(): List<String> = emptyList()
 
+    /**
+     * QQ 快捷指令面板管理员联动（1.7.5.3，默认开）：
+     * admin.mode=qq/both 时，自动把快捷面板里管理类指令条目
+     * （执行命令 / 管理员执行 / 全量 / AI管理 / 黑名单 / 解除黑名单）
+     * 设为「仅管理员可见可点」（面板 only_admin，QQ 端按当前群身份实时
+     * 渲染，与菜单按钮平台门禁同一口径）；admin.mode=config 或联动关闭
+     * 时不设——面板全员可见，由命令链路按名单实时判定。
+     *
+     * 配置键：admin.panel-admin-linkage（/hbkrg reload 后随面板重同步生效）。
+     */
+    fun panelAdminLinkageEnabled(): Boolean = true
+
     /** 允许交互的 QQ 群 OpenId 列表（空表示不限制）。 */
     fun groupOpenIdList(): List<String> = emptyList()
 

@@ -408,6 +408,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
     fun adminOpenIds(): List<String> = plugin.config.getStringList("admin.openids")
 
+    /** QQ 快捷面板管理员联动（1.7.5.3，admin.panel-admin-linkage，默认开）。 */
+    fun panelAdminLinkageEnabled(): Boolean = plugin.config.getBoolean("admin.panel-admin-linkage", true)
+
     fun fullForwardingByDefault(): Boolean = plugin.config.getBoolean("features.full-amount", false)
 
     /**
@@ -473,6 +476,17 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
+
+        // 升 45——1.7.5.3 新增一键（只加新键+默认值，不做任何旧值迁移）：
+        // admin.panel-admin-linkage（QQ 快捷面板管理员联动，默认 true——
+        // admin.mode=qq/both 时自动把快捷面板管理类指令条目设为仅群主/
+        // 群管理员可见可点，与 /菜单 管理按钮平台门禁同一口径；
+        // mode=config 或联动关闭时面板全员可见，命令按名单判定；
+        // /hbkrg reload 后随面板重同步生效）。
+        // 升 44——1.7.5.2 kick-message 单行字符串写法支持（无新增键）：
+        // qq-bind.kick-message 允许写成一行用 \n 分行（getStringList 为空
+        // 时按 getString 拆行兜底）；两版历史默认文案（v0.1.5.0 绑定码版 /
+        // 1.7.2 验证码版）升级自动收敛为「绑定码」新默认，自改文案不动。
 
         // 升 43——1.7.5 覆盖第三轮（无新增键，注释刷新 + 语义变更）：
         // features.full-amount 语义改为全量转发**总开关**（/全量 命令切换它
@@ -545,7 +559,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // qq-bind.checkin.points-reward（签到点券奖励，默认 0 关闭）
  // 升 28——无新增键纯注释刷新（卡片背景图说明段补 /hbkrg bpng
         // 图片包下载与 /hbkrg bpngsz 一键切换的用法说明）
-        private const val CURRENT_CONFIG_VERSION = 44
+        private const val CURRENT_CONFIG_VERSION = 45
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；

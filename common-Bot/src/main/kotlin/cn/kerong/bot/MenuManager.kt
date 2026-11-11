@@ -57,6 +57,15 @@ import java.util.concurrent.atomic.AtomicLong
  * - 持续 30013 时提示可能原因（平台配额统计延迟 / 存在列表不可见的残留
  *   面板 / 创建过于频繁），引导等待几分钟后重试或到 QQ 开放平台管理端核查。
  *
+ * ## 管理员联动（1.7.5.3）
+ *
+ * admin.panel-admin-linkage 开启（默认）且 admin.mode=qq/both 时，
+ * 管理类指令条目（[CommandAdminRegistry] 自动标记，与 /菜单 管理按钮
+ * 同一事实来源）下发时带 only_admin=true——QQ 端仅群主 / 群管理员可见
+ * 可点，与菜单按钮平台门禁同口径；admin.mode=config 或联动关闭时不带，
+ * 面板全员可见，由命令链路按名单实时判定。改动配置后 /hbkrg reload
+ * 随面板重同步生效。
+ *
  * 线程注意：本同步含网络 IO 与退避等待（最坏 20 秒级），**必须在异步线程
  * 调用**（启动路径在 QClient 后台线程；/hbkrg reload 由命令层包 submitAsync）。
  */
@@ -225,6 +234,8 @@ object MenuManager {
             var economyAvailable = false
             var aiEnabled = false
             var fullAmountEnabled = false
+            // 管理员联动（1.7.5.3）：qq/both 模式且联动开启时管理类条目 only_admin
+            var adminLinkageItems = false
             try {
                 val plugin = cn.kerong.bot.provider.BotShared.instance ?: return PanelSyncResult(null, 0, 0, "插件实例不可用")
                 commandList = plugin.commandList()
@@ -235,6 +246,9 @@ object MenuManager {
                 economyAvailable = cn.kerong.bot.events.commands.CheckInCommands().isEconomyAvailable()
                 aiEnabled = manager.isAiEnabled
                 fullAmountEnabled = plugin.fullAmount
+                adminLinkageItems = plugin.panelAdminLinkageEnabled() &&
+                    cn.kerong.bot.datapack.AdministratorAccessMode.fromConfig(plugin.adminMode()) !=
+                    cn.kerong.bot.datapack.AdministratorAccessMode.MANUAL
             } catch (_: Throwable) {
             }
 
@@ -291,6 +305,14 @@ object MenuManager {
                         put("type", "command")
                         put("name", item.name)
                         put("desc", item.desc)
+                        // 管理员联动（1.7.5.3）：管理类条目仅群主/群管理员
+                        // 可见可点（与 /菜单 管理按钮平台门禁同口径；
+                        // 面板重同步时机：启动 / reload / 全量切换）
+                        if (adminLinkageItems &&
+                            cn.kerong.bot.events.commands.CommandAdminRegistry.isAdminCommand(item.name)
+                        ) {
+                            put("only_admin", true)
+                        }
                     }
                 }))
             }
@@ -312,6 +334,9 @@ object MenuManager {
 
             return if (outcome.panelId != null) {
                 log("已同步 ${groupOpenIds.size} 个群的快捷菜单（面板 ${outcome.panelId}，${finalItems.size} 个按钮可用）")
+                if (adminLinkageItems) {
+                    log("管理员联动已生效：管理类指令条目仅群主/群管理员可见可点（admin.panel-admin-linkage + admin.mode=qq/both）")
+                }
                 PanelSyncResult(outcome.panelId, finalItems.size, groupOpenIds.size, null)
             } else {
                 val reason = outcome.error ?: "面板未创建成功"
