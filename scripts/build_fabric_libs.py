@@ -70,6 +70,19 @@ def find_java() -> str:
     raise SystemExit("找不到 java 运行时")
 
 
+def find_javac() -> str:
+    """编译用 javac：java 源文件模式（java Foo.java）会**直接执行**
+    程序而非仅编译（无参即 ArrayIndexOutOfBounds 崩溃），必须用 javac。"""
+    java = find_java()
+    javac = str(Path(java).parent / "javac")
+    if Path(javac).is_file():
+        return javac
+    for candidate in sorted(Path.home().glob(".gradle/jdks/*/bin/javac")):
+        if candidate.is_file():
+            return str(candidate)
+    raise SystemExit("找不到 javac（需完整 JDK，JRE 不够）")
+
+
 def remapper_cmd(materials: Path) -> list:
     cp = ":".join(str(materials / j) for j in [TINY_REMAPPER_JAR] + ASM_JARS + [MAPPING_IO_JAR])
     return [find_java(), "-cp", cp, "net.fabricmc.tinyremapper.Main"]
@@ -88,11 +101,12 @@ def build_merged_mappings(materials: Path, work: Path) -> Path:
     proguard = NF_WORK / f"client-{MC_VERSION}.txt"
     if not proguard.is_file():
         raise SystemExit(f"缺少 Mojang 官方映射 {proguard}（先跑 scripts/build_neoforge_libs.py）")
-    # 编译 MergeMappings（源码比 class 新才重编）
+    # 编译 MergeMappings（源码比 class 新才重编）——必须用 javac：
+    # java 源文件模式会直接运行程序而非仅编译
     tool_cls = TOOLS / "MergeMappings.class"
     if not tool_cls.is_file() or (TOOLS / "MergeMappings.java").stat().st_mtime > tool_cls.stat().st_mtime:
         subprocess.run(
-            [find_java(), "-cp", str(materials / MAPPING_IO_JAR), "MergeMappings.java"],
+            [find_javac(), "-cp", str(materials / MAPPING_IO_JAR), "MergeMappings.java"],
             cwd=str(TOOLS), check=True, timeout=120)
     subprocess.run(
         [find_java(), "-cp", f"{TOOLS}:{materials / MAPPING_IO_JAR}", "MergeMappings",
