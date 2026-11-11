@@ -20,11 +20,12 @@
 <section>
 <h2>下载</h2>
 <div class="dl-box">
-<p style="font-size:1.3em;font-weight:bold;color:#e8edf2;margin-bottom:5px">版本 1.7.5.1</p>
-<p style="color:#7a848e;margin-bottom:20px">发布于 2026-11-10</p>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.1.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.1.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.1.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版</a>
+<p style="font-size:1.3em;font-weight:bold;color:#e8edf2;margin-bottom:5px">版本 1.7.5.2</p>
+<p style="color:#7a848e;margin-bottom:20px">发布于 2026-11-11</p>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.2.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.2.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.1.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（1.7.5.1）</a>
+<p style="color:#7a848e;font-size:0.92em;margin:-4px auto 14px;max-width:440px">Fabric 版 1.7.5.2 随主线即将同步发布</p>
 <div class="dl-info">支持 MC 的版本请详见下方「支持的插件与兼容性 → 支持的服务端核心」</div>
 </div>
 </section>
@@ -58,6 +59,8 @@
 <h2>历史版本</h2>
 <table>
 <tr><th>版本</th><th>发布日期</th><th>下载</th></tr>
+<tr><td>NeoForge 1.7.5.2</td><td>2026-11-11</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.2.jar">下载</a></td></tr>
+<tr><td>Spigot 1.7.5.2</td><td>2026-11-11</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.2.jar">下载</a></td></tr>
 <tr><td>Fabric 1.7.5.1</td><td>2026-11-11</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.1.jar">下载</a></td></tr>
 <tr><td>NeoForge 1.7.5.1</td><td>2026-11-10</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.1.jar">下载</a></td></tr>
 <tr><td>Spigot 1.7.5.1</td><td>2026-11-10</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.1.jar">下载</a></td></tr>
@@ -84,6 +87,15 @@
 <section>
 <h2>更新日志</h2>
 <div class="changelog">
+<div class="version"><h3>v1.7.5.2</h3><span class="date">2026-11-11</span><ul>
+<li><b>修复：菜单模板去掉强制自动更新</b>——1.7.5.1 覆盖版引入的「系统模板无条件重置」（每次启动把 menu.md 强制覆盖为默认内容）移除：自定义菜单不再被覆盖；菜单回到与其余模板相同的升级路径——磁盘内容仍是旧默认（任何一版历史默认，含 BOM / 换行差异）自动收敛到最新口径，只有自己改过的内容不动。</li>
+<li><b>修复：极小概率按按钮 QQ 弹「第三方连接失败」</b>——此前每次回应都要经历全新 DNS + TCP + TLS 握手，慢网络 / 抖动时 1~3 秒超出官方 3 秒回应窗口。现回应请求改为连接复用（读尽响应体、不主动断开），机器人在线期间每 4 秒轻量心跳保持一条热连接并提前续期访问令牌——按钮回应直接复用热连接，冷握手超窗的残余概率消除（实测同模式两次请求服务端只见 1 条连接，旧模式为 2 条）。</li>
+<li><b>修复：管理员撤权后按钮权限仍保留 30 分钟</b>——群角色缓存（1.7.5.1 引入）整体移除：按钮互动的管理员判定改为每次实时查询官方群成员接口取最新身份，撤掉管理员立即生效；查询发生在回应之后的命令阶段，不拖慢按钮回应。该接口属平台白名单能力：机器人无权限时按钮的管理员判定回退 admin.manual 名单（首次会在日志说明）；手打命令路径不受影响。</li>
+<li><b>QQ 绑定拦截默认提示换新</b>——回到「绑定码」口径多行文案（===== QQ 绑定验证 ===== / 你还未绑定 QQ，无法进入服务器 / 你的专属绑定码 / 请在 QQ 群发送绑定码 /（绑定码 N 分钟内有效））；v0.1.5.0 与 1.7.2 两版历史默认文案升级时自动收敛，自己改过的文案不受影响。</li>
+<li><b>QQ 绑定开启时自动检测并关闭服务器自带白名单</b>——未绑定玩家会被服务器 white-list 先拦下、拿不到绑定码（旧版只靠配置注释提醒手动关闭）。现在检测到白名单开着立即自动关闭（本次运行期生效，不改写 server.properties）并在控制台输出提醒与根治建议；启动就绪与 /hbkrg reload 双时机检测，绑定未开启或白名单本就关闭时零操作零输出。</li>
+<li><b>QQ 绑定拦截文案支持单行写法</b>——kick-message 可写成一行用 \n 分行（多行列表形态保持不变），自定义提示更省事。</li>
+<li>版本号 1.7.5.2；配置版本 43 → 44（旧默认拦截文案自动收敛，升级无需手动改配置）。Fabric 版 1.7.5.2 随主线即将同步发布。</li>
+</ul></div>
 <div class="version"><h3>v1.7.5.1</h3><span class="date">2026-11-10</span><ul>
 <li><b>修复：连点几个菜单按钮后机器人不再回复</b>——QQ 对同一条消息的被动回复有次数上限（约 5 条），连续点击的回复全部引用同一条消息很快触顶被平台拒收（错误码 40034128「被动回复时间或者次数超过限制」）。现在插件记住群里最近 16 条真实消息，连续点击轮流引用不同消息（配额放大 16 倍）；万一仍被拒收，自动转主动消息通道补发，回复一定能到达。</li>
 <li><b>修复：管理员点菜单按钮提示没权限</b>——QQ 按钮点击的回调不携带点击者的群身份（群主 / 管理员 / 成员），手打命令时的管理员判定在按钮路径全部失效（群主点管理类按钮也提示无权限）。现在插件从最近的真实消息记住每位成员的群身份，点击按钮与手打命令的权限判定完全一致。</li>
@@ -176,7 +188,7 @@
 <p style="font-size:1.25em;font-weight:bold;color:#e8edf2;margin-bottom:5px">Fabric 模组版 1.7.5.1（MC 1.20.4，Java 21）</p>
 <p style="color:#7a848e;margin-bottom:16px">KERONGPenguin 的 Fabric 适配版——与 Spigot / NeoForge 版同源同功能：群聊互通 / 查询命令 / 信息卡渲染 / 绑定签到 / 服务器状态播报</p>
 <ul style="text-align:left;max-width:640px;margin:0 auto 18px;color:#aab3bc;line-height:1.9">
-<li><b>主线发版</b>：1.7.5.1 起随主线同步升版（此前 1.7.4.1 为测试版定位，升级后功能与主线 1.7.5.1 完全对齐）。</li>
+<li><b>主线发版</b>：1.7.5.1 起随主线同步升版（此前 1.7.4.1 为测试版定位，升级后功能与主线 1.7.5.1 完全对齐）；1.7.5.2 跟随主线即将同步发布。</li>
 <li><b>主系已测试版本</b>：1.20.4，1.21，1.21.6。</li>
 <li><b>支持版本</b>：1.20.4 及以上（fabric.mod.json 声明 ≥1.20.4，更高版本未实测）；Fabric Loader <b>0.15.0 及以上</b>（构建验证基于 0.16.14）；需另装 <b>Fabric API</b>（与所用 MC 版本对应即可）；Java 21。</li>
 <li><b>QQ 绑定不拦截进服</b>：未绑定玩家正常游玩，绑定完全自愿——游戏内发送 <code>/hbkrg qbd</code> 获取验证码，再到 QQ 群发送 <code>/绑定 验证码</code> 完成。</li>

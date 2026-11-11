@@ -72,6 +72,14 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         server.pluginManager.registerEvents(GameChat(), this)
         server.pluginManager.registerEvents(PlayerEventsListener(), this)
 
+ // QQ 绑定开启时自动关闭服务器自带白名单并提醒（1.7.5.2；
+        // QqBindManager 已随 GameChat 构造就绪，白名单状态在插件启用阶段
+        // 即可读取，关闭发生在任何玩家登录之前）
+        try {
+            enforceNoNativeWhitelist()
+        } catch (_: Throwable) {
+        }
+
  // 注入本服端口（MotdDisplayTracker 本机 SLP
         // 自查询用——render.performance.max-players-source = motd 时查性能
         // 展示服务器列表的实际展示值，双端统一机制）
@@ -336,6 +344,12 @@ class KERONGSpigot : JavaPlugin(), KERONG {
         configManager.reload()
         reloadRuntimeConfig()
         logCommandExecutor()
+ // QQ 绑定刚开启时补检白名单（1.7.5.2：绑定开于 reload 而非启动的
+        // 场景，关闭与提醒不能等到下次重启）
+        try {
+            enforceNoNativeWhitelist()
+        } catch (_: Throwable) {
+        }
  // 多玩家选择的待选会话随重载作废（旧闭包可能引用过期配置）
         cn.kerong.bot.events.PlayerSelection.clearAll()
         cn.kerong.bot.events.UnblacklistButtons.clearAll()
@@ -451,6 +465,21 @@ class KERONGSpigot : JavaPlugin(), KERONG {
 
     override val onlineList: List<String>
         get() = server.onlinePlayers.map { it.name }
+
+    // ---------- 服务器自带白名单（QQ 绑定互斥检测，1.7.5.2） ----------
+
+    override fun isNativeWhitelistEnabled(): Boolean = try {
+        server.hasWhitelist()
+    } catch (_: Throwable) {
+        false
+    }
+
+    override fun disableNativeWhitelist() {
+        try {
+            server.setWhitelist(false)
+        } catch (_: Throwable) {
+        }
+    }
 
     /**
  * 服务器性能快照（/查性能 数据源；修复读不到；1.6.7.6 重排队列）。

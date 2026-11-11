@@ -96,6 +96,12 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         }
         // 共享实例注册 → 装载状态 → 异步启动 QQ 客户端（与 Spigot onEnable 同序）
         initializeRuntime()
+ // QQ 绑定开启时自动关闭服务器自带白名单并提醒（1.7.5.2；
+        // ServerStarted 时 playerList 已就绪，关闭发生在任何玩家登录之前）
+        try {
+            enforceNoNativeWhitelist()
+        } catch (_: Throwable) {
+        }
         PlayerStatsManager.initialize()
  // 启动即开启磁盘缓存清扫线程（首轮 10 秒后执行）——
         // 强制关机 / 崩溃后残留的过期头像缓存文件在下次启动 10 秒内
@@ -231,6 +237,12 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
     override fun reloadPluginConfig() {
         configManager.reload()
         reloadRuntimeConfig()
+ // QQ 绑定刚开启时补检白名单（1.7.5.2：绑定开于 reload 而非启动的
+        // 场景，关闭与提醒不能等到下次重启）
+        try {
+            enforceNoNativeWhitelist()
+        } catch (_: Throwable) {
+        }
  // 多玩家选择的待选会话随重载作废（旧闭包可能引用过期配置）
         cn.kerong.bot.events.PlayerSelection.clearAll()
         cn.kerong.bot.events.UnblacklistButtons.clearAll()
@@ -337,6 +349,44 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
 
     override val onlineList: List<String>
         get() = NeoServerRef.server?.playerList?.players?.map { it.gameProfile.name } ?: emptyList()
+
+    // ---------- 服务器自带白名单（QQ 绑定互斥检测，1.7.5.2） ----------
+
+    /**
+     * 白名单开关方法名跨版本不一致（编译目标 1.20.4 mojmap 为
+     * isUsingWhiteList / setUsingWhiteList，1.20.6+ 改为 isUsingWhitelist /
+     * setUsingWhitelist）——直接调用会在其一版本运行时抛 NoSuchMethodError，
+     * 按本模组跨版本惯例走反射双名探测。
+     */
+    private fun whitelistMethod(name20_4: String, name20_6plus: String): java.lang.reflect.Method? {
+        val playerList = NeoServerRef.server?.playerList ?: return null
+        for (name in listOf(name20_4, name20_6plus)) {
+            try {
+                return playerList.javaClass.getMethod(name)
+            } catch (_: Throwable) {
+            }
+        }
+        return null
+    }
+
+    override fun isNativeWhitelistEnabled(): Boolean = try {
+        val playerList = NeoServerRef.server?.playerList ?: return false
+        whitelistMethod("isUsingWhiteList", "isUsingWhitelist")
+            ?.invoke(playerList) as? Boolean ?: false
+    } catch (_: Throwable) {
+        false
+    }
+
+    override fun disableNativeWhitelist() {
+        try {
+            val playerList = NeoServerRef.server?.playerList ?: return
+            val getter = whitelistMethod("isUsingWhiteList", "isUsingWhitelist") ?: return
+            val setterName = if (getter.name == "isUsingWhiteList") "setUsingWhiteList" else "setUsingWhitelist"
+            playerList.javaClass.getMethod(setterName, java.lang.Boolean.TYPE)
+                .invoke(playerList, false)
+        } catch (_: Throwable) {
+        }
+    }
 
     /**
  * 服务器性能快照（/查性能 数据源；修复读不到；增
@@ -489,7 +539,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             .resolve("kerongpenguin").toFile()
 
         /** 模组版本（与 neoforge.mods.toml 一致）。 */
-        private const val MOD_VERSION = "1.7.5.1"
+        private const val MOD_VERSION = "1.7.5.2"
 
         /** 当前模组实例（命令与事件层访问）。 */
         @Volatile

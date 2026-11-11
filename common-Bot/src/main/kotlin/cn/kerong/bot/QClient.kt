@@ -116,6 +116,10 @@ object QClient {
             // 注意 kloping SDK 约定：钩子返回 false 会拦截 SDK 自身逻辑，必须返回 true）
             session.config.webSocketListener = WssDiagnostics
             WssDiagnostics.start()
+ // API 热连接保活（1.7.5.2）：机器人在线期间每 4 秒轻量心跳保持一条
+            // 热连接并预续期 token，按钮回应直接复用（修「第三方连接失败」
+            // 残余概率，详见 [ConnectionWarmer]）；换凭据 / 停机时 stop
+            ConnectionWarmer.start()
  // AppID 凭据健康自检（异步，不阻塞连接流程）
             currentPlugin.submitAsync {
                 try {
@@ -748,6 +752,10 @@ object QClient {
         } catch (_: Throwable) {
         }
         try {
+            ConnectionWarmer.stop()
+        } catch (_: Throwable) {
+        }
+        try {
             session.shutdown()
         } catch (_: Throwable) {
         } finally {
@@ -761,6 +769,10 @@ object QClient {
         shuttingDown = true
         try {
             WssDiagnostics.stop()
+        } catch (_: Throwable) {
+        }
+        try {
+            ConnectionWarmer.stop()
         } catch (_: Throwable) {
         }
         val session = starter

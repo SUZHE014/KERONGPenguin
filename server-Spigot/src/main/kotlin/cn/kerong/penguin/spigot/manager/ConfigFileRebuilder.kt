@@ -134,6 +134,25 @@ internal object ConfigFileRebuilder {
             disk.set("server-notify.crash.message", "[状态]\n服务器....")
         }
 
+ // QQ 绑定拦截文案回到「绑定码」口径（1.7.5.2）——历史默认
+        // 文案（v0.1.5.0 绑定码版 / 1.7.2 验证码版）都是默认写入而非
+        // 用户意图，升级时自动收敛为新默认（自行改过 kick-message 的
+        // 配置不受影响；重建仅在磁盘版本低于 44 时触发）
+        // 单行字符串写法（非列表）读出来是空表，不匹配任何旧默认，自然不动
+        val kickMessageValue = disk.getStringList("qq-bind.kick-message").joinToString("\n")
+        if (kickMessageValue == "&c===== QQ 绑定验证 =====\n&f你还未绑定 QQ，无法进入服务器。\n\n&e你的专属绑定码: &a&l{code}\n&7请在 QQ 群发送: &f/绑定 {code}\n&7（绑定码 {expire} 分钟内有效）" ||
+            kickMessageValue == "&c===== QQ 绑定验证 =====\n&f你还未绑定 QQ，无法进入服务器。\n\n&e你的专属验证码: &a&l{code}\n&7可以直接发送纯数字验证码: &f{code}\n&7（也可发送 /绑定 {code}；验证码 {expire} 分钟内有效）"
+        ) {
+            disk.set("qq-bind.kick-message", java.util.Arrays.asList(
+                "&c===== QQ 绑定验证 =====",
+                "&f你还未绑定 QQ，无法进入服务器",
+                "",
+                "&e你的专属绑定码: &a&l{code}",
+                "&7请在 QQ 群发送: &f{code}",
+                "&7（绑定码 {expire} 分钟内有效）",
+            ))
+        }
+
  // 旧默认值→新默认值的升级收敛已移除（用户要求）——
         // 用户文件里已有的值一律原样回填保留，不做「等于旧默认则换成
         // 新默认」的识别（历史上有 from-group / idle-release-minutes /

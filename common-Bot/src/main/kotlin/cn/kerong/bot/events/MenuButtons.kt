@@ -161,15 +161,16 @@ object MenuButtons {
      * msg_seq 经 [ReplySeqGuard] 分配新基数，与原消息已用的序号不重叠
      * （防平台 40054005 消息去重拒收）。
      *
-     * ## 修复「管理员点按钮被判无权限」（1.7.5.1）
+     * ## 管理员判定（1.7.5.2 改实时查询）
      *
      * 按钮回调（INTERACTION_CREATE）只带 group_openid + group_member_openid，
-     * **不带 member_role**——群消息事件（GROUP_AT_MESSAGE_CREATE）的
-     * author 块才有；合成事件缺角色字段时 admin.mode=qq 的管理员判定
+     * **不带 member_role**——合成事件缺角色字段时 admin.mode=qq 的管理员判定
      * （[CommandSupport.memberRole]）对群主/管理员一律 false。现从
-     * [MemberRoleCache]（每条真实群消息登记发送者角色）取点击者最近
-     * 已知角色写进 author.member_role，与手打命令判定一致；未知角色
-     * （30 分钟未发言）不写，回退 manual 名单路径。
+     * [GroupMemberLookup] **实时查询官方群成员接口**取点击者当前角色写进
+     * author.member_role，与手打命令判定一致且撤权立即生效；查询发生在
+     * 回应之后的命令阶段，不拖慢按钮回应；机器人无该接口权限（平台
+     * 白名单能力，错误码 11253）或查询失败时不写角色字段，回退 manual
+     * 名单路径。
      */
     private fun dispatchAsClicker(groupOpenId: String, userOpenId: String, commandText: String) {
         try {
@@ -177,10 +178,11 @@ object MenuButtons {
             val bot = starter.bot ?: return
             val recentMsgId = RecentGroupMessages.nextId(groupOpenId)
             // 点击者群身份：按钮回调（INTERACTION_CREATE）只带 group_member_openid
-            // 不带 member_role，管理员判定（admin.mode=qq）无角色可用——从
-            // [MemberRoleCache] 取该成员最近已知角色写进合成事件（1.7.5.1 修复
-            // 管理员点按钮被判无权限）；未知（30 分钟未发言）不写，回退 manual 名单
-            val clickerRole = MemberRoleCache.roleOf(groupOpenId, userOpenId)
+            // 不带 member_role，管理员判定（admin.mode=qq）无角色可用——实时
+            // 查询官方群成员接口取当前角色写进合成事件（1.7.5.2：替代
+            // 30 分钟角色缓存，撤权立即生效）；查不到（无接口权限 / 网络异常）
+            // 不写，回退 manual 名单路径
+            val clickerRole = GroupMemberLookup.fetchRole(groupOpenId, userOpenId)
             val raw = RawMessage().setContent(commandText)
             if (recentMsgId != null) raw.setId(recentMsgId)
             val metadata = JSONObject().apply {
@@ -195,7 +197,7 @@ object MenuButtons {
                     put("id", userOpenId)
                     put("member_openid", userOpenId)
                     // member_role：CommandSupport.memberRole 的读取字段——群主/
-                    // 管理员点管理类按钮不再被判无权限
+                    // 管理员点管理类按钮不再被判无权限（实时查询结果）
                     if (clickerRole != null) put("member_role", clickerRole)
                 })
             }

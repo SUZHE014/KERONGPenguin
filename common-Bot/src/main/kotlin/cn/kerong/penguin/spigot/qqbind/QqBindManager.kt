@@ -522,7 +522,14 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             "[AI]"
         }
 
-    /** 踢出提示语（占位符 {code} {name} {expire}）。 */
+    /**
+     * 踢出提示语（占位符 {code} {name} {expire}）。
+     *
+     * 配置支持两种写法（1.7.5.2 起单行写法同样生效，方便自定义）：
+     * - 多行列表（默认形态）：`kick-message:` 下一行一项；
+     * - 单行字符串：写成一行用 `\n` 分行（getStringList 读字符串返回
+     *   空表，此处再按字符串读取拆行兜底）。
+     */
     private val kickMessageLines: List<String>
         get() {
             val lines = ArrayList<String>()
@@ -533,17 +540,24 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
                         if (line != null) lines.add(line)
                     }
                 }
+                // 单行字符串形态兜底：列表读空但键是字符串时按 \n 拆行
+                if (lines.isEmpty()) {
+                    val single = plugin.config.getString("qq-bind.kick-message")
+                    if (!single.isNullOrEmpty()) {
+                        for (line in single.split('\n')) lines.add(line)
+                    }
+                }
             } catch (_: Throwable) {
             }
             if (lines.isEmpty()) {
- // 验证消息写明「可以直接发送纯数字验证码」
-                //（纯数字发送是主路径，/绑定 命令作为备选）
+ // 默认文案（1.7.5.2 回到「绑定码」口径：绑定码 + 群里发送纯数字
+                // 为主路径，/绑定 命令作为备选）
                 lines.add("&c===== QQ 绑定验证 =====")
-                lines.add("&f你还未绑定 QQ，无法进入服务器。")
+                lines.add("&f你还未绑定 QQ，无法进入服务器")
                 lines.add("")
-                lines.add("&e你的专属验证码: &a&l{code}")
-                lines.add("&7可以直接发送纯数字验证码: &f{code}")
-                lines.add("&7（也可发送 /绑定 {code}；验证码 {expire} 分钟内有效）")
+                lines.add("&e你的专属绑定码: &a&l{code}")
+                lines.add("&7请在 QQ 群发送: &f{code}")
+                lines.add("&7（绑定码 {expire} 分钟内有效）")
             }
             return lines
         }

@@ -61,6 +61,48 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
         return configDirectory.resolve("logs/Bot-%s.log").path
     }
 
+    /**
+     * 服务器自带白名单（white-list）当前是否开启（平台实现；读取失败
+     * 按「未开启」处理，不做任何操作）。
+     */
+    fun isNativeWhitelistEnabled(): Boolean = false
+
+    /**
+     * 关闭服务器自带白名单（平台实现；仅关闭当前运行期的白名单判定，
+     * 不改写 server.properties——是否移除配置由服主自行决定，控制台
+     * 提醒里会说明）。
+     */
+    fun disableNativeWhitelist() {}
+
+    /**
+     * QQ 绑定开启时自动关闭服务器自带白名单并在控制台提醒（1.7.5.2）。
+     *
+     * 背景：未绑定玩家会在服务器白名单阶段先被拦下，拿不到绑定验证码
+     * （绑定闸门根本没机会展示提示）；QQ 绑定本身就是准入控制（绑定过
+     * 的才能进服），与白名单叠用只会互相冲突。旧版只在 config.yml 注释
+     * 里提醒服主手动关闭，实际常有开着白名单就开绑定的误用。
+     *
+     * 由平台在启动就绪与 /hbkrg reload 后调用：QQ 绑定开启且服务器白名单
+     * 也开着时，自动关闭白名单（仅运行期）并输出控制台提醒；绑定未开启
+     * 或白名单本就关闭时零输出、零操作。
+     */
+    fun enforceNoNativeWhitelist() {
+        val bindingEnabled = try {
+            cn.kerong.penguin.spigot.qqbind.QqBindManager.getInstance().isEnabled
+        } catch (_: Throwable) {
+            return
+        }
+        if (!bindingEnabled) return
+        if (!isNativeWhitelistEnabled()) return
+        disableNativeWhitelist()
+        log_warning(
+            "[QQ绑定] 检测到服务器自带白名单（white-list）已开启：未绑定玩家会在白名单阶段被拦下、" +
+                "拿不到绑定验证码，已自动关闭（本次运行期生效）。QQ 绑定本身就是准入控制，" +
+                "请勿与任何白名单方案叠用——建议在 server.properties 移除 white-list 并停用白名单插件，" +
+                "否则每次重启都会再次自动关闭并重复提醒"
+        )
+    }
+
     // ---------- MessageProvider 默认实现（委托 QClient） ----------
 
     /** 向所有配置的群发送 Markdown 消息。 */

@@ -23,15 +23,17 @@ import java.util.concurrent.ConcurrentHashMap
  * /查在线 的 Markdown 模板沿用 1.5.1 的 markdown.queryOnline（online.md），
  * 不在本系统内（该模板带独立占位符体系，见 motd 段说明）。
  *
- * 模板分两类（1.7.5.1 覆盖版）：
- * - **用户可自定义模板**（绝大多数）：首次释放后不覆盖，仅旧默认内容
- *   经 [DEFAULT_CONTENT_UPGRADES] 收敛，自定义内容一律不动；
- * - **系统 UI 模板**（[SYSTEM_TEMPLATE_IDS]，目前 menu）：文案完全由插件
- *   控制（标题 + 分页 + 版本行），每次 initialize() 无条件重置为当前默认
- *   （不一致时先备份 .bak）——升级表按特征匹配覆盖不了历史上所有形态
- *   （含无标准标题的旧文件），强制重置保证 /菜单 始终是当前口径；
- *   真想自定义菜单文案请把 messages.menu 改成自己的文件名，该路径
- *   不释放、不重置，内容自己维护。
+ * 模板升级路径（1.7.5.2：回到统一升级表，菜单模板不再强制重置）：
+ * - 首次释放后不覆盖用户修改；
+ * - 磁盘内容仍是某一版旧默认（含 BOM / 空白 / 换行差异）时，经
+ *   [DEFAULT_CONTENT_UPGRADES] 自动收敛到最新默认（menu 也走同一张表，
+ *   「### 指令菜单」特征兕底覆盖历史任何一版默认形态）；
+ * - 自己改过的内容一律不动（与旧默认任何一版都不匹配、也不带默认特征）。
+ *
+ * 历史注：1.7.5.1 曾把 menu 设为「系统 UI 模板」无条件重置（每次启动
+ * 强制覆盖为默认），目的是收敛线上历史残留形态；但该机制会把用户
+ * 自定义的菜单一并覆盖，且实际验证发现原地覆写在部分环境未生效。
+ * 1.7.5.2 移除强制重置，回到与其他模板相同的升级表路径。
  */
 object MessageTemplates {
 
@@ -136,15 +138,6 @@ object MessageTemplates {
     private val cache = ConcurrentHashMap<String, Pair<Long, String>>()
 
     /**
-     * 系统 UI 模板：内容完全由插件控制，每次初始化无条件收敛到当前默认
-     * （不一致先备份 .bak）。menu 的文案就是机器人自己的界面（标题 +
-     * 分页 + 版本行），不存在「用户改过要保留」的语义——1.7.5.1 覆盖版
-     * 前升级表按「### 指令菜单」特征匹配，用户服务器上不带该特征的旧
-     * menu.md（历次部署残留形态）未被收敛，菜单一直带帮助文段。
-     */
-    private val SYSTEM_TEMPLATE_IDS = setOf("menu")
-
-    /**
      * 单条默认内容升级规则。
      *
      * @property olds 历代旧默认内容（normalize 后精确比对，覆盖已知的每一版）
@@ -167,8 +160,9 @@ object MessageTemplates {
         }
     }
 
-    /** 去除全部空白字符（空格 / 制表 / 换行 / 回车）后的比对形态。 */
-    private fun normalize(text: String): String = text.replace(Regex("\\s"), "")
+    /** 去除全部空白字符（空格 / 制表 / 换行 / 回车）与 BOM 后的比对形态（1.7.5.2：
+     * 容忍历史上带 BOM 释放的默认文件，以及任意换行风格差异）。 */
+    private fun normalize(text: String): String = text.replace(Regex("[\\s\\uFEFF]"), "")
 
     /**
      * 默认模板内容升级表：历代旧默认内容 → 新默认内容。
@@ -189,8 +183,13 @@ object MessageTemplates {
         "openid-lookup" to UpgradeSpec(listOf(
             "【OpenID 反查】\nOpenId: {openid}\n群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}",
         ), listOf("【OpenID 反查】"), "【OpenID 反查】\n{openidPart}群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}"),
- // menu 改系统 UI 模板（见 [SYSTEM_TEMPLATE_IDS] / [resetSystemTemplates]），
-        // 不再走特征匹配升级表——无条件重置覆盖历史所有形态
+ // menu 回到升级表（1.7.5.2：系统模板强制重置机制移除）：
+        // 两版历史默认逐版比对 + 「### 指令菜单」特征兕底（收敛表未收录的
+        // 中间态默认、历次部署残留形态），自定义内容不动
+        "menu" to UpgradeSpec(listOf(
+            "### 指令菜单\n\n点击下方按钮即可执行；带参数的指令（绑定 / 发信息 / 执行命令等）点击后复制到输入框，补全内容再发送。\n\n---\n**当前插件版本：v{version}**",
+            "### 指令菜单（{page}/{pages}）",
+        ), listOf("### 指令菜单"), "### 指令菜单（{page}/{pages}）\n\n**当前插件版本：v{version}**"),
  // AI 管理合并：旧命令名版本与旧提示句版本收敛为纯状态行（操作都在按钮里）
         "ai-context-usage" to UpgradeSpec(listOf(
             "用法: /AI对话上下文 开|关\n当前状态: {status}",
@@ -265,8 +264,6 @@ object MessageTemplates {
         }
  // 仍是旧默认内容的模板升级到新默认（用户改过的不动）
         upgradedDefaultContents(dir)
-        // 系统 UI 模板（menu）无条件收敛到当前默认（1.7.5.1 覆盖版）
-        resetSystemTemplates(dir)
         if (released > 0) {
             BotShared.instance?.log_info("已释放 $released 个默认消息模板到 ${dir.path}（可自行编辑，删除后重启恢复默认）")
         }
@@ -276,10 +273,9 @@ object MessageTemplates {
      * 旧默认内容 → 新默认内容（仅未修改过的文件替换；幂等）。
      *
      * 匹配两条路径（见 [UpgradeSpec.shouldUpgrade]）：历代旧默认逐版比对
-     * （空白差异容忍）+ 默认特征兜底（收敛表未收录的中间态默认同样升级）。
-     *
-     * 系统 UI 模板（[SYSTEM_TEMPLATE_IDS]）不在此表——走 [resetSystemTemplates]
-     * 无条件重置，特征匹配覆盖不了的历史残留形态一并收敛。
+     * （空白 + BOM 差异容忍）+ 默认特征兜底（收敛表未收录的中间态默认
+     * 同样升级）。menu 同在此表（1.7.5.2：系统模板强制重置已移除，菜单
+     * 与其他模板走同一条升级路径，自定义内容不受影响）。
      */
     private fun upgradedDefaultContents(dir: File) {
         for ((id, upgrade) in DEFAULT_CONTENT_UPGRADES) {
@@ -298,40 +294,6 @@ object MessageTemplates {
                 BotShared.instance?.log_info("消息模板 $fileName 已升级到新默认内容（自定义过的模板不受影响）")
             } catch (error: Exception) {
                 BotShared.instance?.log_warning("升级消息模板 $fileName 失败: ${error.message}")
-            }
-        }
-    }
-
-    /**
-     * 系统 UI 模板无条件收敛到当前默认（幂等；不一致先备份 .bak）。
-     *
-     * menu 文案是机器人自身界面：升级表按特征匹配对历史残留形态（如无
-     * 标准标题的旧文件）无能为力，改为一律重置；自定义菜单走
-     * messages.menu 指向自己的文件名（不释放、不重置）。
-     */
-    private fun resetSystemTemplates(dir: File) {
-        for (id in SYSTEM_TEMPLATE_IDS) {
-            val fileName = fileNameOf(id)
-            // 自定义文件名路径：用户自己的文件，不动
-            if (fileName != "$id.md") continue
-            val target = dir.resolve(fileName)
-            val current = try {
-                if (target.isFile) target.readText(Charsets.UTF_8) else null
-            } catch (_: Throwable) {
-                null
-            } ?: continue // 缺文件：前面的释放逻辑已写入默认
-            val default = bundledResource(id) ?: continue
-            if (current == default) continue // 已是当前默认（幂等）
-            try {
-                // 旧内容留一份备份（覆盖旧备份，不叠加文件）
-                dir.resolve("$fileName.bak").writeText(current, Charsets.UTF_8)
-                target.writeText(default, Charsets.UTF_8)
-                cache.remove(target.path)
-                BotShared.instance?.log_info(
-                    "系统模板 $fileName 已重置为当前默认（旧内容备份为 $fileName.bak；" +
-                        "自定义菜单请把 messages.$id 改指向自己的文件名）")
-            } catch (error: Exception) {
-                BotShared.instance?.log_warning("重置系统模板 $fileName 失败: ${error.message}")
             }
         }
     }

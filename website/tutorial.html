@@ -249,9 +249,10 @@
 <pre>qq-bind:
   kick-message:
     - "&c===== QQ 绑定验证 ====="
-    - "&e你的专属验证码: &a&l{code}"</pre>
+    - "&e你的专属绑定码: &a&l{code}"
+    - "&7请在 QQ 群发送: &f{code}"</pre>
 </div>
-<p>未绑定玩家进服看到的界面文案，一行一项（列表）；支持 <code>&amp;</code> 颜色代码，变量 <code>{code}</code> 验证码 / <code>{name}</code> 玩家名 / <code>{expire}</code> 有效期分钟。完整默认文案见 config.yml。</p>
+<p>未绑定玩家进服看到的界面文案，一行一项（列表）；也可写成一行用 <code>\n</code> 分行（如 <code>kick-message: "&c第一行\n&f第二行"</code>）。支持 <code>&amp;</code> 颜色代码，变量 <code>{code}</code> 绑定码 / <code>{name}</code> 玩家名 / <code>{expire}</code> 有效期分钟。完整默认文案见 config.yml。</p>
 </div>
 </div>
 

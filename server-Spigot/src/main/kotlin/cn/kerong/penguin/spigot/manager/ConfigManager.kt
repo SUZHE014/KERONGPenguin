@@ -205,6 +205,33 @@ class ConfigManager(private val plugin: JavaPlugin) {
                 changed = true
             }
         }
+ // QQ 绑定拦截文案回到「绑定码」口径（1.7.5.2：验证码 → 绑定码，
+        // 引导改为「请在 QQ 群发送 绑定码」）——历史默认文案（v0.1.5.0 绑定码版 /
+        // 1.7.2 验证码版）都是默认写入而非用户意图，升级时自动收敛为新默认；
+        // 自行改过文案的配置不受影响（重建器内同款收敛，这里是重建失败
+        // 兕底路径的双保险）
+        if (oldVersion in 1 until 44 && config.isSet("qq-bind.kick-message")) {
+            // 单行字符串写法（非列表）读出来是空表，不匹配任何旧默认，自然不动
+            val current = config.getStringList("qq-bind.kick-message").joinToString("\n")
+            val oldDefaults = setOf(
+                // v0.1.5.0 ~ 1.7.1 默认（绑定码口径）
+                "&c===== QQ 绑定验证 =====\n&f你还未绑定 QQ，无法进入服务器。\n\n&e你的专属绑定码: &a&l{code}\n&7请在 QQ 群发送: &f/绑定 {code}\n&7（绑定码 {expire} 分钟内有效）",
+                // 1.7.2 ~ 1.7.5.1 默认（验证码口径）
+                "&c===== QQ 绑定验证 =====\n&f你还未绑定 QQ，无法进入服务器。\n\n&e你的专属验证码: &a&l{code}\n&7可以直接发送纯数字验证码: &f{code}\n&7（也可发送 /绑定 {code}；验证码 {expire} 分钟内有效）",
+            )
+            if (current in oldDefaults) {
+                config.set("qq-bind.kick-message", java.util.Arrays.asList(
+                    "&c===== QQ 绑定验证 =====",
+                    "&f你还未绑定 QQ，无法进入服务器",
+                    "",
+                    "&e你的专属绑定码: &a&l{code}",
+                    "&7请在 QQ 群发送: &f{code}",
+                    "&7（绑定码 {expire} 分钟内有效）",
+                ))
+                plugin.logger.info("QQ 绑定拦截文案已更新为新默认（绑定码口径；自行改过 kick-message 的配置不受影响）")
+                changed = true
+            }
+        }
         // 清理已废弃的配置段
  // 移除 query-online 段（图片输出改为 markdown 关闭时自动启用）与 motd.text（文本模板已删除）
  // 移除 commands.个人信息（该命令已更名为 查信息）
@@ -518,7 +545,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // qq-bind.checkin.points-reward（签到点券奖励，默认 0 关闭）
  // 升 28——无新增键纯注释刷新（卡片背景图说明段补 /hbkrg bpng
         // 图片包下载与 /hbkrg bpngsz 一键切换的用法说明）
-        private const val CURRENT_CONFIG_VERSION = 43
+        private const val CURRENT_CONFIG_VERSION = 44
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；

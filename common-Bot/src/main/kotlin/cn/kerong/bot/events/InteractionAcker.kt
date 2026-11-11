@@ -26,6 +26,11 @@ import java.net.URL
  * [Start0.getHeaders]（与消息发送同一 token，自动续期），URL 基于
  * Starter.net（正式 / 沙箱环境自适应），响应码 2xx 才算送达。
  *
+ * 1.7.5.2 连接复用：发送后读尽响应体、不主动断开——连接归还 JVM
+ * keep-alive 池；配合 [ConnectionWarmer] 的 4 秒保活心跳，按钮回应
+ * 直接复用热连接，不再经历全新 DNS+TCP+TLS 握手（慢网络下冷握手
+ * 贴着官方 3 秒回应窗口的边，是「第三方连接失败」的残余根因）。
+ *
  * 回应码官方语义：0 = 成功；1 = 操作失败；2 = 操作频繁；3 = 重复操作；
  * 4 = 没有权限；5 = 仅管理员操作。同一 interaction_id 只能回应一次。
  */
@@ -101,7 +106,10 @@ object InteractionAcker {
                 PluginFileLog.write("[按钮互动] 回应发送异常（${error.javaClass.simpleName}: ${error.message}），快速重试")
                 null
             } finally {
-                connection?.disconnect()
+                // 1.7.5.2 连接复用：读尽响应体后仅关流、不 disconnect——连接
+                // 归还 JVM keep-alive 池，下次回应（配合 [ConnectionWarmer]
+                // 保活）直接复用热连接，免去 DNS+TCP+TLS 冷握手
+                drainBody(connection)
             }
         }
 
@@ -116,6 +124,29 @@ object InteractionAcker {
                 }
                 sendOnce() == true
             }
+        }
+    }
+
+    /**
+     * 读尽并关闭响应流（连接保持可复用；任何异常静默——清理动作不影响
+     * 已得出的回应结果）。残留字节不读尽的话，keep-alive 池会判定连接
+     * 脏而直接关闭它，复用就无从谈起。
+     */
+    private fun drainBody(connection: HttpURLConnection?) {
+        if (connection == null) return
+        try {
+            val status = connection.responseCode
+            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+            if (stream == null) return
+            try {
+                stream.use {
+                    val buffer = ByteArray(2048)
+                    while (it.read(buffer) != -1) {
+                    }
+                }
+            } catch (_: Throwable) {
+            }
+        } catch (_: Throwable) {
         }
     }
 
