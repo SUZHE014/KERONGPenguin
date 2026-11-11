@@ -75,3 +75,4 @@ scripts/smoke*/out/
 # Fabric 模块（fa 版，默认不进构建）：编译期依赖与构建产物不入库
 server-Fabric/libs/
 server-Fabric/build/
+scripts/fabric-tools/*.class

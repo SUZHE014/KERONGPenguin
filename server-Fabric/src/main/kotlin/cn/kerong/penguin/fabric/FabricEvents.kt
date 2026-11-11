@@ -22,14 +22,17 @@ import org.bukkit.Material
  * PlayerEventsListener）：
  * - 生命周期（SERVER_STARTING / STARTED / STOPPING / STOPPED → QQ 运行时启停）；
  * - 聊天转发到 QQ 群 + 服务器内 AI 对话前缀触发（ALLOW_CHAT 阶段拦截）；
- * - 玩家进入 / 退出播报 + 统计会话 + 登录绑定校验（加入后踢出兜底）；
+ * - 玩家进入 / 退出播报 + 统计会话 + 建档（QQ 绑定不拦截进服，见下）；
  * - 击杀 / 死亡统计与死亡播报（ALLOW_DEATH 阶段，返回 true 放行）；
  * - 破坏方块统计（远古残骸）；
  * - /hbkrg 与 /qq 命令注册（CommandRegistrationCallback）。
  *
- * 测试版差异（相对 NeoForge 版）：钓鱼 / 繁殖动物统计暂缺（Fabric API
- * 无对应事件）；登录绑定不做配置阶段拦截（无 RegisterConfigurationTasks
- * 等价物，未绑定玩家走加入后踢出兜底路径）。
+ * 钓鱼 / 繁殖动物统计暂缺（Fabric API 无对应事件，与 NeoForge 版的已知差异）。
+ *
+ * 1.7.5.1 起 QQ 绑定不再拦截进服（用户指令）：未绑定玩家正常游玩，绑定
+ * 完全自愿——玩家在游戏内发 /hbkrg qbd 获取验证码，再到 QQ 群发 /绑定
+ * 验证码 完成（见 FabricCommands）；加入时仅建档（统计与后续绑定用），
+ * 不再踢出（原 enforceLoginBinding 踢出路径删除）。
  */
 class FabricEvents(private val plugin: KERONGFabric) {
 
@@ -73,7 +76,9 @@ class FabricEvents(private val plugin: KERONGFabric) {
             val player = handler.player
             QClient.broadcastPlayerJoin(player.gameProfile.name)
             PlayerStatsManager.onJoin(FabricPlayer(player))
-            enforceLoginBinding(player)
+            // QQ 绑定不拦截进服（1.7.5.1 起）：仅建档（统计 / 后续绑定用），
+            // 验证码由玩家自愿经 /hbkrg qbd 获取
+            registerPlayerProfile(player)
         }
         ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
             val player = handler.player
@@ -151,33 +156,18 @@ class FabricEvents(private val plugin: KERONGFabric) {
     // ---------- 玩家进出 ----------
 
     /**
-     * 登录绑定校验（未绑定玩家的加入后踢出兜底；与 NeoForge 版
-     * enforceLoginBinding 同源——Fabric 测试版无配置阶段闸门，全部走此路径）。
+     * 进服建档（1.7.5.1 起：QQ 绑定不再拦截进服——原 enforceLoginBinding
+     * 未绑定玩家加入后踢出的路径按用户指令删除，绑定完全自愿；此处仅
+     * 确保玩家有 QUUID 档案，统计与后续 /hbkrg qbd 绑定流程都基于它）。
      */
-    private fun enforceLoginBinding(player: ServerPlayer) {
+    private fun registerPlayerProfile(player: ServerPlayer) {
         val manager = try {
             QqBindManager.getInstance()
         } catch (_: Throwable) {
             return
         }
         if (!manager.isEnabled) return
-        val playerName = player.gameProfile.name
-        val playerUuid = player.uuid.toString()
-        if (manager.isSkipped(playerName)) return
-
-        manager.getOrCreateQuuidByUuid(playerName, playerUuid)
-        if (manager.isBoundByUuid(playerName, playerUuid)) return
-
-        val code = manager.generateCode(playerName, playerUuid)
-        val kickMessage = manager.formatKickMessage(code, playerName)
-        plugin.submitLater(1L) {
-            try {
-                if (!player.hasDisconnected()) {
-                    player.connection.disconnect(LegacyText.toComponent(kickMessage))
-                }
-            } catch (_: Throwable) {
-            }
-        }
+        manager.getOrCreateQuuidByUuid(player.gameProfile.name, player.uuid.toString())
     }
 
     // ---------- 死亡 / 击杀统计 + 死亡播报 ----------

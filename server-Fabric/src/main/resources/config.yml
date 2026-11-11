@@ -10,7 +10,7 @@
 # ============================================================
 
 # 配置文件版本号（插件自动维护，勿改）
-config-version: 40
+config-version: 43
 
 # 启动后自动联网检查新版本（改这里需重启才生效）
 update-check:
@@ -353,10 +353,11 @@ messages:
   # —— 发信息 ——
   forward-disabled: "forward-disabled.md"           # 聊天转发已关闭
   # —— AI 对话 ——
-  ai-context-usage: "ai-context-usage.md"           # /AI对话上下文 用法（{status}）
+  ai-context-usage: "ai-context-usage.md"           # /AI管理 不带参数时的状态与按钮提示（{status}）
   ai-context-on: "ai-context-on.md"                 # AI 上下文已开启
   ai-context-off: "ai-context-off.md"               # AI 上下文已关闭
   ai-context-cleared: "ai-context-cleared.md"       # AI 上下文已清除
+  ai-manage-disabled: "ai-manage-disabled.md"       # AI 功能未开启时的 /AI管理 提示
   ai-chat-empty: "ai-chat-empty.md"                 # @机器人 但没输入内容
   ai-chat-error: "ai-chat-error.md"                 # AI 对话失败（{error}）
   # —— 黑名单 ——
@@ -366,12 +367,12 @@ messages:
   blacklist-added: "blacklist-added.md"             # 拉黑（对方未绑定；{name}）
   blacklist-removed: "blacklist-removed.md"         # 移出黑名单（{name}）
   unblacklist-empty: "unblacklist-empty.md"         # 解除黑名单列表为空
-  unblacklist-list: "unblacklist-list.md"           # 解除黑名单列表（{count} {list}）
+  unblacklist-list: "unblacklist-list.md"           # 解除黑名单列表（{count} {list}；按钮逐条竖排）
   # —— 重新绑定 ——
   rebind-success: "rebind-success.md"               # 解绑成功并踢出（{player}）
   rebind-not-bound: "rebind-not-bound.md"           # QQ 未绑定任何账号
-  # —— 帮助 ——
-  help: "help.md"                                   # /帮助 命令手册（{version}）
+  # —— 菜单 ——
+  menu: "menu.md"                                   # /菜单 按钮菜单的头部文案（{version}）
   # —— 命令执行 ——
   invalid-params: "invalid-params.md"               # 参数为空
   bridge-error: "bridge-error.md"                   # 游戏桥接未配置或失败
@@ -398,14 +399,15 @@ admin:
 # ---------------- 功能开关 ----------------
 features:
   # 全量聊天转发：开启后 QQ 群的所有消息（不止命令）都转进游戏
-  #（管理员也可在群里发 /全量 随时切换，按群独立记忆）
+  #（总开关，对下方 bot.groups 里全部群统一生效；管理员在群里发
+  # /全量 可随时切换，改完写回本文件；关闭时菜单与快捷面板的全量按钮同步隐藏）
   full-amount: false
 
 # ---------------- QQ 群命令开关 ----------------
-# 关闭某条命令后群里不再响应，快捷菜单按钮与 /帮助 条目同步消失；
+# 关闭某条命令后群里不再响应，快捷菜单按钮与 /菜单 按钮同步消失；
 # 改动后 /hbkrg reload 立即生效
 commands:
-  帮助: true            # /帮助 —— 查看所有命令
+  菜单: true            # /菜单 —— 指令按钮菜单（一行一个；无参命令点击即执行，带参命令点击复制进输入栏；分页展示）
   查信息: true          # /查信息 —— 查 OpenId（加玩家名可反查其绑定的 QQ）
   玩家名片: true        # /玩家名片 —— 玩家统计卡片（@某人 查别人）
   绑定: true            # /绑定 <绑定码> —— 绑定 QQ（纯数字码直接发送亦可）
@@ -418,11 +420,10 @@ commands:
   执行命令: true        # /执行命令 <命令> —— 管理员执行服务器命令
   执行: true            # /执行 <key> —— 执行自定义命令
   管理员执行: true      # /管理员执行 <key> —— 执行管理员限定命令
-  全量: true            # /全量 —— 切换全量聊天转发（管理员）
-  AI对话上下文: true    # /AI对话上下文 开|关（管理员）
-  清除当前上下文: true  # /清除当前上下文 —— 清空 AI 对话历史（管理员）
-  黑名单: true          # /黑名单 @QQ —— 拉黑（自动解绑并踢出，管理员）
-  解除黑名单: true      # /解除黑名单 @QQ —— 解除拉黑（管理员）
+  全量: true            # /全量 —— 切换全量转发总开关（管理员；对全部配置群生效并写回配置文件）
+  AI管理: true          # /AI管理 开|关|清除 —— AI 上下文管理（管理员；点击按钮即可操作；AI 关闭时不可用）
+  黑名单: true          # /黑名单 @QQ —— 拉黑（自动解绑并踢出，管理员）；不带 @ 列出清单并附「解除」按钮
+  解除黑名单: true      # /解除黑名单 @QQ —— 解除拉黑（管理员）；不带 @ 列出清单，可点击按钮逐条解除
   签到: true            # /签到 —— 每日签到领奖励
   切换服务器: true      # /切换服务器 —— 多服务器集群：查看并切换当前群操作的服务器（未配置集群时提示单服）
 

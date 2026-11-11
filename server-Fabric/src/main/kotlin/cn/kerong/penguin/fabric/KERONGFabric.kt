@@ -27,7 +27,7 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
 /**
- * KERONGPenguin 模组主类（Fabric 适配器，测试版，MC 1.20.4+）。
+ * KERONGPenguin 模组主类（Fabric 适配器，MC 1.20.4+，1.7.5.1 起入主线发版链）。
  *
  * 与 Spigot / NeoForge 版同源：共用 common-Bot 全部业务
  * （QQ 机器人 / 命令系统 / 绑定 / 签到 / 统计 / 信息卡渲染），
@@ -40,9 +40,9 @@ import java.util.concurrent.TimeUnit
  *   自动降级（卡片隐藏金币称号点券项，签到走记账模式）；
  * - spark 为 Fabric 版 mod 时经同一 SparkBridge 反射取数。
  *
- * 测试版范围说明（相对 NeoForge 版的差异）：
- * - 登录绑定闸门不做配置阶段拦截（退化为加入后踢出兜底路径）；
- * - 钓鱼 / 繁殖动物统计暂缺（Fabric API 无对应事件）。
+ * 1.7.5.1 起随主线同号发版；QQ 绑定不再拦截进服（未绑定玩家正常游玩，
+ * 绑定验证码改由游戏内 /hbkrg qbd 获取，见 FabricCommands）。
+ * 钓鱼 / 繁殖动物统计暂缺（Fabric API 无对应事件，与 NeoForge 版的已知差异）。
  */
 class KERONGFabric : JavaPlugin(), KERONG, DedicatedServerModInitializer {
 
@@ -266,6 +266,10 @@ class KERONGFabric : JavaPlugin(), KERONG, DedicatedServerModInitializer {
 
     override val fullAmount: Boolean
         get() = configManager.fullForwardingByDefault()
+
+    /** /全量 总开关写回（1.7.5 覆盖第三轮起：切换后写回 features.full-amount）。 */
+    override fun setFullAmountEnabled(enabled: Boolean): Boolean =
+        configManager.setFullAmountEnabled(enabled)
 
     override fun commandList(): Map<String, Boolean> = configManager.commandSwitches()
 

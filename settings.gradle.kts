@@ -29,3 +29,12 @@ include(":server-Spigot")
 project(":server-Spigot").projectDir = file("server-Spigot")
 include(":server-NeoForge")
 project(":server-NeoForge").projectDir = file("server-NeoForge")
+
+// server-Fabric（fa 版，1.7.5.1 起移入主线构建）：构建期构件（fabric-api
+// mojmap 重映射 / loader / intermediary 映射等）体积大不入库，默认不在
+// 仓库里的机器上；构件就绪（先跑 scripts/build_fabric_libs.py）时自动进
+// 主线构建，与 Spigot / NeoForge 同一条发版链。
+if (file("server-Fabric/libs/deps.jar").exists() && file("server-Fabric/libs/fabric-api-mojmap.jar").exists()) {
+    include(":server-Fabric")
+    project(":server-Fabric").projectDir = file("server-Fabric")
+}

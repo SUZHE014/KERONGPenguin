@@ -17,7 +17,7 @@ plugins {
 // 2. 以 Spigot 版可分发 JAR 为底座并入第三方依赖字节码（kloping SDK /
 //    fastjson / kotlin-stdlib / snakeyaml 等，剔除底座的 Spigot 插件类与
 //    org.bukkit 真实 API——由本模块自带兼容层提供同名类）。
-version = "1.7.4.1"
+version = "1.7.5.1"
 
 kotlin {
     jvmToolchain(21)

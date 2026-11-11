@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "id": "kerongpenguin",
-  "version": "1.7.4.1",
+  "version": "1.7.5.1",
   "name": "KERONGPenguin",
-  "description": "QQ 机器人模组（测试版）：群聊互通 / 查询命令 / 信息卡渲染 / 绑定与签到 / 服务器状态播报。与 Spigot / NeoForge 版同源。",
+  "description": "QQ 机器人模组：群聊互通 / 查询命令 / 信息卡渲染 / 绑定与签到 / 服务器状态播报。与 Spigot / NeoForge 版同源。",
   "authors": [
     "SUZHE014"
   ],

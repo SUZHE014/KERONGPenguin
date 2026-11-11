@@ -24,6 +24,7 @@
 <p style="color:#7a848e;margin-bottom:20px">发布于 2026-11-10</p>
 <a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.1.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
 <a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.1.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.1.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版</a>
 <div class="dl-info">支持 MC 的版本请详见下方「支持的插件与兼容性 → 支持的服务端核心」</div>
 </div>
 </section>
@@ -41,9 +42,10 @@
 <p style="color:#9aa4ae;margin-bottom:6px"><b>模组版</b>：</p>
 <div class="core-line">
 <span class="core"><i style="background:#f16436"></i><span class="core-name">NeoForge</span><span class="core-note">（MC 1.20.4，1.20.6，1.21.x，Java 21）</span></span>
+<span class="core"><i style="background:#dbb55f"></i><span class="core-name">Fabric</span><span class="core-note">（MC 1.20.4 及以上，Java 21）</span></span>
 </div>
 <p style="font-size:1.05em;font-weight:bold;color:#e8edf2;margin:16px 0 8px">支持的插件（均为可选）</p>
-<p style="color:#9aa4ae;margin-bottom:10px">以下功能需要对应前置插件；未安装时对应统计项自动隐藏，不影响其他功能。</p>
+<p style="color:#9aa4ae;margin-bottom:10px">以下功能需要对应前置插件；未安装时对应统计项自动隐藏，不影响其他功能。模组版（NeoForge / Fabric）没有这些前置插件——金币 / 称号 / 点券自动隐藏、签到走记账模式，其余功能一致。</p>
 <table>
 <tr><th>功能</th><th>前置插件</th><th>说明</th></tr>
 <tr><td>金币</td><td><a href="https://www.spigotmc.org/resources/vault.34315/">Vault</a> + 任意经济插件</td><td>经 Vault 经济服务直连读取</td></tr>
@@ -56,10 +58,12 @@
 <h2>历史版本</h2>
 <table>
 <tr><th>版本</th><th>发布日期</th><th>下载</th></tr>
+<tr><td>Fabric 1.7.5.1</td><td>2026-11-11</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.1.jar">下载</a></td></tr>
 <tr><td>NeoForge 1.7.5.1</td><td>2026-11-10</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.1.jar">下载</a></td></tr>
 <tr><td>Spigot 1.7.5.1</td><td>2026-11-10</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.1.jar">下载</a></td></tr>
 <tr><td>NeoForge 1.7.5</td><td>2026-11-10</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.jar">下载</a></td></tr>
 <tr><td>Spigot 1.7.5</td><td>2026-11-10</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.jar">下载</a></td></tr>
+<tr><td>Fabric 1.7.4.1</td><td>2026-11-09</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.4.1.jar">下载</a></td></tr>
 <tr><td>NeoForge 1.7.4.1</td><td>2026-11-09</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.4.1.jar">下载</a></td></tr>
 <tr><td>Spigot 1.7.4.1</td><td>2026-11-09</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.4.1.jar">下载</a></td></tr>
 <tr><td>NeoForge 1.7.4</td><td>2026-11-08</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.4.jar">下载</a></td></tr>
@@ -86,7 +90,9 @@
 <li><b>修复：老安装的消息模板没有随版本更新</b>——模板升级比对放宽：空白差异容忍 + 默认特征识别，历史任何一版默认模板都会自动刷新到最新口径（自己改过的模板依然不动）。</li>
 <li><b>修复：偶发 QQ 提示「第三方连接失败」</b>——官方要求按钮点击后 3 秒内回应，旧实现连接超时设 4 秒且失败不重试，网络稍一抖动就超出窗口；现收紧到 1.5 秒并在网络抖动时快速重试一次，两次机会都落在 3 秒窗口内。</li>
 <li><b>修复：/全量 切换后 QQ 快捷面板的全量按钮没有立即出现 / 消失</b>——现在切换后自动按新配置重同步全部配置群的面板，无需 /hbkrg reload 或重启。</li>
-<li>版本号 1.7.5.1（同日小版本）；配置版本保持 43，升级无需改配置。</li>
+<li><b>修复：老安装的 /菜单 仍显示旧帮助文段</b>（覆盖版）——菜单文案是机器人自身界面，改为系统模板强制收敛：任何历史形态的 menu.md 启动时自动重置为当前口径（标题 + 版本行），旧内容留 .bak 备份；想自定义菜单文案请把配置里 messages.menu 改成自己的文件名。</li>
+<li><b>Fabric 版升入主线发版</b>（1.7.4.1 测试版 → 1.7.5.1）——功能与主线完全对齐（/菜单 按钮菜单、被动回复轮转、按钮管理员权限、/全量 总开关、更新检查等全部随行）；<b>QQ 绑定不再拦截进服</b>：未绑定玩家正常游玩，游戏内发送 /hbkrg qbd 获取验证码、到 QQ 群发 /绑定 验证码 完成；/hbkrg 其余子命令仍需 OP（qbd 对所有玩家开放）。</li>
+<li>版本号 1.7.5.1（同日小版本，覆盖版同号重发）；配置版本保持 43，升级无需改配置。</li>
 </ul></div>
 <div class="version"><h3>v1.7.5</h3><span class="date">2026-11-10</span><ul>
 <li><b>新增：/菜单 按钮菜单</b>——替换原 /帮助 命令列表。发送 /菜单 输出全部可用命令的<b>按钮</b>（一行一个，超过一页点「下一页」翻页）：<b>查在线 / 查性能 / 玩家名片 / 在线排行榜 / 签到等无参数命令点一下直接执行</b>（机器人收到点击后立即执行并回复结果，无需再手动发送）；需要补参数的命令（绑定 / 发信息 / 执行命令 / 执行 / 管理员执行）点击后复制到输入框，补全内容后发送。按钮可见性与快捷面板同一套开关，关闭的功能按钮同步消失。</li>
@@ -167,16 +173,18 @@
 <div class="dl-info">旧 config.yml 可直接沿用；v0.5 起零环境可装（首次自动下载运行时与模型，看 [AI部署] 日志）</div>
 </div>
 <div class="dl-box">
-<p style="font-size:1.25em;font-weight:bold;color:#e8edf2;margin-bottom:5px">Fabric 测试版 1.7.4.1（MC 1.20.4，Java 21）</p>
+<p style="font-size:1.25em;font-weight:bold;color:#e8edf2;margin-bottom:5px">Fabric 模组版 1.7.5.1（MC 1.20.4，Java 21）</p>
 <p style="color:#7a848e;margin-bottom:16px">KERONGPenguin 的 Fabric 适配版——与 Spigot / NeoForge 版同源同功能：群聊互通 / 查询命令 / 信息卡渲染 / 绑定签到 / 服务器状态播报</p>
 <ul style="text-align:left;max-width:640px;margin:0 auto 18px;color:#aab3bc;line-height:1.9">
-<li><b>测试版定位</b>：功能与主线 1.7.4.1 对齐，但未经长期实测；遇到问题请换回 Spigot / NeoForge 版并反馈。</li>
+<li><b>主线发版</b>：1.7.5.1 起随主线同步升版（此前 1.7.4.1 为测试版定位，升级后功能与主线 1.7.5.1 完全对齐）。</li>
 <li><b>主系已测试版本</b>：1.20.4，1.21，1.21.6。</li>
 <li><b>支持版本</b>：1.20.4 及以上（fabric.mod.json 声明 ≥1.20.4，更高版本未实测）；Fabric Loader <b>0.15.0 及以上</b>（构建验证基于 0.16.14）；需另装 <b>Fabric API</b>（与所用 MC 版本对应即可）；Java 21。</li>
+<li><b>QQ 绑定不拦截进服</b>：未绑定玩家正常游玩，绑定完全自愿——游戏内发送 <code>/hbkrg qbd</code> 获取验证码，再到 QQ 群发送 <code>/绑定 验证码</code> 完成。</li>
+<li><b>更新检查</b>：与插件版一致（启动后自动检查官网新版本，update-check.enabled 可关闭）。</li>
 <li><b>安装</b>：与 Fabric API 一起放进 mods/ 即可；配置文件在 kerongpenguin/ 目录（首次启动生成），与插件版同结构可参考教程。</li>
-<li><b>测试版差异</b>：登录绑定不做配置阶段拦截（未绑定玩家加入后踢出）；钓鱼 / 繁殖动物统计暂缺。</li>
+<li><b>已知差异</b>：钓鱼 / 繁殖动物统计暂缺（Fabric API 无对应事件）。</li>
 </ul>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.4.1.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ 下载 Fabric 测试版</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.1.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ 下载 Fabric 模组版</a>
 </div>
 </section>
 <footer>
