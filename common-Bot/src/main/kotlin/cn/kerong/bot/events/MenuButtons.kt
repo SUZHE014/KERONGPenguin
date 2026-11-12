@@ -29,11 +29,14 @@ import io.github.kloping.qqbot.impl.message.v2.BaseGroupMessageEvent
  *   **指令按钮**（actionType=2）：点击把命令复制进输入栏，用户补全参数
  *   后手动发送——这类命令点回调只能得到一句用法提示，不如直接填进输入框。
  *
- * ## 布局与分页
+ * ## 布局与分页（1.7.5.4 排版改版）
  *
- * 每行一个按钮（键盘上限 5 行）：前 4 行为命令按钮，末行为翻页按钮
- * （「← 上一页」「下一页 →」按需出现）；全部命令超过一页时点翻页按钮
- * 发送下一页。按钮可见性与 QQ 快捷面板同一套功能开关。
+ * 需要独占一行的按钮（文字超过 3 字，如「玩家名片」「在线排行榜」
+ * 「切换服务器」「重新绑定」「解除黑名单」「执行命令」「管理员执行」）
+ * 排在菜单最上面，每行一个；文字 ≤ 3 字的按钮（含「AI管理」按 3 字
+ * 计）一行放两个。每页 4 行命令 + 末行翻页按钮（「← 上一页」「下一页
+ * →」按需出现）；平台键盘硬限制 5 行 × 每行 5 按钮，全部命令分多页
+ * 展示。按钮可见性与 QQ 快捷面板同一套功能开关。
  *
  * ## 回调数据
  *
@@ -58,8 +61,14 @@ object MenuButtons {
     /** 翻页按钮回调前缀。 */
     const val PAGE_PREFIX = "krg:menu:page:"
 
-    /** 每页命令按钮数（5 行键盘：4 行命令 + 1 行翻页）。 */
-    private const val COMMANDS_PER_PAGE = 4
+    /** 每页命令行数（5 行键盘：4 行命令 + 1 行翻页）。 */
+    private const val COMMAND_ROWS_PER_PAGE = 4
+
+    /** 一行两个短按钮的宽度门槛：文字不超过 3 字（含）的按钮一行放两个。 */
+    private const val SHORT_BUTTON_LABEL_CHARS = 3
+
+    /** 独占一行的「长」按钮文字上限之外特例：这些按短按钮计（用户口径「AI管理」按 3 字）。 */
+    private val SHORT_LABEL_EXCEPTIONS = setOf("AI管理")
 
     /**
      * 需要用户补参数的命令：菜单里用**指令按钮**（点击复制进输入栏），
@@ -83,8 +92,9 @@ object MenuButtons {
         } catch (_: Throwable) {
             ""
         })
-        val keyboard = pageKeyboard(commands, 0, gate)
-        val message = pageText(plugin, 0, pageCount(commands.size))
+        val rows = layoutRows(commands, gate)
+        val keyboard = pageKeyboard(rows, 0)
+        val message = pageText(plugin, 0, pageCount(rows.size))
         val user = try {
             val contact = event.sender
             contact?.openid ?: contact?.id ?: ""
@@ -149,12 +159,13 @@ object MenuButtons {
         val plugin = cn.kerong.bot.provider.BotShared.instance ?: return
         val commands = visibleCommands(plugin)
         if (commands.isEmpty()) return
-        val pages = pageCount(commands.size)
+        val rows = layoutRows(commands, adminGateFor(plugin, groupOpenId))
+        val pages = pageCount(rows.size)
         val index = page.coerceIn(0, pages - 1)
         QClient.sendMarkdownToGroup(
             groupOpenId,
             pageText(plugin, index, pages),
-            pageKeyboard(commands, index, adminGateFor(plugin, groupOpenId)),
+            pageKeyboard(rows, index),
         )
     }
 
@@ -182,6 +193,17 @@ object MenuButtons {
      * msg_seq 经 [ReplySeqGuard] 分配新基数，与原消息已用的序号不重叠
      * （防平台 40054005 消息去重拒收）。
      *
+     * ## 管理员判定（1.7.5.4：按钮判定收敛到下发处 + 验身标记）
+
+     * 按钮交互的所有管理员命令只在按钮下发处（平台侧）判定，与菜单
+     * 一致——点击到达的 krg:acmd: 按钮即代表 QQ 平台已实时验身（点击
+     * 者此刻是群主 / 群管理员，撤权立即点不动）；命令链路凭
+     * [cn.kerong.bot.events.commands.CommandSupport.BUTTON_ADMIN_VERIFIED]
+     * 验身标记直接放行（QQ 官方消息 payload 无此字段，真实消息无法
+     * 伪造），不再因合成事件缺省没有群角色字段而误报「无权限」。
+     * MANUAL（名单）模式下管理类按钮改指令按钮（actionType=2 填输入
+     * 栏），不走本回调路径——授权交给文本命令路径按名单校验。
+     *
      * ## 管理员判定（1.7.5.2 覆盖：平台门禁，零接口零缓存）
      *
      * 按钮回调（INTERACTION_CREATE）只带 group_openid + group_member_openid，
@@ -194,7 +216,8 @@ object MenuButtons {
      *    QQ 平台在点击时实时校验点击者是否现任群主 / 群管理员：撤掉
      *    管理员立即点不动，回调根本不会到达机器人；点击到达即代表
      *    平台已验身（[ACMD_PREFIX] 回调携带这一事实），分发时把
-     *    member_role=admin 写进合成事件，与手打命令判定完全一致；
+     *    member_role=admin 与 krg_btn_admin 验身标记写进合成事件，与
+     *    手打命令判定完全一致；
      * 2. **插件门禁（兑底）**——命令分发链路内的 requireAdmin 原样生效：
      *    admin.mode=config 下按钮人人可点，由 [CommandSupport.isAdmin]
      *    按 admin.openids 名单实时判定（名单增删立即生效，无缓存）；
@@ -205,7 +228,7 @@ object MenuButtons {
      * 点不动管理按钮（平台权限字段只认群角色，无法表达「群管理员 ∪
      * 名单」并集）——手打命令不受影响，补救办法是给其群管理员身份。
      */
-    private fun dispatchAsClicker(
+    fun dispatchAsClicker(
         groupOpenId: String,
         userOpenId: String,
         commandText: String,
@@ -232,6 +255,11 @@ object MenuButtons {
                     // 已实时验身（点击者此刻是群主/群管理员，撤权立即点
                     // 不动）；未门禁按钮不写角色，管理员判定按名单路径走
                     if (platformVerifiedAdmin) put("member_role", "admin")
+                    // 1.7.5.4：按钮验身标记（isAdmin 凭此直接放行；QQ 官方
+                    // 消息 payload 无此字段，真实手打消息不可能携带）
+                    if (platformVerifiedAdmin) {
+                        put(cn.kerong.bot.events.commands.CommandSupport.BUTTON_ADMIN_VERIFIED, "1")
+                    }
                 })
             }
             val synthetic = BaseGroupMessageEvent(raw, metadata, bot)
@@ -327,57 +355,94 @@ object MenuButtons {
         true
     }
 
-    /** 总页数。 */
-    private fun pageCount(commandCount: Int): Int =
-        if (commandCount == 0) 0 else (commandCount + COMMANDS_PER_PAGE - 1) / COMMANDS_PER_PAGE
+    /** 总页数（按行计：1.7.5.4 排版改版后每页 4 行命令行，独占行 1 命令 / 短行 2 命令）。 */
+    private fun pageCount(rowCount: Int): Int =
+        if (rowCount == 0) 0 else (rowCount + COMMAND_ROWS_PER_PAGE - 1) / COMMAND_ROWS_PER_PAGE
 
     /**
-     * 构建第 [pageIndex]（0 起）页的键盘：命令按钮每行一个；多页时末行
-     * 放翻页按钮（首页只有「下一页」、末页只有「上一页」、中间页两者都有）。
+     * 全部命令按新排版行化：独占行按钮（长文字）在前、短按钮两两成行
+     * 在后（组内各自保持 [visibleCommands] 原相对顺序）。
      *
-     * 按钮类型按命令分流：需补参数的命令（[INPUT_COMMANDS]）用指令按钮
-     * （actionType=2，点击复制进输入栏），其余用回调按钮（actionType=1，
-     * 点击即执行）。
+     * 按钮文字（含「AI管理」按 3 字计）超过 3 字的独占一行；其余一行两个。
+     */
+    private fun layoutRows(
+        commands: List<Pair<String, String>>,
+        adminGate: Boolean,
+    ): List<List<Keyboards.Button>> {
+        fun isShort(label: String): Boolean =
+            label in SHORT_LABEL_EXCEPTIONS || label.length <= SHORT_BUTTON_LABEL_CHARS
+
+        val rows = mutableListOf<List<Keyboards.Button>>()
+        // 需要独占一行的按钮放到菜单最上面（1.7.5.4 用户口径）
+        for (entry in commands.filterNot { (label, _) -> isShort(label) }) {
+            rows.add(listOf(buttonFor(entry, adminGate)))
+        }
+        // 短按钮一行两个（末尾奇数个时最后一个单独占一行）
+        val shorts = commands.filter { (label, _) -> isShort(label) }
+        shorts.chunked(2).forEach { pair ->
+            rows.add(pair.map { buttonFor(it, adminGate) })
+        }
+        return rows
+    }
+
+    /** 单个命令按钮构造（门禁 / actionType 按 1.7.5.4 口径分流）。 */
+    private fun buttonFor(entry: Pair<String, String>, adminGate: Boolean): Keyboards.Button {
+        val isInputCommand = entry.first in INPUT_COMMANDS
+        // 管理类命令且本群开启平台门禁（qq/both）：按钮仅群主/群管理员可点
+        val isAdminGated = adminGate && CommandAdminRegistry.isAdminCommand(entry.first)
+        // MANUAL（名单模式）下的管理类命令：指令按钮填输入栏，命令文本无前缀，
+        // 用户手动发送后走文本命令路径按名单校验（1.7.5.4 任务 B 口径）
+        val isManualAdminCommand = !adminGate && !isInputCommand &&
+                CommandAdminRegistry.isAdminCommand(entry.first)
+        return Keyboards.Button(
+            label = entry.first,
+            visitedLabel = entry.first,
+            actionData = when {
+                isInputCommand -> entry.second
+                isManualAdminCommand -> entry.second
+                isAdminGated -> "$ACMD_PREFIX${entry.second}"
+                else -> "$ACTION_PREFIX${entry.second}"
+            },
+            style = 1,
+            // 指令按钮（2）= 点击复制进输入栏；回调按钮（1）= 点击即执行；
+            // MANUAL（名单模式）下管理类命令同样走指令按钮（无平台门禁可用，
+            // 授权交给文本命令路径按名单校验）
+            actionType = if (isInputCommand || isManualAdminCommand) 2 else 1,
+            // 权限：2 = 所有人；1 = 仅群主/群管理员（平台实时校验）
+            permissionType = if (isAdminGated) 1 else 2,
+        )
+    }
+
+    /**
+     * 构建第 [pageIndex]（0 起）页的键盘：命令行取自 [layoutRows] 的行化
+     * 结果（独占行长按钮置顶 + 短按钮一行两个），每页 [COMMAND_ROWS_PER_PAGE]
+     * 行；多页时末行放翻页按钮（首页只有「下一页」、末页只有「上一页」、
+     * 中间页两者都有）。
      *
-     * ## 管理类按钮门禁（1.7.5.2 覆盖，[adminGate] 开启时）
+     * ## 管理类按钮门禁（1.7.5.4 收敛口径）
      *
-     * [CommandAdminRegistry] 标记的管理类命令按钮统一加**平台权限门禁**
-     * （permission.type=1，仅群主/群管理员可点，QQ 点击时实时校验）；
-     * 回调按钮的回调数据改用 [ACMD_PREFIX]（点击到达 = 平台已验身，
-     * 分发时直接写 member_role=admin，零接口零缓存）。指令型按钮（执行
-     * 命令 / 管理员执行，点击仅复制进输入栏）同样加权限门禁但回调数据
-     * 保持原样——命令最终由用户手动发送，走正常消息路径自带真实角色。
+     * 按钮交互的管理员命令只在**按钮下发处（平台侧）**判定，与菜单一致：
+     * - qq / both（[adminGate] 开启）：[CommandAdminRegistry] 标记的管理类
+     *   命令按钮统一加**平台权限门禁**（permission.type=1，仅群主/群管理
+     *   员可点，QQ 点击时实时校验）；回调按钮的回调数据改用 [ACMD_PREFIX]
+     *   （点击到达 = 平台已验身，分发时写 [cn.kerong.bot.events.commands.CommandSupport.BUTTON_ADMIN_VERIFIED]
+     *   验身标记，零接口零缓存）；
+     * - MANUAL（名单模式）：管理类命令按钮改**指令按钮**（actionType=2，
+     *   点击把命令复制进输入栏），不走平台门禁 / 回调，授权交给文本命令
+     *   路径按名单校验（requireAdmin 实时判定 admin.openids，名单增删
+     *   立即生效）；
+     * - 需补参数的命令（[INPUT_COMMANDS]，含执行命令 / 管理员执行）本就
+     *   是指令按钮：点击复制进输入栏，命令最终由用户手动发送，走正常
+     *   消息路径自带真实角色。
      */
     private fun pageKeyboard(
-        commands: List<Pair<String, String>>,
+        rows: List<List<Keyboards.Button>>,
         pageIndex: Int,
-        adminGate: Boolean,
     ): io.github.kloping.qqbot.entities.ex.Keyboard {
-        val pages = pageCount(commands.size)
-        val from = pageIndex * COMMANDS_PER_PAGE
-        val pageCommands = commands.subList(from, minOf(from + COMMANDS_PER_PAGE, commands.size))
-        val rows = mutableListOf<List<Keyboards.Button>>()
-        for ((_, entry) in pageCommands.withIndex()) {
-            val isInputCommand = entry.first in INPUT_COMMANDS
-            // 管理类命令且本群开启平台门禁：按钮仅群主/群管理员可点
-            val isAdminGated = adminGate && CommandAdminRegistry.isAdminCommand(entry.first)
-            rows.add(listOf(
-                Keyboards.Button(
-                    label = entry.first,
-                    visitedLabel = entry.first,
-                    actionData = when {
-                        isInputCommand -> entry.second
-                        isAdminGated -> "$ACMD_PREFIX${entry.second}"
-                        else -> "$ACTION_PREFIX${entry.second}"
-                    },
-                    style = 1,
-                    // 指令按钮（2）= 点击复制进输入栏；回调按钮（1）= 点击即执行
-                    actionType = if (isInputCommand) 2 else 1,
-                    // 权限：2 = 所有人；1 = 仅群主/群管理员（平台实时校验）
-                    permissionType = if (isAdminGated) 1 else 2,
-                )
-            ))
-        }
+        val pages = pageCount(rows.size)
+        val from = pageIndex * COMMAND_ROWS_PER_PAGE
+        val pageRows = mutableListOf<List<Keyboards.Button>>()
+        pageRows.addAll(rows.subList(from, minOf(from + COMMAND_ROWS_PER_PAGE, rows.size)))
         if (pages > 1) {
             val nav = mutableListOf<Keyboards.Button>()
             if (pageIndex > 0) {
@@ -396,9 +461,9 @@ object MenuButtons {
                     style = 1,
                 ))
             }
-            if (nav.isNotEmpty()) rows.add(nav)
+            if (nav.isNotEmpty()) pageRows.add(nav)
         }
-        return Keyboards.buildRows(rows)
+        return Keyboards.buildRows(pageRows)
     }
 
     /** 第 [pageIndex]（0 起）页的文案：menu 模板（{page}/{pages}/{version}）。 */

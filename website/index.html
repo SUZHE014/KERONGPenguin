@@ -20,12 +20,12 @@
 <section>
 <h2>下载</h2>
 <div class="dl-box">
-<p style="font-size:1.3em;font-weight:bold;color:#e8edf2;margin-bottom:5px">版本 1.7.5.3</p>
+<p style="font-size:1.3em;font-weight:bold;color:#e8edf2;margin-bottom:5px">版本 1.7.5.4</p>
 <p style="color:#7a848e;margin-bottom:20px">发布于 2026-11-12</p>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.3.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.3.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.3.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版</a>
-<p style="color:#7a848e;font-size:0.92em;margin:-4px auto 14px;max-width:440px">Fabric 版与主线同号同步发布（含 1.7.5.2 覆盖版按钮门禁与本版面板联动）</p>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.4.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.4.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.4.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版</a>
+<p style="color:#7a848e;font-size:0.92em;margin:-4px auto 14px;max-width:440px">Fabric 版与主线同号同步发布（含按钮门禁收敛与本版菜单排版改版）</p>
 <div class="dl-info">支持 MC 的版本请详见下方「支持的插件与兼容性 → 支持的服务端核心」</div>
 </div>
 </section>
@@ -59,6 +59,9 @@
 <h2>历史版本</h2>
 <table>
 <tr><th>版本</th><th>发布日期</th><th>下载</th></tr>
+<tr><td>NeoForge 1.7.5.4</td><td>2026-11-12</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.4.jar">下载</a></td></tr>
+<tr><td>Spigot 1.7.5.4</td><td>2026-11-12</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.4.jar">下载</a></td></tr>
+<tr><td>Fabric 1.7.5.4</td><td>2026-11-12</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.4.jar">下载</a></td></tr>
 <tr><td>NeoForge 1.7.5.3</td><td>2026-11-12</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.3.jar">下载</a></td></tr>
 <tr><td>Spigot 1.7.5.3</td><td>2026-11-12</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.3.jar">下载</a></td></tr>
 <tr><td>Fabric 1.7.5.3</td><td>2026-11-12</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.3.jar">下载</a></td></tr>
@@ -87,6 +90,13 @@
 <section>
 <h2>更新日志</h2>
 <div class="changelog">
+<div class="version"><h3>v1.7.5.4</h3><span class="date">2026-11-12</span><ul>
+<li><b>修复：按钮管理员判定收敛</b>——所有管理类按钮的权限只在<b>按钮下发处（平台侧）</b>判定，与菜单一致：qq/both 下平台门禁按钮（krg:acmd:）点击到达即 QQ 已实时验身（撤权立即点不动），命令链路凭验身标记（krg_btn_admin，QQ 官方消息无此字段、无法伪造）直接放行。修复真管理员从主菜单点进 AI 管理子面板后，点「开/关/清除」按钮被误报「无权限」——该三按钮此前是无门禁回调，现补上同款平台门禁；黑名单清单「解除」按钮保持发起者校验（2 分钟窗口内本人才能点）。</li>
+<li><b>名单模式按钮改填输入栏</b>——群生效的管理员判定为「只按名单」（admin.mode=config，含群级覆盖实际生效为名单模式）时，管理类按钮改为指令按钮：点击把命令填入输入框，手动发送后走正常命令路径按名单实时校验（名单增删立即生效）；qq/both 模式维持平台门禁 + 验身标记。</li>
+<li><b>新增：多服「全局」按钮需管理员</b>——服务器选择里的「全局」成员按钮复用同一门禁口径（qq/both 平台门禁回调 / 名单模式填输入栏）；/切换服务器 支持带服务器名直接切换（「全局」目标需管理员）；旧版残留的无门禁回调点击时转发合成命令按当前模式重判，不因旧按钮形态放行。</li>
+<li><b>菜单排版改版</b>——文字超过 3 字的按钮（玩家名片 / 在线排行榜 / 切换服务器 / 重新绑定 / 解除黑名单 / 执行命令 / 管理员执行）独占一行并放到菜单最上面；不超过 3 字的按钮（含「AI管理」按 3 字计）一行放两个；版本号移到菜单最后并改为小字（非粗体）；每页 4 行命令 + 1 行翻页（平台键盘 5 行硬限制内）；菜单模板幂等收敛（旧默认自动升级，自定义不动）。</li>
+<li>版本号 1.7.5.4；配置版本 45 保持（无新键，升级无需改配置）。Fabric 版 1.7.5.4 与主线同步发布。</li>
+</ul></div>
 <div class="version"><h3>v1.7.5.3</h3><span class="date">2026-11-12</span><ul>
 <li><b>新增：QQ 快捷面板管理员联动</b>——1.7.5.2 覆盖版把 /菜单 管理按钮改为平台门禁后，QQ 快捷指令面板（输入 / 或 @机器人唤起）里的管理类指令仍全员可见可点。现面板同步时自动对齐：<b>admin.mode=qq/both 时（默认 qq），管理类指令条目（执行命令 / 管理员执行 / 全量 / AI管理 / 黑名单 / 解除黑名单）自动设为仅群主/群管理员可见可点</b>（面板 only_admin，QQ 端按当前群身份实时校验，撤掉管理员立即生效），与 /菜单 管理按钮同一口径；管理命令清单由命令注册表自动标记，新增管理命令无需手动配置。独立配置 admin.panel-admin-linkage（默认开）：关闭或 admin.mode=config 时面板全员可见，由命令链路按 admin.openids 名单实时判定。改动配置后 /hbkrg reload 随面板重同步立即生效（启动 / reload / 全量切换三时机同步）。</li>
 <li>版本号 1.7.5.3；配置版本 44 → 45（新键 admin.panel-admin-linkage 自动写入，升级无需手动改配置）。Fabric 版 1.7.5.3 与主线同步发布。同时下架 1.7.5.1（其按钮管理员判定方案已被 1.7.5.2 覆盖版取代）。</li>
@@ -179,7 +189,7 @@
 <div class="dl-info">旧 config.yml 可直接沿用；v0.5 起零环境可装（首次自动下载运行时与模型，看 [AI部署] 日志）</div>
 </div>
 <div class="dl-box">
-<p style="font-size:1.25em;font-weight:bold;color:#e8edf2;margin-bottom:5px">Fabric 模组版 1.7.5.3（MC 1.20.4，Java 21）</p>
+<p style="font-size:1.25em;font-weight:bold;color:#e8edf2;margin-bottom:5px">Fabric 模组版 1.7.5.4（MC 1.20.4，Java 21）</p>
 <p style="color:#7a848e;margin-bottom:16px">KERONGPenguin 的 Fabric 适配版——与 Spigot / NeoForge 版同源同功能：群聊互通 / 查询命令 / 信息卡渲染 / 绑定签到 / 服务器状态播报</p>
 <ul style="text-align:left;max-width:640px;margin:0 auto 18px;color:#aab3bc;line-height:1.9">
 <li><b>主线发版</b>：随主线同号同步升版（与当前主线 1.7.5.3 完全对齐：/菜单 按钮菜单、被动回复轮转、按钮管理员平台门禁、快捷面板管理员联动、/全量 总开关、更新检查等）。</li>
@@ -190,7 +200,7 @@
 <li><b>安装</b>：与 Fabric API 一起放进 mods/ 即可；配置文件在 kerongpenguin/ 目录（首次启动生成），与插件版同结构可参考教程。</li>
 <li><b>已知差异</b>：钓鱼 / 繁殖动物统计暂缺（Fabric API 无对应事件）。</li>
 </ul>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.3.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ 下载 Fabric 模组版</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.4.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ 下载 Fabric 模组版</a>
 </div>
 </section>
 <footer>
@@ -198,4 +208,5 @@
 </footer>
 </body>
 </html>
+
 

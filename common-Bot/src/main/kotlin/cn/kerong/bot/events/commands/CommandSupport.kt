@@ -35,8 +35,17 @@ abstract class CommandSupport : BaseCommand() {
  * OpenId 反查等「同一命令按身份展示不同内容」的场景使用
      * （无权限时不应拒绝执行，只是隐藏敏感字段，因此不能复用会回复提示的
      * [requireAdmin]）。
+     *
+ * 按钮门禁已验身优先（1.7.5.4）：平台门禁按钮（krg:acmd:）的回调
+     * 经 [cn.kerong.bot.events.MenuButtons] 以点击者身份合成事件执行
+     * 命令，合成事件的 author 里带有 [BUTTON_ADMIN_VERIFIED] 标记
+     * （QQ 官方消息 payload 无此字段，真实手打消息不可能携带）——
+     * 交互链路里的管理员命令判定只在按钮下发处（平台侧）做一次，
+     * 到达命令链路后凭此标记直接放行，不再依赖合成事件缺省没有的
+     * 群角色字段重判（修复真管理员点按钮被误报「无权限」）。
      */
     protected fun isAdmin(plugin: KERONG, event: GroupMessageEvent): Boolean {
+        if (isButtonVerifiedAdmin(event)) return true
         val groupId = groupId(event)
         val userId = userId(event)
         val qqAdmin = memberRole(event) in setOf("owner", "admin")
@@ -68,6 +77,17 @@ abstract class CommandSupport : BaseCommand() {
         meta?.getString("member_role")?.lowercase(Locale.ROOT) ?: ""
     } catch (_: Exception) {
         ""
+    }
+
+    /**
+     * 按钮平台门禁已验管理员：合成事件 author 里带 [BUTTON_ADMIN_VERIFIED]
+     * 标记（仅 krg:acmd: 回调到达时由 [cn.kerong.bot.events.MenuButtons]
+     * 写入——QQ 官方真实消息 payload 无此字段，无法伪造）。
+     */
+    private fun isButtonVerifiedAdmin(event: GroupMessageEvent): Boolean = try {
+        "1" == event.sender?.meta?.getString(BUTTON_ADMIN_VERIFIED)
+    } catch (_: Throwable) {
+        false
     }
 
     /**
@@ -123,5 +143,14 @@ abstract class CommandSupport : BaseCommand() {
          * 限制，超长回复被平台拒绝导致「执行完没有回复」，超限截断。
          */
         internal const val COMMAND_OUTPUT_MAX_CHARS = 1200
+
+        /**
+         * 按钮平台门禁已验管理员标记（1.7.5.4）：krg:acmd: 回调按钮
+         * 点击到达（QQ 平台已实时校验点击者是现任群主 / 群管理员）后，
+         * [cn.kerong.bot.events.MenuButtons] 以点击者身份构造合成事件时
+         * 写进 author 的验身凭证。QQ 官方消息 payload 无此字段，真实
+         * 手打消息不可能携带——只能由本插件在平台门禁通过后写入。
+         */
+        internal const val BUTTON_ADMIN_VERIFIED = "krg_btn_admin"
     }
 }

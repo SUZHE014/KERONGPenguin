@@ -185,11 +185,14 @@ object MessageTemplates {
         ), listOf("【OpenID 反查】"), "【OpenID 反查】\n{openidPart}群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}"),
  // menu 回到升级表（1.7.5.2：系统模板强制重置机制移除）：
         // 两版历史默认逐版比对 + 「### 指令菜单」特征兕底（收敛表未收录的
-        // 中间态默认、历次部署残留形态），自定义内容不动
+        // 中间态默认、历次部署残留形态），自定义内容不动。
+        // 1.7.5.4 排版改版：版本号从标题下方的粗体行移到模板末尾、非粗体
+        // 小字（QQ Markdown 子集无字号标记，用普通文本行实现「字体放小」）
         "menu" to UpgradeSpec(listOf(
             "### 指令菜单\n\n点击下方按钮即可执行；带参数的指令（绑定 / 发信息 / 执行命令等）点击后复制到输入框，补全内容再发送。\n\n---\n**当前插件版本：v{version}**",
             "### 指令菜单（{page}/{pages}）",
-        ), listOf("### 指令菜单"), "### 指令菜单（{page}/{pages}）\n\n**当前插件版本：v{version}**"),
+            "### 指令菜单（{page}/{pages}）\n\n**当前插件版本：v{version}**",
+        ), listOf("### 指令菜单"), "### 指令菜单（{page}/{pages}）\n\n---\nv{version}"),
  // AI 管理合并：旧命令名版本与旧提示句版本收敛为纯状态行（操作都在按钮里）
         "ai-context-usage" to UpgradeSpec(listOf(
             "用法: /AI对话上下文 开|关\n当前状态: {status}",

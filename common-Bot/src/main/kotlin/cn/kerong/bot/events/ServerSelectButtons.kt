@@ -26,11 +26,28 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * 切换完成的反馈不走额外群消息（避免占用每月主动消息配额）：
  * response(0) toast + 按钮置灰文案（visitedLabel「已切换」）即为确认。
+ *
+ * ## 「全局」按钮门禁（1.7.5.4）
+ *
+ * 集群成员名等于 [GLOBAL_MEMBER]（「全局」）的按钮是特权操作，复用
+ * 菜单按钮的门禁口径：
+ * - qq/both 下平台门禁（permission.type=1 + krg:acmd:/切换服务器 全局
+ *   回调）：点击到达即平台已验管理员，命令链路凭
+ *   [cn.kerong.bot.events.commands.CommandSupport.BUTTON_ADMIN_VERIFIED]
+ *   验身标记直接放行；
+ * - MANUAL 名单模式下改指令按钮（actionType=2 点击把 /切换服务器 全局
+ *   填入输入栏）：授权交给文本命令路径按名单校验；
+ * - 旧版残留的无门禁回调按钮（krg:cluster:全局）点击时转发合成命令
+ *   /切换服务器 全局（不带验身标记），由命令链路按**当前**模式重新
+ *   判定（不因旧按钮形态放行）。
  */
 object ServerSelectButtons {
 
     /** 按钮回调数据前缀（互动事件据此识别本流程）。 */
     const val ACTION_PREFIX = "krg:cluster:"
+
+    /** 特权成员名：选中「全局」的按钮需要管理员（1.7.5.4 用户口径）。 */
+    const val GLOBAL_MEMBER = "全局"
 
     /** 选择按钮的弹出节流（毫秒）：同群 60 秒内不重复弹（等待用户点击）。 */
     private const val PROMPT_THROTTLE_MILLIS = 60_000L
@@ -57,14 +74,42 @@ object ServerSelectButtons {
         if (now - last < PROMPT_THROTTLE_MILLIS) return false
         val members = ClusterState.serverMembers
         val current = ClusterState.selectedServer(group)
+        // 本群管理员判定模式（群级覆盖后实际生效）：全局按钮门禁口径与菜单一致
+        val plugin = cn.kerong.bot.provider.BotShared.instance
+        val adminGate = plugin != null &&
+            cn.kerong.bot.events.MenuButtons.adminGateFor(plugin, group)
         val keyboard = Keyboards.build(
             members.map { name ->
-                Keyboards.Button(
-                    label = if (name == current) "$name（当前）" else name,
-                    visitedLabel = if (name == current) "正在使用 $name" else "已切换到 $name",
-                    actionData = "$ACTION_PREFIX$name",
-                    style = if (name == current) 0 else 1,
-                )
+                if (name == GLOBAL_MEMBER && adminGate) {
+                    // 「全局」特权按钮（1.7.5.4）qq/both：平台门禁回调——点击到达即
+                    // QQ 已实时验身（仅群主/群管理员可点），命令链路凭验身标记放行
+                    Keyboards.Button(
+                        label = if (name == current) "$name（当前）" else name,
+                        visitedLabel = if (name == current) "正在使用 $name" else "已切换到 $name",
+                        actionData = "${cn.kerong.bot.events.MenuButtons.ACMD_PREFIX}/切换服务器 $name",
+                        style = if (name == current) 0 else 1,
+                        actionType = 1,
+                        permissionType = 1,
+                    )
+                } else if (name == GLOBAL_MEMBER) {
+                    // 「全局」特权按钮 MANUAL 名单模式：指令按钮填入 /切换服务器 全局，
+                    // 授权交给文本命令路径按名单校验
+                    Keyboards.Button(
+                        label = if (name == current) "$name（当前）" else name,
+                        visitedLabel = if (name == current) "正在使用 $name" else "已切换到 $name",
+                        actionData = "/切换服务器 $name",
+                        style = if (name == current) 0 else 1,
+                        actionType = 2,
+                        permissionType = 2,
+                    )
+                } else {
+                    Keyboards.Button(
+                        label = if (name == current) "$name（当前）" else name,
+                        visitedLabel = if (name == current) "正在使用 $name" else "已切换到 $name",
+                        actionData = "$ACTION_PREFIX$name",
+                        style = if (name == current) 0 else 1,
+                    )
+                }
             }
         )
         val list = members.joinToString(" / ") { name ->
@@ -84,10 +129,17 @@ object ServerSelectButtons {
     /**
      * 按钮点击处理：记录群选择（每台实例都执行，广播同步）。
      *
+     * 「全局」成员的旧形态回调（krg:cluster:全局，1.7.5.3 及更早的无门禁
+     * 按钮）转发为合成命令 /切换服务器 全局（不带验身标记），由命令
+     * 链路按当前模式重新判定管理员——不因旧按钮形态放行；新形态按钮
+     * 不走本回调（qq/both 走 krg:acmd: 前缀由 [cn.kerong.bot.events.MenuButtons]
+     * 处理，MANUAL 走指令按钮填输入栏不走回调）。
+     *
      * @return 是否接管了这次互动（不属于本流程时返回 null）
      */
     fun onInteraction(
         groupOpenId: String,
+        userOpenId: String,
         buttonData: String,
         respond: (Int) -> Unit,
     ): Boolean? {
@@ -100,6 +152,14 @@ object ServerSelectButtons {
         if (target !in ClusterState.serverMembers) {
             // 成员列表已变更（该服务器被移出集群）：静默拒绝
             respond(1)
+            return true
+        }
+        if (target == GLOBAL_MEMBER && userOpenId.isNotEmpty()) {
+            // 旧形态「全局」按钮：转发合成命令按当前模式重判（回应交给命令链路回复）
+            respond(0)
+            cn.kerong.bot.events.MenuButtons.dispatchAsClicker(
+                groupOpenId, userOpenId, "/切换服务器 $target", false
+            )
             return true
         }
         val previous = ClusterState.selectedServer(groupOpenId)

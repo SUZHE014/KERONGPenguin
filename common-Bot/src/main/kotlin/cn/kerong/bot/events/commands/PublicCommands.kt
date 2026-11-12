@@ -212,6 +212,9 @@ class PublicCommands : CommandSupport() {
  * 按钮切换（开关 commands.切换服务器）。
      *
      * - 未配置集群（bot.cluster.members 少于 2 个）：回复单服提示；
+     * - 带参数（1.7.5.4，/切换服务器 服务器名）：直接切换到该成员——
+     *   参数为「全局」成员时是特权操作需管理员（平台门禁按钮凭验身
+     *   标记放行 / 文本路径按名单判定）；
      * - 已配置：输出成员列表（当前选择带 ✓ 标记）+ 内联键盘按钮，点击后
      *   **每台实例**同步记录该群的选择（互动事件广播到达），此后该群的
      *   命令 / 聊天转发 / 播报都由所选服务器处理。
@@ -227,6 +230,32 @@ class PublicCommands : CommandSupport() {
             MessageTemplates.sendDirect(event, "cluster-single", mapOf(
                 "server" to ClusterState.selfServerName,
             ))
+            return
+        }
+        val target = params?.trim() ?: ""
+        if (target.isNotEmpty()) {
+            // 带参直接切换（1.7.5.4）：按钮点击的合成命令与手动输入共用本路径
+            if (target !in ClusterState.serverMembers) {
+                val members = ClusterState.serverMembers.joinToString("、") { it }
+                MessageTemplates.sendDirect(event, "cluster-list-fallback", mapOf(
+                    "list" to members,
+                ))
+                return
+            }
+            if (target == cn.kerong.bot.events.ServerSelectButtons.GLOBAL_MEMBER) {
+                // 「全局」是特权操作：管理员才能切（按钮已验身的凭标记直接过）
+                if (!requireAdmin(plugin, event)) return
+            }
+            val previous = ClusterState.selectedServer(groupId(event))
+            ClusterState.setSelectedServer(groupId(event), target)
+            QClient.replyMarkdown(
+                event,
+                "已切换到服务器：$target（原：${previous ?: "未选择"}）",
+                null,
+            )
+            cn.kerong.bot.tools.PluginFileLog.write(
+                "[多服务器] 群=${groupId(event)} 用户=${userId(event)} 带参切换服务器：${previous ?: "（未选择）"} → $target"
+            )
             return
         }
         // 按钮消息为引用本条指令的被动回复（不占主动消息配额）；
@@ -435,32 +464,38 @@ class PublicCommands : CommandSupport() {
                 MessageTemplates.sendDirect(event, "ai-context-cleared")
             }
             else -> {
-                // 状态 + 三个回调按钮（一行一个，点击即以点击者身份执行子命令）
+                // 状态 + 三个按钮（一行一个，点击即以点击者身份执行子命令）。
+                // 1.7.5.4：管理按钮与主菜单同一收敛口径——qq/both 下平台门禁
+                // （krg:acmd: + permission.type=1，点击到达即平台已验管理员，
+                // 修复真管理员点子面板按钮被误报「无权限」）；MANUAL 名单
+                // 模式下改指令按钮（actionType=2 点击填入输入栏），授权交给
+                // 文本命令路径按名单校验。
                 val enabled = manager.isAiContextEnabled(group, user)
                 val message = MessageTemplates.render("ai-context-usage", mapOf(
                     "status" to (if (enabled) "开" else "关"),
                 ))
                 if (message.isEmpty()) return
+                val adminGate = cn.kerong.bot.events.MenuButtons.adminGateFor(plugin, group)
+                fun aiButton(label: String, action: String): cn.kerong.bot.tools.Keyboards.Button =
+                    cn.kerong.bot.tools.Keyboards.Button(
+                        label = label,
+                        visitedLabel = label,
+                        actionData = if (adminGate) {
+                            "${cn.kerong.bot.events.MenuButtons.ACMD_PREFIX}/AI管理 $action"
+                        } else {
+                            "/AI管理 $action"
+                        },
+                        style = 1,
+                        // 名单模式走指令按钮（填输入栏）；平台门禁模式走回调（点击即执行）
+                        actionType = if (adminGate) 1 else 2,
+                        // 平台门禁模式下仅群主/群管理员可点；名单模式由命令链路判名单
+                        permissionType = if (adminGate) 1 else 2,
+                    )
                 val keyboard = cn.kerong.bot.tools.Keyboards.buildVertical(
                     listOf(
-                        cn.kerong.bot.tools.Keyboards.Button(
-                            label = "开启上下文",
-                            visitedLabel = "开启上下文",
-                            actionData = "${cn.kerong.bot.events.MenuButtons.ACTION_PREFIX}/AI管理 开",
-                            style = 1,
-                        ),
-                        cn.kerong.bot.tools.Keyboards.Button(
-                            label = "关闭上下文",
-                            visitedLabel = "关闭上下文",
-                            actionData = "${cn.kerong.bot.events.MenuButtons.ACTION_PREFIX}/AI管理 关",
-                            style = 1,
-                        ),
-                        cn.kerong.bot.tools.Keyboards.Button(
-                            label = "清除上下文",
-                            visitedLabel = "清除上下文",
-                            actionData = "${cn.kerong.bot.events.MenuButtons.ACTION_PREFIX}/AI管理 清除",
-                            style = 1,
-                        ),
+                        aiButton("开启上下文", "开"),
+                        aiButton("关闭上下文", "关"),
+                        aiButton("清除上下文", "清除"),
                     )
                 )
                 val user2 = try {
