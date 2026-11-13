@@ -386,16 +386,45 @@ object QrLoginManager {
 
     // ---------- 控制台二维码 ----------
 
-    /** 控制台打印 ASCII 二维码（复用 1.7.4 自研编码器；失败退化为只打链接）。 */
+    /**
+     * 控制台打印 ASCII 二维码（复用 1.7.4 自研编码器；失败退化为只打链接）。
+     *
+     * 1.7.5.5：按控制台实际编码选渲染器（中文 Windows 服务器控制台默认 GBK，
+     * 半块字符 ▀▄█ 不在 GBK 字符集、会被替换成 ? 导致二维码不可扫）：
+     * - 控制台可编码半块字符 → 原版半块渲染（Linux/macOS UTF-8 终端）；
+     * - 可编码 ■ 与全角空格 → 全角方块渲染（GBK 类控制台）；
+     * - 其余 → 纯 ASCII ## 渲染（任何终端编码兜底）。
+     * 探测取 System.out 的字符集（Java 21 起标准控制台流随终端编码初始化；
+     * 输出重定向到文件/管道时为 UTF-8，走原版渲染——写日志文件本身按 UTF-8）。
+     */
     private fun printQrToConsole(url: String) {
         try {
-            val qr = cn.kerong.bot.tools.QrCode.encodeAscii(url, quietZone = 2)
+            val qr = renderQrForConsole(url)
             for (line in qr.lineSequence()) {
                 PluginFileLog.infoAndKeep("  $line")
             }
         } catch (t: Throwable) {
             PluginFileLog.warnAndKeep("无法渲染二维码，请复制下方链接到手机 QQ 打开: ${t.message}")
         }
+    }
+
+    /** 按控制台可编码性选择二维码渲染形态（探测失败按原版半块渲染）。 */
+    private fun renderQrForConsole(url: String): String {
+        val encoder = try {
+            System.out.charset().newEncoder()
+        } catch (_: Throwable) {
+            null
+        } ?: return cn.kerong.bot.tools.QrCode.encodeAscii(url, quietZone = 2)
+        val halfBlocksOk = encoder.canEncode('▀') &&
+            encoder.canEncode('▄') &&
+            encoder.canEncode('█')
+        if (halfBlocksOk) {
+            return cn.kerong.bot.tools.QrCode.encodeAscii(url, quietZone = 2)
+        }
+        if (encoder.canEncode('■') && encoder.canEncode('\u3000')) {
+            return cn.kerong.bot.tools.QrCode.encodeCjk(url, quietZone = 2)
+        }
+        return cn.kerong.bot.tools.QrCode.encodePlain(url, quietZone = 2)
     }
 
     // ---------- 凭据落盘 ----------

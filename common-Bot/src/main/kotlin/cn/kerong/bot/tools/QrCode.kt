@@ -20,6 +20,9 @@ package cn.kerong.bot.tools
  *
  * 控制台渲染：Unicode 半块字符（▀ ▄ █ 空格）两行并一行，二维码近似正方形；
  * 四周静区（quiet zone）默认 4 模块（规范推荐值；控制台紧凑可降 2）。
+ * 1.7.5.5 起另备两级非 UTF-8 控制台回退渲染（GBK 中文 Windows 控制台的
+ * 半块字符会被替换为 ?）：全角方块（[encodeCjk]，■ + 全角空格）与纯 ASCII
+ * （[encodePlain]，## + 空格对），按控制台可编码性由调用方选择。
  */
 object QrCode {
 
@@ -95,6 +98,57 @@ object QrCode {
                     down -> '▄'
                     else -> ' '
                 })
+            }
+            sb.append('\n')
+        }
+        return sb.toString().trimEnd('\n')
+    }
+
+    /**
+     * 编码并渲染为全角方块二维码（1.7.5.5 新增，GBK 等非 UTF-8 控制台回退）。
+     *
+     * 半块字符（▀ ▄ █）不在 GBK 字符集——中文 Windows 控制台（默认编码 GBK /
+     * cp936）上这些字符会被替换成 ?，二维码不可扫。本渲染器只使用 GBK 可编码
+     * 的字符：深色模块 = ■（U+25A0，GBK 0xA1F5），浅色模块与静区 = 全角空格
+     * （U+3000，GBK 0xA1A1）。每个模块一行（不做两行合并），全角字符占两列
+     * 控制台宽度，与单元格约 1:2 的高宽比互补，二维码近似正方形。
+     *
+     * @param quietZone 四周静区模块数
+     * @throws IllegalArgumentException 同 [encode]
+     */
+    @JvmStatic
+    fun encodeCjk(text: String, quietZone: Int = 4): String {
+        val matrix = encode(text)
+        val n = matrix.size
+        val q = quietZone.coerceAtLeast(0)
+        val sb = StringBuilder()
+        for (row in -q until n + q) {
+            for (col in -q until n + q) {
+                sb.append(if (moduleAt(matrix, row, col)) '■' else '\u3000')
+            }
+            sb.append('\n')
+        }
+        return sb.toString().trimEnd('\n')
+    }
+
+    /**
+     * 编码并渲染为纯 ASCII 二维码（1.7.5.5 新增，极端编码环境兜底）。
+     *
+     * 深色模块 = "##"，浅色模块与静区 = "  "（半角空格对）：每个模块两列一行，
+     * 纯 7 位 ASCII，任何终端编码都可表示；宽高比同 [encodeCjk]。
+     *
+     * @param quietZone 四周静区模块数
+     * @throws IllegalArgumentException 同 [encode]
+     */
+    @JvmStatic
+    fun encodePlain(text: String, quietZone: Int = 4): String {
+        val matrix = encode(text)
+        val n = matrix.size
+        val q = quietZone.coerceAtLeast(0)
+        val sb = StringBuilder()
+        for (row in -q until n + q) {
+            for (col in -q until n + q) {
+                sb.append(if (moduleAt(matrix, row, col)) "##" else "  ")
             }
             sb.append('\n')
         }

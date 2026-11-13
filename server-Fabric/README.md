@@ -48,7 +48,11 @@ deps.jar（QQ SDK 底料，同 common-Bot/libs/deps.jar）。原料在部署服�
 
 ## MC 版本支持
 
-- `fabric.mod.json` 声明 `minecraft >= 1.20.4`，主系已实测 1.20.4 / 1.21 / 1.21.6。
+- `fabric.mod.json` 声明 `minecraft >= 1.20.4 < 1.22`（1.7.5.5 起补上限，与
+  NeoForge 端 mods.toml 对称——2026 年起的 26.x 新版本线未适配，明确排除）。
+- 已实测（真实服务器启动验证，1.7.5.5 轮 Fa 阶段核查）：1.20.4 / 1.20.5 /
+  1.20.6 / 1.21 / 1.21.4 / 1.21.6 / 1.21.11；Fabric Loader 实际可用下限
+  0.15.1（fabric-api 0.97.3+1.20.4 起要求，实测 0.15.0 无法启动 fabric-api）。
 - **1.20.1 支持可行性（用户希望，尚未实施）**：本模块只使用 1.20.1 与
   1.20.4 之间完全稳定的服务端 API（ServerMessageEvents /
   ServerPlayConnectionEvents / ServerLifecycleEvents / CommandRegistrationCallback /
