@@ -477,6 +477,14 @@ class ConfigManager(private val plugin: JavaPlugin) {
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
 
+        // 升 46——1.7.5.5 覆盖新增 AI 两键（只加新键+默认值，不做任何旧值迁移）：
+        // ai.at-enabled（AI 艾特接口，默认 true 开——开启时①群里 @机器人 发消息
+        // 中的成员艾特不再剥掉而是还原为 @昵称 送给 AI（如「你好，@张三，这人是谁？」
+        // AI 能看到被艾特的是谁）②system prompt 附注艾特接口：AI 回复中可输出
+        // [at:群昵称] 标记，发送前自动转为 QQ 官方艾特；关闭时恢复旧行为（占位剥掉），
+        // AI 亦不知晓接口）；
+        // ai.reply-quote（QQ 群 AI 回复是否引用消息，默认 true 开——引用发送者的
+        // 原消息；关闭时改发普通被动回复，不引用任何消息，Markdown 艾特解析不受影响）。
         // 升 45——1.7.5.3 新增一键（只加新键+默认值，不做任何旧值迁移）：
         // admin.panel-admin-linkage（QQ 快捷面板管理员联动，默认 true——
         // admin.mode=qq/both 时自动把快捷面板管理类指令条目设为仅群主/
@@ -559,7 +567,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // qq-bind.checkin.points-reward（签到点券奖励，默认 0 关闭）
  // 升 28——无新增键纯注释刷新（卡片背景图说明段补 /hbkrg bpng
         // 图片包下载与 /hbkrg bpngsz 一键切换的用法说明）
-        private const val CURRENT_CONFIG_VERSION = 45
+        private const val CURRENT_CONFIG_VERSION = 46
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -846,6 +854,8 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "ai.system-prompt" to "你是一个友好的游戏群助手，请简洁回答。",
             "ai.url-auto-append" to true,
             "ai.context-limit" to 6,
+            "ai.at-enabled" to true,
+            "ai.reply-quote" to true,
         ).apply {
  // 消息模板映射（每条回复 → Markdown 模板文件名，详见 config.yml 注释）
             for (id in MESSAGE_TEMPLATE_IDS) {

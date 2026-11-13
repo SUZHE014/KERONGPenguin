@@ -495,6 +495,22 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         6
     }
 
+    /** AI 艾特接口开关（1.7.5.5 覆盖，默认 true 开）。 */
+    val isAiAtEnabled: Boolean
+        get() = try {
+            plugin.config.getBoolean("ai.at-enabled", true)
+        } catch (_: Throwable) {
+            true
+        }
+
+    /** QQ 群 AI 回复是否引用消息（1.7.5.5 覆盖，默认 true 开）。 */
+    val isAiReplyQuote: Boolean
+        get() = try {
+            plugin.config.getBoolean("ai.reply-quote", true)
+        } catch (_: Throwable) {
+            true
+        }
+
     /** 服务器内 AI 对话开关。 */
     val isServerAiEnabled: Boolean
         get() = try {

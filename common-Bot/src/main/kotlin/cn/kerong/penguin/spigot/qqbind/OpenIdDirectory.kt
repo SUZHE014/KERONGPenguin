@@ -38,6 +38,16 @@ object OpenIdDirectory {
     /** 内存表：OpenId → 条目。 */
     private val directory = ConcurrentHashMap<String, Entry>()
 
+    /**
+     * 反向内存表：群昵称 → OpenId（AI 艾特接口反查用，1.7.5.5 覆盖）。
+     *
+     * 双键形态：原样昵称 + 小写昵称各一条（AI 输出 `[at:昵称]` 的大小写可能与
+     * 目录记录不一致，QQ 昵称含大小写）。同一昵称后见覆盖先见（成员改昵称后
+     * 反查按新名走）。仅内存积累（与未绑定成员同口径，重启随群消息重建），
+     * 查询无任何磁盘回退——AI 只能艾特机器人见过的成员，见不到的降级纯文本。
+     */
+    private val reverseDirectory = ConcurrentHashMap<String, String>()
+
     /** 待落盘的 OpenId（脏标记）：只写有变动的绑定玩家主文件。 */
     private val dirtyIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
@@ -81,8 +91,22 @@ object OpenIdDirectory {
         // 昵称未变化且 10 分钟内记录过则跳过（减少无谓脏标记）
         if (previous != null && previous.nickname == nickname && now - previous.lastSeenAt < 600_000) return
         directory[openId] = Entry(nickname, now)
+        reverseDirectory[nickname] = openId
+        reverseDirectory[nickname.lowercase()] = openId
         dirtyIds.add(openId)
         ensureSaverStarted()
+    }
+
+    /**
+     * 按群昵称反查 OpenId（AI 艾特接口二级反查，1.7.5.5 覆盖）。
+     * 先原样精确，再忽略大小写；未知昵称返回 null（调用方降级纯文本）。
+     */
+    fun lookupOpenIdByNickname(nickname: String?): String? {
+        if (nickname.isNullOrEmpty()) return null
+        reverseDirectory[nickname]?.let { return it }
+        val lower = nickname.lowercase()
+        if (lower != nickname) reverseDirectory[lower]?.let { return it }
+        return null
     }
 
     /** 查询 OpenId 对应的群昵称（未知返回 null）。 */
@@ -113,6 +137,9 @@ object OpenIdDirectory {
         val yaml = manager.readQuuidRecord(quuid) ?: return null
         val name = yaml.getString("nickname") ?: return null
         val entry = Entry(name, yaml.getLong("lastSeenAt", 0L))
+        // 磁盘回填时同步反向表（AI 艾特反查覆盖已绑定玩家）
+        reverseDirectory[name] = openId
+        reverseDirectory[name.lowercase()] = openId
         return directory.putIfAbsent(openId, entry) ?: entry
     }
 

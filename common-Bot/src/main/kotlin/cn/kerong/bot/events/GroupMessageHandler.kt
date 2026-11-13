@@ -14,6 +14,7 @@ import cn.kerong.bot.events.commands.CoinsLeaderboardCommands
 import cn.kerong.bot.events.commands.LeaderboardCommands
 import cn.kerong.bot.events.commands.PublicCommands
 import cn.kerong.bot.tools.QqText
+import cn.kerong.penguin.spigot.qqbind.AiAt
 import cn.kerong.penguin.spigot.qqbind.AiChat
 import cn.kerong.penguin.spigot.qqbind.GroupMsgSender
 import cn.kerong.penguin.spigot.qqbind.MessageTemplates
@@ -379,21 +380,28 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
             if (!manager.isAiEnabled) return false
 
  // 净化 QQ 表情标签（旧实现把 <faceType=...,ext="base64">
-            // 原样送给 AI，AI 收到一段乱码）；正文中间 @ 其他人的
-            // <@openid> 占位片段同样剥离（行首的机器人占位已在入口剥过）
+            // 原样送给 AI，AI 收到一段乱码）；正文里 @ 其他人的占位片段
+            // 处理分两路（1.7.5.5 覆盖 ai.at-enabled，默认开）：
+            // - 开：不再剥掉，而是还原为 @昵称（如「你好，@张三，这人是谁？」
+            //   AI 能看到被艾特的是谁），见 [AiAt.parseIncomingMentions]；
+            // - 关：恢复旧行为（全部剥离，乱码 token 对模型是噪声）
             var body = QqText.sanitize(content.trim())
-            val mentions: Array<User>? = event.rawMessage?.mentions
-            if (mentions != null) {
-                for (member in mentions) {
-                    val memberId = member.id ?: continue
-                    body = body.replace("<@!$memberId>", "")
-                        .replace("<@$memberId>", "")
-                        .replace("<$memberId>", "")
-                        .replace(memberId, "")
+            if (manager.isAiAtEnabled) {
+                body = AiAt.parseIncomingMentions(body, event).trim()
+            } else {
+                val mentions: Array<User>? = event.rawMessage?.mentions
+                if (mentions != null) {
+                    for (member in mentions) {
+                        val memberId = member.id ?: continue
+                        body = body.replace("<@!$memberId>", "")
+                            .replace("<@$memberId>", "")
+                            .replace("<$memberId>", "")
+                            .replace(memberId, "")
+                    }
                 }
+                // 兜底剔除正文里剩余的任何 <@…> 占位片段（不在 mentions 列表中的形态）
+                body = QqText.removeMentionPlaceholders(body).trim()
             }
-            // 兜底剔除正文里剩余的任何 <@…> 占位片段（不在 mentions 列表中的形态）
-            body = QqText.removeMentionPlaceholders(body).trim()
             if (body.isEmpty()) {
                 MessageTemplates.sendPlain(event, "ai-chat-empty")
                 return true
@@ -402,14 +410,24 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
             val preparedBody = body
             plugin.submitAsync {
                 try {
-                    val reply = AiChat.chat(preparedBody, manager, groupId, userId)
+                    var reply = AiChat.chat(preparedBody, manager, groupId, userId)
+                    // 1.7.5.5 覆盖：AI 艾特接口出向——AI 回复中的 [at:昵称] 标记
+                    // 在发送前渲染为 QQ 官方艾特 <@openid>（Markdown msg_type=2
+                    // 解析；反查两级：本条 mentions → OpenIdDirectory 反向目录；
+                    // 未命中降级纯文本不丢字）。开关关闭时 AI 不知晓接口不会
+                    // 输出标记，此处跳过零开销
+                    if (manager.isAiAtEnabled) {
+                        reply = AiAt.renderOutgoing(reply, event)
+                    }
                     val aiContent = "${manager.qqAiOutputPrefix} $reply"
  // AI 对话日志仅写入文件，不再上控制台（隐私泄露修复）
                     QqBindManager.logVerbose("[AI对话] 回复内容长度=${aiContent.length} 准备发送")
- // 改为引用回复（引用发送者的原消息，QQ 官方 MessageReference 协议），
-                    // 失败时在 QClient.replyMarkdownWithReference 内部逐级回退，回复不会丢失
+ // 引用回复（引用发送者的原消息，QQ 官方 MessageReference 协议），
+                    // 失败时在 QClient.replyMarkdownWithReference 内部逐级回退，回复不会丢失；
+                    // 1.7.5.5 覆盖 ai.reply-quote（默认开）关闭时改走普通被动回复
+                    // （仍带 msg_id 被动通道，但不带 message_reference，不引用任何消息）
                     try {
-                        GroupMsgSender.sendReply(event, aiContent)
+                        GroupMsgSender.sendReply(event, aiContent, manager.isAiReplyQuote)
                     } catch (replyError: Throwable) {
                         QqBindManager.logVerbose("[AI对话] 引用回复发送失败: ${replyError.message}")
                     }

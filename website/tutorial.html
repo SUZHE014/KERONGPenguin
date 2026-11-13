@@ -781,6 +781,24 @@ coins-leaderboard:
 </div>
 <p>全局一份记忆，所有群与游戏内共用。<code>/AI管理 开</code> 开启记忆、<code>/AI管理 清除</code> 清空（管理员命令；也可发送 <code>/AI管理</code> 后点按钮操作）。</p>
 </div>
+
+<div class="cfg-item">
+<h4>AI 艾特 <span class="key">ai.at-enabled</span></h4>
+<div class="config">
+<pre>ai:
+  at-enabled: true  # AI 艾特（默认开）</pre>
+</div>
+<p>开启时：①群里 @机器人 的消息中，其他成员的艾特不再剥掉而是还原为「@昵称」送给 AI（如「你好，@张三，这人是谁？」AI 能看到被艾特的是谁）；②AI 可在回复中输出 [at:群昵称] 标记艾特对应成员，发送前自动转为 QQ 官方艾特（昵称不认识时当普通文本发出，不丢字）。关闭时恢复旧行为（艾特直接剥掉，AI 也不知道艾特接口）。</p>
+</div>
+
+<div class="cfg-item">
+<h4>回复引用 <span class="key">ai.reply-quote</span></h4>
+<div class="config">
+<pre>ai:
+  reply-quote: true  # 群内 AI 回复是否引用消息（默认开）</pre>
+</div>
+<p>开启时 AI 回复引用发送者的原消息（QQ 引用框）；关闭时改发普通被动回复，不引用任何消息。改完 <code>/hbkrg reload</code> 生效。</p>
+</div>
 </div>
 
 <div class="tutorial-step">

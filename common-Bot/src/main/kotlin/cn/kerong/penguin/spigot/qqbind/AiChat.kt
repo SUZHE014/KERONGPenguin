@@ -29,7 +29,12 @@ object AiChat {
         val baseUrl = manager.aiBaseUrl()
         val apiKey = manager.aiApiKey()
         val model = manager.aiModel()
-        val systemPrompt = manager.aiSystemPrompt()
+        // system prompt = 用户配置的角色设定 + 艾特接口附注（ai.at-enabled 开启时；
+        // 1.7.5.5 覆盖：AI 通过 [at:昵称] 标记调用艾特，见 [AiAt]）
+        var systemPrompt = manager.aiSystemPrompt()
+        if (manager.isAiAtEnabled) {
+            systemPrompt += AiAt.systemPromptSuffix()
+        }
         if (baseUrl.isEmpty() || apiKey.isEmpty()) return "AI 对话未配置。"
 
         val contextEnabled = manager.isAiContextEnabled(groupId, userId)
