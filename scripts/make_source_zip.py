@@ -15,13 +15,30 @@ NAME = sys.argv[1] if len(sys.argv) > 1 else \
     os.path.join(REPO, "build", "dist", "KERONGPenguin_v1.7.3.1_source.zip")
 
 
+def excluded(rel):
+    """源码包排除（1.7.5.4 轮口径：git add -A 时代起仓库含全部构建产物，
+    git ls-files 全量打包 331MB+ 不可用；排除后 814~822 文件 / 约 9MB，
+    与官网历史源码包口径一致）：
+    build / .gradle / scripts/deps-work / 任意层 build 目录 / 二进制件。"""
+    parts = rel.split("/")
+    if parts[0] in ("build", ".gradle"):
+        return True
+    if rel.startswith("scripts/deps-work"):
+        return True
+    if "build" in parts[:-1]:
+        return True
+    if rel.endswith((".jar", ".bin", ".exe", ".dll", ".so")):
+        return True
+    return False
+
+
 def main():
     head = subprocess.run(["git", "-C", REPO, "rev-parse", "HEAD"],
                           capture_output=True, text=True, check=True
                           ).stdout.strip()
-    files = subprocess.run(["git", "-C", REPO, "ls-files"],
+    files = [f for f in subprocess.run(["git", "-C", REPO, "ls-files"],
                            capture_output=True, text=True, check=True
-                           ).stdout.splitlines()
+                           ).stdout.splitlines() if not excluded(f)]
     os.makedirs(os.path.dirname(NAME), exist_ok=True)
     with zipfile.ZipFile(NAME, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         dirs = set()
