@@ -101,8 +101,11 @@ object QrLoginManager {
 
     /**
      * 启动扫码登录会话：
-     * - 已有会话且仍在等待 / 刚过期 → 不重复起线程，直接重显当前二维码；
-     * - 否则新建会话并启动守护线程执行完整流程。
+     * - /hbkrg qr 手动发起：若已有进行中的会话则**先取消旧会话再新建**——
+     *   1.7.5.6 口径：手动发起永远得到一个全新二维码（旧实现重显旧码且
+     *   旧会话的过期自动刷新继续叠加，用户反馈“发一次 hbkrg qr 出多个
+     *   二维码”，观感混乱；取消后旧轮询线程自行退出，不再叠码）；
+     * - 启动时未配置凭据的自动发起：已有会话则重显当前二维码，不重复起线程。
      *
      * @param manual 是否由 /hbkrg qr 手动发起（凭据已配置时也允许，扫码
      *   成功后替换现有配置并以新凭据重连）
@@ -114,8 +117,16 @@ object QrLoginManager {
             if (current != null && !current.cancelled &&
                 (current.state == State.WAITING || current.state == State.EXPIRED)
             ) {
-                reprintCurrent()
-                return "扫码登录会话已在进行中，已重新显示当前二维码与链接"
+                if (manual) {
+                    // 手动重新发起：取消旧会话（旧轮询线程在下一轮检查时退出），
+                    // 本次命令输出一个全新的二维码，不与旧会话的刷新叠加
+                    current.cancelled = true
+                    current.state = State.CANCELLED
+                    PluginFileLog.infoAndKeep("已取消此前的扫码会话，重新发起新的二维码…")
+                } else {
+                    reprintCurrent()
+                    return "扫码登录会话已在进行中，已重新显示当前二维码与链接"
+                }
             }
             val newSession = AuthSession(manual)
             session = newSession

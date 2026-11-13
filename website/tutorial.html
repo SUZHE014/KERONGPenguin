@@ -68,7 +68,7 @@
 <tr><td><code>/hbkrg mem</code></td><td>查看插件内存诊断（JVM 堆与各级图片缓存占用）</td></tr>
 <tr><td><code>/hbkrg bpng</code></td><td>列出官网可下载的背景图片包；/hbkrg bpng &lt;包名&gt; 下载指定图片包；/hbkrg bpng stop 中断进行中的下载</td></tr>
 <tr><td><code>/hbkrg bpngsz yes|no</code></td><td>一键开关统计卡片的随机背景图（yes 开 / no 关，自动写回配置）</td></tr>
-<tr><td><code>/hbkrg qr</code></td><td>发起 / 重显 QQ 机器人扫码登录（控制台二维码 + 扫码链接，扫码后凭据自动写入并连接；过期自动刷新重发，每次会话上限 3 次，超过后重新执行本命令即可）；凭据已配置时同样可用，扫码成功后替换现有凭据并以新凭据重连</td></tr>
+<tr><td><code>/hbkrg qr</code></td><td>发起 QQ 机器人扫码登录（控制台二维码 + 扫码链接，扫码后凭据自动写入并连接；每次执行都会取消旧会话并输出全新二维码，二维码过期自动刷新重发、每次会话上限 3 次，超过后重新执行本命令即可）；凭据已配置时同样可用，扫码成功后替换现有凭据并以新凭据重连</td></tr>
 <tr><td><code>/qq rebind</code></td><td>玩家在游戏内自助解除自己的绑定，下次进服重新获取验证码</td></tr>
 <tr><td><code>/qq qxqq &lt;玩家名&gt;</code></td><td>管理员强制解除指定玩家的绑定</td></tr>
 <tr><td><code>/qq skip &lt;玩家名&gt;</code></td><td>把玩家加入跳过绑定名单（不再要求其绑定 QQ）</td></tr>
@@ -98,7 +98,7 @@
 <li>授权成功后 AppID / Secret <b>自动写入配置文件并自动连接</b>机器人，无需手动改文件；二维码过期会<b>自动刷新重发新码</b>（每次会话上限 3 次，超过后用 <code>/hbkrg qr</code> 手动重新发起）</li>
 </ol>
 <p>二维码按控制台编码自动选择渲染形态：中文 Windows（GBK）控制台上显示为 ■ 方块字符，属正常现象，同样可扫；扫不了时直接复制下方链接到手机 QQ 打开，效果等同。</p>
-<p>随时可用 <code>/hbkrg qr</code> 手动发起扫码登录；凭据已配置时扫码成功后<b>替换现有凭据</b>并以新凭据重连（换号 / 重新授权无需改文件重启）。</p>
+<p>随时可用 <code>/hbkrg qr</code> 手动发起扫码登录（会先取消此前的扫码会话再输出全新二维码）；凭据已配置时扫码成功后<b>替换现有凭据</b>并以新凭据重连（换号 / 重新授权无需改文件重启）。</p>
 <p>备选（手动填写）：打开配置文件（插件版 <code>plugins/KERONGPenguin/config.yml</code>，模组版 <code>kerongpenguin/config.yml</code>）填入第 1 步保存的机器人信息后重启：</p>
 <div class="config">
 <pre>bot:
@@ -874,7 +874,7 @@ coins-leaderboard:
 
 <div class="tutorial-step">
 <h3>插件版和模组版怎么选</h3>
-<p><b>插件版</b>（Spigot）适用于 Spigot / Paper / Purpur / Folia / 混合端（Mohist、CatServer、Arclight 等）；<b>模组版</b>（NeoForge，MC 1.20.4+）放 <code>mods/</code>，需要 Java 21。两个版本二进制不通用；自带 Bukkit 的混合端请用插件版。查询类命令的金币（Vault）、称号（DeluxeTags 或 PlayerTitle）、点券（PlayerPoints）没装对应插件时对应项目自动隐藏；财富榜在模组版或未装 Vault 的服务器上会提示未安装经济插件。PlayerTitle 称号与变量获取信息需要另装 PlaceholderAPI。</p>
+<p><b>插件版</b>（Spigot）适用于 Spigot / Paper / Purpur / Folia / 混合端（Mohist、CatServer、Arclight 等）；<b>模组版</b>（NeoForge，MC 1.20.4+）放 <code>mods/</code>，需要 Java 21；<b>Fabric 版</b>放 <code>mods/</code>，MC 1.20.1 服务器用独立包 KERONGPenguin_Fabric-1.20.1，MC 1.20.4–1.21.x 用通用包 KERONGPenguin_Fabric-1.20.4（1.20.2/1.20.3 不适用）。各版本二进制不通用；自带 Bukkit 的混合端请用插件版。查询类命令的金币（Vault）、称号（DeluxeTags 或 PlayerTitle）、点券（PlayerPoints）没装对应插件时对应项目自动隐藏；财富榜在模组版或未装 Vault 的服务器上会提示未安装经济插件。PlayerTitle 称号与变量获取信息需要另装 PlaceholderAPI。</p>
 </div>
 
 <div class="tutorial-step">

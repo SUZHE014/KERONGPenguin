@@ -48,16 +48,27 @@ deps.jar（QQ SDK 底料，同 common-Bot/libs/deps.jar）。原料在部署服�
 
 ## MC 版本支持
 
-- `fabric.mod.json` 声明 `minecraft >= 1.20.4 < 1.22`（1.7.5.5 起补上限，与
-  NeoForge 端 mods.toml 对称——2026 年起的 26.x 新版本线未适配，明确排除）。
+- **两个产物**（1.7.5.6 起）：
+  - `KERONGPenguin_Fabric-1.20.4-<v>.jar` 通用包，`fabric.mod.json` 声明
+    `minecraft >= 1.20.4 < 1.22`（与 NeoForge 端 mods.toml 对称——2026 年起
+    的 26.x 新版本线未适配，明确排除）；
+  - `KERONGPenguin_Fabric-1.20.1-<v>.jar` 独立包（1.20.1 专用，声明精确
+    `minecraft = 1.20.1`），同一源码按 1.20.1 官方映射 + intermediary 表
+    单独重映射（`scripts/build_fabric_1201_map.py` 生成 merged-1201.tiny，
+    含继承错位补丁：1.20.1 中 ServerGamePacketListenerImpl#disconnect 在
+    class_3244 本类定义而 tiny-remapper 按 1.20.4 classpath 继承链解析到
+    class_8609，需在其节补行；材料备份服务器 /root/fabric-deps/1201/）。
+    1.20.2/1.20.3 网络层重构（DisconnectionDetails 引入）API 又有漂移，
+    明确不支持，由加载器按声明拦截。
 - 已实测（真实服务器启动验证，1.7.5.5 轮 Fa 阶段核查）：1.20.4 / 1.20.5 /
   1.20.6 / 1.21 / 1.21.4 / 1.21.6 / 1.21.11；Fabric Loader 实际可用下限
   0.15.1（fabric-api 0.97.3+1.20.4 起要求，实测 0.15.0 无法启动 fabric-api）。
-- **1.20.1 支持可行性（用户希望，尚未实施）**：本模块只使用 1.20.1 与
-  1.20.4 之间完全稳定的服务端 API（ServerMessageEvents /
-  ServerPlayConnectionEvents / ServerLifecycleEvents / CommandRegistrationCallback /
-  ServerLivingEntityEvents / PlayerBlockBreakEvents + Commands / Component /
-  ServerPlayer / MinecraftServer / LivingEntity / DamageSource / Stats），
-  代码层面无 1.20.4 专属调用，理论上可下探 1.20.1；实施需要：① 改
-  `fabric.mod.json` depends 为 `>=1.20.1`；② 按 1.20.1 目标重取构建
-  依赖编译；③ 1.20.1 实服实测——未实测前官网「支持版本」不写 1.20.1。
+  1.20.1 轮（1.7.5.6）：1.20.1 + fabric-api 0.92.x 真机验证（mod 加载 /
+  命令注册 / hbkrg qr / 远程命令 brigadier 直发 / 踢人 disconnect）。
+- **1.20.1 兼容的技术要点（1.7.5.6 实施记录）**：模块源码无 1.20.4 专属
+  调用（fabric-api 服务端事件 + brigadier + Component 等在两版间稳定），
+  但 intermediary 方法 ID 存在结构性漂移——`Commands#performPrefixedCommand`
+  返回类型 1.20.1 int / 1.20.4 void（已改经 brigadier `dispatcher#execute`
+  直发规避，FabricConsoleExecutor）；踢人 `disconnect(Component)` 定义类
+  错位（映射表补丁修正）；其余 84 处 MC 引用经静态核对两版一致或未混淆。
+  1.20.1 的 fabric-api 用 0.92.x+1.20.1（运行时由用户侧安装）。

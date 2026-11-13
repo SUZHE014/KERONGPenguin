@@ -4,6 +4,7 @@ import cn.kerong.bot.provider.HExecution
 import cn.kerong.bot.tools.ConsoleNoiseFilter
 import cn.kerong.bot.tools.PluginFileLog
 import cn.kerong.penguin.spigot.commands.CommandOutputAppender
+import com.mojang.brigadier.exceptions.CommandSyntaxException
 import net.minecraft.commands.CommandSource
 import net.minecraft.commands.CommandSourceStack
 import net.minecraft.network.chat.Component
@@ -53,7 +54,29 @@ class FabricConsoleExecutor(private val plugin: KERONGFabric) : HExecution {
                     consoleLogger.info("[QQ 远程命令] 执行: $command")
                 } catch (_: Throwable) {
                 }
-                server.commands.performPrefixedCommand(target, command)
+                // 1.7.5.6：改经 brigadier CommandDispatcher 直发——
+                // Commands#performPrefixedCommand 在 1.20.1 与 1.20.4 间返回类型
+                // 由 int 改 void（签名漂移，mojmap 名无法跨版重映射，1.20.1 运行时
+                // NoSuchMethodError）；dispatcher#execute 是 brigadier 独立库 API，
+                // 1.19–1.21 签名稳定，且 Commands#getDispatcher 两版均可用。
+                // 行为差异自行补齐：剥“/”前缀（原 performPrefixed 的职责）+
+                // 语法错误 sendFailure（原内部已做，此处等价恢复）。
+                val commandLine = command.trim().removePrefix("/")
+                try {
+                    server.commands.dispatcher.execute(commandLine, target)
+                } catch (syntax: CommandSyntaxException) {
+                    val text = syntax.rawMessage?.let {
+                        try {
+                            it.string
+                        } catch (_: Throwable) {
+                            null
+                        }
+                    } ?: syntax.message ?: "命令语法错误"
+                    try {
+                        target.sendFailure(Component.literal("§c$text"))
+                    } catch (_: Throwable) {
+                    }
+                }
                 plugin.submitLater(40L) {
                     val senderLines = collector.lines()
                     capturedText = if (senderLines.isNotEmpty()) {

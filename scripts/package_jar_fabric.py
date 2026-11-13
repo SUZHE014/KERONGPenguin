@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
 合成 Fabric 分发模组 JAR（KERONGPenguin_Fabric-<MC>-<version>.jar，fa 版
-1.7.5.1 起随主线发版）。
+1.7.5.1 起随主线发版；1.7.5.6 起支持 1.20.1 独立产物）。
 
 用法：
     python3 scripts/package_jar_fabric.py [base_jar] [-o output.jar]
+        [--mc 1.20.4|1.20.1] [--merged <tiny路径>]
 
 - base_jar：任一 Spigot 版可分发 JAR（提供第三方依赖字节码：kloping QQ SDK、
   fastjson、kotlin-stdlib、okhttp 等）。缺省使用环境变量 PENGUIN_BASE_JAR。
@@ -16,6 +17,8 @@
      mojang 名重映射为 intermediary 名（Fabric 运行时的 MC 类名）——映射用
      scripts/build_fabric_libs.py 生成的三列合并映射
      （mojang/official[混淆]/intermediary），与编译期 fabric-api 重映射同源；
+     --mc 1.20.1 时改用 scripts/build_fabric_1201_map.py 生成的
+     merged-1201.tiny（含继承错位补丁，见该脚本头部说明）；
   2. 以 Spigot 版可分发 JAR 为底座并入第三方依赖字节码，剔除底座的插件
     自身内容（cn/kerong、资源、kotlin_module）；模块自带 org.bukkit 兼容层。
 
@@ -24,9 +27,11 @@
     package 崩溃；fa 历史产物 kotlin/ 等保持原包名）；
   - **不剔除** org/slf4j、com/google/gson（Fabric 运行时不以命名模块进
     GAME 层，与 mod 内同包不冲突；fa 1.7.4.1 产物含 slf4j-nop / gson）；
-  - 模组元数据为 fabric.mod.json（模块产物携带）。
+  - 模组元数据为 fabric.mod.json（模块产物携带；--mc 指定非缺省版本时
+    打包阶段重写 minecraft 依赖声明，见 [rewrite_fabric_mod_json]）。
 """
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -43,6 +48,20 @@ WORK = REPO / "scripts" / "deps-work" / "fabric-libs"
 MERGED_TINY = WORK / "merged.tiny"
 
 MC_VERSION = "1.20.4"
+
+# --mc 与产物名/重映射表/fabric.mod.json minecraft 声明的对应关系
+#（1.20.1 的 intermediary 与 1.20.4 不同，必须独立产物；1.20.2/1.20.3 网络层
+#  重构后 API 又有漂移，不在此列，避免误装）
+MC_PROFILES = {
+    "1.20.4": {
+        "merged": "merged.tiny",
+        "minecraft_dep": ">=1.20.4 <1.22",
+    },
+    "1.20.1": {
+        "merged": "merged-1201.tiny",
+        "minecraft_dep": "1.20.1",
+    },
+}
 
 TINY_REMAPPER_JAR = "tiny-remapper-0.15.0.jar"
 ASM_JARS = ["asm-9.7.1.jar", "asm-commons-9.7.1.jar", "asm-tree-9.7.1.jar", "asm-util-9.7.1.jar"]
@@ -105,11 +124,13 @@ def ensure_snakeyaml() -> Path:
     return SNAKEYAML_JAR
 
 
-def remap_module(work_dir: Path) -> Path:
-    """模块产物 mojang→intermediary 重映射（net.minecraft 引用）。"""
-    if not MERGED_TINY.is_file():
-        raise SystemExit(f"缺少合并映射 {MERGED_TINY}（先跑 scripts/build_fabric_libs.py）")
-    remapped = work_dir / "server-Fabric-intermediary.jar"
+def remap_module(work_dir: Path, merged_tiny: Path) -> Path:
+    """模块产物 mojang→intermediary 重映射（net.minecraft 引用）。
+    merged_tiny 为本 MC 版本的三列合并映射（--mc 决定）。"""
+    if not merged_tiny.is_file():
+        raise SystemExit(f"缺少合并映射 {merged_tiny}（1.20.4 先跑 scripts/build_fabric_libs.py；"
+                         f"1.20.1 先跑 scripts/build_fabric_1201_map.py）")
+    remapped = work_dir / f"server-Fabric-intermediary-{merged_tiny.stem.split('.')[0]}.jar"
     if remapped.is_file():
         return remapped
     cp = ":".join(str(MATERIALS / j) for j in [TINY_REMAPPER_JAR] + ASM_JARS + [MAPPING_IO_JAR])
@@ -126,7 +147,7 @@ def remap_module(work_dir: Path) -> Path:
     ]]
     cmd = [
         find_java(), "-cp", cp, "net.fabricmc.tinyremapper.Main",
-        str(MODULE_JAR), str(remapped), str(MERGED_TINY), "mojang", "intermediary",
+        str(MODULE_JAR), str(remapped), str(merged_tiny), "mojang", "intermediary",
         "--ignoreconflicts",
     ] + classpath
     print("重映射模块产物（mojang→intermediary）…")
@@ -140,6 +161,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="合成 KERONGPenguin Fabric 分发模组 JAR")
     parser.add_argument("base_jar", nargs="?", default=os.environ.get("PENGUIN_BASE_JAR"))
     parser.add_argument("-o", "--output", default=None)
+    parser.add_argument("--mc", default=MC_VERSION, choices=sorted(MC_PROFILES),
+                        help="目标 MC 版本标签（决定重映射表与 fabric.mod.json 声明；"
+                             "缺省 1.20.4=通用 jar（1.20.4–1.21.x），1.20.1 为独立产物）")
+    parser.add_argument("--merged", default=None,
+                        help="覆盖重映射 tiny 路径（缺省按 --mc 取 profiles）")
     args = parser.parse_args()
 
     if not args.base_jar or not os.path.isfile(args.base_jar):
@@ -147,12 +173,15 @@ def main() -> None:
     if not MODULE_JAR.is_file():
         raise SystemExit(f"缺少编译产物，先执行 ./gradlew :server-Fabric:jar：{MODULE_JAR}")
 
+    profile = MC_PROFILES[args.mc]
+    merged_tiny = Path(args.merged) if args.merged else (WORK / profile["merged"])
+
     version = read_mod_version()
-    output = args.output or str(DEFAULT_OUT_DIR / f"KERONGPenguin_Fabric-{MC_VERSION}-{version}.jar")
+    output = args.output or str(DEFAULT_OUT_DIR / f"KERONGPenguin_Fabric-{args.mc}-{version}.jar")
     work_dir = WORK / "package"
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    module = remap_module(work_dir)
+    module = remap_module(work_dir, merged_tiny)
     snakeyaml = ensure_snakeyaml()
 
     seen = set()
@@ -186,7 +215,16 @@ def main() -> None:
             name = item.filename
             if name == "META-INF/MANIFEST.MF" or name in seen:
                 continue
-            out.writestr(item, mod.read(name))
+            data = mod.read(name)
+            # 非 1.20.4 缺省版本：重写 fabric.mod.json 的 minecraft 依赖声明
+            #（1.20.1 独立产物精确锁定 1.20.1——1.20.2/1.20.3 网络层重构后
+            #  intermediary 又有漂移，误装必崩；声明交由加载器拦截）
+            if name == "fabric.mod.json" and args.mc != MC_VERSION:
+                meta = json.loads(data.decode("utf-8"))
+                meta.setdefault("depends", {})["minecraft"] = profile["minecraft_dep"]
+                data = json.dumps(meta, ensure_ascii=False, indent=2).encode("utf-8")
+                print(f"  fabric.mod.json minecraft 声明 → {profile['minecraft_dep']}")
+            out.writestr(item, data)
             seen.add(name)
             if name.endswith("/"):
                 dir_count += 1
