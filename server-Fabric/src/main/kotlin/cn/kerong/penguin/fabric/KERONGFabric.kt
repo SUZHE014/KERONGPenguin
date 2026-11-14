@@ -226,6 +226,9 @@ class KERONGFabric : JavaPlugin(), KERONG, DedicatedServerModInitializer {
     override val chatFormat: ChatFormat
         get() = configManager.chatFormat()
 
+    /** Fabric 端未绑定限制的超时秒数（qq-bind.restrict-timeout-seconds，1.7.5.9）。 */
+    fun restrictTimeoutSeconds(): Int = configManager.restrictTimeoutSeconds()
+
     override fun playerEventFormat(): PlayerEventFormat = configManager.playerEventFormat()
 
     override fun markdownFiles(): Map<String, String> = configManager.markdownFiles()

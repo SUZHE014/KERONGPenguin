@@ -379,10 +379,14 @@ class ConfigManager(private val plugin: JavaPlugin) {
         plugin.config.getString("chat-format.from-group", "[§bQQ§r] {name}: {message}") ?: "[§bQQ§r] {name}: {message}",
         plugin.config.getBoolean("chat-format.post-chat", true),
         plugin.config.getString("chat-format.start-with", "") ?: "",
- // 发送者名称来源（1.7.5.8）：group=群昵称（默认，事件返回的群内显示昵称）/
- // player=绑定玩家名（未绑定回退群昵称）；未知取值回退 group
-        (plugin.config.getString("chat-format.group-sender-name", "group") ?: "group").trim().lowercase(),
+ // 全量转发显示名来源（1.7.5.9，覆盖 1.7.5.8 group-sender-name 方案）：
+ // group_nickname=群昵称（默认）/qq_nickname=QQ 用户名；未知取值回退 group_nickname
+        (plugin.config.getString("chat-format.qq-forward-display-name", "group_nickname") ?: "group_nickname").trim().lowercase(),
     )
+
+    /** Fabric 端未绑定限制的超时秒数（qq-bind.restrict-timeout-seconds，1.7.5.9；其余端不消费）。 */
+    fun restrictTimeoutSeconds(): Int =
+        plugin.config.getInt("qq-bind.restrict-timeout-seconds", 120).coerceAtLeast(10)
 
     fun playerEventFormat(): PlayerEventFormat = PlayerEventFormat(
         plugin.config.getBoolean("player-events.join.enabled", true),
@@ -590,7 +594,14 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // qq-bind.checkin.points-reward（签到点券奖励，默认 0 关闭）
  // 升 28——无新增键纯注释刷新（卡片背景图说明段补 /hbkrg bpng
         // 图片包下载与 /hbkrg bpngsz 一键切换的用法说明）
-        private const val CURRENT_CONFIG_VERSION = 49
+        // 升 50——1.7.5.9：①chat-format.group-sender-name（1.7.5.8）整体废弃
+        // 删键，替换为 chat-format.qq-forward-display-name（默认 group_nickname）/qq_nickname 二选一，
+        // 仅作用于全量转发；②qq-bind.restrict-timeout-seconds 新增（Fabric 端未绑定
+        // 限制策略超时踢出秒数，默认 120）；③menu 模板比对路径改为删除重建。
+        // 1.7.5.8 曾把 config-version 升到 49（group-sender-name 新键），49 安装
+        // 升 50 时旧键值一并删除（历史值无迁移意义——两种方案的键语义不同，
+        // group/player 取值不属于新键取值域，按新键默认 group_nickname 生效）。
+        private const val CURRENT_CONFIG_VERSION = 50
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -621,6 +632,10 @@ class ConfigManager(private val plugin: JavaPlugin) {
  // 升 48：AI 回复引用开关已并入 ai.reminder-mode 三选一（升级时
             // 先归一用户偏好再删键，见 reload 迁移逻辑）
             "ai.reply-quote",
+ // 升 50：1.7.5.8 的 group-sender-name 已被 1.7.5.9 的
+            // qq-forward-display-name 取代（方案覆盖：官方接口单昵称字段口径；
+            // player=绑定玩家名模式随上轮方案一并废弃），升级时直接删键
+            "chat-format.group-sender-name",
             "render.performance.show-tps", "render.performance.show-mspt",
             "render.performance.show-memory", "render.performance.show-cpu",
             "render.performance.show-online",
@@ -764,8 +779,10 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "chat-format.from-group" to "[§bQQ§r] {name}: {message}",
             "chat-format.post-chat" to true,
             "chat-format.start-with" to "#",
- // 发送者名称来源（1.7.5.8）：group=群昵称（默认）/ player=绑定玩家名（未绑定回退群昵称）
-            "chat-format.group-sender-name" to "group",
+ // 全量转发显示名来源（1.7.5.9）：group_nickname=群昵称（默认，群名片优先
+            // 未设置即 QQ 昵称）/ qq_nickname=QQ 用户名（官方接口下与群昵称同值）；
+            // 仅作用于全量转发，/发信息 命令转发保持群昵称
+            "chat-format.qq-forward-display-name" to "group_nickname",
             "player-events.join.enabled" to true,
             "player-events.join.format" to "[游戏] {name} 加入了服务器",
             "player-events.quit.enabled" to true,

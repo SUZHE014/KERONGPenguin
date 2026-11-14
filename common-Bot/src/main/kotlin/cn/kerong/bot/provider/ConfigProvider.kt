@@ -31,13 +31,18 @@ data class ChatFormat(
     val postChat: Boolean,
     val startWith: String,
     /**
-     * 群消息转发到游戏时显示的发送者名称来源（chat-format.group-sender-name，1.7.5.8）：
-     * - "group"（默认）：群昵称——消息事件返回的成员昵称（该成员在群内显示的名字；
-     *   QQ 官方机器人接口在群消息里只提供这一个昵称，群名片优先）；
-     * - "player"：绑定玩家名——该成员绑定的游戏玩家名，未绑定时回退群昵称。
-     * 其他取值一律按 group 处理（未知值不阻断转发）。
+     * 全量转发的显示名来源（chat-format.qq-forward-display-name，1.7.5.9，
+     * 覆盖 1.7.5.8 的 group-sender-name 方案）：
+     * - "group_nickname"（默认）：群昵称——消息事件返回的成员昵称（官方语义
+     *   为该成员在群内显示的名字：设置过群名片为群名片，未设置为其 QQ 昵称，
+     *   「card 为空回退 nickname」由该字段天然满足）；
+     * - "qq_nickname"：QQ 用户名——QQ 官方机器人接口在群消息里只提供上述一个
+     *   昵称字段（author / mentions 同源，群成员资料接口内测未开放），当前
+     *   与 group_nickname 取值相同；官方开放独立通道后接入。
+     * 仅作用于全量转发；/发信息 命令转发保持群昵称（历史行为）。
+     * 其他取值一律按 group_nickname 处理（未知值不阻断转发）。
      */
-    val groupSenderName: String = "group",
+    val qqForwardDisplayName: String = "group_nickname",
 )
 
 /** 服务器 MOTD 展示配置。 */

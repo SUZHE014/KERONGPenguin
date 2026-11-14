@@ -523,9 +523,14 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
             var senderName = "unknown"
             val contact: Contact? = event.sender
             if (contact?.username != null) senderName = contact.username!!
- // 显示名来源（1.7.5.8 chat-format.group-sender-name）：player 模式显示
- // 绑定玩家名（未绑定回退群昵称），group 模式保持群昵称
-            senderName = cn.kerong.bot.tools.GroupSenderName.resolve(plugin, event, senderName)
+ // 全量转发的显示名来源（1.7.5.9 chat-format.qq-forward-display-name，
+ // 覆盖 1.7.5.8 的 group-sender-name 方案）：group_nickname=群昵称（默认）/
+ // qq_nickname=QQ 用户名。QQ 官方机器人接口的群消息事件只返回一个昵称字段
+ // （群名片优先，未设置即 QQ 昵称——「card 为空回退 nickname」由该字段天然
+ // 满足），两种模式当前取值相同；官方若开放独立的 QQ 资料昵称接口，
+ // 在 [resolveForwardDisplayName] 接入。/发信息 命令转发不走本键
+ // （保持群昵称，即历史行为）。
+            senderName = resolveForwardDisplayName(plugin, senderName)
 
             val baseMessage = event as? BaseMessageEvent<*>
             val metadata: JSONObject? = baseMessage?.metadata
@@ -610,6 +615,29 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
                 }
             }
         } catch (_: Throwable) {
+        }
+    }
+
+    /**
+     * 全量转发的显示名来源解析（1.7.5.9，chat-format.qq-forward-display-name）：
+     * - group_nickname（默认）：群昵称——消息事件返回的成员昵称，官方语义
+     *   为「该成员在群内显示的名字」（设置过群名片为群名片，未设置即其 QQ
+     *   昵称——「card 为空回退 nickname」由该字段天然满足）；
+     * - qq_nickname：QQ 用户名——QQ 官方机器人接口在群消息里只提供上述一个
+     *   昵称字段（author 与 mentions 同源，群成员资料接口内测未开放），当前
+     *   与 group_nickname 取值相同；官方若开放独立的 QQ 资料昵称通道，在此
+     *   接入真实取值。
+     * 未知取值一律按 group_nickname 处理（不阻断转发）。
+     */
+    private fun resolveForwardDisplayName(plugin: cn.kerong.bot.KERONG, groupNickname: String): String {
+        val mode = try {
+            plugin.chatFormat.qqForwardDisplayName.trim().lowercase()
+        } catch (_: Throwable) {
+            "group_nickname"
+        }
+        return when (mode) {
+            "qq_nickname" -> groupNickname // 官方接口暂无独立来源，与群昵称同值
+            else -> groupNickname
         }
     }
 }

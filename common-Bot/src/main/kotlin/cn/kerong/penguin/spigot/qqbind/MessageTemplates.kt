@@ -22,19 +22,22 @@ import java.util.concurrent.ConcurrentHashMap
  * /查在线 的 Markdown 模板沿用 1.5.1 的 markdown.queryOnline（online.md），
  * 不在本系统内（该模板带独立占位符体系，见 motd 段说明）。
  *
- * 模板升级路径（1.7.5.6 覆盖轮：升级 = 完整替换，全模板通用）：
+ * 模板升级路径（1.7.5.6 覆盖轮：升级 = 完整替换，全模板通用；
+ * 1.7.5.9 菜单模板比对口径按用户指令显式化）：
  * - 首次释放后不覆盖用户修改；
  * - 磁盘内容仍是某一版**未自改的默认**（含 BOM / 空白 / 换行差异）时，
- *   自动**整体替换**为当前 JAR 内置最新默认——替换是全量 writeText，
- *   绝不追加，旧文案零残留；
- * - 「未自改的默认」的判定有三条，命中任意一条即替换：
+ *   自动**删除该文件并重新释放当前 JAR 内置最新默认**（1.7.5.9 起为
+ *   「先 delete 再 writeBytes」两步——按用户口径「直接删掉重新生成本版
+ *   默认」，替换是全新文件，绝不追加，旧文案零残留）；
+ * - 「未自改的默认」的判定有三条，命中任意一条即删除重建：
  *   ① 磁盘内容 == 当前内置默认（无需动作，只补指纹）；
  *   ② 释放记录（.release-record.json）里记着本文件上次的默认指纹且
  *      磁盘内容仍与该指纹一致——上一次写入/确认后用户没动过，属于
  *      旧版默认，跨任意历史版本自动收敛（不再逐版手抄旧默认表）；
  *   ③ [DEFAULT_CONTENT_UPGRADES] 历代旧默认逐版比对 + 默认特征兜底
  *      （老安装升级上来没有释放记录时的过渡判定，表已收录的形态继续有效）。
- * - 自己改过的内容一律不动（三条都不命中）。
+ * - 自己改过的内容一律不动（三条都不命中）——与所有历史默认都不一致
+ *   = 用户改过，保留原文件，切记不得误删。
  *
  * 历史注：1.7.5.1 曾把 menu 设为「系统 UI 模板」无条件重置（每次启动
  * 强制覆盖为默认），目的是收敛线上历史残留形态；但该机制会把用户
@@ -240,8 +243,17 @@ object MessageTemplates {
             "【OpenID 反查】\nOpenId: {openid}\n群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}",
         ), listOf("【OpenID 反查】"), "【OpenID 反查】\n{openidPart}群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}"),
  // menu 回到升级表（1.7.5.2：系统模板强制重置机制移除）：
-        // 两版历史默认逐版比对 + 「### 指令菜单」特征兜底（收敛表未收录的
-        // 中间态默认、历次部署残留形态），自定义内容不动。
+        // 菜单模板与历史各版本内置默认值逐一比对（1.7.5.9 用户口径）——
+        // 命中任一旧版默认（= 用户没改过）→ 删除磁盘文件重新生成本版默认；
+        // 与所有历史默认都不一致（= 用户改过）→ 保留不动，不得误删。
+        // 历代默认值考据（menu.md 于 1.7.5 引入 MessageTemplates 时首发，
+        // 1.7.4 及以前不存在菜单模板文件——1.7.4 时代菜单文案硬编码在
+        // 发送处，无磁盘残留；下表即 git 历史上 menu.md 的全部中间形态，
+        // 加当前默认共 4 形态，无遗漏）：
+        //   ① 1.7.5 引入版（olds[0]）；② 1.7.5 覆盖第二轮（olds[1]）；
+        //   ③ 1.7.5 覆盖第三轮 = 1.7.5.2 收录同形态（olds[2]）；
+        //   ④ 1.7.5.4 起为现默认（①路径幂等，无需收录）。
+        // 兜底特征「### 指令菜单」收敛表未收录的中间态。
         // 1.7.5.4 排版改版：版本号从标题下方的粗体行移到模板末尾、非粗体
         // 小字（QQ Markdown 子集无字号标记，用普通文本行实现「字体放小」）
         "menu" to UpgradeSpec(listOf(
@@ -341,27 +353,28 @@ object MessageTemplates {
                         }
                     }
                     // ② 释放记录指纹仍匹配：上一次释放/确认后用户没动过——
-                    //    属于旧版默认，整体替换为当前默认（完整替换，零追加）
+                    //    属于旧版默认，删除后重新释放当前默认（1.7.5.9 起
+                    //    「先 delete 再 writeBytes」两步，全新文件零追加）
                     record[fileName] != null && record[fileName] == currentFp -> {
-                        target.writeText(bundled, Charsets.UTF_8)
+                        applyReplacement(dir, target, bundled)
                         cache.remove(target.path)
                         upgraded++
                         record[fileName] = fingerprint(bundled)
                         recordDirty = true
                         BotShared.instance?.log_info(
-                            "消息模板 $fileName 已升级到新默认内容（整体替换；自定义过的模板不受影响）"
+                            "消息模板 $fileName 已升级到新默认内容（删除重建；自定义过的模板不受影响）"
                         )
                     }
                     // ③ 升级表兜底（无释放记录的老安装）：历代旧默认逐版比对
-                    //    + 默认特征匹配，命中同样整体替换
+                    //    + 默认特征匹配，命中同样删除重建
                     DEFAULT_CONTENT_UPGRADES[id]?.shouldUpgrade(current) == true -> {
-                        target.writeText(bundled, Charsets.UTF_8)
+                        applyReplacement(dir, target, bundled)
                         cache.remove(target.path)
                         upgraded++
                         record[fileName] = fingerprint(bundled)
                         recordDirty = true
                         BotShared.instance?.log_info(
-                            "消息模板 $fileName 已升级到新默认内容（整体替换；自定义过的模板不受影响）"
+                            "消息模板 $fileName 已升级到新默认内容（删除重建；自定义过的模板不受影响）"
                         )
                     }
                     // 其余：用户自改——不动、不记录（手改文件永不收敛，
@@ -380,7 +393,7 @@ object MessageTemplates {
             BotShared.instance?.log_info("已释放 $released 个默认消息模板到 ${dir.path}（可自行编辑，删除后重启恢复默认）")
         }
         if (upgraded > 0) {
-            BotShared.instance?.log_info("$upgraded 个仍是旧默认的消息模板已整体替换到新默认（自定义过的模板不受影响）")
+            BotShared.instance?.log_info("$upgraded 个仍是旧默认的消息模板已删除重建到新默认（自定义过的模板不受影响）")
         }
     }
 
@@ -390,6 +403,26 @@ object MessageTemplates {
      */
     private fun upgradedDefaultContents(dir: File) {
         // 已并入 initialize()
+    }
+
+    /**
+     * 删除旧模板文件后重新释放当前内置默认（1.7.5.9 用户口径：
+     * 「直接删掉重新生成本版默认」）——先 [File.delete] 再
+     * [File.writeBytes]，落盘的是全新文件（全新 inode / mtime），
+     * 与原地 writeText 覆写在内容上等价、在语义上按用户指令显式化；
+     * delete 失败（权限/只读等）时退回原地 writeText，保证升级不中断。
+     */
+    private fun applyReplacement(dir: File, target: File, bundled: String) {
+        try {
+            if (target.isFile && !target.delete()) {
+                target.writeText(bundled, Charsets.UTF_8)
+            } else {
+                target.writeBytes(bundled.toByteArray(Charsets.UTF_8))
+            }
+        } catch (_: Throwable) {
+            // 兜底：删除重建失败时退回原地覆盖，内容一致性优先
+            target.writeText(bundled, Charsets.UTF_8)
+        }
     }
 
     /**

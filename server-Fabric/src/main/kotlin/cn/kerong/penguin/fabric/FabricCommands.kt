@@ -12,11 +12,12 @@ import net.minecraft.network.chat.Component
 
 /**
  * 游戏内命令注册（等价 NeoForge 版 NeoForgeCommands / Spigot 版 plugin.yml 命令）：
- * - /hbkrg qbd：获取 QQ 绑定验证码（**所有玩家**，1.7.5.1 起 fa 版绑定不再
- *   拦截进服——玩家自愿绑定：游戏内取码 → QQ 群发 /绑定 <码>）；
  * - /hbkrg 管理子命令：reload / info / chs / mem / bpng / bpngsz / qr / help，
- *   各自要求权限等级 2（OP）——根节点不再整体锁 OP（qbd 要对玩家开放）；
+ *   各自要求权限等级 2（OP）；根节点不整体锁 OP（/qq rebind 玩家自助可用）；
  * - /qq：rebind（玩家自助解绑）与 qxqq（OP 强制解绑）。
+ *
+ * 1.7.5.9：/hbkrg qbd 取验证码指令已删除（Fabric 绑定改为未绑定限制策略，
+ * 绑定码由 [BindRestrict] 进服自动生成并在聊天栏持续输出，无需自助查询）。
  *
  * Fabric 与 NeoForge 同用 brigadier + CommandSourceStack（mojmap 名）。
  * 1.7.5.1 起 fa 版无绑定拦截，/qq skip / unskip（跳过绑定名单）随之移除。
@@ -33,16 +34,10 @@ class FabricCommands(private val plugin: KERONGFabric) {
 
     private fun registerKerong(dispatcher: CommandDispatcher<CommandSourceStack>) {
         val label = "hbkrg"
-        // 根节点不整体锁 OP（qbd 对所有玩家开放）；管理子命令各自 requires(2)
+        // 根节点不整体锁 OP（/qq rebind 自助操作对玩家开放）；管理子命令各自 requires(2)
+        // （1.7.5.9：qbd 取码指令已删除，绑定码改为进服自动持续输出，见 BindRestrict）
         val builder: LiteralArgumentBuilder<CommandSourceStack> = Commands.literal(label)
 
-        // /hbkrg qbd：获取 QQ 绑定验证码（所有玩家，无需 OP）
-        builder.then(
-            Commands.literal("qbd").executes { context ->
-                handleQbd(context.source)
-                1
-            },
-        )
         builder.then(
             Commands.literal("help").requires { it.hasPermission(2) }.executes { context ->
                 sendHelp(context.source, label)
@@ -273,48 +268,12 @@ class FabricCommands(private val plugin: KERONGFabric) {
         }
     }
 
-    // ---------- /hbkrg qbd：获取 QQ 绑定验证码（所有玩家） ----------
-
-    /**
-     * /hbkrg qbd —— 游戏内获取 QQ 绑定验证码（1.7.5.1 起 fa 版绑定不拦截
-     * 进服：玩家自愿绑定，游戏内取码 → QQ 群发 /绑定 <码>）。
-     */
-    private fun handleQbd(source: CommandSourceStack) {
-        val player = try {
-            source.getPlayerOrException()
-        } catch (_: Throwable) {
-            source.sendFailure(Component.literal("§c此命令只能由玩家执行（控制台没有 QQ 绑定）。"))
-            return
-        }
-        val manager = try {
-            QqBindManager.getInstance()
-        } catch (_: Throwable) {
-            source.sendFailure(Component.literal("§c管理器未就绪，请稍后再试。"))
-            return
-        }
-        if (!manager.isEnabled) {
-            source.sendFailure(Component.literal("§cQQ 绑定功能未开启。"))
-            return
-        }
-        val playerName = player.gameProfile.name
-        val playerUuid = player.uuid.toString()
-        if (manager.isBoundByUuid(playerName, playerUuid)) {
-            source.sendSuccess({ Component.literal("§a✅ 你已绑定 QQ，无需获取验证码。") }, false)
-            return
-        }
-        val code = manager.generateCode(playerName, playerUuid)
-        QqBindManager.logQuiet("[MC命令] /hbkrg qbd 玩家=$playerName 获取绑定码")
-        source.sendSuccess({ Component.literal("§e你的 QQ 绑定验证码：§a§l$code") }, false)
-        source.sendSuccess(
-            { Component.literal("§f到 QQ 群发送 §b/绑定 $code §f完成绑定（§7${manager.codeExpireMinutes} 分钟内有效§f）。") },
-            false,
-        )
-    }
+    // ---------- /hbkrg 帮助 ----------
 
     private fun sendHelp(source: CommandSourceStack, label: String) {
         fun line(text: String) = source.sendSuccess({ Component.literal(text) }, false)
         line("§6===== /$label 命令帮助 =====")
-        line("§e/$label qbd§f - 获取 QQ 绑定验证码（所有玩家可用）")
+        line("§7绑定码会在进入服务器时自动显示在聊天栏（未绑定玩家限制策略见配置说明）。")
         if (!source.hasPermission(2)) {
             line("§7其余子命令需要管理员（OP）权限。")
             return
@@ -379,7 +338,7 @@ class FabricCommands(private val plugin: KERONGFabric) {
         val success = manager.unbindByUuid(playerName, playerUuid)
         return if (success) {
             QqBindManager.logQuiet("[MC命令] /qq rebind 玩家=$playerName 自行解除绑定")
-            source.sendSuccess({ Component.literal("§a✅ 已解除你的 QQ 绑定。重新绑定请发送 /hbkrg qbd 获取新验证码。") }, false)
+            source.sendSuccess({ Component.literal("§a✅ 已解除你的 QQ 绑定。重新进入服务器后会自动显示新的绑定码。") }, false)
             1
         } else {
             source.sendFailure(Component.literal("§c❌ 你没有绑定记录。"))
@@ -403,7 +362,7 @@ class FabricCommands(private val plugin: KERONGFabric) {
         return if (success) {
             QqBindManager.logQuiet("[MC命令] /qq qxqq $playerName 成功")
             source.sendSuccess(
-                { Component.literal("§a✅ 已解除玩家 $playerName 的 QQ 绑定。该玩家可用 /hbkrg qbd 获取新验证码。") },
+                { Component.literal("§a✅ 已解除玩家 $playerName 的 QQ 绑定。该玩家再次进入服务器时会自动显示新的绑定码。") },
                 true,
             )
             1
@@ -418,7 +377,7 @@ class FabricCommands(private val plugin: KERONGFabric) {
         line("§6===== /$label QQ 绑定管理命令 =====")
         line("§e/$label help§f - 查看此帮助（所有人可用）")
         line("§e/$label rebind§f - 解除自己的 QQ 绑定（玩家自助，无需管理员）")
-        line("§7获取绑定验证码请用 /hbkrg qbd（游戏内发送即可）")
+        line("§7未绑定玩家进入服务器时会自动在聊天栏持续显示绑定码，无需手动获取")
         line("§7以下命令需要管理员（OP）权限：")
         line("§e/$label qxqq <玩家名>§f - 强制解除玩家的 QQ 绑定")
     }

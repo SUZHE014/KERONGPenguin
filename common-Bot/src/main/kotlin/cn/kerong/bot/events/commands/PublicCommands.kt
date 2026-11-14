@@ -341,9 +341,8 @@ class PublicCommands : CommandSupport() {
                 if (contact?.username != null) senderName = contact.username
             } catch (_: Throwable) {
             }
- // 显示名来源与全量转发一致（1.7.5.8 chat-format.group-sender-name）：
- // player 模式显示绑定玩家名（未绑定回退群昵称），group 模式保持群昵称
-            senderName = cn.kerong.bot.tools.GroupSenderName.resolve(plugin, event, senderName)
+ // /发信息 命令转发的显示名不走 qq-forward-display-name（1.7.5.9 用户口径：
+ // 命令转发保持群昵称不变，与 1.7.5.7 及之前行为一致——事件返回的成员昵称）
             plugin.broadcastMessage(plugin.formatGroupMessage(senderName, content))
         } else {
             MessageTemplates.sendPlain(event, "forward-disabled")

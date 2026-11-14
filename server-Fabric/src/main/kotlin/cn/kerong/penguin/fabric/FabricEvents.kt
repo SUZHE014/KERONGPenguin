@@ -10,6 +10,10 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
+import net.fabricmc.fabric.api.event.player.AttackBlockCallback
+import net.fabricmc.fabric.api.event.player.UseBlockCallback
+import net.fabricmc.fabric.api.event.player.UseEntityCallback
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.level.block.Blocks
@@ -29,10 +33,11 @@ import org.bukkit.Material
  *
  * 钓鱼 / 繁殖动物统计暂缺（Fabric API 无对应事件，与 NeoForge 版的已知差异）。
  *
- * 1.7.5.1 起 QQ 绑定不再拦截进服（用户指令）：未绑定玩家正常游玩，绑定
- * 完全自愿——玩家在游戏内发 /hbkrg qbd 获取验证码，再到 QQ 群发 /绑定
- * 验证码 完成（见 FabricCommands）；加入时仅建档（统计与后续绑定用），
- * 不再踢出（原 enforceLoginBinding 踢出路径删除）。
+ * 1.7.5.9 起 Fabric 端 QQ 绑定策略覆盖（用户指令）：未绑定玩家不再自愿
+ * 绑定——进入服务器后限制全部互动（锁移动 / 禁交互 / 禁聊天 / 禁命令，
+ * 详见 [BindRestrict]），聊天栏持续输出绑定码，超时踢出，绑定成功自动
+ * 解限；/hbkrg qbd 取码指令已删除（绑定码自动输出，无需自助查询）。
+ * 原 1.7.5.1「不拦截 + 自愿取码」方案不再存在。
  */
 class FabricEvents(private val plugin: KERONGFabric) {
 
@@ -63,8 +68,10 @@ class FabricEvents(private val plugin: KERONGFabric) {
             plugin.onServerStopped()
         }
 
-        // 聊天：ALLOW 阶段先做服务器内 AI 前缀判定（命中拦截并异步回复）
+        // 聊天：ALLOW 阶段先做服务器内 AI 前缀判定（命中拦截并异步回复）；
+        // 1.7.5.9：未绑定限制玩家在此拦截（不广播 / 不转发 QQ 群）
         ServerMessageEvents.ALLOW_CHAT_MESSAGE.register { message, sender, _ ->
+            if (!BindRestrictInteractions.onChat(sender)) return@register false
             handleAllowChat(message.signedContent(), sender)
         }
         // 聊天：CHARGE 阶段转发到 QQ 群（AI 命中已在 ALLOW 阶段返回 false 不会到达这里）
@@ -76,14 +83,16 @@ class FabricEvents(private val plugin: KERONGFabric) {
             val player = handler.player
             QClient.broadcastPlayerJoin(player.gameProfile.name)
             PlayerStatsManager.onJoin(FabricPlayer(player))
-            // QQ 绑定不拦截进服（1.7.5.1 起）：仅建档（统计 / 后续绑定用），
-            // 验证码由玩家自愿经 /hbkrg qbd 获取
+            // QQ 绑定建档（统计 / 后续绑定用）+ 1.7.5.9 未绑定限制启动
+            // （[BindRestrict]：未绑定→限制互动+持续输出绑定码+超时踢出）
             registerPlayerProfile(player)
+            BindRestrict.onJoin(player)
         }
         ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
             val player = handler.player
             QClient.broadcastPlayerQuit(player.gameProfile.name)
             PlayerStatsManager.onQuit(FabricPlayer(player))
+            BindRestrict.onQuit(player)
         }
 
         // 死亡 / 击杀统计 + 死亡播报（返回 true 放行真实死亡）
@@ -99,9 +108,27 @@ class FabricEvents(private val plugin: KERONGFabric) {
             }
         }
 
-        // 命令注册
+        // 命令注册（1.7.5.9：注册后对整棵命令树做 requirement 包装，
+        // 受限玩家的命令 parse 一律拒绝；详见 [BindRestrictCommandGate]）
         CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
             FabricCommands(plugin).registerAll(dispatcher)
+            BindRestrictCommandGate.ensureWrapped(dispatcher.root)
+        }
+
+        // 1.7.5.9 未绑定限制：周期循环（锚点锁定 / 绑定码输出 / 超时踢出 /
+        // 绑定成功解限）与广播型命令（/me /say）拦截
+        ServerTickEvents.END_SERVER_TICK.register { _ -> BindRestrict.tick() }
+        ServerMessageEvents.ALLOW_COMMAND_MESSAGE.register { _, source, _ ->
+            BindRestrictInteractions.onCommand(try { source.getPlayer() } catch (_: Throwable) { null })
+        }
+        UseBlockCallback.EVENT.register { player, _, _, _ ->
+            BindRestrictInteractions.onUseBlock(player as? ServerPlayer)
+        }
+        AttackBlockCallback.EVENT.register { player, _, _, _, _ ->
+            BindRestrictInteractions.onAttackBlock(player as? ServerPlayer)
+        }
+        UseEntityCallback.EVENT.register { player, _, _, _, _ ->
+            BindRestrictInteractions.onUseEntity(player as? ServerPlayer)
         }
     }
 
@@ -156,9 +183,8 @@ class FabricEvents(private val plugin: KERONGFabric) {
     // ---------- 玩家进出 ----------
 
     /**
-     * 进服建档（1.7.5.1 起：QQ 绑定不再拦截进服——原 enforceLoginBinding
-     * 未绑定玩家加入后踢出的路径按用户指令删除，绑定完全自愿；此处仅
-     * 确保玩家有 QUUID 档案，统计与后续 /hbkrg qbd 绑定流程都基于它）。
+     * 进服建档（QQ 绑定的统计与后续绑定流程都基于 QUUID 档案）；
+     * 1.7.5.9 起未绑定玩家的限制由 [BindRestrict.onJoin] 启动。
      */
     private fun registerPlayerProfile(player: ServerPlayer) {
         val manager = try {
