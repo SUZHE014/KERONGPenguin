@@ -320,8 +320,10 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
      *      （bot.id / AppID）不是同一 ID 体系**，精确 id 匹配对群消息
      *      永远不成立（1.7.5.7 首版只做精确 id 匹配后，全量群里艾特机器
      *      人无法唤起 AI 的根因）。现按昵称识别：bot=true 的机器人条目
-     *      且 username 与本机器人昵称一致（昵称双源：/users/@me 的
-     *      username（懒加载缓存）+ 配置 bot.name）即认定被艾特的是本机
+     *      且 username 与本机器人昵称一致（唯一源：/users/@me 的
+     *      username，懒加载缓存——官方基础接口无需申请任何权限；刻意
+     *      不读配置 bot.name：它只是显示名、经常被随意填写，撞上群里
+     *      其他机器人的昵称会造成误判）即认定被艾特的是本机
      *      器人。艾特其他机器人时条目昵称是那个机器人的昵称，不命中——
      *      1.7.5.7 主轮「艾特其他机器人误判」的修复口径保持；
      *    - 精确 id 匹配（botSelfId / botAppId 双源）：频道消息形态及
@@ -381,25 +383,24 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
     /**
      * 本机器人昵称匹配集（供 [isMentionedBot] 昵称通道）。
      *
-     * 双源：`/users/@me`（[Bot.getInfo]，SDK 懒加载 + 缓存，线程安全）返回
-     * 的 username 为主——它就是 QQ 客户端里艾特时显示的机器人昵称；配置
-     * bot.name（用户手填的显示名）为辅。两源都取不到时返回空集（昵称
-     * 通道静默，不影响其他通道）。任一源异常不拖垮另一源。
+     * 唯一来源：`/users/@me`（[Bot.getInfo]，SDK 懒加载 + 缓存，线程
+     * 安全）返回的 username——它就是 QQ 客户端里艾特时显示的机器人昵
+     * 称；官方基础接口，仅凭登录 WSS 同一套凭据即可调用（需特殊申请
+     * 的只有 union_openid / union_user_account 两个跨应用字段，本处
+     * 不涉及），且获取失败不缓存、下一条消息自动重试。**刻意不并入
+     * 配置 bot.name**：它只是显示名，实际使用中经常被随意填写，一旦
+     * 撞上群里其他机器人的昵称，「艾特其他机器人」会被误判成艾特本
+     * 机器人（1.7.5.7 主轮修复口径的复活通道）。取不到时返回空集
+     * （昵称通道静默，不影响其他通道）。
      */
     private fun loadBotNicknames(): Set<String> {
-        val names = mutableSetOf<String>()
         try {
             val info = QClient.starter?.bot?.getInfo()
             val officialName = info?.username?.trim().orEmpty()
-            if (officialName.isNotEmpty()) names.add(officialName)
+            if (officialName.isNotEmpty()) return setOf(officialName)
         } catch (_: Throwable) {
         }
-        try {
-            val configName = plugin.botName.trim()
-            if (configName.isNotEmpty()) names.add(configName)
-        } catch (_: Throwable) {
-        }
-        return names
+        return emptySet()
     }
 
     /**
