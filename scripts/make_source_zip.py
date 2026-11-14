@@ -28,12 +28,14 @@ def excluded(rel):
     # 冒烟测试编译与运行产物不入包（1.7.5.9 轮口径：out/ 的 .class 排除；
     # 1.7.6 覆盖轮：smoke176o2 的 out/ 编译产物与 workdir/ 运行数据一并排除，
     # smoke 目录入包口径 = Java 源 + classpath.txt；
-    # 1.7.6 二次覆盖轮：smoke176o3 同口径）
+    # 1.7.6 二次覆盖轮：smoke176o3 同口径；三次覆盖轮：smoke176o4 同口径）
     if rel.startswith("scripts/smoke1759/out"):
         return True
     if rel.startswith("scripts/smoke176o2/out") or rel.startswith("scripts/smoke176o2/workdir"):
         return True
     if rel.startswith("scripts/smoke176o3/out") or rel.startswith("scripts/smoke176o3/workdir"):
+        return True
+    if rel.startswith("scripts/smoke176o4/out") or rel.startswith("scripts/smoke176o4/workdir"):
         return True
     if rel.startswith("scripts/smoke176/") and (rel.endswith(".class") or "/out/" in rel):
         return True
