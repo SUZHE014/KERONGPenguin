@@ -25,8 +25,14 @@ def excluded(rel):
         return True
     if rel.startswith("scripts/deps-work"):
         return True
-    # 冒烟测试编译产物不入包（1.7.5.9 轮口径：smoke1759/out 的 .class 排除）
+    # 冒烟测试编译与运行产物不入包（1.7.5.9 轮口径：out/ 的 .class 排除；
+    # 1.7.6 覆盖轮：smoke176o2 的 out/ 编译产物与 workdir/ 运行数据一并排除，
+    # smoke 目录入包口径 = Java 源 + classpath.txt）
     if rel.startswith("scripts/smoke1759/out"):
+        return True
+    if rel.startswith("scripts/smoke176o2/out") or rel.startswith("scripts/smoke176o2/workdir"):
+        return True
+    if rel.startswith("scripts/smoke176/") and (rel.endswith(".class") or "/out/" in rel):
         return True
     if "build" in parts[:-1]:
         return True

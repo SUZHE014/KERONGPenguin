@@ -1,0 +1,5 @@
+# 冒烟运行 classpath（1.7.6 覆盖轮口径：与 smoke176 同源，指向本版分发 JAR）
+# 编译：javac -cp <分发JAR> -d out Smoke176o2.java
+# 运行：cd workdir && java -cp "../out:<分发JAR>" Smoke176o2
+# 分发 JAR = build/dist/KERONGPenguin_Spigot-1.7.6.jar（含 common-Bot 类与 org.bukkit / fastjson 依赖）
+build/dist/KERONGPenguin_Spigot-1.7.6.jar
