@@ -695,7 +695,7 @@ class PublicCommands : CommandSupport() {
             return
         }
         val cmd = "kerong run ${groupId(event)} ${userId(event)} $params"
-        executeGameCommandWithMention(plugin, event, cmd, true)
+        executeGameCommandWithMention(plugin, event, cmd, true, params)
     }
 
     /** 提取消息中被 @ 的首个用户（排除机器人自身）。 */
@@ -720,12 +720,22 @@ class PublicCommands : CommandSupport() {
 
     /**
      * 派发命令并带 @ 提及回复执行结果。
-     * 回复模板：bridge-error（桥接失败）/ sent-request（已发送）/ execute-failed（异常）。
- * 回复移到异步线程（完成回调可能在主线程，同步 HTTP 卡主线程）；
+     * 回复模板：bridge-error（桥接失败）/ sent-request（已执行无输出，
+     * {command} 变量）/ execute-failed（异常）。
+     * 控制台命令日志（1.7.6 覆盖轮）：回复开头统一带「已执行命令：…」行
+     * （[displayCommand] = 用户输入的命令文本）；有输出时后接分隔线与
+     * 裁剪后的输出，无输出时走 sent-request 模板。
+     * 回复移到异步线程（完成回调可能在主线程，同步 HTTP 卡主线程）；
      * replyMarkdown 按平台响应校验真实送达，拒收时回退纯文本（见
      * CommandSupport.clipCommandOutput 与 QClient.replyMarkdown）。
      */
-    private fun executeGameCommandWithMention(plugin: KERONG, event: GroupMessageEvent, command: String, direct: Boolean) {
+    private fun executeGameCommandWithMention(
+        plugin: KERONG,
+        event: GroupMessageEvent,
+        command: String,
+        direct: Boolean,
+        displayCommand: String,
+    ) {
         try {
             val outgoingCommand = if (direct) command
             else "kerong run ${groupId(event)} ${userId(event)} $command"
@@ -735,9 +745,16 @@ class PublicCommands : CommandSupport() {
                     try {
                         when {
                             error != null || result == null -> MessageTemplates.sendDirect(event, "bridge-error")
-                            result.rawString.isBlank() -> MessageTemplates.sendDirect(event, "sent-request")
-                            // 执行结果为动态内容（非固定文案），先裁剪后原样审核转发
-                            else -> sendDirect(event, plugin.auditText(clipCommandOutput(result.rawString)))
+                            result.rawString.isBlank() -> MessageTemplates.sendDirect(
+                                event, "sent-request", mapOf("command" to displayCommand),
+                            )
+                            // 执行结果为动态内容（非固定文案），先裁剪后原样审核转发；
+                            // 开头带控制台命令日志行（1.7.6 覆盖轮）
+                            else -> sendDirect(
+                                event,
+                                "已执行命令：$displayCommand\n——————————\n" +
+                                    plugin.auditText(clipCommandOutput(result.rawString)),
+                            )
                         }
                     } catch (_: Throwable) {
                     }

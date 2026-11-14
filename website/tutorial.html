@@ -46,7 +46,7 @@
 <p>管理员默认为群主与群管理员（admin.mode: qq），也可改配置名单判定，见「命令与管理」设置。</p>
 <table class="cmd-table">
 <tr><th>命令</th><th>功能与用法</th></tr>
-<tr><td><code>/执行命令 &lt;命令&gt;</code></td><td>在群里远程执行服务器命令，执行结果原样回传（超长自动截断），如 /执行命令 say 大家好</td></tr>
+<tr><td><code>/执行命令 &lt;命令&gt;</code></td><td>在群里远程执行服务器命令，回复开头带「已执行命令：…」命令日志行，后接命令输出（超长自动截断），如 /执行命令 say 大家好</td></tr>
 <tr><td><code>/管理员执行 &lt;key&gt;</code></td><td>以管理员权限触发自定义命令（预设里 permission 非 0 的条目）</td></tr>
 <tr><td><code>/黑名单 @成员</code></td><td>把成员拉黑并解绑踢出（无法再进服）；不带参数发送则查看黑名单列表（每个条目带「解除」按钮，点击即移出）</td></tr>
 <tr><td><code>/解除黑名单 @成员</code></td><td>把成员移出黑名单；不带参数发送则查看列表——发送 /解除黑名单 @对应的人 解除，也可以点击列表下方对应的「解除」按钮（逐条竖排）解除</td></tr>
@@ -108,9 +108,10 @@
 
 <div class="tutorial-step">
 <h3><span class="step-num">3</span>邀请机器人进群（自动绑定）</h3>
+<p style="color:#e8a44a"><b>⚠ 本步骤必须由群主操作</b>——机器人的群内设置（信息范围 / 主动发消息）只有群主能修改，群管理员与普通成员打开设置页看不到或改不了这些选项；机器人也只能由群主（或管理员）邀请进群。</p>
 <ol>
 <li>在 QQ 中把机器人邀请到你的群，点击机器人头像 → <strong>设置</strong></li>
-<li>把 <strong>机器人可获取的信息范围</strong> 调成 <strong>群内全部消息</strong>，打开<strong>主动发消息</strong>开关</li>
+<li>把 <strong>机器人可获取的信息范围</strong> 调成 <strong>群内全部消息</strong>，打开<strong>主动发消息</strong>开关（两处开关都在上一步的设置页里，均需群主身份）</li>
 <li>在群里发送<strong>任意消息</strong>（命令 / 聊天均可，如 <code>/查信息</code>）：bot.groups 未填写时插件<b>自动把本群 OpenId 写入白名单并重载配置</b>（含快捷面板同步），无需手动抄 ID、无需重启</li>
 </ol>
 <p>之后要加别的群：自行把新群 OpenId 追加进 <code>bot.groups</code>（每一项必须用双引号包裹），或清空列表后让新群先发消息：</p>
@@ -349,15 +350,6 @@
 </div>
 
 <div class="cfg-item">
-<h4>真实玻璃渲染（测试功能） <span class="key">render.real-glass</span></h4>
-<div class="config">
-<pre>render:
-  real-glass: false  # true = 开启液态玻璃算法（测试功能）</pre>
-</div>
-<p>1.7.6 新增的测试功能，默认关闭。开启后全部图片卡片（玩家名片 / 查在线 / 在线排行榜 / 财富榜 / 查性能）的玻璃效果从「背景模糊 + 半透明底色」升级为液态玻璃算法：卡片边缘出现<b>折射形变</b>（背景被玻璃边缘放大挤压）、<b>RGB 色散色差</b>（边缘细微彩虹色散）、<b>左上边缘高光</b>与<b>右下背光内阴影</b>。各卡片灰度（title-card-gray 等）与背景图不受影响照常叠加；<code>blur-strength</code> 为 0 时玻璃后景直接用原图（清晰玻璃）。逐像素计算比普通渲染多几十毫秒（渲染线程内完成 + 结果 60 秒缓存，不影响游戏）；观感不满意改回 <code>false</code> 即恢复原样，<code>/hbkrg reload</code> 即时生效。</p>
-</div>
-
-<div class="cfg-item">
 <h4>标题框黑度 <span class="key">render.title-card-gray</span></h4>
 <div class="config">
 <pre>render:
@@ -497,8 +489,8 @@ coins-leaderboard:
 <pre>variable-fetch:
   total-playtime-source: "variable"  # save-data 存档数据 / plugin 插件统计 / variable 变量</pre>
 </div>
-<p>1.7.6 新增：选择玩家名片卡片「在线时长」项的数据来源，三种取值（也接受中文「存档数据 / 插件统计 / 变量」）：</p>
-<p>・<code>save-data</code>（服务器存档数据）：读主世界 <code>stats/&lt;uuid&gt;.json</code> 里的 <code>minecraft:play_time</code>（游戏刻，72000 刻 = 1 小时），按小时展示（如「35.5 小时」）。适合装插件之前玩家就一直在玩、插件自记录时长偏小的服务器；<b>读取不到（无存档 / 无该玩家记录）自动回退</b>变量（若配置）→ 插件统计。</p>
+<p>选择玩家名片卡片「在线时长」项的数据来源，三种取值（也接受中文「存档数据 / 插件统计 / 变量」），<b>三种源的展示格式统一为「X时X分」</b>：</p>
+<p>・<code>save-data</code>（服务器存档数据）：读主世界 <code>stats/&lt;uuid&gt;.json</code> 里的 <code>minecraft:play_time</code>（游戏刻，72000 刻 = 1 小时）。查找用<b>服务器自己的玩家 UUID</b>：先用绑定记录的 UUID 找统计文件，找不到自动改用服务器 <code>usercache.json</code> 里记录的该玩家 UUID 重查（改名 / 老绑定数据 UUID 对不上也能读到）；查找的每一环（目录 / UUID 来源 / 文件 / 刻数）都写进日志文件（<code>logs/qq/</code> 的「[存档统计]」行），排障可直接对照。适合装插件之前玩家就一直在玩、插件自记录时长偏小的服务器；<b>读取不到自动回退</b>变量（若配置）→ 插件统计。</p>
 <p>・<code>plugin</code>（插件统计）：只用本插件自记录的时长（新玩家无记录显示 0）。</p>
 <p>・<code>variable</code>（变量，默认）：填了 <code>total-playtime</code> 变量就用变量，没填 / 读取失败回退插件统计——与历史版本行为完全一致。</p>
 </div>
@@ -921,7 +913,7 @@ coins-leaderboard:
 
 <div class="tutorial-step">
 <h3>群里远程执行命令，控制台有记录吗</h3>
-<p>有。经 <code>/执行命令</code> 执行的每条命令与它的输出，都会以 <code>[QQ 远程命令]</code> 前缀同步写进服务器控制台和 latest.log，服务器运维侧看得到谁执行了什么；这些转发行不会再混回 QQ 回复（回复里只有命令本身的输出）。</p>
+<p>有。经 <code>/执行命令</code> 执行的每条命令与它的输出，都会以 <code>[QQ 远程命令]</code> 前缀同步写进服务器控制台和 latest.log，服务器运维侧看得到谁执行了什么；QQ 回复的开头也带「已执行命令：…」命令日志行（后接命令输出），群里同样看得出执行了什么。</p>
 </div>
 
 <div class="tutorial-step">
@@ -950,5 +942,6 @@ coins-leaderboard:
 </footer>
 </body>
 </html>
+
 
 

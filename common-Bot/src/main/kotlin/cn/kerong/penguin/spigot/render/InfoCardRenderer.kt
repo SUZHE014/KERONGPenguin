@@ -2236,12 +2236,6 @@ object InfoCardAssets {
     ) {
         /** 在圆角卡片矩形内绘制背景模糊副本（卡片外不受影响）。 */
         fun paintCard(g: Graphics2D, x: Float, y: Float, w: Float, h: Float, radius: Float) {
-            // 真实玻璃渲染（render.real-glass，1.7.6 测试功能）：改走液态玻璃
-            // 算法（折射 / 色差 / 边缘高光）；关闭时与旧版完全一致
-            if (RenderSettings.realGlassEnabled()) {
-                LiquidGlassPainter.paintCard(g, blurred, placement, canvasWidth, canvasHeight, x, y, w, h, radius)
-                return
-            }
             val oldClip = g.clip
             g.clip(RoundRectangle2D.Float(x, y, w, h, radius, radius))
             try {
@@ -2333,15 +2327,10 @@ object InfoCardAssets {
     @Synchronized
     private fun cardBackdropOf(background: BufferedImage): BufferedImage? {
         val strength = RenderSettings.blurStrength()
-        // 真实玻璃渲染开启时模糊副本永远可用（模糊度 0 → 直接以原图为
-        // 玻璃后景，清晰玻璃；关闭时保持旧语义：模糊度 0 无副本）
-        if (strength <= 0 && !RenderSettings.realGlassEnabled()) return null
+        // 模糊度为 0 = 不模糊（无副本，零开销）
+        if (strength <= 0) return null
         for (entry in backgroundCache.values) {
             if (entry.image !== background) continue
-            if (strength <= 0) {
-                // 真实玻璃 + 模糊度 0：原图即玻璃源（无需生成模糊副本）
-                return entry.image
-            }
             val existing = entry.backdrop
             if (existing != null && entry.backdropStrength == strength) return existing
             // 首次生成或模糊度已变化：释放旧副本，按当前模糊度重新生成
@@ -2357,8 +2346,6 @@ object InfoCardAssets {
             return entry.backdrop ?: blurred
         }
         // 不在缓存中的背景（防御路径，正常链路不会发生）：直接模糊不缓存
-        // （真实玻璃 + 模糊度 0：原图即玻璃源）
-        if (strength <= 0) return background
         return blurImage(background, strength)
     }
 

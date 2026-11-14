@@ -34,10 +34,23 @@ import java.util.concurrent.ConcurrentHashMap
  *   ② 释放记录（.release-record.json）里记着本文件上次的默认指纹且
  *      磁盘内容仍与该指纹一致——上一次写入/确认后用户没动过，属于
  *      旧版默认，跨任意历史版本自动收敛（不再逐版手抄旧默认表）；
- *   ③ [DEFAULT_CONTENT_UPGRADES] 历代旧默认逐版比对 + 默认特征兜底
- *      （老安装升级上来没有释放记录时的过渡判定，表已收录的形态继续有效）。
+ *   ③ [DEFAULT_CONTENT_UPGRADES] 历代旧默认逐版精确比对
+ *      （无释放记录的老安装的兜底判定，表已收录的形态继续有效）。
  * - 自己改过的内容一律不动（三条都不命中）——与所有历史默认都不一致
  *   = 用户改过，保留原文件，切记不得误删。
+ *
+ * ## 1.7.6 覆盖轮两处收紧（用户指令：菜单模板可靠输出 + 已改过的不被更新）
+ *
+ * - **升级判定只做逐版精确比对**：旧版的「默认特征匹配」兜底
+ *   （内容只要包含某特征词即判为旧默认）已删除——用户改过内容但
+ *   保留了默认标题 / 开头特征的模板会被误判成旧默认而遭删除重建，
+ *   改动丢失；现在只要与所有历史默认不完全一致就是用户内容，永不动。
+ *   代价是极端老安装（无释放记录且中间态默认未入表）少升级一次，
+ *   可接受（少升级好过误删）。
+ * - **自定义文件名的模板同样释放默认**：messages.<ID> 改成自定义
+ *   文件名（如 help/menu.md）时，旧版完全不释放也不提示——文件不
+ *   存在则永远回退内置默认，用户改配置无效果；现在文件不存在时
+ *   同样释放默认内容作为起点（不覆盖已有文件），升级链同样生效。
  *
  * 历史注：1.7.5.1 曾把 menu 设为「系统 UI 模板」无条件重置（每次启动
  * 强制覆盖为默认），目的是收敛线上历史残留形态；但该机制会把用户
@@ -156,23 +169,21 @@ object MessageTemplates {
      * 判定；替换内容一律取当前 JAR 内置资源，本表 newContent 字段不再
      * 单独使用，保留用于历史对照与 [shouldUpgrade] 决策）。
      *
+     * 1.7.6 覆盖轮：特征匹配兜底已删除（用户改过但保留默认开头特征的
+     * 模板会被误判升级，改动丢失）——只做历代旧默认的逐版精确比对。
+     *
      * @property olds 历代旧默认内容（normalize 后精确比对，覆盖已知的每一版）
-     * @param features 默认内容特征（当前内容含任一即视为「未被自定义改过的
-     *   默认模板」——兜底收敛表没收录到的中间态默认版本；null = 不做特征匹配）
      * @property newContent 新默认内容（历史对照用；实际写入以 JAR 内置资源为准）
      */
     private class UpgradeSpec(
         val olds: List<String>,
-        private val features: List<String>?,
         val newContent: String,
     ) {
         /** 当前磁盘内容是否应升级到新默认（幂等：已等于新默认返回 false）。 */
         fun shouldUpgrade(current: String): Boolean {
             val normalizedCurrent = normalize(current)
             if (normalizedCurrent == normalize(newContent)) return false
-            if (olds.any { normalize(it) == normalizedCurrent }) return true
-            val marks = features ?: return false
-            return marks.any { current.contains(it) }
+            return olds.any { normalize(it) == normalizedCurrent }
         }
     }
 
@@ -241,7 +252,7 @@ object MessageTemplates {
  // OpenId 行改为 {openidPart}（管理员查询才显示）
         "openid-lookup" to UpgradeSpec(listOf(
             "【OpenID 反查】\nOpenId: {openid}\n群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}",
-        ), listOf("【OpenID 反查】"), "【OpenID 反查】\n{openidPart}群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}"),
+        ), "【OpenID 反查】\n{openidPart}群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}"),
  // menu 回到升级表（1.7.5.2：系统模板强制重置机制移除）：
         // 菜单模板与历史各版本内置默认值逐一比对（1.7.5.9 用户口径）——
         // 命中任一旧版默认（= 用户没改过）→ 删除磁盘文件重新生成本版默认；
@@ -260,23 +271,23 @@ object MessageTemplates {
             "### 指令菜单\n\n点击下方按钮即可执行；带参数的指令（绑定 / 发信息 / 执行命令等）点击后复制到输入框，补全内容再发送。\n\n---\n**当前插件版本：v{version}**",
             "### 指令菜单（{page}/{pages}）",
             "### 指令菜单（{page}/{pages}）\n\n**当前插件版本：v{version}**",
-        ), listOf("### 指令菜单"), "### 指令菜单（{page}/{pages}）\n\n---\nv{version}"),
+        ), "### 指令菜单（{page}/{pages}）\n\n---\nv{version}"),
  // AI 管理合并：旧命令名版本与旧提示句版本收敛为纯状态行（操作都在按钮里）
         "ai-context-usage" to UpgradeSpec(listOf(
             "用法: /AI对话上下文 开|关\n当前状态: {status}",
             "当前 AI 上下文状态：{status}\n\n可发送 /AI管理 开|关|清除，或点击下方按钮选择操作：",
-        ), listOf("AI 上下文状态", "AI对话上下文"), "当前 AI 上下文状态：{status}"),
+        ), "当前 AI 上下文状态：{status}"),
  // 解除黑名单清单：历代旧默认收敛到「命令在前、按钮在后」口径（用户口径
         // 「先 /解除黑名单 @对应的人」；1.7.5 覆盖第三轮调序）
         "unblacklist-list" to UpgradeSpec(listOf(
             "黑名单列表（{count} 个）：\n{list}\n\n解除请发送: /解除黑名单 @QQ",
             "黑名单列表（{count} 个）：\n{list}\n\n点击下方按钮即可解除对应条目（也可发送 /解除黑名单 @QQ）",
             "黑名单列表（{count} 个）：\n{list}\n\n可以按下对应的按钮，或者艾特对方发送 /解除黑名单 解除",
-        ), listOf("黑名单列表（{count} 个）"), "黑名单列表（{count} 个）：\n{list}\n\n发送 /解除黑名单 @对应的人 解除；也可以点击下方对应的按钮解除"),
+        ), "黑名单列表（{count} 个）：\n{list}\n\n发送 /解除黑名单 @对应的人 解除；也可以点击下方对应的按钮解除"),
  // 全量转发改为总开关口径（群级独立开关删除，1.7.5 覆盖第三轮）
         "full-amount-toggled" to UpgradeSpec(listOf(
             "本群全量转发已{state}",
-        ), listOf("全量转发已", "本群全量转发已"), "全量转发已{state}（总开关，全部配置群统一生效{writeResult}）"),
+        ), "全量转发已{state}（总开关，全部配置群统一生效{writeResult}）"),
     )
 
     /** 平台插件实例（Spigot / NeoForge 适配器均为 JavaPlugin 子类）。 */
@@ -323,10 +334,14 @@ object MessageTemplates {
         var upgraded = 0
         for (id in TEMPLATE_IDS) {
             val fileName = fileNameOf(id)
-            // 自定义文件名：不自动释放（内容需用户自己写；缺失时读取回退内置默认）
-            if (fileName != "$id.md") continue
+            // 1.7.6 覆盖轮：自定义文件名（如 help/menu.md）同样释放默认
+            // 内容作为起点（不覆盖已有文件）——旧版不释放也不提示，文件
+            // 不存在时永远回退内置默认，用户改配置无效果
             val bundled = bundledResource(id) ?: continue
             val target = dir.resolve(fileName)
+            target.parentFile?.let { parent ->
+                if (!parent.isDirectory) parent.mkdirs()
+            }
             val current: String? = try {
                 if (target.isFile) target.readText(Charsets.UTF_8) else null
             } catch (_: Throwable) {
@@ -336,6 +351,11 @@ object MessageTemplates {
                 if (current == null) {
                     // 首次释放（不覆盖已有文件；bundled 与 JAR 内置资源同源）
                     target.writeBytes(bundled.toByteArray(Charsets.UTF_8))
+                    if (fileName != "$id.md") {
+                        BotShared.instance?.log_info(
+                            "消息模板 $id 使用自定义文件 $fileName：已释放默认内容作为起点（可自行编辑，删除后重启恢复默认）"
+                        )
+                    }
                     released++
                     if (record[fileName] != fingerprint(bundled)) {
                         record[fileName] = fingerprint(bundled)

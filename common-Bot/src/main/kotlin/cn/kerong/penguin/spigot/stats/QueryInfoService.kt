@@ -98,7 +98,9 @@ object QueryInfoService {
      */
     private data class MainThreadSnapshot(
         val stats: PlayerStatsManager.PlayerStats,
-        /** 玩家 UUID（1.7.6：总在线时长「服务器存档数据」源读取 stats/<uuid>.json 用）。 */
+        /** 玩家名（1.7.6 覆盖轮：存档源 usercache.json 按名解析服务器 UUID 用）。 */
+        val playerName: String?,
+        /** 玩家 UUID（存档源 stats/<uuid>.json 第一级查找用；绑定记录口径）。 */
         val playerUuid: UUID?,
         val title: String,
         val titleSource: String,
@@ -391,24 +393,26 @@ object QueryInfoService {
      * 获取源，按源走回退链（获取不到自动退回，每一环 null 则进入下一环）：
      *
      * - save-data（服务器存档数据）：主世界 stats/<uuid>.json 的 play_time
-     *   （[StatsFileService]，「X.X 小时」格式）→ 变量（若配置且解析成功）
+     *   （[StatsFileService]，两级 UUID 查找：绑定记录 → usercache.json
+     *   服务器口径，查找全过程写日志）→ 变量（若配置且解析成功）
      *   → 插件统计（formatPlayTime）；
      * - variable（变量，默认）：变量 → 插件统计（与历史行为完全一致）；
      * - plugin（插件统计）：插件统计（不回退——新玩家无记录显示 0分钟，
      *   与旧版一致）。
      *
-     * 存档源读取失败时写一行文件日志（[StatsFileService.noteUnavailableOnce]，
-     * 同一会话只提示一次），排障时可从 logs/qq/ 直接定位。
+     * 三个源的展示格式统一「X时X分」（1.7.6 覆盖轮用户口径——不再用
+     * 「X.X 小时」区分源；存档源 [StatsFileService.formatPlayText] 与
+     * 插件统计 [formatPlayTime] 同口径）。存档源每次查询的过程日志
+     * （目录 / UUID 来源 / 文件 / 刻数 / 回退原因）见 [StatsFileService]。
      */
     private fun resolveTotalPlaytime(snapshot: MainThreadSnapshot): String {
         val variable = snapshot.vars.overrides.playtime
         return when (PlaceholderVariableService.totalPlaytimeSource()) {
             PlaceholderVariableService.SOURCE_SAVE_DATA -> {
-                val ticks = StatsFileService.readPlayTicks(snapshot.playerUuid)
-                if (ticks != null) {
-                    StatsFileService.formatHours(ticks)
+                val result = StatsFileService.readPlayTime(snapshot.playerName, snapshot.playerUuid)
+                if (result != null) {
+                    StatsFileService.formatPlayText(result.ticks)
                 } else {
-                    StatsFileService.noteUnavailableOnce()
                     variable ?: formatPlayTime(snapshot.stats.playSeconds)
                 }
             }
@@ -463,6 +467,7 @@ object QueryInfoService {
             val variables = PlaceholderVariableService.snapshotContext(playerName, playerUuid, onlinePlayer)
             MainThreadSnapshot(
                 stats = stats,
+                playerName = playerName,
                 playerUuid = playerUuid,
                 title = title.value,
                 titleSource = title.source,
@@ -517,6 +522,7 @@ object QueryInfoService {
      */
     private fun timeoutSnapshot(): MainThreadSnapshot = MainThreadSnapshot(
         stats = PlayerStatsManager.PlayerStats(),
+        playerName = null,
         playerUuid = null,
         title = "暂无",
         titleSource = "主线程繁忙读取超时",

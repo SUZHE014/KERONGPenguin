@@ -623,7 +623,10 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 回退变量 → 插件统计）；②qq-bind.fake-player-whitelist（Fabric 端假人
         // 白名单名单，配合连接自动检测一并豁免未绑定限制）；
         // ③render.real-glass（真实玻璃渲染测试开关，默认关闭）。
-        private const val CURRENT_CONFIG_VERSION = 52
+        // 升 53——1.7.6 覆盖轮：删键 render.real-glass（真实玻璃渲染测试功能
+        // 整体下线，恢复原毛玻璃渲染；无论装过 52 还是更早版本，升级时
+        // 自动删除该键与注释）；其余升 52 变更保持不变。
+        private const val CURRENT_CONFIG_VERSION = 53
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -662,6 +665,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 转发显示名统一固定为群昵称不再配置，升 51 直接删键（含首发
             // 1.7.5.9（cv50）用户配置里的残留键）
             "chat-format.qq-forward-display-name",
+ // 升 53：1.7.6 覆盖轮——真实玻璃渲染测试功能整体下线，
+            // render.real-glass（升 52 新增）随源码一并移除，升级时直接删键
+            "render.real-glass",
             "render.performance.show-tps", "render.performance.show-mspt",
             "render.performance.show-memory", "render.performance.show-cpu",
             "render.performance.show-online",
@@ -871,9 +877,6 @@ class ConfigManager(private val plugin: JavaPlugin) {
  // 毛玻璃模糊度（0-100，越大越模糊，0 = 不模糊；只模糊卡片
             // 背后的背景，卡片外保持清晰）
             "render.blur-strength" to 50,
- // 真实玻璃渲染（1.7.6 测试功能，默认关闭）：开启后卡片玻璃改用液态
-            // 玻璃算法（折射 / 色差 / 边缘高光）；实时读取
-            "render.real-glass" to false,
  // 卡片底色黑度（0-255 半透明黑 alpha）；title =
  // 四张卡片顶部标题区（默认 80 比项目卡片略浅，前这些区域
             // 硬编码半透明白调不动）；item = 列表容器（玩家名片统计面板 +
