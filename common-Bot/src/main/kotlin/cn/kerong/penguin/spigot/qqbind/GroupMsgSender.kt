@@ -27,10 +27,11 @@ object GroupMsgSender {
      * 新版事件 MessageScene.ext 数组的 msg_idx（REFIDX 形式）→ 事件 msg_id → rawMessage.id；
      * 平台不支持引用协议时自动回退普通被动回复（既有行为），AI 回复不会丢失。
      *
-     * @param quote 1.7.5.5 覆盖（ai.reply-quote，默认 true 开）：false 时不引用
-     *   任何消息——改走 [QClient.replyMarkdown] 普通被动回复（仍带 msg_id 被动
-     *   通道，但不携带 message_reference，群里不渲染引用框）；Markdown 内文
-     *   的 `<@openid>` 艾特解析不受影响
+     * @param quote 是否引用发送者的原消息：false 时不引用任何消息——改走
+     *   [QClient.replyMarkdown] 普通被动回复（仍带 msg_id 被动通道，但不携带
+     *   message_reference，群里不渲染引用框）；Markdown 内文的 `<@openid>`
+     *   艾特解析不受影响。调用方 [GroupMessageHandler] 按配置 ai.reminder-mode
+     *   决定取值（at 模式拼接艾特 + 不引用 / quote 引用 / none 都不要）
      */
     fun sendReply(event: GroupMessageEvent, content: String, quote: Boolean = true) {
         if (quote) {

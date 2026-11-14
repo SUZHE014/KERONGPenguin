@@ -237,6 +237,21 @@ class ConfigManager(private val plugin: JavaPlugin) {
  // 移除 commands.个人信息（该命令已更名为 查信息）
  // 移除 qq-bind.leaderboard.random-background（反向更名为 builtin-background，
         // 手动开启过随机的用户已在上方迁移逻辑中保留意图）
+ // 升 48：删除旧键 ai.reply-quote（开关语义已被 ai.reminder-mode 三选一
+        // 取代）——先把旧开关偏好归一到 reminder-mode（旧键为 false 且新键
+        // 未选择 → 写 none 保留「不引用」偏好；其余 → 写 quote，与空串语义
+        // 一致），再由下方废弃键清单统一删除旧键本体
+        if (oldVersion in 1 until 48) {
+            val reminder = config.getString("ai.reminder-mode", "")?.trim() ?: ""
+            if (reminder.isEmpty() && config.isSet("ai.reply-quote")) {
+                config.set(
+                    "ai.reminder-mode",
+                    if (config.getBoolean("ai.reply-quote", true)) "quote" else "none",
+                )
+                plugin.logger.info("配置升级：ai.reply-quote 开关已并入 ai.reminder-mode（三选一 at/quote/none），旧键已删除")
+                changed = true
+            }
+        }
  // 移除 ai.context-global（旧默认值误写进用户配置，实际无任何功能——
         // AI 上下文自 1.5.3 起即为全局一份记忆，不存在按群/按人切换）
  // 移除 render.gc-after-render（渲染后 GC 提示已废除——System.gc
@@ -477,28 +492,25 @@ class ConfigManager(private val plugin: JavaPlugin) {
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
 
-        // 升 47——1.7.5.6 覆盖轮新增两键（只加新键+默认值，不做任何旧值迁移）：
-        // ai.reminder-mode（AI 回复提醒方式三选一，默认空串=未选择——留空时
-        // 回退读旧键 ai.reply-quote（true/缺省→quote 引用；false→none 无），
-        // 双键都不填时默认引用，与 1.7.5.5 行为一致；可选取值 at/quote/none
+        // 升 48——1.7.5.7 覆盖轮删旧键（配置注释同步去版本字样）：
+        // 删除旧键 ai.reply-quote（1.7.5.5 引入的开关，1.7.5.6 起已被
+        // ai.reminder-mode 三选一取代）：升级时若 reminder-mode 仍为空且旧键
+        // 为 false，先把 reminder-mode 归一写为 none（保留用户「不引用」的
+        // 偏好），其余情况归一写为 quote（空串语义本就是引用）；随后从用户
+        // 配置里删除 reply-quote 键。新装配置不再包含该键。
+        // 升 47——1.7.5.6 覆盖轮新增两键（只加新键+默认值）：
+        // ai.reminder-mode（AI 回复提醒方式三选一，可选取值 at/quote/none
         // 或中文 艾特/引用/无；at=每次回复开头艾特发送人，quote=引用原消息，
-        // none=既不艾特也不引用；旧键 reply-quote 仅在 reminder-mode 留空时生效）；
+        // none=既不艾特也不引用；留空默认引用）；
         // bot.button-cooldown-seconds（QQ 按钮互动冷却秒数，默认 5——同一用户
         // 两次点击按钮的最小间隔，间隔内连点回应「操作频繁」不执行；0=关闭）。
-        // 升 46——1.7.5.5 覆盖新增 AI 两键（只加新键+默认值，不做任何旧值迁移）：
-        // ai.at-enabled（AI 艾特接口，默认 true 开——开启时①群里 @机器人 发消息
-        // 中的成员艾特不再剥掉而是还原为 @昵称 送给 AI（如「你好，@张三，这人是谁？」
-        // AI 能看到被艾特的是谁）②system prompt 附注艾特接口：AI 回复中可输出
-        // [at:群昵称] 标记，发送前自动转为 QQ 官方艾特；关闭时恢复旧行为（占位剥掉），
-        // AI 亦不知晓接口）；
-        // ai.reply-quote（QQ 群 AI 回复是否引用消息，默认 true 开——引用发送者的
-        // 原消息；关闭时改发普通被动回复，不引用任何消息，Markdown 艾特解析不受影响）。
         // 升 45——1.7.5.3 新增一键（只加新键+默认值，不做任何旧值迁移）：
         // admin.panel-admin-linkage（QQ 快捷面板管理员联动，默认 true——
         // admin.mode=qq/both 时自动把快捷面板管理类指令条目设为仅群主/
         // 群管理员可见可点，与 /菜单 管理按钮平台门禁同一口径；
         // mode=config 或联动关闭时面板全员可见，命令按名单判定；
         // /hbkrg reload 后随面板重同步生效）。
+        // 升 46——1.7.5.5 新增 AI 艾特接口开关（ai.at-enabled，语义见上）。
         // 升 44——1.7.5.2 kick-message 单行字符串写法支持（无新增键）：
         // qq-bind.kick-message 允许写成一行用 \n 分行（getStringList 为空
         // 时按 getString 拆行兜底）；两版历史默认文案（v0.1.5.0 绑定码版 /
@@ -575,7 +587,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // qq-bind.checkin.points-reward（签到点券奖励，默认 0 关闭）
  // 升 28——无新增键纯注释刷新（卡片背景图说明段补 /hbkrg bpng
         // 图片包下载与 /hbkrg bpngsz 一键切换的用法说明）
-        private const val CURRENT_CONFIG_VERSION = 47
+        private const val CURRENT_CONFIG_VERSION = 48
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -603,6 +615,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "agent", "audit", "whitelist", "query-online", "motd.text", "commands.个人信息",
             "qq-bind.leaderboard.random-background", "ai.context-global", "render.gc-after-render",
             "render.idle-gc-hint",
+ // 升 48：AI 回复引用开关已并入 ai.reminder-mode 三选一（升级时
+            // 先归一用户偏好再删键，见 reload 迁移逻辑）
+            "ai.reply-quote",
             "render.performance.show-tps", "render.performance.show-mspt",
             "render.performance.show-memory", "render.performance.show-cpu",
             "render.performance.show-online",
@@ -865,7 +880,6 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "ai.context-limit" to 6,
             "ai.at-enabled" to true,
             "ai.reminder-mode" to "",
-            "ai.reply-quote" to true,
         ).apply {
  // 消息模板映射（每条回复 → Markdown 模板文件名，详见 config.yml 注释）
             for (id in MESSAGE_TEMPLATE_IDS) {

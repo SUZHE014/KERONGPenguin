@@ -24,7 +24,7 @@
 <p style="color:#7a848e;margin-bottom:20px">发布于 2026-11-14</p>
 <a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.7.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
 <a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.7.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.7.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（1.20.4）</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.7.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（1.20.4-1.21.x）</a>
 <a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.1-1.7.5.7.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（1.20.1）</a>
 <p style="color:#7a848e;font-size:0.92em;margin:-4px auto 14px;max-width:440px">Fabric 与主线同号同步发布；按钮括号只标安装包的目标版本，完整版本要求（Loader / Fabric API / 支持的 MC 范围）见下方兼容性卡片</p>
 <div class="dl-info">支持 MC 的版本请详见下方「支持的插件与兼容性 → 支持的服务端核心」</div>
@@ -49,7 +49,7 @@
 <p style="font-size:1.05em;font-weight:bold;color:#e8edf2;margin:16px 0 8px">Fabric 版本要求（下载前请对照）</p>
 <table>
 <tr><th>安装包</th><th>适用的 MC 版本</th><th>前置要求</th></tr>
-<tr><td>通用包（下载按钮括号里的 1.20.4）</td><td>1.20.4 – 1.21.x（2026 年起的 26.x 新版本线未适配，明确排除）</td><td>Fabric Loader <b>0.15.1 及以上</b>；Fabric API 与所用 MC 版本对应；Java 21</td></tr>
+<tr><td>通用包（下载按钮括号里的 1.20.4-1.21.x）</td><td>1.20.4 – 1.21.x（2026 年起的 26.x 新版本线未适配，明确排除）</td><td>Fabric Loader <b>0.15.1 及以上</b>；Fabric API 与所用 MC 版本对应；Java 21</td></tr>
 <tr><td>1.20.1 独立包</td><td>仅限 1.20.1（1.20.2 / 1.20.3 不支持，请用其他核心）</td><td>Fabric Loader <b>0.16.10 及以上</b>；Fabric API 用 <b>0.92.x + 1.20.1</b>；Java 21</td></tr>
 </table>
 <p style="color:#9aa4ae;margin-top:8px">已实测真实服务器启动：1.20.4 / 1.20.5 / 1.20.6 / 1.21 / 1.21.4 / 1.21.6 / 1.21.11。NeoForge 版一个包通用（MC 1.20.4，1.20.6，1.21.x）。</p>
@@ -110,8 +110,10 @@
 <h2>更新日志</h2>
 <div class="changelog">
 <div class="version"><h3>v1.7.5.7</h3><span class="date">2026-11-14</span><ul>
+<li>修复：开启「接收所有群消息」的群里，艾特机器人无法唤起 AI 回复（也无法用「@机器人 + 指令」）——现按机器人昵称精确识别，艾特其他机器人照旧不响应。</li>
 <li>修复：群里艾特其他机器人（如另一个 AI 机器人）时，本机器人误判为被艾特而插嘴回复、还艾特发送人——现只认精确艾特本机器人；艾特本机器人的正常 AI 对话不受影响。</li>
 <li>修复：AI 出向艾特不再渲染成对其他机器人的艾特（防两个机器人互相艾特刷屏），降级为纯文本；成员目录不再收录机器人。</li>
+<li>优化：配置文件注释清理，旧配置键 ai.reply-quote 已并入 ai.reminder-mode 并自动迁移删除（配置版本 47 → 48，升级自动处理无需改配置）。</li>
 </ul></div>
 <div class="version"><h3>v1.7.5.6</h3><span class="date">2026-11-14</span><ul>
 <li>新增：Fabric 版支持 MC 1.20.1（独立包，与其他版本同号发布）。</li>

@@ -97,7 +97,7 @@
 <li>启动服务器：未配置凭据时，<b>启动约 30 秒后</b>（等启动日志刷完）控制台会自动打印<b>扫码登录二维码与扫码链接</b>，手机 QQ 扫码（或复制链接到手机 QQ 打开）确认授权</li>
 <li>授权成功后 AppID / Secret <b>自动写入配置文件并自动连接</b>机器人，无需手动改文件；二维码过期会<b>自动刷新重发新码</b>（每次会话上限 3 次，超过后用 <code>/hbkrg qr</code> 手动重新发起）</li>
 </ol>
-<p>二维码按控制台编码自动选择渲染形态：中文 Windows（GBK）控制台上显示为 ■ 方块字符，属正常现象，同样可扫；扫不了时直接复制下方链接到手机 QQ 打开，效果等同。</p>
+<p>二维码在不同电脑的服务器窗口里可能长得不一样（有的显示为 ■ 方块组成的图案），这都是正常现象，用手机 QQ 的扫一扫都能扫出来；实在扫不出来，就复制二维码下面那行链接发到手机 QQ 里打开，效果一样。</p>
 <p>随时可用 <code>/hbkrg qr</code> 手动发起扫码登录（会先取消此前的扫码会话再输出全新二维码）；凭据已配置时扫码成功后<b>替换现有凭据</b>并以新凭据重连（换号 / 重新授权无需改文件重启）。</p>
 <p>备选（手动填写）：打开配置文件（插件版 <code>plugins/KERONGPenguin/config.yml</code>，模组版 <code>kerongpenguin/config.yml</code>）填入第 1 步保存的机器人信息后重启：</p>
 <div class="config">
@@ -805,10 +805,9 @@ coins-leaderboard:
 <div class="config">
 <pre>ai:
   # at = 每次回复开头艾特发送人；quote = 引用原消息；none = 都不要
-  reminder-mode: ""    # 留空 = 跟随下方旧键 reply-quote（都不填默认引用）
-  reply-quote: true    # 旧键（1.7.5.5），仅上面留空时生效</pre>
+  reminder-mode: ""    # 留空 = 默认引用</pre>
 </div>
-<p>决定每次 AI 回复怎么提醒发送人：<code>at</code>（或中文「艾特」）每次回复开头艾特发送人，手机 QQ 会收到提醒；<code>quote</code>（「引用」）每次回复引用发送者的原消息（QQ 引用框，1.7.5.5 前的默认行为）；<code>none</code>（「无」）既不艾特也不引用，安静回复。留空时跟随旧键 reply-quote（true → 引用，false → 都不要；两键都不填默认引用）。值写错了按「引用」处理并写一次日志。改完 <code>/hbkrg reload</code> 生效。</p>
+<p>决定每次 AI 回复怎么提醒发送人：<code>at</code>（或中文「艾特」）每次回复开头艾特发送人，手机 QQ 会收到提醒；<code>quote</code>（「引用」）每次回复引用发送者的原消息（QQ 引用框）；<code>none</code>（「无」）既不艾特也不引用，安静回复。留空默认引用；值写错了按「引用」处理并写一次日志。改完 <code>/hbkrg reload</code> 生效。</p>
 </div>
 </div>
 

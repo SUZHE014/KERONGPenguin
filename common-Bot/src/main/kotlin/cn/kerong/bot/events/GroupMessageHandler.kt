@@ -307,23 +307,29 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
     /**
      * 判断消息是否 @ 了机器人。
      *
- * 三通道（按可靠性排序）：
+ * 四通道（按可靠性排序）：
      * 1. **GROUP_AT_MESSAGE_CREATE 事件标记**：[GroupAtTracker] 在 WSS 帧层
      *    捕获（事件类型是唯一可靠信号——该事件只在用户艾特本机器人时
      *    推送，艾特其他机器人不会产生；且该事件的 content 已被平台剥掉
-     *    @前缀、mentions 不含机器人）；
-     * 2. mentions 数组含**本机器人 id**（精确匹配）：全量模式
-     *    （GROUP_MESSAGE_CREATE）下 @机器人时 mentions 会带本机器人条目。
-     *    1.7.5.7 修复：旧版「member.bot == true 即判定被艾特」是泛匹配——
-     *    bot 标志只说明该成员是机器人，不说明被艾特的是本机器人；群里
-     *    艾特其他机器人（如另一个 AI 机器人）时 mentions 同样带 bot=true
-     *    条目，旧判定误把「艾特其他机器人」当成「艾特本机器人」→ AI
-     *    误触发插嘴 + 回复艾特发送人。现只认 id 精确命中（botSelfId /
-     *    botAppId 双源），本通道退化为全量模式的补充判定；
+     *    @前缀、mentions 不含机器人）。**注意：机器人开启「接收所有
+     *    群消息」（全量模式）后，@ 消息只以 GROUP_MESSAGE_CREATE 推送、
+     *    GROUP_AT 不再到达**——本通道仅在未开全量的群生效；
+     * 2. mentions 数组中含**本机器人条目**，两种识别方式：
+     *    - **昵称匹配（群全量模式主判定，1.7.5.7 补充）**：群消息 mentions
+     *      里被艾特成员的 id 是**群内 openid 加密串，与机器人全局 id
+     *      （bot.id / AppID）不是同一 ID 体系**，精确 id 匹配对群消息
+     *      永远不成立（1.7.5.7 首版只做精确 id 匹配后，全量群里艾特机器
+     *      人无法唤起 AI 的根因）。现按昵称识别：bot=true 的机器人条目
+     *      且 username 与本机器人昵称一致（昵称双源：/users/@me 的
+     *      username（懒加载缓存）+ 配置 bot.name）即认定被艾特的是本机
+     *      器人。艾特其他机器人时条目昵称是那个机器人的昵称，不命中——
+     *      1.7.5.7 主轮「艾特其他机器人误判」的修复口径保持；
+     *    - 精确 id 匹配（botSelfId / botAppId 双源）：频道消息形态及
+     *      未来 mentions 直接携带机器人全局 id 时生效，群消息下静默无害；
      * 3. 文本里的 <@ 片段匹配机器人 id（频道消息形态，保留兼容）。
      */
     private fun isMentionedBot(event: GroupMessageEvent): Boolean {
- // 通道一：GROUP_AT 事件标记（群消息主判定）
+ // 通道一：GROUP_AT 事件标记（未开全量模式的群——唯一可靠信号）
         if (GroupAtTracker.isAtBot(event.rawMessage?.id)) return true
         var botSelfId: String? = null
         try {
@@ -332,15 +338,26 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         } catch (_: Throwable) {
         }
         val botAppId = plugin.botAppId
-        // 1) mentions 数组中含本机器人（精确 id 匹配；1.7.5.7 删除 bot
-        //    泛匹配，见上方 KDoc 通道 2——艾特其他机器人不再误判）
+        // 1) mentions 数组中含本机器人
         try {
             val mentions: Array<User>? = event.rawMessage?.mentions
             if (mentions != null) {
+                // 昵称匹配集懒构造：真的出现机器人条目才查本机器人昵称
+                //（getInfo 首次一次 HTTP 后缓存；普通消息零开销）
+                var botNames: Set<String>? = null
                 for (member in mentions) {
                     val memberId = member.id ?: continue
+                    // 1a) 精确 id 匹配（频道形态；群消息 openid 体系不同，
+                    //     见 KDoc 通道 2——保留静默无害）
                     if (botSelfId != null && botSelfId.isNotEmpty() && memberId == botSelfId) return true
                     if (botAppId != null && botAppId.isNotEmpty() && memberId == botAppId) return true
+                    // 1b) 昵称匹配（群全量模式主判定）：机器人条目（bot=true）
+                    //     的昵称与本机器人昵称一致 → 被艾特的是本机器人
+                    if (member.bot == true) {
+                        if (botNames == null) botNames = loadBotNicknames()
+                        val nickname = member.username?.trim().orEmpty()
+                        if (nickname.isNotEmpty() && nickname in botNames) return true
+                    }
                 }
             }
         } catch (_: Throwable) {
@@ -359,6 +376,30 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         } catch (_: Throwable) {
         }
         return false
+    }
+
+    /**
+     * 本机器人昵称匹配集（供 [isMentionedBot] 昵称通道）。
+     *
+     * 双源：`/users/@me`（[Bot.getInfo]，SDK 懒加载 + 缓存，线程安全）返回
+     * 的 username 为主——它就是 QQ 客户端里艾特时显示的机器人昵称；配置
+     * bot.name（用户手填的显示名）为辅。两源都取不到时返回空集（昵称
+     * 通道静默，不影响其他通道）。任一源异常不拖垮另一源。
+     */
+    private fun loadBotNicknames(): Set<String> {
+        val names = mutableSetOf<String>()
+        try {
+            val info = QClient.starter?.bot?.getInfo()
+            val officialName = info?.username?.trim().orEmpty()
+            if (officialName.isNotEmpty()) names.add(officialName)
+        } catch (_: Throwable) {
+        }
+        try {
+            val configName = plugin.botName.trim()
+            if (configName.isNotEmpty()) names.add(configName)
+        } catch (_: Throwable) {
+        }
+        return names
     }
 
     /**
