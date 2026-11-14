@@ -33,12 +33,22 @@ import java.util.UUID
  * 1. 先用绑定记录的 UUID 找 `stats/<uuid>.json`（文件存在 = 服务器认它）；
  * 2. 找不到时读**服务器工作目录的 usercache.json**（vanilla 服务器自己
  *    维护的「玩家名 → UUID」缓存，凡在服务器登录过的玩家都有记录——
- *    这份映射就是服务器口径），按玩家名（忽略大小写）解析出服务器 UUID
- *    再读一次；同名多条（改名 / 大小写变化）取 expiresOn 最新的一条。
+ *    这份映射就是服务器口径），按玩家名（忽略大小写）解析出同名全部
+ *    服务器 UUID，按 expiresOn 从新到旧逐条试，第一个有统计文件且能
+ *    读到 play_time 的命中（最新条目可能登录过但从未进世界没有统计
+ *    文件，此时自动试次新条目）。
  *
  * 查找全过程（每一环的目录、UUID、文件名、结果）写入日志文件
  * （logs/qq/qq-bind-日期.log 的「[存档统计]」行），排障时可直接对照
  * 服务器 stats 目录与 usercache.json 核对。
+ *
+ * ## 同名多账号（1.7.6 二次覆盖轮，在线排行榜用）
+ *
+ * 离线服务器常见同名：同一玩家名在服务器里可能有多个 UUID（改名前的
+ * 旧账号、大小写变体，或多个同名玩家）。玩家名片取单条（上述两级取
+ * 最先命中）；[readPlayTimeAll] 把该名字命中的**每一个**服务器 UUID
+ * 的统计全部读出（绑定 UUID + usercache.json 同名全部条目，去重），
+ * 供在线排行榜同名多账号同时展示。
  *
  * ## 目录定位（四端通用）
  *
@@ -91,6 +101,9 @@ object StatsFileService {
         val directory: File,
     )
 
+    /** usercache.json 单条同名记录（服务器口径的 玩家名 → UUID）。 */
+    data class ServerUuidEntry(val uuid: UUID, val name: String, val expiresOn: String)
+
     /**
      * 读取玩家的累计游戏时间（游戏刻）——按两级 UUID 查找，全程写日志。
      *
@@ -129,29 +142,94 @@ object StatsFileService {
                 "[存档统计] 玩家=$playerName 绑定记录无 UUID（老数据），尝试用服务器 usercache.json 的 UUID 查找"
             )
         }
-        // 第二级：usercache.json 按玩家名解析服务器口径 UUID
-        val serverUuid = resolveServerUuid(playerName)
-        if (serverUuid == null) {
+        // 第二级：usercache.json 同名服务器 UUID（expiresOn 降序逐条试，
+        // 第一个有统计文件且能读到 play_time 的命中——最新的条目可能
+        // 「登录过但从未进世界」没有统计文件，此时自动试次新条目）
+        val candidates = resolveAllServerUuids(playerName)
+        if (candidates.isEmpty()) {
             PluginFileLog.write(
                 "[存档统计] 玩家=$playerName usercache.json 未解析到该玩家的服务器 UUID" +
                     "（服务器目录=${serverRoot()?.path ?: "未定位"}），存档源获取失败，回退变量 / 插件统计"
             )
             return null
         }
-        val file = File(directory, "${serverUuid}.json")
-        if (!file.isFile) {
+        for ((index, candidate) in candidates.withIndex()) {
+            val file = File(directory, "${candidate.uuid}.json")
+            if (!file.isFile) {
+                PluginFileLog.write(
+                    "[存档统计] 玩家=$playerName 服务器UUID=${candidate.uuid}（来源=usercache.json 第${index + 1}条）" +
+                        "在 ${directory.path} 下无统计文件" + (if (index < candidates.size - 1) "，试下一条" else "，无更多候选")
+                )
+                continue
+            }
+            val ticks = parsePlayTicks(file)
             PluginFileLog.write(
-                "[存档统计] 玩家=$playerName 服务器UUID=$serverUuid（来源=usercache.json）" +
-                    "在 ${directory.path} 下也无统计文件，存档源获取失败，回退变量 / 插件统计"
+                "[存档统计] 玩家=$playerName 服务器UUID=${candidate.uuid}（来源=usercache.json 第${index + 1}条）" +
+                    "文件=${file.path} → ${if (ticks != null) "play_time=$ticks 刻" else "文件存在但无有效 play_time，试下一条"}"
             )
-            return null
+            if (ticks != null) {
+                return PlayTimeResult(ticks, candidate.uuid, "usercache.json", directory)
+            }
         }
-        val ticks = parsePlayTicks(file)
         PluginFileLog.write(
-            "[存档统计] 玩家=$playerName 服务器UUID=$serverUuid（来源=usercache.json）" +
-                "文件=${file.path} → ${if (ticks != null) "play_time=$ticks 刻" else "文件存在但无有效 play_time"}"
+            "[存档统计] 玩家=$playerName usercache.json 同名 ${candidates.size} 条均未读到存档 play_time，存档源获取失败，回退变量 / 插件统计"
         )
-        return ticks?.let { PlayTimeResult(it, serverUuid, "usercache.json", directory) }
+        return null
+    }
+
+    /**
+     * 读取玩家名命中的**全部**存档在线时长记录（在线排行榜「服务器存档数据」源）。
+     *
+     * 离线服务器常见同名：同一玩家名在服务器里可能有多个 UUID 统计文件
+     * （改名前的旧账号 / 大小写变体 / 多个同名玩家）——本方法把候选里
+     * 每一个能读到 play_time 的服务器 UUID 各返回一条（同名多账号全部
+     * 读出、全部展示；用户口径「获取到同名的也同时显示」）。
+     *
+     * 候选顺序（去重）：绑定记录 UUID（若非空，文件存在 = 服务器认它）
+     * → usercache.json 同名（忽略大小写）全部条目（expiresOn 最新在前）。
+     * 目录定位失败 / 全部候选未命中 → 空表（调用方回退插件统计）。
+     * 每个玩家一条汇总日志（候选数 / 命中明细 / 回退去向）。
+     */
+    fun readPlayTimeAll(playerName: String?, boundUuid: UUID?): List<PlayTimeResult> {
+        val directory = statsDirectory()
+        if (directory == null) {
+            PluginFileLog.write(
+                "[存档统计] 排行榜 玩家=$playerName 获取失败：未找到主世界 stats 目录" +
+                    "（已尝试首世界 worldFolder/stats 与工作目录 world/stats），该条目回退插件统计"
+            )
+            return emptyList()
+        }
+        val results = ArrayList<PlayTimeResult>()
+        val seen = HashSet<UUID>()
+        // 候选 1：绑定记录的 UUID（文件存在 = 服务器认这个 UUID）
+        if (boundUuid != null && seen.add(boundUuid)) {
+            val file = File(directory, "${boundUuid}.json")
+            val ticks = if (file.isFile) parsePlayTicks(file) else null
+            if (ticks != null) {
+                results.add(PlayTimeResult(ticks, boundUuid, "绑定记录", directory))
+            }
+        }
+        // 候选 2：usercache.json 同名（忽略大小写）的全部服务器 UUID
+        val sameName = resolveAllServerUuids(playerName)
+        for (entry in sameName) {
+            if (!seen.add(entry.uuid)) continue
+            val file = File(directory, "${entry.uuid}.json")
+            val ticks = if (file.isFile) parsePlayTicks(file) else null
+            if (ticks != null) {
+                results.add(PlayTimeResult(ticks, entry.uuid, "usercache.json", directory))
+            }
+        }
+        // 每玩家一条汇总日志（候选与命中明细，够排障对照，不逐条刷行）
+        val summary = if (results.isEmpty()) {
+            "存档全部未命中（绑定UUID=${boundUuid ?: "无"}，usercache同名=${sameName.size}条），回退插件统计"
+        } else {
+            "存档命中${results.size}条（同名多账号全部展示）：" +
+                results.joinToString("；") { "${it.uuid}（${it.uuidSource}）=${formatPlayText(it.ticks)}" }
+        }
+        PluginFileLog.write(
+            "[存档统计] 排行榜 玩家=$playerName 候选：绑定UUID=${boundUuid ?: "无"} + usercache.json同名${sameName.size}条 → $summary"
+        )
+        return results
     }
 
     /** 解析单个统计文件里的 play_time 刻数（缺失 / 为 0 / 异常返回 null）。 */
@@ -170,38 +248,81 @@ object StatsFileService {
     }
 
     /**
-     * 从服务器 usercache.json 按玩家名解析服务器口径 UUID：
-     * vanilla 服务器自己维护的「玩家名 → UUID」缓存（登录过的玩家都在），
-     * 同名多条（改名 / 大小写）取 expiresOn 最新的一条。
-     * 文件缺失 / 解析失败 / 无该玩家 → null（写日志说明原因）。
+     * 从服务器 usercache.json 解析同名（忽略大小写）的**全部**服务器口径
+     * UUID 条目，按 expiresOn 降序（最新在前）。文件缺失 / 解析失败 /
+     * 无该玩家 → 空表（失败原因写日志，同一文件版本只写一次）。
+     *
+     * 解析结果按文件 lastModified 缓存（usercache.json 由服务器自己维护，
+     * 文件一变缓存即失效）——排行榜按全量绑定玩家逐个解析同名，同一份
+     * 文件不重复读盘。
      */
-    private fun resolveServerUuid(playerName: String?): UUID? {
-        if (playerName.isNullOrBlank()) return null
+    fun resolveAllServerUuids(playerName: String?): List<ServerUuidEntry> {
+        if (playerName.isNullOrBlank()) return emptyList()
         val root = serverRoot() ?: run {
             PluginFileLog.write("[存档统计] 未定位到服务器根目录（usercache.json 不可用）")
-            return null
+            return emptyList()
         }
+        val entries = loadUsercacheEntries(root)
+        val matched = ArrayList<ServerUuidEntry>()
+        for ((name, uuid, expires) in entries) {
+            if (!name.equals(playerName, ignoreCase = true)) continue
+            val parsed = runCatching { UUID.fromString(uuid) }.getOrNull() ?: continue
+            matched.add(ServerUuidEntry(parsed, name, expires))
+        }
+        matched.sortByDescending { it.expiresOn }
+        return matched
+    }
+
+    /** usercache.json 解析缓存：文件 lastModified（缓存键；文件一变即失效）。 */
+    @Volatile
+    private var usercacheStamp: Long = Long.MIN_VALUE
+
+    /** usercache.json 全量条目（name, uuid, expiresOn）；null = 尚未加载。 */
+    @Volatile
+    private var usercacheEntries: List<Triple<String, String, String>>? = null
+
+    /**
+     * 读取并缓存 usercache.json 全量条目：同一文件版本（lastModified 相同）
+     * 直接用缓存——命中不读盘、失败不重试不刷日志；文件变化后重新解析。
+     */
+    private fun loadUsercacheEntries(root: File): List<Triple<String, String, String>> {
         val file = File(root, "usercache.json")
-        if (!file.isFile) {
+        val stamp = try {
+            if (file.isFile) file.lastModified() else Long.MIN_VALUE
+        } catch (_: Throwable) {
+            Long.MIN_VALUE
+        }
+        usercacheEntries?.let { cached ->
+            if (usercacheStamp == stamp) return cached
+        }
+        if (stamp == Long.MIN_VALUE) {
             PluginFileLog.write("[存档统计] 服务器目录 ${root.path} 下无 usercache.json（从未有玩家登录过或非标准目录结构）")
-            return null
+            usercacheEntries = emptyList()
+            usercacheStamp = stamp
+            return emptyList()
         }
         return try {
-            if (file.length() <= 0L || file.length() > MAX_FILE_BYTES) return null
-            val entries = JSON.parseArray(file.readBytes().toString(Charsets.UTF_8))
-            var best: Pair<String, String>? = null // (uuid, expiresOn) 最新
-            for (i in 0 until entries.size) {
-                val entry = entries.getJSONObject(i) ?: continue
-                val name = entry.getString("name") ?: continue
-                if (!name.equals(playerName, ignoreCase = true)) continue
-                val uuid = entry.getString("uuid") ?: continue
-                val expires = entry.getString("expiresOn") ?: ""
-                if (best == null || expires > best.second) best = uuid to expires
+            if (file.length() <= 0L || file.length() > MAX_FILE_BYTES) {
+                usercacheEntries = emptyList()
+                usercacheStamp = stamp
+                return emptyList()
             }
-            best?.first?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+            val array = JSON.parseArray(file.readBytes().toString(Charsets.UTF_8))
+            val list = ArrayList<Triple<String, String, String>>(array.size)
+            for (i in 0 until array.size) {
+                val entry = array.getJSONObject(i) ?: continue
+                val name = entry.getString("name") ?: continue
+                val uuid = entry.getString("uuid") ?: continue
+                list.add(Triple(name, uuid, entry.getString("expiresOn") ?: ""))
+            }
+            usercacheEntries = list
+            usercacheStamp = stamp
+            list
         } catch (error: Throwable) {
             PluginFileLog.write("[存档统计] usercache.json 解析失败: ${error.message}")
-            null
+            usercacheEntries = emptyList()
+            usercacheStamp = stamp
+            emptyList()
         }
     }
 
@@ -273,9 +394,11 @@ object StatsFileService {
         return resolved
     }
 
-    /** 重置目录缓存（测试 / 服务器重载世界用；正常流程不会触发）。 */
+    /** 重置目录与 usercache 缓存（测试 / 服务器重载世界用；正常流程不会触发）。 */
     fun resetCache() {
         cachedDirectory = null
         cachedServerRoot = null
+        usercacheEntries = null
+        usercacheStamp = Long.MIN_VALUE
     }
 }

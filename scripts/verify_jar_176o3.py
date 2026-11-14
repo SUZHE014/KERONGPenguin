@@ -1,0 +1,503 @@
+#!/usr/bin/env python3
+"""1.7.6 二次覆盖轮门禁：四分发 JAR 字节码核查（1.7.6 覆盖轮全量回归 + 本轮任务）。
+
+本轮改动（用户指令，同号重发 1.7.6）：
+  T7 在线排行榜接入总在线时长获取源 + 同名多账号同显——
+     StatsFileService 新增 readPlayTimeAll（两级候选：绑定 UUID →
+     usercache.json 同名全部服务器 UUID，去重，每个能读到 play_time 的
+     UUID 一条结果；离线服常见同名全部展示）+ resolveAllServerUuids
+     （同名全部条目，expiresOn 降序；usercache 解析按 lastModified 缓存）；
+     LeaderboardCommands 按 totalPlaytimeSource 分派（save-data →
+     collectSaveDataEntries：同名多账号展开多行，存档全 miss 回退插件统计；
+     plugin/variable → 历史行为），时长变量覆盖仅 variable 源生效；
+     resolveBatch valueKey 可空（null = 不解析数值）。
+  T7j 排行榜行时长格式统一「X时X分」（旧「X小时X分钟」停用，
+     LeaderboardRenderer.formatPlayTime 与名片三源同口径）。
+  玩家名片链路（QQ号 → 绑定 UUID → 服务器 UUID → 存档查询）上轮已
+  实现，本轮回归覆盖（T1 全组）。
+  回归：1.7.6 覆盖轮全部断言（两级 UUID / 命令日志 / 模板收紧 /
+  真实玻璃下线）+ 1.7.6 首发四任务 + 1.7.5.9 回归。
+
+用法：python3 scripts/verify_jar_176o3.py
+"""
+import re
+import subprocess
+import sys
+import zipfile
+from pathlib import Path
+
+REPO = Path("/home/z/my-project/penguin-git")
+DIST = REPO / "build" / "dist"
+JARS = {
+    "Spigot": DIST / "KERONGPenguin_Spigot-1.7.6.jar",
+    "NeoForge": DIST / "KERONGPenguin_NeoForge-1.20.4-1.7.6.jar",
+    "Fabric": DIST / "KERONGPenguin_Fabric-1.20.4-1.7.6.jar",
+    "Fabric1201": DIST / "KERONGPenguin_Fabric-1.20.1-1.7.6.jar",
+}
+JAVAP = "/home/z/my-project/tooling/jdk21/bin/javap"
+
+results = []
+
+
+def check(name, ok, detail=""):
+    results.append((name, bool(ok), detail))
+
+
+def javap(jar, inner, extra=("-c", "-p")):
+    import tempfile
+    with zipfile.ZipFile(jar) as zf:
+        data = zf.read(inner)
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "c.class"
+        p.write_bytes(data)
+        out = subprocess.run([JAVAP, *extra, str(p)], capture_output=True, text=True, timeout=120)
+        return out.stdout
+
+
+def method_body(javap_txt, name):
+    out, inside, pending = [], False, name
+    decl = re.compile(r"^  \S[^(]*\(")
+    for line in javap_txt.splitlines():
+        if decl.match(line):
+            if inside:
+                if re.search(rf"\b{re.escape(pending)}\(", line):
+                    continue
+                break
+            if re.search(rf"\b{re.escape(pending)}\(", line):
+                inside = True
+        if inside:
+            out.append(line)
+    return "\n".join(out)
+
+
+def scan_mc_refs(jar):
+    import tempfile
+    OWN = ("cn/kerong/penguin/fabric/", "org/bukkit/")
+    refs = set()
+    with tempfile.TemporaryDirectory() as td, zipfile.ZipFile(jar) as zf:
+        names = [n for n in zf.namelist()
+                 if n.endswith(".class") and any(n.startswith(p) for p in OWN)]
+        for n in names:
+            (Path(td) / n).parent.mkdir(parents=True, exist_ok=True)
+            (Path(td) / n).write_bytes(zf.read(n))
+        for i in range(0, len(names), 40):
+            out = subprocess.run([JAVAP, "-c", "-p"] + [str(Path(td) / n) for n in names[i:i + 40]],
+                                 capture_output=True, text=True, timeout=300)
+            for line in out.stdout.splitlines():
+                m = re.search(r"// (?:Interface|Class)?(Method|Field) ([\w/$.]+)\.([\w$<>]+):(.+)$", line)
+                if m and m.group(2).startswith("net/minecraft/"):
+                    refs.add(f"{m.group(2)}.{m.group(3)} {m.group(4)}")
+    return sorted(r for r in refs if not (".method_" in r or ".field_" in r or
+                     re.search(r"\.(method_|field_)", r)))
+
+
+def main():
+    for label, jar in JARS.items():
+        check(f"0.{label} 分发 JAR 存在", jar.is_file(), str(jar))
+        if not jar.is_file():
+            continue
+        with zipfile.ZipFile(jar) as zf:
+            names = zf.namelist()
+
+            # ---------- A. 版本与资源 ----------
+            if label == "Spigot":
+                py = zf.read("plugin.yml").decode("utf-8", "replace")
+                check("A1 Spigot plugin.yml 版本 1.7.6",
+                      re.search(r"version:\s*'?\"?1\.7\.6", py) is not None)
+            if label == "NeoForge":
+                for mfile in ("META-INF/mods.toml", "META-INF/neoforge.mods.toml"):
+                    mt = zf.read(mfile).decode("utf-8", "replace") if mfile in names else ""
+                    check(f"A2 NF {mfile} 含 1.7.6", "1.7.6" in mt)
+                check("A2b NF MOD_VERSION 1.7.6（ldc 常量池）",
+                      "1.7.6" in javap(jar, "cn/kerong/penguin/neoforge/KERONGNeoForge.class", ("-c", "-p")))
+            if label in ("Fabric", "Fabric1201"):
+                fm = zf.read("fabric.mod.json").decode("utf-8", "replace")
+                check(f"A3 {label} fabric.mod.json 版本 1.7.6",
+                      re.search(r'"version":\s*"1\.7\.6"', fm) is not None)
+                if label == "Fabric":
+                    check("A3b Fabric(1.20.4) minecraft 声明 >=1.20.4 <1.22",
+                          re.search(r'"minecraft":\s*">=1\.20\.4 <1\.22"', fm) is not None, fm[:200])
+                else:
+                    check("A3b Fabric1201 minecraft 声明精确 1.20.1",
+                          re.search(r'"minecraft":\s*"1\.20\.1"', fm) is not None, fm[:200])
+            cfg = zf.read("config.yml").decode("utf-8", "replace")
+            check(f"A4 {label} config-version 53（覆盖轮删玻璃键）",
+                  re.search(r"config-version:\s*53", cfg) is not None, cfg[:120])
+            check(f"A5 {label} variable-fetch.total-playtime-source 键在位（默认 variable，回归）",
+                  re.search(r'total-playtime-source:\s*"variable"', cfg) is not None)
+            check(f"A5b {label} render.real-glass 键已删除（覆盖轮反断言）",
+                  "real-glass" not in cfg and "真实玻璃" not in cfg)
+            check(f"A5c {label} qq-bind.fake-player-whitelist 键在位（回归）",
+                  re.search(r"fake-player-whitelist:\s*\[\]", cfg) is not None)
+            check(f"A6 {label} qq-bind.restrict-timeout-seconds: 120 键保留（回归）",
+                  re.search(r"restrict-timeout-seconds:\s*120", cfg) is not None)
+            check(f"A6b {label} 两代显示名键已删（1.7.5.9 回归反断言）",
+                  "qq-forward-display-name" not in cfg and "group-sender-name" not in cfg)
+            check(f"A6c {label} bot.button-cooldown-seconds 键保留（回归）",
+                  re.search(r"button-cooldown-seconds:\s*5", cfg) is not None)
+            check(f"A6d {label} 背景选择补注释键在位（coins-leaderboard.builtin-background 注释）",
+                  re.search(r"coins-leaderboard:\n  # 显示前 N 名", cfg) is not None)
+
+            # ---------- T1. 总在线时长存档读取修复（四端共有源码） ----------
+            sfs = "cn/kerong/penguin/spigot/stats/StatsFileService.class"
+            check(f"T1a {label} StatsFileService 类存在", sfs in names)
+            if sfs in names:
+                sbytes = zf.read(sfs)
+                st = javap(jar, sfs, ("-c", "-p"))
+                check(f"T1b {label} readPlayTime 两参新签名（String, UUID）",
+                      re.search(r"readPlayTime\(java\.lang\.String, ?java\.util\.UUID\)", st) is not None,
+                      st[:400])
+                check(f"T1c {label} 旧 readPlayTicks 已删除（反断言）", "readPlayTicks" not in st)
+                check(f"T1d {label} 旧 formatHours / noteUnavailableOnce 已删除（反断言）",
+                      "formatHours" not in st and "noteUnavailableOnce" not in st)
+                check(f"T1e {label} resolveAllServerUuids 按 usercache.json 解析（字节级，二次覆盖重构）",
+                      b"usercache.json" in sbytes and "resolveAllServerUuids" in st)
+                check(f"T1f {label} 统计键常量保持（play_time / play_one_minute，字节级）",
+                      all(k.encode("utf-8") in sbytes for k in
+                          ("minecraft:play_time", "minecraft:play_one_minute", "minecraft:custom", "stats")))
+                check(f"T1g {label} 服务器 UUID 查找日志（[存档统计] 行，字节级）",
+                      "[存档统计]".encode("utf-8") in sbytes and "绑定记录".encode("utf-8") in sbytes)
+                su = method_body(st, "readPlayTime")
+                check(f"T1h {label} readPlayTime 第二级遍历 usercache 同名候选（无文件自动试次新）",
+                      "resolveAllServerUuids" in su and "parsePlayTicks" in su, su[:200])
+                rau = method_body(st, "resolveAllServerUuids")
+                check(f"T1h2 {label} resolveAllServerUuids 同名全部条目 + 忽略大小写 + expiresOn 降序",
+                      "equals" in rau and "sortByDescending" in rau
+                      and "loadUsercacheEntries" in rau, rau[:200])
+                luc = method_body(st, "loadUsercacheEntries")
+                check(f"T1h3 {label} loadUsercacheEntries 读盘 + lastModified 缓存",
+                      "lastModified" in luc and "parseArray" in luc and "getString" in luc, luc[:200])
+
+                # ---------- T7. 排行榜存档源 + 同名多账号（二次覆盖新增） ----------
+                check(f"T7a {label} readPlayTimeAll 两参签名（String, UUID → List）",
+                      re.search(r"readPlayTimeAll\(java\.lang\.String, ?java\.util\.UUID\)", st) is not None,
+                      st[:300])
+                rpa = method_body(st, "readPlayTimeAll")
+                # 嵌套 lambda（日志 joinToString 内 formatPlayText）按类全文断
+                check(f"T7b {label} readPlayTimeAll 同名多候选全读（resolveAllServerUuids + parsePlayTicks）",
+                      "resolveAllServerUuids" in rpa and "parsePlayTicks" in rpa
+                      and "formatPlayText" in st, rpa[:220])
+                sue = "cn/kerong/penguin/spigot/stats/StatsFileService$ServerUuidEntry.class"
+                check(f"T7c {label} ServerUuidEntry 数据类在位", sue in names)
+                check(f"T7d {label} usercache 解析缓存字段（usercacheEntries / usercacheStamp）",
+                      "usercacheEntries" in st and "usercacheStamp" in st)
+                check(f"T7e {label} 排行榜逐玩家汇总日志（字节级）",
+                      "存档命中".encode("utf-8") in sbytes and
+                      "同名多账号全部展示".encode("utf-8") in sbytes)
+                fpt2 = method_body(st, "formatPlayText")
+                check(f"T7f {label} formatPlayText 回归（÷20 + 0分钟兑底）",
+                      re.search(r"bipush\s+20", fpt2) is not None and
+                      "0分钟".encode("utf-8") in sbytes, fpt2[:140])
+                fpt = method_body(st, "formatPlayText")
+                check(f"T1i {label} formatPlayText 统一 X时X分（÷20 秒 + 中文单位）",
+                      re.search(r"bipush\s+20", fpt) is not None and
+                      "时".encode("utf-8") in sbytes and "分".encode("utf-8") in sbytes, fpt[:160])
+                rlt = method_body(st, "readPlayTime")
+                check(f"T1j {label} readPlayTime 两级查找（绑定 UUID → usercache 同名候选回退）",
+                      "resolveAllServerUuids" in rlt and "parsePlayTicks" in rlt, rlt[:200])
+            qis = "cn/kerong/penguin/spigot/stats/QueryInfoService.class"
+            if qis in names:
+                qt = javap(jar, qis, ("-c", "-p"))
+                rtp = method_body(qt, "resolveTotalPlaytime")
+                check(f"T1k {label} resolveTotalPlaytime 走 readPlayTime + formatPlayText",
+                      "readPlayTime" in rtp and "formatPlayText" in rtp
+                      and "formatPlayTime" in rtp and "totalPlaytimeSource" in rtp, rtp[:220])
+                snap = "cn/kerong/penguin/spigot/stats/QueryInfoService$MainThreadSnapshot.class"
+                if snap in names:
+                    snap_txt = javap(jar, snap, ("-p",))
+                    check(f"T1l {label} MainThreadSnapshot 含 playerName + playerUuid 字段",
+                          "getPlayerName" in snap_txt and "getPlayerUuid" in snap_txt)
+            pvs = "cn/kerong/penguin/spigot/stats/PlaceholderVariableService.class"
+            if pvs in names:
+                pt = javap(jar, pvs)
+                tps = method_body(pt, "totalPlaytimeSource")
+                check(f"T1m {label} totalPlaytimeSource 三源常量保持（回归）",
+                      "variable-fetch.total-playtime-source" in tps, tps[:140])
+                pbytes = zf.read(pvs)
+                check(f"T1n {label} 三源常量 + 中文别名保持（回归，字节级）",
+                      all(k.encode("utf-8") in pbytes for k in
+                          ("save-data", "plugin", "variable", "存档数据", "插件统计", "变量")))
+            cm = "cn/kerong/penguin/spigot/manager/ConfigManager.class"
+            if cm in names:
+                cmfull = javap(jar, cm, ("-v",))
+                cmbytes = zf.read(cm)
+                check(f"T1o {label} DEFAULT_VALUES 含 total-playtime-source（回归）",
+                      "variable-fetch.total-playtime-source".encode("utf-8") in cmbytes)
+                check(f"T1p {label} render.real-glass 在 REMOVED_CONFIG_KEYS（升53删键，字节级）",
+                      "render.real-glass".encode("utf-8") in cmbytes)
+                check(f"T1q {label} CURRENT_CONFIG_VERSION 编译期内联 53（bipush 53 存在）",
+                      re.search(r"bipush\s+53", javap(jar, cm, ("-c",))) is not None)
+                fpw = method_body(javap(jar, cm), "fakePlayerWhitelist")
+                check(f"T1r {label} ConfigManager.fakePlayerWhitelist 读名单键（回归）",
+                      "qq-bind.fake-player-whitelist" in fpw and "getStringList" in fpw, fpw[:140])
+
+            # ---------- T7g-T7l. 排行榜命令接入存档源（二次覆盖新增） ----------
+            lbc = "cn/kerong/bot/events/commands/LeaderboardCommands.class"
+            check(f"T7g {label} LeaderboardCommands 类存在", lbc in names)
+            if lbc in names:
+                lbbytes = zf.read(lbc)
+                lbt = javap(jar, lbc, ("-c", "-p"))
+                cse = method_body(lbt, "collectSaveDataEntries")
+                check(f"T7h {label} collectSaveDataEntries 存档源收集（readPlayTimeAll + formatPlayText + 插件统计回退）",
+                      "readPlayTimeAll" in cse and "formatPlayText" in cse
+                      and "play-seconds" in cse and "getLong" in cse, cse[:240])
+                check(f"T7i {label} 排行榜汇总日志（字节级）",
+                      "排行榜汇总".encode("utf-8") in lbbytes and
+                      "回退插件统计".encode("utf-8") in lbbytes)
+                lbm = method_body(lbt, "leaderboard")
+                # submit { ... } lambda 体在合成方法——按类全文断分派逻辑；
+                # SOURCE_SAVE_DATA 为 const val 编译期内联为 ldc "save-data"（坑表）
+                check(f"T7j {label} leaderboard 按源分派（totalPlaytimeSource + collectSaveDataEntries + save-data）",
+                      "totalPlaytimeSource" in lbt and "collectSaveDataEntries" in lbt
+                      and "// String save-data" in lbt, lbt[:240])
+                check(f"T7k {label} snapshotVariableOverrides 双参（resolveValue 布尔开关）",
+                      re.search(r"snapshotVariableOverrides\([^)]*RawEntry[^)]*, ?boolean\)", lbt) is not None,
+                      lbt[:300])
+                # 嵌套 lambda 按类全文断（1.7.6 坑表）：valueKey 条件传参
+                # if (resolveValue) "total-playtime" else null
+                check(f"T7l {label} 时长变量仅 variable 源解析（total-playtime 条件 + null 分支）",
+                      "// String total-playtime" in lbt and "aconst_null" in lbt, lbt[:200])
+                raw = "cn/kerong/bot/events/commands/LeaderboardCommands$RawEntry.class"
+                if raw in names:
+                    rtxt = javap(jar, raw, ("-p",))
+                    check(f"T7m {label} RawEntry 含 valueText 字段（存档行展示文本）",
+                          "valueText" in rtxt, rtxt[:200])
+            # 排行榜行时长格式统一 X时X分（旧「X小时X分钟」停用）
+            lrr = "cn/kerong/penguin/spigot/render/LeaderboardRenderer.class"
+            if lrr in names:
+                lrbytes = zf.read(lrr)
+                check(f"T7n {label} 排行榜行时长统一 X时X分（小时/暂无记录/不足1分钟 反断言）",
+                      "小时".encode("utf-8") not in lrbytes and
+                      "暂无记录".encode("utf-8") not in lrbytes and
+                      "不足1分钟".encode("utf-8") not in lrbytes and
+                      "0分钟".encode("utf-8") in lrbytes)
+            # resolveBatch valueKey 可空（null = 不解析数值；金币榜调用不变）
+            # ⚠ 泛型签名坑：List<kotlin.Pair<...>> 裸类型正则匹配不到（坑表）
+            if pvs in names:
+                rb = method_body(pt, "resolveBatch")
+                check(f"T7o {label} resolveBatch 签名保持三参 + null 安全（valueKey 可空）",
+                      re.search(r"resolveBatch\(java\.util\.List[^)]*, java\.lang\.String, java\.lang\.String\)", pt) is not None
+                      and "placeholderOf" in rb, rb[:200])
+            clc = "cn/kerong/bot/events/commands/CoinsLeaderboardCommands.class"
+            if clc in names:
+                cltxt = javap(jar, clc)
+                check(f"T7p {label} 金币榜 resolveBatch 调用不变（coins 键，回归）",
+                      "resolveBatch" in cltxt and "coins" in cltxt, cltxt[:200])
+
+            # ---------- T3. 真实玻璃渲染下线（四端反断言） ----------
+            lgp = "cn/kerong/penguin/spigot/render/LiquidGlassPainter.class"
+            check(f"T3a {label} LiquidGlassPainter 类已删除（反断言）", lgp not in names)
+            rs = "cn/kerong/penguin/spigot/render/RenderSettings.class"
+            if rs in names:
+                rt2 = javap(jar, rs, ("-p",))
+                check(f"T3b {label} RenderSettings.realGlassEnabled 已删除（反断言）",
+                      "realGlassEnabled" not in rt2)
+                check(f"T3c {label} RenderSettings 模糊度读取保持（回归）",
+                      "blurStrength" in rt2)
+            inner = "cn/kerong/penguin/spigot/render/InfoCardRenderer$CardBackdropContext.class"
+            if inner in names:
+                cbc = javap(jar, inner)
+                pc2 = method_body(cbc, "paintCard")
+                check(f"T3d {label} paintCard 无玻璃分支（realGlassEnabled/LiquidGlass 反断言）",
+                      "realGlassEnabled" not in pc2 and "LiquidGlassPainter" not in pc2
+                      and "drawImage" in pc2, pc2[:160])
+            # cardBackdropOf 唯一定义处在 InfoCardAssets（同文件双 object 坑，1.7.6 坑表）
+            ica = "cn/kerong/penguin/spigot/render/InfoCardAssets.class"
+            if ica in names:
+                cbo = method_body(javap(jar, ica), "cardBackdropOf")
+                check(f"T3e {label} cardBackdropOf 恢复旧语义（模糊0→null，无玻璃特例）",
+                      "realGlassEnabled" not in cbo and "blurStrength" in cbo
+                      and "blurImage" in cbo, cbo[:200])
+
+            # ---------- T5. 执行命令控制台日志（四端共有源码） ----------
+            for cmd_cls, tag in (
+                ("cn/kerong/bot/events/commands/AdministrationCommands.class", "Admin"),
+                ("cn/kerong/bot/events/commands/PublicCommands.class", "Public"),
+            ):
+                if cmd_cls in names:
+                    cbytes = zf.read(cmd_cls)
+                    ct = javap(jar, cmd_cls, ("-c", "-p"))
+                    check(f"T5a{tag} {label} executeGameCommandWithMention 五参（含 displayCommand）",
+                          re.search(r"executeGameCommandWithMention\([^)]*, ?boolean, ?java\.lang\.String\)", ct) is not None,
+                          ct[:300])
+                    check(f"T5b{tag} {label} 「已执行命令：」回复头（字节级）",
+                          "已执行命令：".encode("utf-8") in cbytes)
+                    eg = method_body(ct, "executeGameCommandWithMention")
+                    # lambda 嵌套形态（$lambda$3$lambda$2）无法逐方法抽取——
+                    # 按类全文断常量（sent-request 只出现在本方法的 ldc）
+                    check(f"T5c{tag} {label} 无输出走 sent-request + command 变量",
+                          "// String sent-request" in ct and "// String command" in ct,
+                          ct[:220])
+            # sent-request 模板默认内容（双份资源：Spigot 走 common-Bot 资源，NF 有副本）
+            sr = "Markdown/sent-request.md"
+            if sr in names:
+                content = zf.read(sr).decode("utf-8", "replace")
+                check(f"T5d {label} sent-request.md 新默认（已执行命令 + {{command}}）",
+                      "已执行命令：{command}" in content and "无输出" in content, content[:80])
+
+            # ---------- T6. 消息模板覆盖轮（四端共有源码） ----------
+            mtc = "cn/kerong/penguin/spigot/qqbind/MessageTemplates.class"
+            if mtc in names:
+                mtxt = javap(jar, mtc, ("-c", "-p"))
+                mbytes = zf.read(mtc)
+                check(f"T6a {label} 自定义文件名释放日志常量（字节级）",
+                      "使用自定义文件".encode("utf-8") in mbytes)
+                ini = method_body(mtxt, "initialize")
+                check(f"T6b {label} initialize 释放自定义文件名（mkdirs 父目录）",
+                      "mkdirs" in ini, ini[:160])
+                # shouldUpgrade 在内部类 MessageTemplates$UpgradeSpec 上（object 内 private class）
+                upc = "cn/kerong/penguin/spigot/qqbind/MessageTemplates$UpgradeSpec.class"
+                su2 = ""
+                if upc in names:
+                    su2 = method_body(javap(jar, upc), "shouldUpgrade")
+                check(f"T6c {label} shouldUpgrade 只做精确比对（contains 特征反断言）",
+                      "contains" not in su2 and "normalize" in su2, su2[:200])
+                ar = method_body(mtxt, "applyReplacement")
+                check(f"T6d {label} applyReplacement 先 delete（1.7.5.9 回归）",
+                      "delete" in ar and "Code:" in ar, ar[:100])
+                check(f"T6e {label} menu 模板 ID 保持（回归）",
+                      "menu.md" in mtxt or '"menu"'.encode("utf-8") in mbytes or "menu" in mtxt)
+
+            # ---------- T4. 按钮艾特修复回归 ----------
+            rgm = "cn/kerong/bot/events/RecentGroupMessages.class"
+            check(f"T4a {label} RecentGroupMessages 类存在（回归）", rgm in names)
+            if rgm in names:
+                rt3 = javap(jar, rgm, ("-p",))
+                check(f"T4b {label} nextIdFromSender 双参在位（回归）",
+                      re.search(r"nextIdFromSender\(java\.lang\.String, ?java\.lang\.String\)", rt3) is not None)
+                check(f"T4c {label} 旧单参 nextId 已删除（回归反断言）",
+                      re.search(r"nextId\(java\.lang\.String\)", rt3) is None)
+            gmr = "cn/kerong/bot/events/GroupMessageHandler.class"
+            if gmr in names:
+                gt = javap(jar, gmr)
+                ogm = method_body(gt, "onGroupMessage")
+                check(f"T4d {label} onGroupMessage 登记带发送者（回归）",
+                      "RecentGroupMessages.record:(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V" in ogm,
+                      ogm[:300])
+            mb = "cn/kerong/bot/events/MenuButtons.class"
+            if mb in names:
+                mt2 = javap(jar, mb)
+                dac = method_body(mt2, "dispatchAsClicker")
+                check(f"T4e {label} dispatchAsClicker 只引用点击者消息（回归）",
+                      "nextIdFromSender" in dac, dac[:200])
+
+            # ---------- 回归：1.7.5.9 转发显示名去配置化 ----------
+            check(f"R0a {label} GroupSenderName 类已删除（回归反断言）",
+                  "cn/kerong/bot/tools/GroupSenderName.class" not in names)
+            if gmr in names:
+                gtxt = javap(jar, gmr)
+                fw = method_body(gtxt, "forwardFullGroupMessage")
+                check(f"R0b {label} 全量转发直取事件昵称 getUsername（回归）",
+                      "getUsername" in fw and "resolveForwardDisplayName" not in gtxt, fw[:150])
+                lbn = method_body(gtxt, "loadBotNicknames")
+                check(f"R0d {label} loadBotNicknames 无 getBotName（回归）",
+                      "getBotName" not in lbn)
+
+        # ---------- T2. Fabric 假人白名单（仅 Fa 两包，回归） ----------
+        if label in ("Fabric", "Fabric1201"):
+            with zipfile.ZipFile(jar) as zf:
+                fnames = zf.namelist()
+                fpe = "cn/kerong/penguin/fabric/FakePlayerExempt.class"
+                check(f"T2a {label} FakePlayerExempt 类存在（回归）", fpe in fnames)
+                if fpe in fnames:
+                    fe_txt = javap(jar, fpe)
+                    check(f"T2b {label} Connection 类锚定 class_2535（回归）",
+                          "net.minecraft.class_2535" in fe_txt)
+                    check(f"T2c {label} method_10756/10755（回归）",
+                          "method_10756" in fe_txt and "method_10755" in fe_txt)
+                    iex = method_body(fe_txt, "isExempt")
+                    check(f"T2d {label} isExempt 双路（回归）",
+                          "isWhitelisted" in iex and "isLocalFakePlayer" in iex, iex[:120])
+                br = "cn/kerong/penguin/fabric/BindRestrict.class"
+                check(f"T2e {label} BindRestrict 类存在（回归）", br in fnames)
+                if br in fnames:
+                    bt = javap(jar, br)
+                    brbytes = zf.read(br)
+                    oj = method_body(bt, "onJoin")
+                    check(f"T2f {label} onJoin 假人白名单接线（回归）",
+                          "FakePlayerExempt.isExempt" in oj, oj[:220])
+                    check(f"T2g {label} onJoin 生成绑定码 + 已绑定放行（回归）",
+                          "generateCode" in oj and "isBoundByUuid" in oj)
+                    disc = "method_52396" if label == "Fabric" else "method_14367"
+                    check(f"T2h {label} tick 超时踢出锚点（回归）",
+                          disc in bt and "method_14363" in bt and "method_43496" in bt)
+                bri = "cn/kerong/penguin/fabric/BindRestrictInteractions.class"
+                check(f"T2i {label} BindRestrictInteractions 类存在（回归）", bri in fnames)
+                # 未映射引用白名单
+                unmapped = scan_mc_refs(jar)
+                whitelist = {
+                    "net/minecraft/class_124.ordinal ()I",
+                    "net/minecraft/class_124.values ()[Lnet/minecraft/class_124;",
+                    "net/minecraft/class_2561.getString ()Ljava/lang/String;",
+                    "net/minecraft/server/MinecraftServer.execute (Ljava/lang/Runnable;)V",
+                }
+                bad = [r for r in unmapped if r not in whitelist]
+                check(f"T2j {label} 未映射引用仅白名单 4 条（回归）",
+                      not bad and len(unmapped) <= 4, "; ".join(unmapped[:8]))
+
+        # ---------- 回归：Spigot/NF 假人豁免（1.7.5.8，保持） ----------
+        if label == "Spigot":
+            with zipfile.ZipFile(jar) as zf:
+                gc = "cn/kerong/penguin/spigot/events/GameChat.class"
+                names3 = zf.namelist()
+                if gc in names3:
+                    txt4 = javap(jar, gc)
+                    lfl = method_body(txt4, "isLocalFakeLogin")
+                    opl = method_body(txt4, "onPlayerLogin")
+                    ejb = method_body(txt4, "enforceJoinBinding")
+                    check("R1a Spigot isLocalFakeLogin 判回环（回归）",
+                          "isLoopbackAddress" in lfl, lfl[:100])
+                    check("R1b Spigot onPlayerLogin 接线豁免（回归）",
+                          "isLocalFakeLogin" in opl)
+                    check("R1c Spigot enforceJoinBinding 接线豁免（回归）",
+                          "isLocalFakeJoin" in ejb)
+                else:
+                    check("R1 Spigot GameChat 类存在", False)
+        if label == "NeoForge":
+            with zipfile.ZipFile(jar) as zf:
+                names4 = zf.namelist()
+                blg = "cn/kerong/penguin/neoforge/BindLoginGate.class"
+                nfe = "cn/kerong/penguin/neoforge/NeoForgeEvents.class"
+                if blg in names4:
+                    txt5 = javap(jar, blg)
+                    ilfc = "\n".join(method_body(txt5, m) for m in
+                                      set(re.findall(r"isLocalFakeConnection(?:\$\w+)?", txt5)))
+                    check("R2a NF isLocalFakeConnection 回归",
+                          "isLoopbackAddress" in ilfc and "isMemoryConnection" in ilfc
+                          and "getRemoteAddress" in ilfc, ilfc[:120])
+                    ek = method_body(txt5, "evaluateKick")
+                    check("R2b NF evaluateKick 接线回归", "isLocalFakeConnection" in ek)
+                if nfe in names4:
+                    elb = method_body(javap(jar, nfe), "enforceLoginBinding")
+                    check("R3 NF enforceLoginBinding 接线回归",
+                          "isLocalFakeConnection" in elb)
+
+        # ---------- H. 形态 ----------
+        with zipfile.ZipFile(jar) as zf:
+            znames = zf.namelist()
+            dirs = sum(1 for n in znames if n.endswith("/"))
+            if label == "Spigot":
+                check(f"H1 {label} fat JAR 目录条目 ≥ 700（SDK 扫描需要）",
+                      dirs >= 700, str(dirs))
+            if label == "NeoForge":
+                check("H2 NF 重定位 cn/kerong/shaded",
+                      any(n.startswith("cn/kerong/shaded/") for n in znames))
+                check("H2b NF 无 org/slf4j",
+                      not any(n.startswith("org/slf4j/") for n in znames))
+            if label in ("Fabric", "Fabric1201"):
+                check(f"H3 {label} kotlin 原包名（不重定位）",
+                      any(n.startswith("kotlin/") for n in znames))
+                check(f"H3b {label} BindRestrict 原包名未重映射",
+                      "cn/kerong/penguin/fabric/BindRestrict.class" in znames)
+
+    # ---------- 汇总 ----------
+    failed = [r for r in results if not r[1]]
+    print(f"\n===== verify_jar_176o3：{len(results)} 项，失败 {len(failed)} =====")
+    for name, ok, detail in failed:
+        print(f"  FAIL {name}  {detail[:160]}")
+    print("全绿" if not failed else "存在失败项")
+    sys.exit(0 if not failed else 1)
+
+
+if __name__ == "__main__":
+    main()

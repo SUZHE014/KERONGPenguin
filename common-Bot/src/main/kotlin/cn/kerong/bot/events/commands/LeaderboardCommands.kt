@@ -26,8 +26,15 @@ import java.awt.image.BufferedImage
  * 分发，零配置零素材）；leaderboard.builtin-background 关闭后改用
  * 插件目录 img/ 随机图（img 无可用图片时自动回退内置图）。
  *
- * 数据来源：QUUID 主文件 stats.play-seconds（全部玩家，含离线；
- * 统计每 60 秒增量落盘，排行榜数值最多滞后一分钟，展示精度足够）。
+ * 数据来源（1.7.6 二次覆盖轮起按 variable-fetch.total-playtime-source 分派）：
+ * - save-data（服务器存档数据）：每个绑定玩家按两级候选（绑定 UUID
+ *   → usercache.json 同名全部服务器 UUID）读主世界 stats/<uuid>.json 的
+ *   play_time（[StatsFileService.readPlayTimeAll]）——离线服务器常见同名
+ *   （改名前的旧账号 / 多个同名玩家），同一名字命中的每个服务器 UUID
+ *   各占一行、**同时展示**；存档全部未命中的绑定玩家回退插件统计秒数；
+ * - plugin / variable（默认）：QUUID 主文件 stats.play-seconds（插件自记录，
+ *   全部绑定玩家含离线；统计每 60 秒增量落盘，数值最多滞后一分钟）。
+ * 行时长文本统一「X时X分」（与玩家名片三源同口径）。
  *
  * 命令开关：commands.在线排行榜（默认 true，关闭后群命令不再响应，
  * 快捷菜单按钮与 /菜单 里的按钮同步消失）；
@@ -42,6 +49,9 @@ import java.awt.image.BufferedImage
  * 玩家名（player-name）/ 总在线时长（total-playtime）变量时，榜单行
  * 展示名与时长文本改为变量返回内容（主线程快照内批量解析，
  * 失败 / 留空回退插件自带数据；头像 / 排名仍按真实玩家）。
+ * 1.7.6 二次覆盖轮：总在线时长获取源选 save-data / plugin 时，
+ * 时长不再被变量覆盖（选了固定源就展示该源数据；玩家名展示覆盖保留），
+ * 仅默认 variable 源保持变量优先（历史行为）。
  *
  * 分段发送：超过单页上限时自动切页 —— 1.7.3 起单页上限走全局配置
  * leaderboard.page-size（RenderSettings.leaderboardPageSize，默认 20；
@@ -66,8 +76,9 @@ class LeaderboardCommands : CommandSupport() {
         private var cachedAt: Long = 0L
     }
 
-    /** 原始条目（扫描出的未排序数据）。 */
-    private data class RawEntry(val name: String, val uuid: UUID?, val seconds: Long)
+    /** 原始条目（扫描出的未排序数据）；valueText = 调用方格式化好的展示文本
+     * （存档源「X时X分」，null = 渲染时用 formatPlayTime 按秒数格式化）。 */
+    private data class RawEntry(val name: String, val uuid: UUID?, val seconds: Long, val valueText: String? = null)
 
     @Commands("在线排行榜")
     fun leaderboard(plugin: KERONG, event: GroupMessageEvent, params: String) {
@@ -106,8 +117,15 @@ class LeaderboardCommands : CommandSupport() {
                         return@submit
                     }
 
-                    // 1. 全量扫描 QUUID 主文件统计（含离线玩家）
-                    val entries = collectEntries(manager)
+                    // 1. 条目收集按总在线时长获取源分派（1.7.6 二次覆盖轮）：
+                    //    save-data → 服务器存档（两级 UUID 候选 + 同名多账号同显）；
+                    //    plugin / variable → 插件统计（历史行为）
+                    val source = cn.kerong.penguin.spigot.stats.PlaceholderVariableService.totalPlaytimeSource()
+                    val entries = if (source == cn.kerong.penguin.spigot.stats.PlaceholderVariableService.SOURCE_SAVE_DATA) {
+                        collectSaveDataEntries(manager)
+                    } else {
+                        collectEntries(manager)
+                    }
                     if (entries.isEmpty()) {
                         MessageTemplates.sendDirect(event, "leaderboard-no-data")
                         return@submit
@@ -126,9 +144,11 @@ class LeaderboardCommands : CommandSupport() {
 
                     // 3. 主线程快照在线玩家（头像实时皮肤增强）+ 并发预热头像；
  // 变量获取（玩家名 / 总在线时长，同一次主线程
-                    //    语义内解析，仅对展示的 top 条目）
+                    //    语义内解析，仅对展示的 top 条目）——时长变量仅在
+                    //    默认 variable 源时解析（选了存档 / 插件统计源就展示该源数据）
                     val onlineUuids = snapshotOnlineUuids()
-                    val variableOverrides = snapshotVariableOverrides(topEntries)
+                    val resolveValueOverride = source == cn.kerong.penguin.spigot.stats.PlaceholderVariableService.SOURCE_VARIABLE
+                    val variableOverrides = snapshotVariableOverrides(topEntries, resolveValueOverride)
                     val avatars = fetchAvatars(topEntries, onlineUuids)
 
                     // 4. 分页渲染（第一页带标题，续页只画行内容）
@@ -146,7 +166,7 @@ class LeaderboardCommands : CommandSupport() {
                                 name = variableOverrides[raw.name]?.first ?: raw.name,
                                 playSeconds = raw.seconds,
                                 avatar = avatars[raw.name],
-                                valueText = variableOverrides[raw.name]?.second,
+                                valueText = variableOverrides[raw.name]?.second ?: raw.valueText,
                             )
                         }
                         val height = LeaderboardRenderer.measurePageHeight(pageEntries.size, pages.isEmpty())
@@ -226,6 +246,71 @@ class LeaderboardCommands : CommandSupport() {
         return entries
     }
 
+    /**
+     * 「服务器存档数据」源的条目收集（variable-fetch.total-playtime-source = save-data）：
+     *
+     * 每个绑定玩家调 [StatsFileService.readPlayTimeAll]（两级候选：绑定 UUID →
+     * usercache.json 同名全部服务器 UUID，去重）读主世界 stats/<uuid>.json 的
+     * play_time——离线服务器常见同名（改名前的旧账号 / 大小写变体 / 多个
+     * 同名玩家），同一名字命中的**每个**服务器 UUID 各占一行、同时展示
+     * （用户口径「获取到同名的也同时显示」）；时长文本由存档刻数直接
+     * 格式化（[StatsFileService.formatPlayText]，「X时X分」与其他源同口径）。
+     *
+     * 存档全部未命中的绑定玩家回退该记录的插件统计秒数（stats.play-seconds，
+     * 与名片回退链同思路）；同一 UUID 被多条绑定记录命中时只展示一次
+     * （全局去重）。查找过程日志见 StatsFileService（每玩家一条「[存档统计]」行）。
+     */
+    private fun collectSaveDataEntries(manager: QqBindManager): List<RawEntry> {
+        val entries = ArrayList<RawEntry>()
+        val seenUuids = HashSet<UUID>()
+        var saveHitPlayers = 0
+        var fallbackPlayers = 0
+        for (quuid in manager.listQuuids()) {
+            val yaml = manager.readQuuidRecord(quuid) ?: continue
+            val name = yaml.getString("playerName", "") ?: ""
+            if (name.isEmpty()) continue
+            val boundUuid = try {
+                val uuidStr = yaml.getString("playerUuid", "")
+                if (uuidStr.isNullOrEmpty()) null else UUID.fromString(uuidStr)
+            } catch (_: Throwable) {
+                null
+            }
+            val results = cn.kerong.penguin.spigot.stats.StatsFileService.readPlayTimeAll(name, boundUuid)
+            if (results.isEmpty()) {
+                // 存档全部未命中：回退该绑定记录的插件统计（无记录则不展示，
+                // 与 plugin 源的空数据处理一致）
+                val pluginSeconds = try {
+                    yaml.getLong("stats.play-seconds", 0L)
+                } catch (_: Throwable) {
+                    0L
+                }
+                if (pluginSeconds > 0L) {
+                    entries.add(RawEntry(name, boundUuid, pluginSeconds))
+                    fallbackPlayers++
+                }
+                continue
+            }
+            saveHitPlayers++
+            for (result in results) {
+                if (!seenUuids.add(result.uuid)) continue
+                entries.add(
+                    RawEntry(
+                        name = name,
+                        uuid = result.uuid,
+                        seconds = result.ticks / 20,
+                        valueText = cn.kerong.penguin.spigot.stats.StatsFileService.formatPlayText(result.ticks),
+                    )
+                )
+            }
+        }
+        cn.kerong.bot.tools.PluginFileLog.write(
+            "[存档统计] 排行榜汇总：存档命中 $saveHitPlayers 名玩家（同名多账号展开为多行），" +
+                "回退插件统计 $fallbackPlayers 名，共 ${entries.size} 行"
+        )
+        entries.sortWith(compareByDescending<RawEntry> { it.seconds }.thenBy { it.name })
+        return entries
+    }
+
     /** 主线程快照在线玩家（异步调用时自动切换；超时 / 失败返回空表，不影响流程）。 */
     private fun snapshotOnlineUuids(): Map<String, UUID?> {
         val snapshot: () -> Map<String, UUID?> = {
@@ -253,10 +338,16 @@ class LeaderboardCommands : CommandSupport() {
 
     /**
  * 主线程快照解析 top 玩家的变量覆盖（玩家名 / 总在线时长）。
+     * [resolveValue] = false 时只解析玩家名展示覆盖，时长展示该源自带数据
+     * （总在线时长获取源选了存档 / 插件统计时传 false——选了固定源就
+     * 展示该源数据，仅默认 variable 源保持变量优先的历史行为）。
      * 开关关闭或两键均未配置时零开销返回空表；超时 / 异常同样空表
      * （回退插件自带数据，不影响榜单流程）。
      */
-    private fun snapshotVariableOverrides(entries: List<RawEntry>): Map<String, Pair<String?, String?>> {
+    private fun snapshotVariableOverrides(
+        entries: List<RawEntry>,
+        resolveValue: Boolean,
+    ): Map<String, Pair<String?, String?>> {
         val enabled = try {
             cn.kerong.penguin.spigot.stats.PlaceholderVariableService.isEnabled()
         } catch (_: Throwable) {
@@ -267,7 +358,7 @@ class LeaderboardCommands : CommandSupport() {
             cn.kerong.penguin.spigot.stats.PlaceholderVariableService.resolveBatch(
                 entries.map { it.name to it.uuid },
                 nameKey = "player-name",
-                valueKey = "total-playtime",
+                valueKey = if (resolveValue) "total-playtime" else null,
             )
         }
         if (Bukkit.isPrimaryThread()) return snapshot()

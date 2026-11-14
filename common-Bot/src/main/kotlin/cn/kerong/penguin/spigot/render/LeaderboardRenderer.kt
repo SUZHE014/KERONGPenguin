@@ -198,18 +198,20 @@ object LeaderboardRenderer {
     }
 
     /**
-     * 秒数格式化为时长文本（与玩家名片卡片「在线时长」同风格）：
- * 小时 / 分组合（起最大单位为小时，不再展示「天」——
-     * 如 3天5小时20分钟 现展示为 77小时20分钟），全零时显示「暂无记录」。
+     * 秒数格式化为时长文本——与其他获取源统一的「X时X分」口径
+     * （1.7.6 二次覆盖轮用户口径：所有源展示格式一致，与玩家名片
+     * [cn.kerong.penguin.spigot.stats.StatsFileService.formatPlayText]
+     * 同风格；旧「X小时X分钟」写法停用）。「20分」/「35时20分」/
+     * 「0分钟」（seconds 为 0 / 负时兜底）。
      */
     fun formatPlayTime(seconds: Long): String {
-        if (seconds <= 0) return "暂无记录"
+        if (seconds <= 0) return "0分钟"
         val hours = seconds / 3600
         val minutes = (seconds % 3600) / 60
         return buildString {
-            if (hours > 0) append("${hours}小时")
-            if (minutes > 0) append("${minutes}分钟")
-            if (isEmpty()) append("不足1分钟")
+            if (hours > 0) append("${hours}时")
+            if (minutes > 0) append("${minutes}分")
+            if (isEmpty()) append("0分钟")
         }
     }
 

@@ -265,18 +265,20 @@ object PlaceholderVariableService {
      *
      * @param players 玩家（真实名 → UUID）列表，仅对展示的 top 条目解析
      * @param nameKey 玩家名变量键（"player-name"，行首玩家名展示覆盖）
-     * @param valueKey 数值变量键（在线排行榜 "total-playtime" / 财富榜 "coins"）
+     * @param valueKey 数值变量键（在线排行榜 "total-playtime" / 财富榜 "coins"；
+     *   null = 不解析数值（总在线时长获取源选了存档 / 插件统计时——
+     *   选了固定源就展示该源数据，仅玩家名覆盖生效））
      * @return 真实玩家名 →（展示名覆盖, 数值文本覆盖）；null = 回退插件自带。
-     *   两键均未配置时返回空表（零解析开销）。
+     *   两键均未配置（或 valueKey 为 null 且玩家名未配置）时返回空表（零解析开销）。
      */
     fun resolveBatch(
         players: List<Pair<String, UUID?>>,
         nameKey: String,
-        valueKey: String,
+        valueKey: String?,
     ): Map<String, Pair<String?, String?>> {
         if (!isEnabled()) return emptyMap()
         val namePlaceholder = placeholderOf(nameKey)
-        val valuePlaceholder = placeholderOf(valueKey)
+        val valuePlaceholder = valueKey?.let { placeholderOf(it) }
         if (namePlaceholder == null && valuePlaceholder == null) return emptyMap()
         if (!papiAvailable()) {
             PapiDependencyCheck.notifyMissingOnce("变量获取信息（variable-fetch）")
