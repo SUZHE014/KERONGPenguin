@@ -62,6 +62,19 @@ class InterActionListener : ListenerHost() {
             ""
         }
 
+        // 1.7.5.6 覆盖轮：同一用户按钮互动冷却（与 FastPath 同一口径；
+        // 仅对本插件按钮生效，避免误伤其他来源的互动）
+        if (isOwnButton(buttonData) &&
+            !ButtonInteractionCooldown.tryAcquire(groupOpenId, userOpenId)
+        ) {
+            tryRespond(event, 2)
+            try {
+                PluginFileLog.write("[按钮互动] 已限频（冷却内，兑底路径）user=$userOpenId button=$buttonData")
+            } catch (_: Throwable) {
+            }
+            return
+        }
+
         // 回应只做一次；流程内按结果决定 0 / 非 0
         var responded = false
         val respondOnce: (Int) -> Unit = { code ->
@@ -99,6 +112,16 @@ class InterActionListener : ListenerHost() {
             respondOnce(1)
         }
     }
+
+    /** 本插件按钮回调前缀集合（与 [InteractionFastPath] 的接管集合一致）。 */
+    private fun isOwnButton(buttonData: String): Boolean = listOf(
+        PlayerSelection.ACTION_PREFIX,
+        UnblacklistButtons.ACTION_PREFIX,
+        ServerSelectButtons.ACTION_PREFIX,
+        MenuButtons.ACTION_PREFIX,
+        MenuButtons.ACMD_PREFIX,
+        MenuButtons.PAGE_PREFIX,
+    ).any { buttonData.startsWith(it) }
 
     /** 回应互动事件（直发 PUT，不走 SDK 代理；失败仅写文件日志——不影响按钮功能）。 */
     private fun tryRespond(event: InterActionEvent, code: Int) {

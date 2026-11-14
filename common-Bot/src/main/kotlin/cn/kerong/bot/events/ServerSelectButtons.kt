@@ -115,8 +115,18 @@ object ServerSelectButtons {
         val list = members.joinToString(" / ") { name ->
             if (name == current) "$name✓" else name
         }
+        // 1.7.5.6 覆盖轮：选择器消息同样带 @（与 QQ 普通消息行为对齐——
+        // 消息开头 @ 触发者，与 /菜单 首页及命令回复口径一致）
+        val triggerUser = try {
+            val contact = event.sender
+            contact?.openid ?: contact?.id ?: ""
+        } catch (_: Throwable) {
+            ""
+        }
+        val messageText = "$reason\n当前可选服务器：$list\n点击按钮选择要操作的服务器："
+        val content = if (triggerUser.isNotEmpty()) "<@$triggerUser>\n$messageText" else messageText
         val sent = try {
-            QClient.replyMarkdown(event, "$reason\n当前可选服务器：$list\n点击按钮选择要操作的服务器：", keyboard)
+            QClient.replyMarkdown(event, content, keyboard)
         } catch (_: Throwable) {
             false
         }

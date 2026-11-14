@@ -21,12 +21,12 @@
 <h2>下载</h2>
 <div class="dl-box">
 <p style="font-size:1.3em;font-weight:bold;color:#e8edf2;margin-bottom:5px">版本 1.7.5.6</p>
-<p style="color:#7a848e;margin-bottom:20px">发布于 2026-11-13</p>
+<p style="color:#7a848e;margin-bottom:20px">发布于 2026-11-14</p>
 <a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.6.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
 <a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.6.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.6.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（MC 1.20.4–1.21.x）</a>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.1-1.7.5.6.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（MC 1.20.1）</a>
-<p style="color:#7a848e;font-size:0.92em;margin:-4px auto 14px;max-width:440px">Fabric 版与主线同号同步发布；1.20.1 为独立包（仅限 1.20.1，1.20.2/1.20.3 请用其他核心）</p>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.6.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（1.20.4）</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.1-1.7.5.6.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（1.20.1）</a>
+<p style="color:#7a848e;font-size:0.92em;margin:-4px auto 14px;max-width:440px">Fabric 与主线同号同步发布；按钮括号只标安装包的目标版本，完整版本要求（Loader / Fabric API / 支持的 MC 范围）见下方兼容性卡片</p>
 <div class="dl-info">支持 MC 的版本请详见下方「支持的插件与兼容性 → 支持的服务端核心」</div>
 </div>
 </section>
@@ -46,6 +46,13 @@
 <span class="core"><i style="background:#f16436"></i><span class="core-name">NeoForge</span><span class="core-note">（MC 1.20.4，1.20.6，1.21.x，Java 21）</span></span>
 <span class="core"><i style="background:#dbb55f"></i><span class="core-name">Fabric</span><span class="core-note">（MC 1.20.1 与 1.20.4–1.21.x，Java 21）</span></span>
 </div>
+<p style="font-size:1.05em;font-weight:bold;color:#e8edf2;margin:16px 0 8px">Fabric 版本要求（下载前请对照）</p>
+<table>
+<tr><th>安装包</th><th>适用的 MC 版本</th><th>前置要求</th></tr>
+<tr><td>通用包（下载按钮括号里的 1.20.4）</td><td>1.20.4 – 1.21.x（2026 年起的 26.x 新版本线未适配，明确排除）</td><td>Fabric Loader <b>0.15.1 及以上</b>；Fabric API 与所用 MC 版本对应；Java 21</td></tr>
+<tr><td>1.20.1 独立包</td><td>仅限 1.20.1（1.20.2 / 1.20.3 不支持，请用其他核心）</td><td>Fabric Loader <b>0.16.10 及以上</b>；Fabric API 用 <b>0.92.x + 1.20.1</b>；Java 21</td></tr>
+</table>
+<p style="color:#9aa4ae;margin-top:8px">已实测真实服务器启动：1.20.4 / 1.20.5 / 1.20.6 / 1.21 / 1.21.4 / 1.21.6 / 1.21.11。NeoForge 版一个包通用（MC 1.20.4，1.20.6，1.21.x）。</p>
 <p style="font-size:1.05em;font-weight:bold;color:#e8edf2;margin:16px 0 8px">支持的插件（均为可选）</p>
 <p style="color:#9aa4ae;margin-bottom:10px">以下功能需要对应前置插件；未安装时对应统计项自动隐藏，不影响其他功能。模组版（NeoForge / Fabric）没有这些前置插件——金币 / 称号 / 点券自动隐藏、签到走记账模式，其余功能一致。</p>
 <table>
@@ -60,13 +67,13 @@
 <h2>历史版本</h2>
 <table>
 <tr><th>版本</th><th>发布日期</th><th>下载</th></tr>
-<tr><td>NeoForge 1.7.5.6</td><td>2026-11-13</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.6.jar">下载</a></td></tr>
-<tr><td>Spigot 1.7.5.6</td><td>2026-11-13</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.6.jar">下载</a></td></tr>
-<tr><td>Fabric 1.7.5.6（1.20.4–1.21.x）</td><td>2026-11-13</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.6.jar">下载</a></td></tr>
-<tr><td>Fabric 1.7.5.6（1.20.1）</td><td>2026-11-13</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.1-1.7.5.6.jar">下载</a></td></tr>
+<tr><td>NeoForge 1.7.5.6</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.6.jar">下载</a></td></tr>
+<tr><td>Spigot 1.7.5.6</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.6.jar">下载</a></td></tr>
+<tr><td>Fabric 1.7.5.6（1.20.4 通用包）</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.6.jar">下载</a></td></tr>
+<tr><td>Fabric 1.7.5.6（1.20.1 独立包）</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.1-1.7.5.6.jar">下载</a></td></tr>
 <tr><td>NeoForge 1.7.5.5</td><td>2026-11-13</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.5.jar">下载</a></td></tr>
 <tr><td>Spigot 1.7.5.5</td><td>2026-11-13</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.5.jar">下载</a></td></tr>
-<tr><td>Fabric 1.7.5.5</td><td>2026-11-13</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.5.jar">下载</a></td></tr>
+<tr><td>Fabric 1.7.5.5（1.20.4 通用包）</td><td>2026-11-13</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.5.jar">下载</a></td></tr>
 <tr><td>NeoForge 1.7.5.4</td><td>2026-11-12</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.4.jar">下载</a></td></tr>
 <tr><td>Spigot 1.7.5.4</td><td>2026-11-12</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.4.jar">下载</a></td></tr>
 <tr><td>Fabric 1.7.5.4</td><td>2026-11-12</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.4.jar">下载</a></td></tr>
@@ -98,9 +105,12 @@
 <section>
 <h2>更新日志</h2>
 <div class="changelog">
-<div class="version"><h3>v1.7.5.6</h3><span class="date">2026-11-13</span><ul>
+<div class="version"><h3>v1.7.5.6</h3><span class="date">2026-11-14</span><ul>
 <li>新增：Fabric 版支持 MC 1.20.1（独立包，与其他版本同号发布）。</li>
-<li>优化：手动 hbkrg qr 直接出全新二维码，不再与旧会话叠加出多个二维码。</li>
+<li>新增：AI 回复提醒方式三选一（ai.reminder-mode：每次回复艾特发送人 / 引用原消息 / 都不）。配置版本 46 → 47，升级自动补键无需改配置。</li>
+<li>新增：QQ 按钮互动冷却（bot.button-cooldown-seconds，默认 5 秒防连点刷屏，0 可关）。</li>
+<li>优化：手动 hbkrg qr 直接出全新二维码；菜单翻页 / 切换服务器选择 / 解除黑名单结果等按钮消息同样带 @ 提醒（与普通消息一致）。</li>
+<li>修复：消息模板升级残留——未自改的旧默认模板自动整体替换到最新默认，「帮助」等旧文案不再残留，无需手动删文件。</li>
 </ul></div>
 <div class="version"><h3>v1.7.5.5</h3><span class="date">2026-11-13</span><ul>
 <li>新增：AI 艾特——AI 能看到群里谁被艾特，也能自行艾特群成员（ai.at-enabled，默认开）。</li>
@@ -161,20 +171,6 @@
 </ul>
 <a href="https://kerong.xin/penguin/downloads/0.3AI-0.5.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ 下载 0.3AI v0.5</a>
 <div class="dl-info">旧 config.yml 可直接沿用；v0.5 起零环境可装（首次自动下载运行时与模型，看 [AI部署] 日志）</div>
-</div>
-<div class="dl-box">
-<p style="font-size:1.25em;font-weight:bold;color:#e8edf2;margin-bottom:5px">Fabric 模组版 1.7.5.5（MC 1.20.4–1.21.x，Java 21）</p>
-<p style="color:#7a848e;margin-bottom:16px">KERONGPenguin 的 Fabric 适配版——与 Spigot / NeoForge 版同源同功能：群聊互通 / 查询命令 / 信息卡渲染 / 绑定签到 / 服务器状态播报</p>
-<ul style="text-align:left;max-width:640px;margin:0 auto 18px;color:#aab3bc;line-height:1.9">
-<li><b>主线发版</b>：随主线同号同步升版（与当前主线 1.7.5.5 完全对齐：/菜单 按钮菜单、按钮管理员平台门禁与验身标记、快捷面板管理员联动、菜单排版改版、扫码二维码按控制台编码自适应渲染、更新检查等）。</li>
-<li><b>已测试版本</b>：1.20.4，1.20.5，1.20.6，1.21，1.21.4，1.21.6，1.21.11（各版本真实服务器启动验证）。</li>
-<li><b>支持版本</b>：1.20.4–1.21.x（fabric.mod.json 声明 ≥1.20.4 &lt;1.22——2026 年起的 26.x 新版本线未适配，明确排除）；Fabric Loader <b>0.15.1 及以上</b>（Fabric API 的要求，实测下限 0.15.1；构建验证基于 0.16.14）；需另装 <b>Fabric API</b>（与所用 MC 版本对应即可）；Java 21。</li>
-<li><b>QQ 绑定不拦截进服</b>：未绑定玩家正常游玩，绑定完全自愿——游戏内发送 <code>/hbkrg qbd</code> 获取验证码，再到 QQ 群发送 <code>/绑定 验证码</code> 完成。</li>
-<li><b>更新检查</b>：与插件版一致（启动后自动检查官网新版本，update-check.enabled 可关闭）。</li>
-<li><b>安装</b>：与 Fabric API 一起放进 mods/ 即可；配置文件在 kerongpenguin/ 目录（首次启动生成），与插件版同结构可参考教程。</li>
-<li><b>已知差异</b>：钓鱼 / 繁殖动物统计暂缺（Fabric API 无对应事件）。</li>
-</ul>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.5.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ 下载 Fabric 模组版</a>
 </div>
 </section>
 <footer>

@@ -174,6 +174,15 @@
 </div>
 <p>控制台里断线重连的过程提示开关；机器人断线会自动重连，无需处理。</p>
 </div>
+
+<div class="cfg-item">
+<h4>按钮互动冷却 <span class="key">bot.button-cooldown-seconds</span></h4>
+<div class="config">
+<pre>bot:
+  button-cooldown-seconds: 5  # 同一用户两次点按钮的最小间隔秒数，0 = 关闭</pre>
+</div>
+<p>同一用户两次点击按钮（菜单 / 翻页 / 黑名单解除 / 切换服务器等全部按钮）的最小间隔，防止连点刷屏；间隔内的点击会被 QQ 提示「操作频繁」并且不执行。默认 5 秒，<code>0</code> 关闭；与图片命令的 <code>render.command-cooldown-seconds</code> 互不影响。改完 <code>/hbkrg reload</code> 即时生效。</p>
+</div>
 </div>
 
 <div class="tutorial-step">
@@ -792,12 +801,14 @@ coins-leaderboard:
 </div>
 
 <div class="cfg-item">
-<h4>回复引用 <span class="key">ai.reply-quote</span></h4>
+<h4>AI 回复提醒方式 <span class="key">ai.reminder-mode</span>（三选一）</h4>
 <div class="config">
 <pre>ai:
-  reply-quote: true  # 群内 AI 回复是否引用消息（默认开）</pre>
+  # at = 每次回复开头艾特发送人；quote = 引用原消息；none = 都不要
+  reminder-mode: ""    # 留空 = 跟随下方旧键 reply-quote（都不填默认引用）
+  reply-quote: true    # 旧键（1.7.5.5），仅上面留空时生效</pre>
 </div>
-<p>开启时 AI 回复引用发送者的原消息（QQ 引用框）；关闭时改发普通被动回复，不引用任何消息。改完 <code>/hbkrg reload</code> 生效。</p>
+<p>决定每次 AI 回复怎么提醒发送人：<code>at</code>（或中文「艾特」）每次回复开头艾特发送人，手机 QQ 会收到提醒；<code>quote</code>（「引用」）每次回复引用发送者的原消息（QQ 引用框，1.7.5.5 前的默认行为）；<code>none</code>（「无」）既不艾特也不引用，安静回复。留空时跟随旧键 reply-quote（true → 引用，false → 都不要；两键都不填默认引用）。值写错了按「引用」处理并写一次日志。改完 <code>/hbkrg reload</code> 生效。</p>
 </div>
 </div>
 

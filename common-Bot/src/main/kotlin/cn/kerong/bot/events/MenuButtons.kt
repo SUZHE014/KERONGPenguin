@@ -134,7 +134,7 @@ object MenuButtons {
         if (buttonData.startsWith(PAGE_PREFIX)) {
             respond(0)
             val page = buttonData.removePrefix(PAGE_PREFIX).toIntOrNull() ?: 0
-            sendPage(groupOpenId, page)
+            sendPage(groupOpenId, userOpenId, page)
             return true
         }
         val isAdminGated = buttonData.startsWith(ACMD_PREFIX)
@@ -154,17 +154,25 @@ object MenuButtons {
         return true
     }
 
-    /** 向指定群发送指定页（翻页按钮触发，主动消息）。 */
-    private fun sendPage(groupOpenId: String, page: Int) {
+    /**
+     * 向指定群发送指定页（翻页按钮触发，主动消息）。
+     *
+     * 1.7.5.6 覆盖轮：输出同样带 @（与 QQ 普通消息行为对齐——翻页是
+     * 点击者触发的互动，消息开头 @ 点击者，与 /菜单 首页（sendFirstPage
+     * 的 <@发送者>）及命令回复（sendDirect 的 <@发送者>）口径一致）。
+     */
+    private fun sendPage(groupOpenId: String, userOpenId: String, page: Int) {
         val plugin = cn.kerong.bot.provider.BotShared.instance ?: return
         val commands = visibleCommands(plugin)
         if (commands.isEmpty()) return
         val rows = layoutRows(commands, adminGateFor(plugin, groupOpenId))
         val pages = pageCount(rows.size)
         val index = page.coerceIn(0, pages - 1)
+        val text = pageText(plugin, index, pages)
+        val content = if (userOpenId.isNotBlank()) "<@$userOpenId>\n$text" else text
         QClient.sendMarkdownToGroup(
             groupOpenId,
-            pageText(plugin, index, pages),
+            content,
             pageKeyboard(rows, index),
         )
     }

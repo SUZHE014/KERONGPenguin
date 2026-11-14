@@ -503,13 +503,54 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             true
         }
 
-    /** QQ 群 AI 回复是否引用消息（1.7.5.5 覆盖，默认 true 开）。 */
+    /** QQ 群 AI 回复是否引用消息（1.7.5.5 覆盖，默认 true 开；1.7.5.6 起作为
+     *  ai.reminder-mode 缺省时的回退旧键保留）。 */
     val isAiReplyQuote: Boolean
         get() = try {
             plugin.config.getBoolean("ai.reply-quote", true)
         } catch (_: Throwable) {
             true
         }
+
+    /** ai.reminder-mode 非法取值的告警只写一次（防每条回复刷文件日志）。 */
+    @Volatile
+    private var reminderModeWarned = false
+
+    /**
+     * AI 回复提醒方式（1.7.5.6 覆盖轮：三选一，取代旧键 ai.reply-quote 的开关语义）。
+     *
+     * 返回值三选一：
+     * - "at"    —— 每次回复开头艾特发送人（<@openid>，收到 QQ 提醒）
+     * - "quote" —— 每次回复引用发送者的原消息（QQ 引用框）
+     * - "none"  —— 既不艾特也不引用
+     *
+     * 配置取值（英文 / 中文均可，大小写不敏感，见 config.yml 注释）；
+     * 未配置（空/缺省）→ 回退读旧键 ai.reply-quote（true→quote、false→none，
+     * 双缺省=quote 保持旧行为）；配了但值不认识 → 按默认 quote 处理并告警一次。
+     */
+    fun aiReminderMode(): String {
+        val raw = try {
+            plugin.config.getString("ai.reminder-mode", "")?.trim() ?: ""
+        } catch (_: Throwable) {
+            ""
+        }
+        if (raw.isNotEmpty()) {
+            val mode = when (raw.lowercase()) {
+                "at", "艾特", "艾特发送人", "at发送人" -> "at"
+                "quote", "引用", "引用原消息", "引用消息" -> "quote"
+                "none", "无", "关闭", "都不", "既不艾特也不引用" -> "none"
+                else -> null
+            }
+            if (mode != null) return mode
+            if (!reminderModeWarned) {
+                reminderModeWarned = true
+                QqBindManager.logVerbose("[AI] ai.reminder-mode 取值「$raw」无法识别，已按默认 quote（引用原消息）处理；可用取值 at / quote / none")
+            }
+            return "quote"
+        }
+        // 未配置新键：回退旧键 ai.reply-quote（1.7.5.5 口径，双缺省=引用）
+        return if (isAiReplyQuote) "quote" else "none"
+    }
 
     /** 服务器内 AI 对话开关。 */
     val isServerAiEnabled: Boolean

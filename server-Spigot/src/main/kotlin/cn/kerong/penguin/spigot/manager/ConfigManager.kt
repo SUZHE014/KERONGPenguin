@@ -477,6 +477,14 @@ class ConfigManager(private val plugin: JavaPlugin) {
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
 
+        // 升 47——1.7.5.6 覆盖轮新增两键（只加新键+默认值，不做任何旧值迁移）：
+        // ai.reminder-mode（AI 回复提醒方式三选一，默认空串=未选择——留空时
+        // 回退读旧键 ai.reply-quote（true/缺省→quote 引用；false→none 无），
+        // 双键都不填时默认引用，与 1.7.5.5 行为一致；可选取值 at/quote/none
+        // 或中文 艾特/引用/无；at=每次回复开头艾特发送人，quote=引用原消息，
+        // none=既不艾特也不引用；旧键 reply-quote 仅在 reminder-mode 留空时生效）；
+        // bot.button-cooldown-seconds（QQ 按钮互动冷却秒数，默认 5——同一用户
+        // 两次点击按钮的最小间隔，间隔内连点回应「操作频繁」不执行；0=关闭）。
         // 升 46——1.7.5.5 覆盖新增 AI 两键（只加新键+默认值，不做任何旧值迁移）：
         // ai.at-enabled（AI 艾特接口，默认 true 开——开启时①群里 @机器人 发消息
         // 中的成员艾特不再剥掉而是还原为 @昵称 送给 AI（如「你好，@张三，这人是谁？」
@@ -567,7 +575,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // qq-bind.checkin.points-reward（签到点券奖励，默认 0 关闭）
  // 升 28——无新增键纯注释刷新（卡片背景图说明段补 /hbkrg bpng
         // 图片包下载与 /hbkrg bpngsz 一键切换的用法说明）
-        private const val CURRENT_CONFIG_VERSION = 46
+        private const val CURRENT_CONFIG_VERSION = 47
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -707,6 +715,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 集群逻辑全部旁路，单服行为零变化）
             "bot.cluster.name" to "",
             "bot.cluster.members" to emptyList<Any>(),
+            "bot.button-cooldown-seconds" to 5,
  // 服务器开关消息（配置口径与 HuHoBot 的
  // server-notify 段一致，默认全部开启）；默认文案
             // 去表情 + 新增 start 段（普通开机）与 restart-window（180 秒
@@ -855,6 +864,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "ai.url-auto-append" to true,
             "ai.context-limit" to 6,
             "ai.at-enabled" to true,
+            "ai.reminder-mode" to "",
             "ai.reply-quote" to true,
         ).apply {
  // 消息模板映射（每条回复 → Markdown 模板文件名，详见 config.yml 注释）

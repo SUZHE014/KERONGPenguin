@@ -164,9 +164,11 @@ object UnblacklistButtons {
         } else {
             pending[key] = request.copy(entries = remaining)
         }
+        // 1.7.5.6 覆盖轮：解除结果同样带 @（与 QQ 普通消息行为对齐——
+        // @操作的管理员，与清单获取消息/非本人提示口径一致）
         QClient.sendMarkdownToGroup(
             request.groupOpenId,
-            "已从黑名单移除：${entry.second}"
+            "<@$userOpenId> 已从黑名单移除：${entry.second}"
         )
         QqBindManager.logFileOnly(
             "[黑名单] 群=$groupOpenId 管理员=$userOpenId 按钮解除黑名单条目 ${entry.second}"

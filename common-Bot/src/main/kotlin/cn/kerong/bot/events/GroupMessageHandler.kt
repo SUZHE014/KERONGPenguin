@@ -422,14 +422,28 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
                     val aiContent = "${manager.qqAiOutputPrefix} $reply"
  // AI 对话日志仅写入文件，不再上控制台（隐私泄露修复）
                     QqBindManager.logVerbose("[AI对话] 回复内容长度=${aiContent.length} 准备发送")
- // 引用回复（引用发送者的原消息，QQ 官方 MessageReference 协议），
-                    // 失败时在 QClient.replyMarkdownWithReference 内部逐级回退，回复不会丢失；
-                    // 1.7.5.5 覆盖 ai.reply-quote（默认开）关闭时改走普通被动回复
-                    // （仍带 msg_id 被动通道，但不带 message_reference，不引用任何消息）
+ // 发送方式（1.7.5.6 覆盖轮：AI 提醒方式三选一 ai.reminder-mode）：
+ // - at：回复开头艾特发送人（<@openid>，用户收到 QQ 提醒），不引用
+ // - quote：引用发送者的原消息（QQ 官方 MessageReference 协议，1.7.5.5
+ //   前的默认行为），失败时在 QClient.replyMarkdownWithReference 内部
+ //   逐级回退，回复不会丢失
+ // - none：既不艾特也不引用（走普通被动回复：仍带 msg_id 被动通道，
+ //   不带 message_reference，群里不渲染引用框）
+                    val reminder = manager.aiReminderMode()
+                    val senderId = try {
+                        val contact = event.sender
+                        contact?.openid ?: contact?.id
+                    } catch (_: Throwable) {
+                        null
+                    }
+                    val mentionPrefix = if (reminder == "at" && !senderId.isNullOrEmpty()) {
+                        "<@$senderId>\n"
+                    } else null
+                    val outbound = if (mentionPrefix != null) "$mentionPrefix$aiContent" else aiContent
                     try {
-                        GroupMsgSender.sendReply(event, aiContent, manager.isAiReplyQuote)
+                        GroupMsgSender.sendReply(event, outbound, quote = reminder == "quote")
                     } catch (replyError: Throwable) {
-                        QqBindManager.logVerbose("[AI对话] 引用回复发送失败: ${replyError.message}")
+                        QqBindManager.logVerbose("[AI对话] 回复发送失败: ${replyError.message}")
                     }
                 } catch (t: Throwable) {
                     MessageTemplates.sendPlain(event, "ai-chat-error", mapOf("error" to (t.message ?: t.toString())))

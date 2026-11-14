@@ -118,6 +118,19 @@ object InteractionFastPath {
         buttonData: String,
         startedAt: Long,
     ) {
+        // 1.7.5.6 覆盖轮：同一用户按钮互动冷却（bot.button-cooldown-seconds，
+        // 默认 5 秒）——间隔未满直接回应「操作频繁」(2)，不再分发
+        if (!ButtonInteractionCooldown.tryAcquire(groupOpenId, userOpenId)) {
+            try {
+                InteractionAcker.respond(interactionId, 2)
+            } catch (_: Throwable) {
+            }
+            PluginFileLog.write(
+                "[按钮互动] 已限频（冷却内）user=$userOpenId button=$buttonData " +
+                    "耗时=${System.currentTimeMillis() - startedAt}ms"
+            )
+            return
+        }
         var responded = false
         val respondOnce: (Int) -> Unit = { code ->
             if (!responded) {

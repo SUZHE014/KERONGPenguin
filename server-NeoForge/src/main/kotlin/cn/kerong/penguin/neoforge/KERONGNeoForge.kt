@@ -251,6 +251,8 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         cn.kerong.bot.events.AutoGroupBinder.reset()
         cn.kerong.bot.ClusterState.reload()
         cn.kerong.bot.events.ServerSelectButtons.clearAll()
+        // 1.7.5.6 覆盖轮：按钮互动冷却记录随重载作废（间隔改小后立即生效）
+        cn.kerong.bot.events.ButtonInteractionCooldown.clearAll()
     }
 
     // ---------- 平台标识 ----------
