@@ -220,7 +220,7 @@
   enabled: false  # true = 玩家进服必须先绑定 QQ 才能玩</pre>
 </div>
 <p>开启后老玩家进服前直接拦截（验证码显示在「无法连接到服务器」界面），新玩家先放行建档再踢出展示验证码。玩家在群里<b>直接发送纯数字验证码</b>即可绑定（也可以发送 <code>/绑定 验证码</code>）。相关命令：<code>/重新绑定</code>（换号重绑）、<code>/黑名单 @某人</code>（管理员拉黑）。⚠ 开启前先关掉服务器自带白名单（white-list）——未绑定玩家会在白名单阶段先被拦下拿不到验证码，QQ 绑定本身就是准入控制，不要和白名单叠用。</p>
-<p><b>Fabric 模组版的绑定不拦截进服</b>：未绑定玩家正常游玩，绑定完全自愿——玩家在游戏内发送 <code>/hbkrg qbd</code> 获取验证码，再到 QQ 群发 <code>/绑定 验证码</code>（或直接发纯数字验证码）完成；qq-bind.enabled 在 Fabric 版只控制绑定功能开关，不拦截进服。</p>
+<p><b>Fabric 模组版：未绑定玩家限制互动</b>（1.7.5.9 起的新策略）——进入服务器后锁定移动、禁方块与生物交互、禁发消息与命令，聊天栏持续显示绑定码；到 <code>qq-bind.restrict-timeout-seconds</code>（默认 120 秒）仍未绑定就踢出，再次进入会换新的绑定码；在 QQ 群发 <code>/绑定 验证码</code>（或直接发纯数字验证码）成功后自动解除全部限制。旧的 <code>/hbkrg qbd</code> 取码指令已删除（绑定码自动输出，无需自助查询）；qq-bind.enabled 在 Fabric 版控制整套绑定功能（含限制策略）开关。</p>
 </div>
 
 <div class="cfg-item">
@@ -265,6 +265,15 @@
 </div>
 
 <div class="tutorial-step">
+<div class="cfg-item">
+<h4>Fabric 未绑定限制超时 <span class="key">qq-bind.restrict-timeout-seconds</span></h4>
+<div class="config">
+<pre>qq-bind:
+  restrict-timeout-seconds: 120  # 未绑定玩家限制 N 秒后踢出（Fabric 版）</pre>
+</div>
+<p>Fabric 模组版专属：未绑定玩家进入服务器后被限制全部互动，聊天栏持续输出绑定码；超过这里的秒数仍未绑定就踢出服务器（再次进入会换新绑定码）。改完 <code>/hbkrg reload</code> 即时生效；Spigot / NeoForge 版为登录期拦截，无此限制阶段。</p>
+</div>
+
 <h3>每日签到（qq-bind.checkin 段）</h3>
 
 <div class="cfg-item">
@@ -589,13 +598,13 @@ coins-leaderboard:
 </div>
 
 <div class="cfg-item">
-<h4>群消息发送者显示名 <span class="key">chat-format.group-sender-name</span></h4>
+<h4>群消息转发显示名 <span class="key">chat-format.qq-forward-display-name</span></h4>
 <div class="config">
 <pre>chat-format:
-  group-sender-name: group  # group = 群昵称（默认）/ player = 绑定玩家名</pre>
+  qq-forward-display-name: group_nickname  # group_nickname = 群昵称（默认）/ qq_nickname = QQ 用户名</pre>
 </div>
 <p>QQ 群消息转发到游戏时，<code>[QQ] 名字: 内容</code> 里的「名字」用哪个：</p>
-<p><b>group（默认）= 群昵称</b>——该成员在群里显示的名字（设置过群名片就是群名片，没设置就是他的 QQ 昵称）；<b>player = 绑定玩家名</b>——显示他绑定的游戏玩家名，没绑定的成员仍显示群昵称。改完 <code>/hbkrg reload</code> 即时生效。</p>
+<p><b>group_nickname（默认）= 群昵称</b>——该成员在群里显示的名字（设置过群名片就是群名片，没设置就是他的 QQ 昵称）；<b>qq_nickname = QQ 用户名</b>——QQ 官方机器人接口在群消息里只返回上面这一个昵称字段，拿不到独立的「QQ 资料昵称」，所以这个选项目前和群昵称显示同一个值（官方将来开放独立接口后生效差异）。只影响全量转发；「/发信息」命令转发的名字固定用群昵称。改完 <code>/hbkrg reload</code> 即时生效。</p>
 </div>
 
 <div class="cfg-item">
