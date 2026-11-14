@@ -1,0 +1,8 @@
+# 冒烟运行 classpath（1.7.6 三次覆盖轮口径：改用 NF 分发 JAR——自带 org.bukkit
+# 兼容层与全部重定位依赖，PlaceholderVariableService 反射方法表需要
+# org.bukkit.entity.Player 可解析（Spigot 包不带 bukkit 类，S 组触发
+# NoClassDefFoundError，三次覆盖轮实测））
+# 编译：javac -cp <NF分发JAR> -d out Smoke176o4.java
+# 运行：cd workdir && java -cp "../out:<NF分发JAR绝对路径>" Smoke176o4
+# NF 分发 JAR = build/dist/KERONGPenguin_NeoForge-1.20.4-1.7.6.jar
+build/dist/KERONGPenguin_NeoForge-1.20.4-1.7.6.jar

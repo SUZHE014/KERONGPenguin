@@ -232,6 +232,18 @@ class ConfigManager(private val plugin: JavaPlugin) {
                 changed = true
             }
         }
+ // 总在线时长获取源默认改存档（1.7.6 三次覆盖轮，用户口径「总在线时长
+        // 信息源默认改为服务器存档」）——variable 是 1.7.6 首发 fillMissing
+        // 写入的默认而非用户意图，升级时自动收敛为新默认 save-data；自行选
+        // 过 plugin 或存档的配置不受影响（重建器内同款收敛，这里是重建失败
+        // 兕底路径的双保险）
+        if (oldVersion in 1 until 54 &&
+            config.getString("variable-fetch.total-playtime-source") == "variable"
+        ) {
+            config.set("variable-fetch.total-playtime-source", "save-data")
+            plugin.logger.info("总在线时长获取源默认已改为服务器存档（variable-fetch.total-playtime-source: save-data，可自行改回）")
+            changed = true
+        }
         // 清理已废弃的配置段
  // 移除 query-online 段（图片输出改为 markdown 关闭时自动启用）与 motd.text（文本模板已删除）
  // 移除 commands.个人信息（该命令已更名为 查信息）
@@ -319,7 +331,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
     fun serverName(): String = plugin.config.getString("serverName", botName()) ?: botName()
 
-    fun groupOpenIds(): List<String> = plugin.config.getStringList("bot.groups")
+    fun groupOpenIds(): List<String> = normalizeGroupIds(plugin.config.getStringList("bot.groups"))
 
  /** 多服务器集群：本服显示名（未配置时用 bot.name）。 */
     fun clusterName(): String = plugin.config.getString("bot.cluster.name", "") ?: ""
@@ -508,6 +520,21 @@ class ConfigManager(private val plugin: JavaPlugin) {
     companion object {
         private const val CONFIG_VERSION_PATH = "config-version"
 
+        /**
+         * 群 OpenId 列表归一（1.7.6 三次覆盖轮修复）：
+         * 每项去首尾空白、剥一层包裹的双引号再去空白，结果为空的一律剔除。
+         *
+         * 用户实测问题：bot.groups 只写了一对双引号（如 `- ""`，常见于照
+         * 注释示例「每项双引号」先占位没填真 ID）——旧版 getStringList
+         * 返回 [""] 非空列表，被判定为「已填写群 ID」：自动绑定不再触发、
+         * 群白名单匹配永远失败（机器人对所有群沉默）。归一后视同未填写
+         * （留空 = 自动绑定 / 不限制，与 `groups: []` 同语义）。
+         */
+        @JvmStatic
+        fun normalizeGroupIds(raw: List<String>): List<String> = raw
+            .map { it.trim().trim('"').trim() }
+            .filter { it.isNotEmpty() }
+
         // 升 48——1.7.5.7 覆盖轮删旧键（配置注释同步去版本字样）：
         // 删除旧键 ai.reply-quote（1.7.5.5 引入的开关，1.7.5.6 起已被
         // ai.reminder-mode 三选一取代）：升级时若 reminder-mode 仍为空且旧键
@@ -626,7 +653,15 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 升 53——1.7.6 覆盖轮：删键 render.real-glass（真实玻璃渲染测试功能
         // 整体下线，恢复原毛玻璃渲染；无论装过 52 还是更早版本，升级时
         // 自动删除该键与注释）；其余升 52 变更保持不变。
-        private const val CURRENT_CONFIG_VERSION = 53
+        // 升 54——1.7.6 三次覆盖轮：①variable-fetch.total-playtime-source 默认
+        // variable → save-data（用户口径「总在线时长信息源默认改为服务器存档」；
+        // 旧默认 variable 是 52 首发 fillMissing 写入而非用户意图，升级自动
+        // 收敛，自选 plugin/save-data 不动）；②语义变更无新键：在线排行榜
+        // 存档源改为直接枚举服务器数据（usercache 全量 + stats 目录补充，
+        // 不再以 QQ 绑定为入口——没开绑定的服务器也能出榜）；
+        // ③bot.groups 只写一对引号 ""（或纯空白）视为未填写（自动绑定与
+        // 群白名单判定不再误判已配置）。
+        private const val CURRENT_CONFIG_VERSION = 54
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -913,10 +948,10 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 子键 项目名称 / 获取变量；正常返回才展示）
             "variable-fetch.enabled" to false,
             "variable-fetch.total-playtime" to "",
- // 1.7.6：总在线时长获取源（save-data 存档数据 / plugin 插件统计 /
-            // variable 变量，默认 variable = 历史行为；save-data 读不到
-            // 自动回退变量 → 插件统计）
-            "variable-fetch.total-playtime-source" to "variable",
+ // 1.7.6 三次覆盖轮：总在线时长获取源默认改存档（save-data 服务器
+            // 存档数据——名片读不到回退变量→插件统计、排行榜直枚举服务器
+            // 全部玩家；plugin 插件统计 / variable 变量优先）
+            "variable-fetch.total-playtime-source" to "save-data",
             "variable-fetch.today-playtime" to "",
             "variable-fetch.coins" to "",
             "variable-fetch.points" to "",

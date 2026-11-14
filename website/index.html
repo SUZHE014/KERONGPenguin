@@ -21,7 +21,7 @@
 <h2>下载</h2>
 <div class="dl-box">
 <p style="font-size:1.3em;font-weight:bold;color:#e8edf2;margin-bottom:5px">版本 1.7.6</p>
-<p style="color:#7a848e;margin-bottom:20px">发布于 2026-11-14</p>
+<p style="color:#7a848e;margin-bottom:20px">发布于 2026-11-15</p>
 <a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.6.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
 <a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.6.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
 <a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.6.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（1.20.4-1.21.x）</a>
@@ -70,9 +70,9 @@
 <h2>历史版本</h2>
 <table>
 <tr><th>版本</th><th>发布日期</th><th>下载</th></tr>
-<tr><td>NeoForge 1.7.6</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.6.jar">下载</a></td></tr>
-<tr><td>Spigot 1.7.6</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.6.jar">下载</a></td></tr>
-<tr><td>Fabric 1.7.6（1.20.4 通用包）</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.6.jar">下载</a></td></tr>
+<tr><td>NeoForge 1.7.6</td><td>2026-11-15</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.6.jar">下载</a></td></tr>
+<tr><td>Spigot 1.7.6</td><td>2026-11-15</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.6.jar">下载</a></td></tr>
+<tr><td>Fabric 1.7.6（1.20.4 通用包）</td><td>2026-11-15</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.6.jar">下载</a></td></tr>
 <tr><td>Fabric 1.7.6（1.20.1 独立包）</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.1-1.7.6.jar">下载</a></td></tr>
         <tr><td>NeoForge 1.7.5.9</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.9.jar">下载</a></td></tr>
 <tr><td>Spigot 1.7.5.9</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.9.jar">下载</a></td></tr>
@@ -124,11 +124,11 @@
 <section>
 <h2>更新日志</h2>
 <div class="changelog">
-<div class="version"><h3>v1.7.6</h3><span class="date">2026-11-14</span><ul>
-<li>① 总在线时长「服务器存档数据」源现在同样作用于在线排行榜——存档时间刻始终读服务器自己的统计文件（QQ号 → 绑定UUID → 服务器UUID 链路查找），插件统计才用绑定记录数据；玩家名片查找健壮化（服务器 usercache.json 同名多条从新到旧逐条试，最新一条没有统计文件自动试次新条目）</li>
-<li>② 在线排行榜显示同名玩家的全部存档账号——离线服务器常见同名（改名前的旧账号 / 大小写变体 / 多个同名玩家），同一名字命中的每个服务器 UUID 各占一行同时显示；存档一条都读不到的玩家回退插件统计时长</li>
-<li>③ 在线排行榜行时长格式统一「X时X分」——与玩家名片三个获取源同口径（旧「X小时X分钟」写法停用）；获取源选存档 / 插件统计时排行榜时长不再被变量覆盖（默认变量源保持变量优先）</li>
-<li>④ 存档查找全过程（每个玩家的候选 UUID / 命中明细 / 回退去向 / 排行榜汇总）写入 logs/qq 日志文件的「[存档统计]」行，排障直接对照服务器 stats 目录与 usercache.json</li>
+<div class="version"><h3>v1.7.6</h3><span class="date">2026-11-15</span><ul>
+<li>① 在线排行榜「服务器存档数据」源改为直接枚举服务器自己的全部玩家数据——不再先经 QQ 绑定记录，没开 QQ 绑定的服务器也能出榜；usercache.json 全量玩家逐个读存档统计，usercache 条目被服务器清理但统计文件还在的老玩家用绑定记录补名字照常上榜；同名玩家（改名前的旧账号 / 多个同名）每个存档账号各占一行同时显示</li>
+<li>② 总在线时长获取源默认改为「服务器存档数据」（save-data）——玩家名片读取不到自动回退变量 → 插件统计；在线排行榜直接枚举服务器数据（不依赖 QQ 绑定）；旧配置升级自动收敛为存档源（自行选过插件统计 / 变量的不动），config-version 53 → 54</li>
+<li>③ 修复 bot.groups 群列表只写一对双引号 ""（或纯空白 / 纯引号）被误判为已填写——现在视同未填写：自动绑定正常触发、群白名单不再恒不匹配</li>
+<li>④ 排行榜存档收集汇总写日志（logs/qq 的「[存档统计] 排行榜直枚举」行：usercache 命中数 / stats 目录补充数 / 无名字可补跳过数），排障直接对照</li>
 </ul></div>
 <div class="version"><h3>v1.7.5.9</h3><span class="date">2026-11-14</span><ul>
 <li>调整：QQ 群消息转发到游戏的显示名统一固定为发送者的群昵称（设置过群名片就是群名片，没设置就是 QQ 昵称），不再提供配置项（历史显示名配置键升级自动删除，配置版本 49 / 50 → 51）；「/发信息」命令转发同为群昵称，两条路径口径一致。</li>

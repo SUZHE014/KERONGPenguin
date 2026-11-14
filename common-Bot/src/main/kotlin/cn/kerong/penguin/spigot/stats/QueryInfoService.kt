@@ -392,11 +392,11 @@ object QueryInfoService {
      * 总在线时长取值（1.7.6 多源）：variable-fetch.total-playtime-source 选择
      * 获取源，按源走回退链（获取不到自动退回，每一环 null 则进入下一环）：
      *
-     * - save-data（服务器存档数据）：主世界 stats/<uuid>.json 的 play_time
-     *   （[StatsFileService]，两级 UUID 查找：绑定记录 → usercache.json
-     *   服务器口径，查找全过程写日志）→ 变量（若配置且解析成功）
-     *   → 插件统计（formatPlayTime）；
-     * - variable（变量，默认）：变量 → 插件统计（与历史行为完全一致）；
+     * - save-data（服务器存档数据，默认——1.7.6 三次覆盖轮起）：主世界
+     *   stats/<uuid>.json 的 play_time（[StatsFileService]，两级 UUID
+     *   查找：绑定记录 → usercache.json 服务器口径，查找全过程写日志）
+     *   → 变量（若配置且解析成功）→ 插件统计（formatPlayTime）；
+     * - variable（变量）：变量 → 插件统计（与历史行为完全一致）；
      * - plugin（插件统计）：插件统计（不回退——新玩家无记录显示 0分钟，
      *   与旧版一致）。
      *

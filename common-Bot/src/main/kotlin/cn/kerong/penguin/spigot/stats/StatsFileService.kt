@@ -42,13 +42,24 @@ import java.util.UUID
  * （logs/qq/qq-bind-日期.log 的「[存档统计]」行），排障时可直接对照
  * 服务器 stats 目录与 usercache.json 核对。
  *
- * ## 同名多账号（1.7.6 二次覆盖轮，在线排行榜用）
+ * ## 排行榜直枚举（1.7.6 三次覆盖轮）
  *
- * 离线服务器常见同名：同一玩家名在服务器里可能有多个 UUID（改名前的
- * 旧账号、大小写变体，或多个同名玩家）。玩家名片取单条（上述两级取
- * 最先命中）；[readPlayTimeAll] 把该名字命中的**每一个**服务器 UUID
- * 的统计全部读出（绑定 UUID + usercache.json 同名全部条目，去重），
- * 供在线排行榜同名多账号同时展示。
+ * 在线排行榜选「服务器存档数据」源时**不再以 QQ 绑定记录为入口**
+ * （用户口径：没开 QQ 绑定的服务器也要能出榜）——[readAllPlayTimeEntries]
+ * 直接枚举服务器自己的全部玩家数据：
+ *
+ * 1. usercache.json 全量条目（凡在服务器登录过的玩家都有记录，
+ *    服务器口径的 玩家名 → UUID）逐个读 stats/<uuid>.json；
+ * 2. stats 目录补充：usercache 条目过期被服务器清理、但统计文件还在的
+ *    老玩家（长期未登录，恰是总时长榜常客），用调用方传入的名字提示
+ *    （绑定记录 playerUuid → playerName）补出名字；连名字提示都没有的
+ *    统计文件跳过（展示需要名字，计数写日志）。
+ *
+ * 同名多账号（离线服常见：改名前的旧账号 / 大小写变体 / 多个同名玩家）
+ * 每个 UUID 各一条、同时展示；玩家名片仍走 [readPlayTime] 单条链路
+ * （QQ号 → 绑定UUID → 服务器UUID，用户前轮口径不变）。
+ *
+ * ## UUID 查找（1.7.6 覆盖轮重做——修复读不到存档时间刻）
  *
  * ## 目录定位（四端通用）
  *
@@ -64,9 +75,10 @@ import java.util.UUID
  * - 文件不存在 / 超过 [MAX_FILE_BYTES]（2MB，正常统计文件几 KB~几十 KB）
  *   / 解析异常 / play_time 缺失或为 0 → 一律按「获取不到」处理（由调用
  *   方退回变量 / 插件统计，不抛异常）；
- * - 读取发生在渲染池线程（玩家名片渲染流程），无主线程开销；
- * - 每次查询实时读取（文件小、频率低，不做缓存——管理员改档 / 玩家
- *   在线时长增长都能即时反映）。
+ * - 读取发生在渲染池线程（玩家名片渲染 / 排行榜收集流程），无主线程开销；
+ * - 统计文件每次实时读取（管理员改档 / 玩家在线时长增长即时反映）；
+ *   usercache.json 体积可达数百 KB 且排行榜要全量枚举——按文件
+ *   lastModified 缓存解析结果（文件一变缓存即失效），全量玩家不重复读盘。
  */
 object StatsFileService {
 
@@ -103,6 +115,17 @@ object StatsFileService {
 
     /** usercache.json 单条同名记录（服务器口径的 玩家名 → UUID）。 */
     data class ServerUuidEntry(val uuid: UUID, val name: String, val expiresOn: String)
+
+    /**
+     * 服务器口径的单个存档在线时长条目（在线排行榜「服务器存档数据」源，
+     * 1.7.6 三次覆盖轮）。
+     *
+     * @param name 展示用玩家名（usercache.json 记录名 / 名字提示补出的名）
+     * @param uuid 服务器口径 UUID（统计文件名）
+     * @param ticks 累计游戏刻
+     * @param source 名字/条目来源说明（usercache.json / stats目录）——日志用
+     */
+    data class ServerPlayTimeEntry(val name: String, val uuid: UUID, val ticks: Long, val source: String)
 
     /**
      * 读取玩家的累计游戏时间（游戏刻）——按两级 UUID 查找，全程写日志。
@@ -178,56 +201,90 @@ object StatsFileService {
     }
 
     /**
-     * 读取玩家名命中的**全部**存档在线时长记录（在线排行榜「服务器存档数据」源）。
+     * 直接枚举服务器上的**全部**存档在线时长条目（在线排行榜「服务器存档
+     * 数据」源，1.7.6 三次覆盖轮重做入口）。
      *
-     * 离线服务器常见同名：同一玩家名在服务器里可能有多个 UUID 统计文件
-     * （改名前的旧账号 / 大小写变体 / 多个同名玩家）——本方法把候选里
-     * 每一个能读到 play_time 的服务器 UUID 各返回一条（同名多账号全部
-     * 读出、全部展示；用户口径「获取到同名的也同时显示」）。
+     * 用户口径：排行榜选存档源时**不再先走 QQ 绑定 UUID**——没开 QQ 绑定
+     * 的服务器也要能出榜。入口改为服务器自己的数据，同名多账号每个 UUID
+     * 各一条、全部展示（离线服常见：改名前的旧账号 / 大小写变体 / 多个
+     * 同名玩家）：
      *
-     * 候选顺序（去重）：绑定记录 UUID（若非空，文件存在 = 服务器认它）
-     * → usercache.json 同名（忽略大小写）全部条目（expiresOn 最新在前）。
-     * 目录定位失败 / 全部候选未命中 → 空表（调用方回退插件统计）。
-     * 每个玩家一条汇总日志（候选数 / 命中明细 / 回退去向）。
+     * 1. usercache.json 全量条目（服务器口径 玩家名 → UUID，凡登录过都
+     *    有记录）逐个读 stats/<uuid>.json 的 play_time；
+     * 2. stats 目录补充扫描：usercache 条目过期被服务器清理但统计文件还在
+     *    的老玩家（长期未登录，恰是总时长榜常客），用 [nameHints]（调用方
+     *    传入的绑定记录 playerUuid → playerName 提示，仅为补名字、不是
+     *    数据入口）补出名字；无任何名字来源的统计文件跳过并计数
+     *    （展示需要名字）。
+     *
+     * 排行榜汇总一行日志（条目数 / 两个来源各多少 / 无名字跳过多少）。
+     * 目录定位失败 → 空表（调用方整榜回退插件统计）。
+     *
+     * @param nameHints 名字提示（UUID → 玩家名，可空）：仅为 stats 目录
+     *   补充扫描里的老统计文件补名字，不影响 usercache 主入口
      */
-    fun readPlayTimeAll(playerName: String?, boundUuid: UUID?): List<PlayTimeResult> {
+    fun readAllPlayTimeEntries(nameHints: Map<UUID, String> = emptyMap()): List<ServerPlayTimeEntry> {
         val directory = statsDirectory()
         if (directory == null) {
             PluginFileLog.write(
-                "[存档统计] 排行榜 玩家=$playerName 获取失败：未找到主世界 stats 目录" +
-                    "（已尝试首世界 worldFolder/stats 与工作目录 world/stats），该条目回退插件统计"
+                "[存档统计] 排行榜获取失败：未找到主世界 stats 目录" +
+                    "（已尝试首世界 worldFolder/stats 与工作目录 world/stats），存档源不可用，整榜回退插件统计"
             )
             return emptyList()
         }
-        val results = ArrayList<PlayTimeResult>()
+        val results = ArrayList<ServerPlayTimeEntry>()
         val seen = HashSet<UUID>()
-        // 候选 1：绑定记录的 UUID（文件存在 = 服务器认这个 UUID）
-        if (boundUuid != null && seen.add(boundUuid)) {
-            val file = File(directory, "${boundUuid}.json")
-            val ticks = if (file.isFile) parsePlayTicks(file) else null
-            if (ticks != null) {
-                results.add(PlayTimeResult(ticks, boundUuid, "绑定记录", directory))
+        // 1. usercache.json 全量条目：服务器口径的每个玩家一条。
+        //    同一 UUID 可能因改名存在新旧两条（旧名 + 新名）——保留
+        //    expiresOn 最新的那条（新名）；同名不同 UUID（改名前的旧
+        //    账号 / 多个同名玩家）各是一条互不影响
+        val root = serverRoot()
+        val usercacheCount = if (root != null) {
+            val freshest = LinkedHashMap<UUID, Pair<String, String>>() // uuid → (name, expiresOn)
+            for ((name, uuidText, expires) in loadUsercacheEntries(root)) {
+                if (name.isBlank()) continue
+                val uuid = runCatching { UUID.fromString(uuidText) }.getOrNull() ?: continue
+                val prev = freshest[uuid]
+                if (prev == null || expires > prev.second) freshest[uuid] = name to expires
             }
-        }
-        // 候选 2：usercache.json 同名（忽略大小写）的全部服务器 UUID
-        val sameName = resolveAllServerUuids(playerName)
-        for (entry in sameName) {
-            if (!seen.add(entry.uuid)) continue
-            val file = File(directory, "${entry.uuid}.json")
-            val ticks = if (file.isFile) parsePlayTicks(file) else null
-            if (ticks != null) {
-                results.add(PlayTimeResult(ticks, entry.uuid, "usercache.json", directory))
+            var count = 0
+            for ((uuid, best) in freshest) {
+                if (!seen.add(uuid)) continue
+                val ticks = parsePlayTicks(File(directory, "$uuid.json")) ?: continue
+                results.add(ServerPlayTimeEntry(best.first, uuid, ticks, "usercache.json"))
+                count++
             }
-        }
-        // 每玩家一条汇总日志（候选与命中明细，够排障对照，不逐条刷行）
-        val summary = if (results.isEmpty()) {
-            "存档全部未命中（绑定UUID=${boundUuid ?: "无"}，usercache同名=${sameName.size}条），回退插件统计"
+            count
         } else {
-            "存档命中${results.size}条（同名多账号全部展示）：" +
-                results.joinToString("；") { "${it.uuid}（${it.uuidSource}）=${formatPlayText(it.ticks)}" }
+            PluginFileLog.write("[存档统计] 排行榜：未定位到服务器根目录（usercache.json 不可用），仅按 stats 目录 + 名字提示枚举")
+            0
+        }
+        // 2. stats 目录补充：usercache 条目被清理但统计文件还在的老玩家，
+        //    名字用调用方提示补出（无名字来源跳过——展示需要名字）
+        var supplementCount = 0
+        var namelessCount = 0
+        val statsFiles = try {
+            directory.listFiles { file -> file.isFile && file.name.endsWith(".json") }
+        } catch (_: Throwable) {
+            null
+        }
+        if (statsFiles != null) {
+            for (file in statsFiles) {
+                val uuid = runCatching { UUID.fromString(file.name.removeSuffix(".json")) }.getOrNull() ?: continue
+                if (!seen.add(uuid)) continue
+                val ticks = parsePlayTicks(file) ?: continue
+                val hinted = nameHints[uuid]
+                if (hinted.isNullOrBlank()) {
+                    namelessCount++
+                    continue
+                }
+                results.add(ServerPlayTimeEntry(hinted, uuid, ticks, "stats目录+绑定提示"))
+                supplementCount++
+            }
         }
         PluginFileLog.write(
-            "[存档统计] 排行榜 玩家=$playerName 候选：绑定UUID=${boundUuid ?: "无"} + usercache.json同名${sameName.size}条 → $summary"
+            "[存档统计] 排行榜直枚举：usercache 命中 $usercacheCount 条，stats 目录补充 $supplementCount 条" +
+                "（名字来自绑定提示），无名字可补跳过 $namelessCount 个统计文件，共 ${results.size} 条"
         )
         return results
     }

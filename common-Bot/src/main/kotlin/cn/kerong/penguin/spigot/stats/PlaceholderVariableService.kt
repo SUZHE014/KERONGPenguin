@@ -60,9 +60,11 @@ object PlaceholderVariableService {
 
     /**
      * 总在线时长获取源（variable-fetch.total-playtime-source，1.7.6 新增）：
-     * - [SOURCE_SAVE_DATA]：服务器存档数据——主世界 stats/<uuid>.json 的
-     *   play_time（[StatsFileService]），读取不到回退变量 → 插件统计；
-     * - [SOURCE_VARIABLE]（默认）：变量优先（与历史行为完全一致——填了
+     * - [SOURCE_SAVE_DATA]（默认，1.7.6 三次覆盖轮起）：服务器存档数据——
+     *   主世界 stats/<uuid>.json 的 play_time（[StatsFileService]）；玩家
+     *   名片读取不到回退变量 → 插件统计，在线排行榜直接枚举服务器全部
+     *   玩家（不依赖 QQ 绑定）；
+     * - [SOURCE_VARIABLE]：变量优先（与历史行为完全一致——填了
      *   变量用变量，没填 / 读取失败回退插件统计）；
      * - [SOURCE_PLUGIN]：插件统计（本插件自记录，新玩家无记录时显示 0）；
      * 兼容中文值（存档数据 / 插件统计 / 变量）；未知取值按默认处理并写
@@ -72,7 +74,7 @@ object PlaceholderVariableService {
     const val SOURCE_VARIABLE = "variable"
     const val SOURCE_PLUGIN = "plugin"
 
-    /** 源取值 → 归一化（中文别名一并接受；未配置 / 空值 = 默认 variable）。 */
+    /** 源取值 → 归一化（中文别名一并接受；未配置 / 空值 = 默认 save-data）。 */
     fun totalPlaytimeSource(): String {
         val raw = try {
             (Bukkit.getPluginManager().getPlugin("KERONGPenguin") as? JavaPlugin)
@@ -81,15 +83,16 @@ object PlaceholderVariableService {
             ""
         } ?: ""
         return when (raw) {
-            "", SOURCE_VARIABLE, "变量" -> SOURCE_VARIABLE
-            SOURCE_SAVE_DATA, "存档数据", "服务器存档", "存档" -> SOURCE_SAVE_DATA
+            // 空值 = 未配置（fillMissing 会写默认；装载前 / 异常兜底同样按默认，不告警）
+            "", SOURCE_SAVE_DATA, "存档数据", "服务器存档", "存档" -> SOURCE_SAVE_DATA
+            SOURCE_VARIABLE, "变量" -> SOURCE_VARIABLE
             SOURCE_PLUGIN, "插件统计", "插件" -> SOURCE_PLUGIN
             else -> {
                 if (!unknownSourceWarned) {
                     unknownSourceWarned = true
-                    PluginFileLog.write("[变量] total-playtime-source='$raw' 不是有效取值（save-data / plugin / variable），按默认 variable 处理")
+                    PluginFileLog.write("[变量] total-playtime-source='$raw' 不是有效取值（save-data / plugin / variable），按默认 save-data 处理")
                 }
-                SOURCE_VARIABLE
+                SOURCE_SAVE_DATA
             }
         }
     }

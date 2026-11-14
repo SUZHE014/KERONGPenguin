@@ -153,6 +153,15 @@ internal object ConfigFileRebuilder {
             ))
         }
 
+ // 总在线时长获取源默认改存档（1.7.6 三次覆盖轮，用户口径「总在线时长
+        // 信息源默认改为服务器存档」）——variable 是 1.7.6 首发 fillMissing
+        // 写入的默认而非用户意图，升级时自动收敛为新默认 save-data；自行选
+        // 过 plugin 或存档的配置不受影响（重建仅在磁盘版本低于 54 时触发；
+        // reload 内同款收敛是重建失败兑底路径的双保险）
+        if (disk.getString("variable-fetch.total-playtime-source") == "variable") {
+            disk.set("variable-fetch.total-playtime-source", "save-data")
+        }
+
  // 旧默认值→新默认值的升级收敛已移除（用户要求）——
         // 用户文件里已有的值一律原样回填保留，不做「等于旧默认则换成
         // 新默认」的识别（历史上有 from-group / idle-release-minutes /
