@@ -523,14 +523,13 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
             var senderName = "unknown"
             val contact: Contact? = event.sender
             if (contact?.username != null) senderName = contact.username!!
- // 全量转发的显示名来源（1.7.5.9 chat-format.qq-forward-display-name，
- // 覆盖 1.7.5.8 的 group-sender-name 方案）：group_nickname=群昵称（默认）/
- // qq_nickname=QQ 用户名。QQ 官方机器人接口的群消息事件只返回一个昵称字段
- // （群名片优先，未设置即 QQ 昵称——「card 为空回退 nickname」由该字段天然
- // 满足），两种模式当前取值相同；官方若开放独立的 QQ 资料昵称接口，
- // 在 [resolveForwardDisplayName] 接入。/发信息 命令转发不走本键
- // （保持群昵称，即历史行为）。
-            senderName = resolveForwardDisplayName(plugin, senderName)
+ // 全量转发的显示名统一为群昵称，不再配置（1.7.5.9 覆盖轮，用户指令
+ // 「转发不用配置了，直接统一全部默认显示群昵称」）：QQ 官方机器人
+ // 接口的群消息事件只返回一个昵称字段，官方语义即「该成员在群内显示的
+ // 名字」（设置过群名片就是群名片，未设置即其 QQ 昵称——「card 为空回退
+ // nickname」由该字段天然满足），与 /发信息 命令转发同口径（两路径都
+ // 直接取该字段）。历史配置键 group-sender-name（1.7.5.8）与
+ // qq-forward-display-name（1.7.5.9 首发误加）均已废弃，升级时自动删键。
 
             val baseMessage = event as? BaseMessageEvent<*>
             val metadata: JSONObject? = baseMessage?.metadata
@@ -618,26 +617,4 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         }
     }
 
-    /**
-     * 全量转发的显示名来源解析（1.7.5.9，chat-format.qq-forward-display-name）：
-     * - group_nickname（默认）：群昵称——消息事件返回的成员昵称，官方语义
-     *   为「该成员在群内显示的名字」（设置过群名片为群名片，未设置即其 QQ
-     *   昵称——「card 为空回退 nickname」由该字段天然满足）；
-     * - qq_nickname：QQ 用户名——QQ 官方机器人接口在群消息里只提供上述一个
-     *   昵称字段（author 与 mentions 同源，群成员资料接口内测未开放），当前
-     *   与 group_nickname 取值相同；官方若开放独立的 QQ 资料昵称通道，在此
-     *   接入真实取值。
-     * 未知取值一律按 group_nickname 处理（不阻断转发）。
-     */
-    private fun resolveForwardDisplayName(plugin: cn.kerong.bot.KERONG, groupNickname: String): String {
-        val mode = try {
-            plugin.chatFormat.qqForwardDisplayName.trim().lowercase()
-        } catch (_: Throwable) {
-            "group_nickname"
-        }
-        return when (mode) {
-            "qq_nickname" -> groupNickname // 官方接口暂无独立来源，与群昵称同值
-            else -> groupNickname
-        }
-    }
 }

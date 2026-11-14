@@ -598,13 +598,8 @@ coins-leaderboard:
 </div>
 
 <div class="cfg-item">
-<h4>群消息转发显示名 <span class="key">chat-format.qq-forward-display-name</span></h4>
-<div class="config">
-<pre>chat-format:
-  qq-forward-display-name: group_nickname  # group_nickname = 群昵称（默认）/ qq_nickname = QQ 用户名</pre>
-</div>
-<p>QQ 群消息转发到游戏时，<code>[QQ] 名字: 内容</code> 里的「名字」用哪个：</p>
-<p><b>group_nickname（默认）= 群昵称</b>——该成员在群里显示的名字（设置过群名片就是群名片，没设置就是他的 QQ 昵称）；<b>qq_nickname = QQ 用户名</b>——QQ 官方机器人接口在群消息里只返回上面这一个昵称字段，拿不到独立的「QQ 资料昵称」，所以这个选项目前和群昵称显示同一个值（官方将来开放独立接口后生效差异）。只影响全量转发；「/发信息」命令转发的名字固定用群昵称。改完 <code>/hbkrg reload</code> 即时生效。</p>
+<h4>群消息转发显示名（固定，无配置项）</h4>
+<p>QQ 群消息转发到游戏时，<code>[QQ] 名字: 内容</code> 里的「名字」固定为发送者的<b>群昵称</b>——该成员在群里显示的名字（设置过群名片就是群名片，没设置就是他的 QQ 昵称）。全量转发与「/发信息」命令转发同口径，1.7.5.9 起不再提供配置项（历史版本曾有 chat-format.group-sender-name / chat-format.qq-forward-display-name 两个配置键，均已废弃，升级时自动删除）。</p>
 </div>
 
 <div class="cfg-item">

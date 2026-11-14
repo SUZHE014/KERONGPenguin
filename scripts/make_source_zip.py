@@ -25,6 +25,9 @@ def excluded(rel):
         return True
     if rel.startswith("scripts/deps-work"):
         return True
+    # 冒烟测试编译产物不入包（1.7.5.9 轮口径：smoke1759/out 的 .class 排除）
+    if rel.startswith("scripts/smoke1759/out"):
+        return True
     if "build" in parts[:-1]:
         return True
     if rel.endswith((".jar", ".bin", ".exe", ".dll", ".so")):

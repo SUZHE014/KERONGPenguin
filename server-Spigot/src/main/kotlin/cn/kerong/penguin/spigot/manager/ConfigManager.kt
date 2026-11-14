@@ -379,9 +379,6 @@ class ConfigManager(private val plugin: JavaPlugin) {
         plugin.config.getString("chat-format.from-group", "[§bQQ§r] {name}: {message}") ?: "[§bQQ§r] {name}: {message}",
         plugin.config.getBoolean("chat-format.post-chat", true),
         plugin.config.getString("chat-format.start-with", "") ?: "",
- // 全量转发显示名来源（1.7.5.9，覆盖 1.7.5.8 group-sender-name 方案）：
- // group_nickname=群昵称（默认）/qq_nickname=QQ 用户名；未知取值回退 group_nickname
-        (plugin.config.getString("chat-format.qq-forward-display-name", "group_nickname") ?: "group_nickname").trim().lowercase(),
     )
 
     /** Fabric 端未绑定限制的超时秒数（qq-bind.restrict-timeout-seconds，1.7.5.9；其余端不消费）。 */
@@ -601,7 +598,14 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 1.7.5.8 曾把 config-version 升到 49（group-sender-name 新键），49 安装
         // 升 50 时旧键值一并删除（历史值无迁移意义——两种方案的键语义不同，
         // group/player 取值不属于新键取值域，按新键默认 group_nickname 生效）。
-        private const val CURRENT_CONFIG_VERSION = 50
+        // 升 51——1.7.5.9 覆盖轮（同号重发，用户指令「转发不用配置了，直接统一
+        // 全部默认显示群昵称」）：qq-forward-display-name（升 50 新增）整体废弃
+        // 删键——转发显示名不再配置，全量转发与 /发信息 统一固定为群昵称
+        // （消息事件返回的唯一昵称字段：群名片优先、未设置即 QQ 昵称）；
+        // 无论装过 49（group-sender-name）、50（qq-forward-display-name）
+        // 还是更早版本，升 51 时两个历史键都自动删除；其余升 50 变更
+        // （restrict-timeout-seconds 新键 / menu 删除重建）保持不变。
+        private const val CURRENT_CONFIG_VERSION = 51
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -636,6 +640,10 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // qq-forward-display-name 取代（方案覆盖：官方接口单昵称字段口径；
             // player=绑定玩家名模式随上轮方案一并废弃），升级时直接删键
             "chat-format.group-sender-name",
+ // 升 51：1.7.5.9 覆盖轮——qq-forward-display-name（升 50 新增）也废弃：
+            // 转发显示名统一固定为群昵称不再配置，升 51 直接删键（含首发
+            // 1.7.5.9（cv50）用户配置里的残留键）
+            "chat-format.qq-forward-display-name",
             "render.performance.show-tps", "render.performance.show-mspt",
             "render.performance.show-memory", "render.performance.show-cpu",
             "render.performance.show-online",
@@ -779,10 +787,6 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "chat-format.from-group" to "[§bQQ§r] {name}: {message}",
             "chat-format.post-chat" to true,
             "chat-format.start-with" to "#",
- // 全量转发显示名来源（1.7.5.9）：group_nickname=群昵称（默认，群名片优先
-            // 未设置即 QQ 昵称）/ qq_nickname=QQ 用户名（官方接口下与群昵称同值）；
-            // 仅作用于全量转发，/发信息 命令转发保持群昵称
-            "chat-format.qq-forward-display-name" to "group_nickname",
             "player-events.join.enabled" to true,
             "player-events.join.format" to "[游戏] {name} 加入了服务器",
             "player-events.quit.enabled" to true,

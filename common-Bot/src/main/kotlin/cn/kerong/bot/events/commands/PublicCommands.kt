@@ -341,8 +341,8 @@ class PublicCommands : CommandSupport() {
                 if (contact?.username != null) senderName = contact.username
             } catch (_: Throwable) {
             }
- // /发信息 命令转发的显示名不走 qq-forward-display-name（1.7.5.9 用户口径：
- // 命令转发保持群昵称不变，与 1.7.5.7 及之前行为一致——事件返回的成员昵称）
+ // /发信息 命令转发的显示名与全量转发同口径（1.7.5.9 覆盖轮：统一群昵称
+ // ——事件返回的成员昵称，不再配置；1.7.5.7 及之前即为群昵称，行为不变）
             plugin.broadcastMessage(plugin.formatGroupMessage(senderName, content))
         } else {
             MessageTemplates.sendPlain(event, "forward-disabled")

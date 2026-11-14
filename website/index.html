@@ -74,10 +74,6 @@
 <tr><td>Spigot 1.7.5.9</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.9.jar">下载</a></td></tr>
 <tr><td>Fabric 1.7.5.9（1.20.4 通用包）</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.9.jar">下载</a></td></tr>
 <tr><td>Fabric 1.7.5.9（1.20.1 独立包）</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.1-1.7.5.9.jar">下载</a></td></tr>
-        <tr><td>NeoForge 1.7.5.9</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.9.jar">下载</a></td></tr>
-<tr><td>Spigot 1.7.5.9</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.9.jar">下载</a></td></tr>
-<tr><td>Fabric 1.7.5.9（1.20.4 通用包）</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.9.jar">下载</a></td></tr>
-<tr><td>Fabric 1.7.5.9（1.20.1 独立包）</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.1-1.7.5.9.jar">下载</a></td></tr>
         <tr><td>NeoForge 1.7.5.8</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.9.jar">下载</a></td></tr>
 <tr><td>Spigot 1.7.5.8</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.9.jar">下载</a></td></tr>
 <tr><td>Fabric 1.7.5.8（1.20.4 通用包）</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.9.jar">下载</a></td></tr>
@@ -125,14 +121,10 @@
 <h2>更新日志</h2>
 <div class="changelog">
 <div class="version"><h3>v1.7.5.9</h3><span class="date">2026-11-14</span><ul>
-<li>新增：QQ 群消息转发到游戏的显示名可选群昵称 / QQ 用户名（chat-format.qq-forward-display-name，默认群昵称；QQ 官方接口在群消息里只返回一个昵称字段，两个选项当前显示同一个值）；「/发信息」命令转发的名字保持群昵称不变。</li>
+<li>调整：QQ 群消息转发到游戏的显示名统一固定为发送者的群昵称（设置过群名片就是群名片，没设置就是 QQ 昵称），不再提供配置项（历史显示名配置键升级自动删除，配置版本 49 / 50 → 51）；「/发信息」命令转发同为群昵称，两条路径口径一致。</li>
 <li>修复：菜单模板替换不完整——命中任一历史版本内置默认（没改过）改为删除文件重新生成本版默认；改过的保留不动。</li>
 <li>重做：Fabric 版 QQ 绑定策略——未绑定玩家进入服务器后限制全部互动（锁定移动 / 禁交互 / 禁聊天与命令），聊天栏持续输出绑定码，超时踢出（qq-bind.restrict-timeout-seconds 默认 120 秒可配）；群里绑定成功自动解除全部限制；/hbkrg qbd 取码指令删除。</li>
-</ul></div>
-<div class="version"><h3>v1.7.5.9</h3><span class="date">2026-11-14</span><ul>
-<li>新增：QQ 群消息转发到游戏的显示名可选群昵称 / QQ 用户名（chat-format.qq-forward-display-name，默认群昵称；QQ 官方接口在群消息里只返回一个昵称字段，两个选项当前显示同一个值）；「/发信息」命令转发的名字保持群昵称不变。</li>
-<li>修复：菜单模板替换不完整——命中任一历史版本内置默认（没改过）改为删除文件重新生成本版默认；改过的保留不动。</li>
-<li>重做：Fabric 版 QQ 绑定策略——未绑定玩家进入服务器后限制全部互动（锁定移动 / 禁交互 / 禁聊天与命令），聊天栏持续输出绑定码，超时踢出（qq-bind.restrict-timeout-seconds 默认 120 秒可配）；群里绑定成功自动解除全部限制；/hbkrg qbd 取码指令删除。</li>
+<li>修复：官网版本文件（version.json）更新日志格式错乱与重复条目，已恢复纯文本条目（此前更新检查在控制台显示的异常内容一并修复）。</li>
 </ul></div>
 <div class="version"><h3>v1.7.5.8</h3><span class="date">2026-11-14</span><ul>
 <li>新增：QQ 群消息转发到游戏的发送者显示名可配置（chat-format.group-sender-name，默认群昵称，可改为绑定玩家名）。</li>
