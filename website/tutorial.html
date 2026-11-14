@@ -589,6 +589,16 @@ coins-leaderboard:
 </div>
 
 <div class="cfg-item">
+<h4>群消息发送者显示名 <span class="key">chat-format.group-sender-name</span></h4>
+<div class="config">
+<pre>chat-format:
+  group-sender-name: group  # group = 群昵称（默认）/ player = 绑定玩家名</pre>
+</div>
+<p>QQ 群消息转发到游戏时，<code>[QQ] 名字: 内容</code> 里的「名字」用哪个：</p>
+<p><b>group（默认）= 群昵称</b>——该成员在群里显示的名字（设置过群名片就是群名片，没设置就是他的 QQ 昵称）；<b>player = 绑定玩家名</b>——显示他绑定的游戏玩家名，没绑定的成员仍显示群昵称。改完 <code>/hbkrg reload</code> 即时生效。</p>
+</div>
+
+<div class="cfg-item">
 <h4>全量转发 <span class="key">features.full-amount</span></h4>
 <div class="config">
 <pre>features:
