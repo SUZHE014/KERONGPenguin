@@ -71,11 +71,20 @@ object OpenIdDirectory {
                     record(id, name)
                 }
             }
-            // 2) 被 @ 的成员（含机器人自身，一并记录便于排查）
+            // 2) 被 @ 的成员（1.7.5.7：机器人成员不再收录——AI 出向艾特
+            //    经本目录二级反查若命中机器人，<@机器人openid> 会触发对方
+            //    机器人回复（机器人互踩），且机器人昵称对成员目录无意义；
+            //    排查机器人问题看 WSS/插件日志即可）
             val mentions: Array<User>? = event.rawMessage?.mentions
             if (mentions != null) {
                 for (member in mentions) {
                     val id = member.id ?: continue
+                    val isBot = try {
+                        member.bot == true
+                    } catch (_: Throwable) {
+                        false
+                    }
+                    if (isBot) continue
                     val name = member.username ?: continue
                     if (id.isNotEmpty() && name.isNotEmpty()) record(id, name)
                 }

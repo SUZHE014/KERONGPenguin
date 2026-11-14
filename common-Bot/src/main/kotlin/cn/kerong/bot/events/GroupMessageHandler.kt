@@ -309,11 +309,17 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
      *
  * 三通道（按可靠性排序）：
      * 1. **GROUP_AT_MESSAGE_CREATE 事件标记**：[GroupAtTracker] 在 WSS 帧层
-     *    捕获（事件类型是唯一可靠信号——该事件的 content 已被平台剥掉
+     *    捕获（事件类型是唯一可靠信号——该事件只在用户艾特本机器人时
+     *    推送，艾特其他机器人不会产生；且该事件的 content 已被平台剥掉
      *    @前缀、mentions 不含机器人）；
-     * 2. mentions 数组含机器人：全量模式（GROUP_MESSAGE_CREATE）下 @机器人
-     *    时 mentions 会带 bot=true 条目（官方文档：群消息全量模式
-     *    mentions 为「@的用户列表」，含机器人自身）；
+     * 2. mentions 数组含**本机器人 id**（精确匹配）：全量模式
+     *    （GROUP_MESSAGE_CREATE）下 @机器人时 mentions 会带本机器人条目。
+     *    1.7.5.7 修复：旧版「member.bot == true 即判定被艾特」是泛匹配——
+     *    bot 标志只说明该成员是机器人，不说明被艾特的是本机器人；群里
+     *    艾特其他机器人（如另一个 AI 机器人）时 mentions 同样带 bot=true
+     *    条目，旧判定误把「艾特其他机器人」当成「艾特本机器人」→ AI
+     *    误触发插嘴 + 回复艾特发送人。现只认 id 精确命中（botSelfId /
+     *    botAppId 双源），本通道退化为全量模式的补充判定；
      * 3. 文本里的 <@ 片段匹配机器人 id（频道消息形态，保留兼容）。
      */
     private fun isMentionedBot(event: GroupMessageEvent): Boolean {
@@ -326,17 +332,14 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         } catch (_: Throwable) {
         }
         val botAppId = plugin.botAppId
-        // 1) mentions 数组中含机器人
+        // 1) mentions 数组中含本机器人（精确 id 匹配；1.7.5.7 删除 bot
+        //    泛匹配，见上方 KDoc 通道 2——艾特其他机器人不再误判）
         try {
             val mentions: Array<User>? = event.rawMessage?.mentions
             if (mentions != null) {
                 for (member in mentions) {
                     val memberId = member.id ?: continue
                     if (botSelfId != null && botSelfId.isNotEmpty() && memberId == botSelfId) return true
-                    try {
-                        if (member.bot == true) return true
-                    } catch (_: Throwable) {
-                    }
                     if (botAppId != null && botAppId.isNotEmpty() && memberId == botAppId) return true
                 }
             }

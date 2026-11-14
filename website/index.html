@@ -20,12 +20,12 @@
 <section>
 <h2>下载</h2>
 <div class="dl-box">
-<p style="font-size:1.3em;font-weight:bold;color:#e8edf2;margin-bottom:5px">版本 1.7.5.6</p>
+<p style="font-size:1.3em;font-weight:bold;color:#e8edf2;margin-bottom:5px">版本 1.7.5.7</p>
 <p style="color:#7a848e;margin-bottom:20px">发布于 2026-11-14</p>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.6.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.6.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.6.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（1.20.4）</a>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.1-1.7.5.6.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（1.20.1）</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.7.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.7.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.7.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（1.20.4）</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.1-1.7.5.7.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（1.20.1）</a>
 <p style="color:#7a848e;font-size:0.92em;margin:-4px auto 14px;max-width:440px">Fabric 与主线同号同步发布；按钮括号只标安装包的目标版本，完整版本要求（Loader / Fabric API / 支持的 MC 范围）见下方兼容性卡片</p>
 <div class="dl-info">支持 MC 的版本请详见下方「支持的插件与兼容性 → 支持的服务端核心」</div>
 </div>
@@ -67,6 +67,10 @@
 <h2>历史版本</h2>
 <table>
 <tr><th>版本</th><th>发布日期</th><th>下载</th></tr>
+<tr><td>NeoForge 1.7.5.7</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.7.jar">下载</a></td></tr>
+<tr><td>Spigot 1.7.5.7</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.7.jar">下载</a></td></tr>
+<tr><td>Fabric 1.7.5.7（1.20.4 通用包）</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.7.jar">下载</a></td></tr>
+<tr><td>Fabric 1.7.5.7（1.20.1 独立包）</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.1-1.7.5.7.jar">下载</a></td></tr>
 <tr><td>NeoForge 1.7.5.6</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.5.6.jar">下载</a></td></tr>
 <tr><td>Spigot 1.7.5.6</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.5.6.jar">下载</a></td></tr>
 <tr><td>Fabric 1.7.5.6（1.20.4 通用包）</td><td>2026-11-14</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.5.6.jar">下载</a></td></tr>
@@ -105,6 +109,10 @@
 <section>
 <h2>更新日志</h2>
 <div class="changelog">
+<div class="version"><h3>v1.7.5.7</h3><span class="date">2026-11-14</span><ul>
+<li>修复：群里艾特其他机器人（如另一个 AI 机器人）时，本机器人误判为被艾特而插嘴回复、还艾特发送人——现只认精确艾特本机器人；艾特本机器人的正常 AI 对话不受影响。</li>
+<li>修复：AI 出向艾特不再渲染成对其他机器人的艾特（防两个机器人互相艾特刷屏），降级为纯文本；成员目录不再收录机器人。</li>
+</ul></div>
 <div class="version"><h3>v1.7.5.6</h3><span class="date">2026-11-14</span><ul>
 <li>新增：Fabric 版支持 MC 1.20.1（独立包，与其他版本同号发布）。</li>
 <li>新增：AI 回复提醒方式三选一（ai.reminder-mode：每次回复艾特发送人 / 引用原消息 / 都不）。配置版本 46 → 47，升级自动补键无需改配置。</li>

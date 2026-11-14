@@ -101,6 +101,15 @@ object AiAt {
         if (mentions != null) {
             for (member in mentions) {
                 val id = member.id ?: continue
+                // 1.7.5.7：机器人成员不进反查表——把 AI 的艾特渲染成
+                // <@其他机器人openid> 会触发对方机器人回复（机器人互踩
+                // 死循环）；对机器人的 [at:] 降级纯文本 @昵称
+                val isBot = try {
+                    member.bot == true
+                } catch (_: Throwable) {
+                    false
+                }
+                if (isBot) continue
                 val name = try {
                     member.username
                 } catch (_: Throwable) {

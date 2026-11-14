@@ -4,5 +4,5 @@ plugins {
 
 allprojects {
     group = "cn.kerong"
-    version = "1.7.5.6"
+    version = "1.7.5.7"
 }
