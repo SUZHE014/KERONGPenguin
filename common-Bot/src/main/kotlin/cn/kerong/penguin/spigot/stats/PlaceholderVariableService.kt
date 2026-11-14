@@ -59,6 +59,45 @@ object PlaceholderVariableService {
     private const val KEY_TPS = "tps"
 
     /**
+     * 总在线时长获取源（variable-fetch.total-playtime-source，1.7.6 新增）：
+     * - [SOURCE_SAVE_DATA]：服务器存档数据——主世界 stats/<uuid>.json 的
+     *   play_time（[StatsFileService]），读取不到回退变量 → 插件统计；
+     * - [SOURCE_VARIABLE]（默认）：变量优先（与历史行为完全一致——填了
+     *   变量用变量，没填 / 读取失败回退插件统计）；
+     * - [SOURCE_PLUGIN]：插件统计（本插件自记录，新玩家无记录时显示 0）；
+     * 兼容中文值（存档数据 / 插件统计 / 变量）；未知取值按默认处理并写
+     * 一行文件日志（同一会话只提示一次）。
+     */
+    const val SOURCE_SAVE_DATA = "save-data"
+    const val SOURCE_VARIABLE = "variable"
+    const val SOURCE_PLUGIN = "plugin"
+
+    /** 源取值 → 归一化（中文别名一并接受；未配置 / 空值 = 默认 variable）。 */
+    fun totalPlaytimeSource(): String {
+        val raw = try {
+            (Bukkit.getPluginManager().getPlugin("KERONGPenguin") as? JavaPlugin)
+                ?.config?.getString("variable-fetch.total-playtime-source", "")?.trim()
+        } catch (_: Throwable) {
+            ""
+        } ?: ""
+        return when (raw) {
+            "", SOURCE_VARIABLE, "变量" -> SOURCE_VARIABLE
+            SOURCE_SAVE_DATA, "存档数据", "服务器存档", "存档" -> SOURCE_SAVE_DATA
+            SOURCE_PLUGIN, "插件统计", "插件" -> SOURCE_PLUGIN
+            else -> {
+                if (!unknownSourceWarned) {
+                    unknownSourceWarned = true
+                    PluginFileLog.write("[变量] total-playtime-source='$raw' 不是有效取值（save-data / plugin / variable），按默认 variable 处理")
+                }
+                SOURCE_VARIABLE
+            }
+        }
+    }
+
+    @Volatile
+    private var unknownSourceWarned = false
+
+    /**
      * 变量覆盖结果：六个玩家项目的解析值（null = 留空 / 未开启 / 解析失败，
      * 均表示该项目使用插件自带数据）。
      */

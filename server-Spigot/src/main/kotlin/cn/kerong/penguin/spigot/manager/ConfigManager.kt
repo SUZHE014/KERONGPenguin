@@ -385,6 +385,18 @@ class ConfigManager(private val plugin: JavaPlugin) {
     fun restrictTimeoutSeconds(): Int =
         plugin.config.getInt("qq-bind.restrict-timeout-seconds", 120).coerceAtLeast(10)
 
+    /**
+     * Fabric 端假人白名单（qq-bind.fake-player-whitelist，1.7.6；其余端不消费）：
+     * 玩家名列表（大小写不敏感判定在消费方），空白条目剔除；仅 Fabric 端
+     * 未绑定限制用它做豁免（与 Spigot / NeoForge 的连接自动豁免互补）。
+     */
+    fun fakePlayerWhitelist(): List<String> = try {
+        plugin.config.getStringList("qq-bind.fake-player-whitelist")
+            .mapNotNull { it?.trim()?.takeIf { name -> name.isNotEmpty() } }
+    } catch (_: Throwable) {
+        emptyList()
+    }
+
     fun playerEventFormat(): PlayerEventFormat = PlayerEventFormat(
         plugin.config.getBoolean("player-events.join.enabled", true),
         plugin.config.getString("player-events.join.format", "[游戏] {name} 加入了服务器") ?: "[游戏] {name} 加入了服务器",
@@ -605,7 +617,13 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 无论装过 49（group-sender-name）、50（qq-forward-display-name）
         // 还是更早版本，升 51 时两个历史键都自动删除；其余升 50 变更
         // （restrict-timeout-seconds 新键 / menu 删除重建）保持不变。
-        private const val CURRENT_CONFIG_VERSION = 51
+        // 升 52——1.7.6：三个新键（只加不改）：①variable-fetch.total-playtime-source
+        // （总在线时长获取源：save-data 服务器存档数据 / plugin 插件统计 /
+        // variable 变量，默认 variable 与历史行为一致，save-data 读不到自动
+        // 回退变量 → 插件统计）；②qq-bind.fake-player-whitelist（Fabric 端假人
+        // 白名单名单，配合连接自动检测一并豁免未绑定限制）；
+        // ③render.real-glass（真实玻璃渲染测试开关，默认关闭）。
+        private const val CURRENT_CONFIG_VERSION = 52
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -811,6 +829,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "image-download.enabled" to true,
             "custom-commands" to emptyList<Any>(),
             "qq-bind.enabled" to false,
+ // Fabric 端假人白名单（1.7.6）：与连接自动检测（内存 / 回环连接）
+            // 一并豁免未绑定限制；空列表 = 仅自动检测
+            "qq-bind.fake-player-whitelist" to java.util.Collections.emptyList<String>(),
             "qq-bind.personal-info" to true,
             "qq-bind.code-expire-minutes" to 10,
             "qq-bind.code-length" to 5,
@@ -850,6 +871,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
  // 毛玻璃模糊度（0-100，越大越模糊，0 = 不模糊；只模糊卡片
             // 背后的背景，卡片外保持清晰）
             "render.blur-strength" to 50,
+ // 真实玻璃渲染（1.7.6 测试功能，默认关闭）：开启后卡片玻璃改用液态
+            // 玻璃算法（折射 / 色差 / 边缘高光）；实时读取
+            "render.real-glass" to false,
  // 卡片底色黑度（0-255 半透明黑 alpha）；title =
  // 四张卡片顶部标题区（默认 80 比项目卡片略浅，前这些区域
             // 硬编码半透明白调不动）；item = 列表容器（玩家名片统计面板 +
@@ -886,6 +910,10 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 子键 项目名称 / 获取变量；正常返回才展示）
             "variable-fetch.enabled" to false,
             "variable-fetch.total-playtime" to "",
+ // 1.7.6：总在线时长获取源（save-data 存档数据 / plugin 插件统计 /
+            // variable 变量，默认 variable = 历史行为；save-data 读不到
+            // 自动回退变量 → 插件统计）
+            "variable-fetch.total-playtime-source" to "variable",
             "variable-fetch.today-playtime" to "",
             "variable-fetch.coins" to "",
             "variable-fetch.points" to "",

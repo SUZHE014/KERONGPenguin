@@ -179,6 +179,27 @@ object RenderSettings {
     }
 
     /**
+     * 真实玻璃渲染（render.real-glass，1.7.6 新增，**测试功能**，默认关闭）。
+     *
+     * - 开启后全部图片卡片（玩家名片 / 查在线 / 在线排行榜 / 财富榜 / 查性能）
+     *   的玻璃效果从「背景模糊 + 半透明底色」升级为液态玻璃算法
+     *   （[LiquidGlassPainter]：边缘折射形变 + RGB 色散色差 + 左上边缘高光 +
+     *   背光内阴影，参考 martin65536/liquid-glass-webgl 的 WebGL 实现）；
+     * - 各卡片灰度叠层（title-card-gray 等）与背景选择不受影响，照常叠加；
+     * - render.blur-strength 为 0 时玻璃后景直接用原图（清晰玻璃）；
+     * - 逐像素计算比普通渲染多几十毫秒（渲染线程池内完成 + 60 秒结果缓存，
+     *   不影响游戏主线程）；观感不满意改回 false 即恢复原样；
+     * - 实时读取（/hbkrg reload 后立即生效）。
+     */
+    fun realGlassEnabled(): Boolean {
+        return try {
+            (BotShared.instance as? JavaPlugin)?.config?.getBoolean("render.real-glass", false) ?: false
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /**
  * 标题卡片底色黑度（render.title-card-gray，1.7.2 新增，默认 80）。
      *
      * - 作用于四张卡片的顶部标题区：玩家名片顶部欢迎面板、查在线在线

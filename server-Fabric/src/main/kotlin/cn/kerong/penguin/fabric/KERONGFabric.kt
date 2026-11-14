@@ -229,6 +229,9 @@ class KERONGFabric : JavaPlugin(), KERONG, DedicatedServerModInitializer {
     /** Fabric 端未绑定限制的超时秒数（qq-bind.restrict-timeout-seconds，1.7.5.9）。 */
     fun restrictTimeoutSeconds(): Int = configManager.restrictTimeoutSeconds()
 
+    /** Fabric 端假人白名单（qq-bind.fake-player-whitelist，1.7.6；[BindRestrict] 豁免用）。 */
+    fun fakePlayerWhitelist(): List<String> = configManager.fakePlayerWhitelist()
+
     override fun playerEventFormat(): PlayerEventFormat = configManager.playerEventFormat()
 
     override fun markdownFiles(): Map<String, String> = configManager.markdownFiles()

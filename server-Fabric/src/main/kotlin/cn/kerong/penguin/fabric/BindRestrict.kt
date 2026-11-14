@@ -30,11 +30,15 @@ import java.util.function.Predicate
  * 旧验证码获取指令 /hbkrg qbd 已删除（绑定码持续自动输出，无需玩家
  * 自助查询）。
  *
- * 假人插件（minecraft-fakeplayer 等）：新策略下假人可正常加入，但未
- * 绑定同样受限、超时同样被踢（本轮未做假人白名单，如实实现）。
+ * 假人插件（minecraft-fakeplayer 等）：1.7.6 起加入假人白名单——与
+ * Spigot / NeoForge 端 1.7.5.8 的豁免同口径：假人插件注入的玩家不经
+ * 真实外网连接（同进程内存连接 / 回环地址），登录后不进入限制状态、
+ * 不输出绑定码、不会被超时踢出（[FakePlayerExempt]）；另提供配置名单
+ * `qq-bind.fake-player-whitelist`（玩家名列表，检测不到连接特征的假人
+ * 手动加名单，大小写不敏感）。
  *
  * 仅 server-Fabric 生效；Spigot / NeoForge 端仍为登录期拦截方案
- * （1.7.5.8 起本地注入型假人连接豁免），两套策略差异待用户定夺。
+ * （1.7.5.8 起本地注入型假人连接豁免），四端口径一致。
  */
 object BindRestrict {
 
@@ -74,7 +78,8 @@ object BindRestrict {
 
     // ---------- 进出服（FabricEvents 驱动） ----------
 
-    /** 玩家进入：未绑定 → 生成/刷新绑定码并启动限制；已绑定 / 功能关闭 → 不限。 */
+    /** 玩家进入：未绑定 → 生成/刷新绑定码并启动限制；已绑定 / 功能关闭 /
+     *     假人白名单（1.7.6）→ 不限。 */
     fun onJoin(player: ServerPlayer) {
         val manager = try {
             QqBindManager.getInstance()
@@ -83,6 +88,13 @@ object BindRestrict {
         } ?: return
         if (!manager.isEnabled) return
         val playerName = player.gameProfile.name
+        // 假人白名单（1.7.6，与 Spigot / NeoForge 端豁免同口径）：本地注入型
+        // 假人（内存 / 回环连接）与配置名单内的玩家不进入限制状态，
+        // 不输出绑定码、不会被超时踢出
+        if (FakePlayerExempt.isExempt(player, playerName)) {
+            QqBindManager.logFileOnly("[Fabric绑定] 玩家=$playerName 命中假人白名单，跳过未绑定限制")
+            return
+        }
         val playerUuid = player.uuid.toString()
         if (manager.isBoundByUuid(playerName, playerUuid)) return
         // 未绑定：刷新绑定码（generateCode 清同玩家旧码后发新码——
@@ -360,4 +372,125 @@ object BindRestrictInteractions {
     /** 生物交互（右键实体）：受限玩家 FAIL。 */
     fun onUseEntity(player: ServerPlayer?): InteractionResult =
         if (BindRestrict.isRestricted(player)) InteractionResult.FAIL else InteractionResult.PASS
+}
+
+/**
+ * Fabric 端假人白名单判定（1.7.6，对齐 Spigot / NeoForge 端 1.7.5.8 的
+ * 假人豁免口径）：命中 → [BindRestrict.onJoin] 直接跳过未绑定限制。
+ *
+ * ## 两条豁免路径
+ *
+ * 1. **本地注入连接检测（自动）**：假人插件（minecraft-fakeplayer 等）在
+ *    进程内注入的玩家不经真实外网连接——网络层为同进程内存连接
+ *    （LocalChannel）或远端地址为回环段（127.x.x.x）；真实玩家永远来自
+ *    外网地址，两者不会重叠（Velocity/Bungee 正确开启 IP 透传时玩家
+ *    地址同样是真实外网 IP，不受影响）；
+ * 2. **配置名单（手动兜底）**：`qq-bind.fake-player-whitelist` 玩家名
+ *    列表（大小写不敏感）——个别假人模组走真实 socket 或检测读不到
+ *    连接时，把假人名字填进名单即可。
+ *
+ * ## 反射实现说明（与 NeoForge 版 isLocalFakeConnection 的差异）
+ *
+ * NeoForge 运行时使用 mojang 官方映射名，反射可用 "connection" /
+ * "isMemoryConnection" 等 mojmap 名；**Fabric 运行时是 intermediary 名**
+ * （本模块源码编译后经 tiny-remapper 重映射，直接引用会自动改名，但
+ * 反射字符串不会被重映射）——因此这里全部使用 intermediary 常量：
+ * - Connection 类（两版同名）：`net.minecraft.class_2535`
+ * - isMemoryConnection：`method_10756`（1.20.1 / 1.20.4 两张映射表同名）
+ * - getRemoteAddress：`method_10755`（两版同名）
+ * - 监听器上的 connection 字段：1.20.4 在父类 ServerCommonPacketListenerImpl
+ *   （field_45013）、1.20.1 在 ServerGamePacketListenerImpl 自身
+ *   （field_14127）——**字段名两版不同，改按字段类型锚定**：沿类层级
+ *   向上找「类型为 class_2535 的声明字段」，两版通吃且不依赖字段名。
+ * `player.connection`（ServerPlayer 的公共字段）是直接引用，重映射器
+ * 自动处理，无需反射。
+ *
+ * 任何一步反射失败按「非假人」处理（保持限制，fail-closed——漏放行
+ * 一个真人与限制一个假人之间，选择后者，管理员可用名单兜底）。
+ */
+object FakePlayerExempt {
+
+    /** Connection 类的 intermediary 名（1.20.1 / 1.20.4 相同）。 */
+    private const val CONNECTION_CLASS = "net.minecraft.class_2535"
+
+    /** Connection.isMemoryConnection 的 intermediary 方法名（两版相同）。 */
+    private const val METHOD_IS_MEMORY = "method_10756"
+
+    /** Connection.getRemoteAddress 的 intermediary 方法名（两版相同）。 */
+    private const val METHOD_REMOTE_ADDRESS = "method_10755"
+
+    /**
+     * 综合判定：本地注入连接 或 配置名单命中（名单大小写不敏感）。
+     */
+    fun isExempt(player: ServerPlayer?, playerName: String): Boolean {
+        if (player == null) return false
+        if (isWhitelisted(playerName)) return true
+        return isLocalFakePlayer(player)
+    }
+
+    /** 配置名单判定（qq-bind.fake-player-whitelist，空名单零开销）。 */
+    private fun isWhitelisted(playerName: String): Boolean {
+        val whitelist = try {
+            KERONGFabric.instance?.fakePlayerWhitelist()
+        } catch (_: Throwable) {
+            null
+        } ?: return false
+        if (whitelist.isEmpty()) return false
+        return whitelist.any { it.equals(playerName, ignoreCase = true) }
+    }
+
+    /**
+     * 本地注入连接判定（与 NeoForge 版 isLocalFakeConnection 同逻辑）：
+     * 连接对象为空 / 同进程内存连接 / 远端地址回环 → 假人。
+     */
+    private fun isLocalFakePlayer(player: ServerPlayer): Boolean {
+        return try {
+            val handler = player.connection ?: return false
+            val connection = connectionOf(handler) ?: return false
+            val cls = connection.javaClass
+            val memory = try {
+                cls.getMethod(METHOD_IS_MEMORY).invoke(connection) as? Boolean ?: false
+            } catch (_: Throwable) {
+                false
+            }
+            if (memory) return true
+            val remote = try {
+                cls.getMethod(METHOD_REMOTE_ADDRESS).invoke(connection)
+            } catch (_: Throwable) {
+                null
+            } ?: return false
+            if (remote is java.net.InetSocketAddress) {
+                val address = remote.address ?: return false
+                address.isLoopbackAddress
+            } else {
+                false
+            }
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /**
+     * 从监听器（ServerGamePacketListenerImpl 及其父类层级）读出 Connection
+     * 字段：按**字段类型**（class_2535）锚定而非字段名——1.20.1 与 1.20.4
+     * 的 connection 字段 intermediary 名不同（field_14127 / field_45013），
+     * 但类型同为 Connection，类型锚定两版通吃。
+     */
+    private fun connectionOf(handler: Any): Any? {
+        var cls: Class<*>? = handler.javaClass
+        while (cls != null) {
+            try {
+                for (field in cls.declaredFields) {
+                    if (field.type.name == CONNECTION_CLASS) {
+                        field.isAccessible = true
+                        return field.get(handler)
+                    }
+                }
+            } catch (_: Throwable) {
+                // 该层声明字段读取异常 → 继续向上找
+            }
+            cls = cls.superclass
+        }
+        return null
+    }
 }

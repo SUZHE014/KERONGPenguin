@@ -220,7 +220,7 @@
   enabled: false  # true = 玩家进服必须先绑定 QQ 才能玩</pre>
 </div>
 <p>开启后老玩家进服前直接拦截（验证码显示在「无法连接到服务器」界面），新玩家先放行建档再踢出展示验证码。玩家在群里<b>直接发送纯数字验证码</b>即可绑定（也可以发送 <code>/绑定 验证码</code>）。相关命令：<code>/重新绑定</code>（换号重绑）、<code>/黑名单 @某人</code>（管理员拉黑）。⚠ 开启前先关掉服务器自带白名单（white-list）——未绑定玩家会在白名单阶段先被拦下拿不到验证码，QQ 绑定本身就是准入控制，不要和白名单叠用。</p>
-<p><b>Fabric 模组版：未绑定玩家限制互动</b>（1.7.5.9 起的新策略）——进入服务器后锁定移动、禁方块与生物交互、禁发消息与命令，聊天栏持续显示绑定码；到 <code>qq-bind.restrict-timeout-seconds</code>（默认 120 秒）仍未绑定就踢出，再次进入会换新的绑定码；在 QQ 群发 <code>/绑定 验证码</code>（或直接发纯数字验证码）成功后自动解除全部限制。旧的 <code>/hbkrg qbd</code> 取码指令已删除（绑定码自动输出，无需自助查询）；qq-bind.enabled 在 Fabric 版控制整套绑定功能（含限制策略）开关。</p>
+<p><b>Fabric 模组版：未绑定玩家限制互动</b>（1.7.5.9 起的新策略）——进入服务器后锁定移动、禁方块与生物交互、禁发消息与命令，聊天栏持续显示绑定码；到 <code>qq-bind.restrict-timeout-seconds</code>（默认 120 秒）仍未绑定就踢出，再次进入会换新的绑定码；在 QQ 群发 <code>/绑定 验证码</code>（或直接发纯数字验证码）成功后自动解除全部限制。旧的 <code>/hbkrg qbd</code> 取码指令已删除（绑定码自动输出，无需自助查询）；qq-bind.enabled 在 Fabric 版控制整套绑定功能（含限制策略）开关。假人插件（minecraft-fakeplayer 等）注入的假人自动豁免整套限制（1.7.6 起，详见下方假人白名单条目）。</p>
 </div>
 
 <div class="cfg-item">
@@ -272,6 +272,15 @@
   restrict-timeout-seconds: 120  # 未绑定玩家限制 N 秒后踢出（Fabric 版）</pre>
 </div>
 <p>Fabric 模组版专属：未绑定玩家进入服务器后被限制全部互动，聊天栏持续输出绑定码；超过这里的秒数仍未绑定就踢出服务器（再次进入会换新绑定码）。改完 <code>/hbkrg reload</code> 即时生效；Spigot / NeoForge 版为登录期拦截，无此限制阶段。</p>
+</div>
+
+<div class="cfg-item">
+<h4>Fabric 假人白名单 <span class="key">qq-bind.fake-player-whitelist</span></h4>
+<div class="config">
+<pre>qq-bind:
+  fake-player-whitelist: []  # 假人玩家名列表，如 ["假人1", "Bot_02"]</pre>
+</div>
+<p>Fabric 模组版专属（1.7.6 新增）：假人插件（minecraft-fakeplayer 等）注入的假人走本地连接（内存 / 回环），<b>自动</b>豁免未绑定限制——不锁移动、不输出绑定码、不会被超时踢出，真实玩家不受影响（与 Spigot / NeoForge 版口径一致）。个别假人模组走真实网络连接检测不到时，把假人的名字填进这个名单即可（大小写不敏感）。改完 <code>/hbkrg reload</code> 即时生效。</p>
 </div>
 
 <h3>每日签到（qq-bind.checkin 段）</h3>
@@ -337,6 +346,15 @@
   blur-strength: 50  # 0-100，越大越模糊，0 = 不模糊</pre>
 </div>
 <p>卡片背后背景的模糊程度（毛玻璃效果），默认 50 轻模糊。</p>
+</div>
+
+<div class="cfg-item">
+<h4>真实玻璃渲染（测试功能） <span class="key">render.real-glass</span></h4>
+<div class="config">
+<pre>render:
+  real-glass: false  # true = 开启液态玻璃算法（测试功能）</pre>
+</div>
+<p>1.7.6 新增的测试功能，默认关闭。开启后全部图片卡片（玩家名片 / 查在线 / 在线排行榜 / 财富榜 / 查性能）的玻璃效果从「背景模糊 + 半透明底色」升级为液态玻璃算法：卡片边缘出现<b>折射形变</b>（背景被玻璃边缘放大挤压）、<b>RGB 色散色差</b>（边缘细微彩虹色散）、<b>左上边缘高光</b>与<b>右下背光内阴影</b>。各卡片灰度（title-card-gray 等）与背景图不受影响照常叠加；<code>blur-strength</code> 为 0 时玻璃后景直接用原图（清晰玻璃）。逐像素计算比普通渲染多几十毫秒（渲染线程内完成 + 结果 60 秒缓存，不影响游戏）；观感不满意改回 <code>false</code> 即恢复原样，<code>/hbkrg reload</code> 即时生效。</p>
 </div>
 
 <div class="cfg-item">
@@ -471,6 +489,18 @@ coins-leaderboard:
 </div>
 <p>规则：留空 = 用插件自带数据；变量读取失败自动回退自带数据，卡片不会缺项。玩家名变量只改展示名，头像 / 统计 / 排名仍按真实玩家。变量可与文字混写（如 <code>%变量% 小时</code>）。</p>
 <p>改完 <code>/hbkrg reload</code> 生效；每次查询用了哪个值会写进插件日志（<code>logs/qq/</code>），填错了去那里看。</p>
+</div>
+
+<div class="cfg-item">
+<h4>总在线时长获取源 <span class="key">variable-fetch.total-playtime-source</span></h4>
+<div class="config">
+<pre>variable-fetch:
+  total-playtime-source: "variable"  # save-data 存档数据 / plugin 插件统计 / variable 变量</pre>
+</div>
+<p>1.7.6 新增：选择玩家名片卡片「在线时长」项的数据来源，三种取值（也接受中文「存档数据 / 插件统计 / 变量」）：</p>
+<p>・<code>save-data</code>（服务器存档数据）：读主世界 <code>stats/&lt;uuid&gt;.json</code> 里的 <code>minecraft:play_time</code>（游戏刻，72000 刻 = 1 小时），按小时展示（如「35.5 小时」）。适合装插件之前玩家就一直在玩、插件自记录时长偏小的服务器；<b>读取不到（无存档 / 无该玩家记录）自动回退</b>变量（若配置）→ 插件统计。</p>
+<p>・<code>plugin</code>（插件统计）：只用本插件自记录的时长（新玩家无记录显示 0）。</p>
+<p>・<code>variable</code>（变量，默认）：填了 <code>total-playtime</code> 变量就用变量，没填 / 读取失败回退插件统计——与历史版本行为完全一致。</p>
 </div>
 
 <div class="cfg-item">

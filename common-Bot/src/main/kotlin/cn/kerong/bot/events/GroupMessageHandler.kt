@@ -77,8 +77,16 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         if (!RecentMessageGate.tryAcquire(event.rawMessage?.id)) return
  // 登记本群最近一条真实消息 id——菜单按钮点击后的合成事件靠它拿到
  // 可引用的 msg_id 走被动回复（QQ 被动回复只能引用收到的真实消息，
- // 时限约 5 分钟，详见 [RecentGroupMessages]）；失败零影响
-        RecentGroupMessages.record(groupId, event.rawMessage?.id)
+ // 时限约 5 分钟，详见 [RecentGroupMessages]）；1.7.6 起同时登记发送者
+ // OpenId——按钮回复只引用点击者自己的消息（修复下一个人点按钮时
+ // 引用/艾特的还是上一个人的问题）；失败零影响
+        val recordSender = try {
+            val contact = event.sender
+            contact?.openid ?: contact?.id
+        } catch (_: Throwable) {
+            null
+        }
+        RecentGroupMessages.record(groupId, event.rawMessage?.id, recordSender)
  // 剥离行首 @ 占位片段（全量模式 content 原样保留 <@openid>
         // 前缀，导致 /命令 前缀匹配失败——先剥再进命令分发；无片段零开销）。
         //

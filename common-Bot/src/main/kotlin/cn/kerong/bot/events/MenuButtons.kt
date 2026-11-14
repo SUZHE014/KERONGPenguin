@@ -194,10 +194,21 @@ object MenuButtons {
      * 回复通道同理修复：合成事件本身没有消息 id，被动回复（msg_id 引用）
      * 无从谈起。现从 [RecentGroupMessages] 轮转取本群未过期真实消息
      * id 塞进 metadata 的 id 字段与 RawMessage.id，命令回复即走正常
-     * **被动回复**（与手打命令一致，不受主动消息配额限制）；连续点击
-     * 依次引用不同的消息 id（被动回复对同一条消息约 5 次上限，轮转分摊
-     * 防平台 40034128 拒收）；群内超过 4 分钟没有任何消息时取不到，回复
-     * 自动落为主动消息（仍可送达）。
+     * **被动回复**（与手打命令一致，不受主动消息配额限制）；
+     *
+     * ## 只引用点击者自己的消息（1.7.6：修复按钮输出艾特上一个人）
+     *
+     * 被动回复在 QQ 客户端渲染为「对被引用消息的回复」（引用块显示
+     * 原作者）。旧版不区分发送者地轮转取消息，安静群里取到的往往是
+     * **上一个点按钮的人**的消息——下一个人点完按钮，机器人输出引用的
+     * 却是上一个人的消息（观感即「艾特错了人」）。现按点击者 OpenId
+     * 取消息（[RecentGroupMessages.nextIdFromSender]）：
+     * - 点击者 4 分钟内发过消息 → 轮转引用其中一条（同发送者多条消息
+     *   分摊被动配额，连续点击依次引用不同的消息 id，防平台 40034128
+     *   拒收）；群内超过 4 分钟没有任何消息时取不到，回复自动落为
+     *   主动消息（仍可送达，开头仍有点击者的 @ 提及）；
+     * - 点击者没发过消息 → 不带 msg_id（主动消息），**绝不引用他人的
+     *   消息**——归属正确优先于被动通道优先。
      * msg_seq 经 [ReplySeqGuard] 分配新基数，与原消息已用的序号不重叠
      * （防平台 40054005 消息去重拒收）。
      *
@@ -245,7 +256,9 @@ object MenuButtons {
         try {
             val starter = QClient.starter ?: return
             val bot = starter.bot ?: return
-            val recentMsgId = RecentGroupMessages.nextId(groupOpenId)
+            // 1.7.6：只引用点击者自己的消息（修复按钮输出艾特上一个人；
+            // 没发过消息 → null → 不带 msg_id 的主动消息，归属仍正确）
+            val recentMsgId = RecentGroupMessages.nextIdFromSender(groupOpenId, userOpenId)
             val raw = RawMessage().setContent(commandText)
             if (recentMsgId != null) raw.setId(recentMsgId)
             val metadata = JSONObject().apply {
