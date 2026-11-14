@@ -379,6 +379,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
         plugin.config.getString("chat-format.from-group", "[§bQQ§r] {name}: {message}") ?: "[§bQQ§r] {name}: {message}",
         plugin.config.getBoolean("chat-format.post-chat", true),
         plugin.config.getString("chat-format.start-with", "") ?: "",
+ // 发送者名称来源（1.7.5.8）：group=群昵称（默认，事件返回的群内显示昵称）/
+ // player=绑定玩家名（未绑定回退群昵称）；未知取值回退 group
+        (plugin.config.getString("chat-format.group-sender-name", "group") ?: "group").trim().lowercase(),
     )
 
     fun playerEventFormat(): PlayerEventFormat = PlayerEventFormat(
@@ -587,7 +590,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // qq-bind.checkin.points-reward（签到点券奖励，默认 0 关闭）
  // 升 28——无新增键纯注释刷新（卡片背景图说明段补 /hbkrg bpng
         // 图片包下载与 /hbkrg bpngsz 一键切换的用法说明）
-        private const val CURRENT_CONFIG_VERSION = 48
+        private const val CURRENT_CONFIG_VERSION = 49
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -761,6 +764,8 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "chat-format.from-group" to "[§bQQ§r] {name}: {message}",
             "chat-format.post-chat" to true,
             "chat-format.start-with" to "#",
+ // 发送者名称来源（1.7.5.8）：group=群昵称（默认）/ player=绑定玩家名（未绑定回退群昵称）
+            "chat-format.group-sender-name" to "group",
             "player-events.join.enabled" to true,
             "player-events.join.format" to "[游戏] {name} 加入了服务器",
             "player-events.quit.enabled" to true,

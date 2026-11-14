@@ -150,6 +150,12 @@ class NeoForgeEvents(private val plugin: KERONGNeoForge) {
             return
         }
         if (!manager.isEnabled) return
+
+ // 假人豁免（1.7.5.8）：本地注入型连接（空/回环地址、内存连接）不是
+ // 真实外网玩家，加入后踢出路径同样放行（与 BindLoginGate 配置阶段判定同源；
+ // ServerPlayer.connection 为公共字段，传入 isLocalFakeConnection 反射读取）
+        if (BindLoginGate.isLocalFakeConnection(player.connection)) return
+
         val playerName = player.gameProfile.name
         val playerUuid = player.uuid.toString()
         if (manager.isSkipped(playerName)) return

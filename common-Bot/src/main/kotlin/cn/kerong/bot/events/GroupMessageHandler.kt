@@ -523,6 +523,9 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
             var senderName = "unknown"
             val contact: Contact? = event.sender
             if (contact?.username != null) senderName = contact.username!!
+ // 显示名来源（1.7.5.8 chat-format.group-sender-name）：player 模式显示
+ // 绑定玩家名（未绑定回退群昵称），group 模式保持群昵称
+            senderName = cn.kerong.bot.tools.GroupSenderName.resolve(plugin, event, senderName)
 
             val baseMessage = event as? BaseMessageEvent<*>
             val metadata: JSONObject? = baseMessage?.metadata

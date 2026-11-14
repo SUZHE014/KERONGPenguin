@@ -175,6 +175,12 @@ object BindLoginGate {
             }
             if (!manager.isEnabled) return null
 
+ // 假人豁免（1.7.5.8）：假人模组注入的玩家不经真实外网连接——远端地址为
+ // 回环段（127.x.x.x）/ 空地址，或为同进程内存连接（LocalChannel）；真实
+ // 玩家永远来自外网地址，两者不会重叠（Velocity/Bungee 正确开启 IP 透传时
+ // 玩家地址同样是真实外网 IP，不受影响）。绑定闸门对此类连接整体放行
+            if (isLocalFakeConnection(listener)) return null
+
             val profile = profileOf(listener) ?: return null
             val playerName = profile.name
             val playerUuid = profile.id.toString()
@@ -195,6 +201,53 @@ object BindLoginGate {
         } catch (_: Throwable) {
             null
         }
+    }
+
+    /**
+     * 假人连接判定（1.7.5.8，配置阶段与加入阶段共用）：
+     * 连接对象为空 / 同进程内存连接（isMemoryConnection，注入型假人）/
+     * 远端地址为回环（127.0.0.0/8）→ 本地注入，绑定拦截放行。
+     * 全反射读取（Connection 的父类 netty 不在编译类路径，不能直接引用类型，
+     * 与 profileOf 的反射同风格）；反射读不到时按“非假人”处理（绑定拦截
+     * 保持原行为，闸门整体 fail-open 语义不受影响）。
+     */
+    internal fun isLocalFakeConnection(listener: Any?): Boolean {
+        if (listener == null) return false
+        val connection = connectionOf(listener) ?: return false
+        return try {
+            val cls = connection.javaClass
+            val memory = cls.getMethod("isMemoryConnection").invoke(connection) as? Boolean ?: false
+            if (memory) return true
+            val remote = cls.getMethod("getRemoteAddress").invoke(connection) ?: return false
+            if (remote is java.net.InetSocketAddress) {
+                val address = remote.address ?: return false
+                address.isLoopbackAddress
+            } else {
+                false
+            }
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /**
+     * 反射读取监听器的 connection 字段（ServerCommonPacketListenerImpl 上为
+     * protected final 且无公共 getter；沿类层级向上查找，任一层命中即返回）。
+     */
+    private fun connectionOf(listener: Any): Any? {
+        var cls: Class<*>? = listener.javaClass
+        while (cls != null) {
+            try {
+                val field = cls.getDeclaredField("connection")
+                field.isAccessible = true
+                return field.get(listener)
+            } catch (_: NoSuchFieldException) {
+                cls = cls.superclass
+            } catch (_: Throwable) {
+                return null
+            }
+        }
+        return null
     }
 
     /**

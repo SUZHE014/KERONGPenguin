@@ -23,7 +23,7 @@ import java.util.UUID
  * 游戏事件监听：
  * - 聊天转发到 QQ 群（含服务器内 AI 对话前缀）；
  * - 玩家进入/退出播报（进入时补发离线签到奖励）；
- * - 未绑定 QQ 的玩家登录时拒入并发绑定码；
+ * - 未绑定 QQ 的玩家登录时拒入并发绑定码（本地注入型假人连接豁免，1.7.5.8）；
  * - 抑制 Forge 网络日志刷屏。
  *
  * Bot SDK 日志接管统一在运行时初始化（initializeRuntime）中完成
@@ -262,6 +262,13 @@ class GameChat : Listener {
             return
         }
         if (!manager.isEnabled) return
+ // 假人豁免（1.7.5.8）：假人插件（如 minecraft-fakeplayer）注入的玩家不经
+ // 真实外网连接——登录地址为回环段（minecraft-fakeplayer 的 FakeChannel
+ // 生成 127.x.x.x）或为空（进程内直接注入，无网络通道）；真实玩家永远来自
+ // 外网地址，两者不会重叠（BungeeCord/Velocity 正确开启 IP 透传时玩家地址
+ // 同样是真实外网 IP，不受影响）。绑定拦截对此类连接整体放行，否则假人会被
+ // 当成未绑定玩家拒入，插件功能（性块加载/怪物生成等）直接失效
+        if (isLocalFakeLogin(event)) return
         val playerName = event.player.name
         val playerUuid = event.player.uniqueId.toString()
         if (manager.isSkipped(playerName)) return
@@ -294,6 +301,40 @@ class GameChat : Listener {
     }
 
     /**
+     * 判断登录连接是否为本地注入型（假人插件，1.7.5.8）：
+     * 登录地址为空（进程内注入，无网络通道）或回环地址（127.0.0.0/8，
+     * minecraft-fakeplayer 的 FakeChannel 生成 127.x.x.x 地址）。
+     * 真实玩家来自外网地址不会被误豁免；未解析地址（hostname 型，代理场景）
+     * 按真实玩家处理保持拦截。
+     */
+    private fun isLocalFakeLogin(event: PlayerLoginEvent): Boolean {
+        val address = try {
+            event.address ?: event.player?.address?.address
+        } catch (_: Throwable) {
+            null
+        }
+        return address == null || address.isLoopbackAddress
+    }
+
+    /**
+     * 加入阶段假人判定（1.7.5.8，与 isLocalFakeLogin 同源）：
+     * 地址为空（进程内注入）或回环（127.x.x.x）→ 假人，绑定踢出路径放行。
+     */
+    private fun isLocalFakeJoin(player: org.bukkit.entity.Player): Boolean {
+        val socketAddress = try {
+            player.address
+        } catch (_: Throwable) {
+            null
+        } ?: return true
+        val address = try {
+            socketAddress.address
+        } catch (_: Throwable) {
+            null
+        } ?: return false
+        return address.isLoopbackAddress
+    }
+
+    /**
      * 未绑定玩家加入后踢出（新玩家路径 + 登录期拦截失效的兜底）：
      * 服务器已完成建档（UUID/玩家数据），踢出界面展示专属绑定码。
      */
@@ -304,6 +345,9 @@ class GameChat : Listener {
             return
         }
         if (!manager.isEnabled) return
+ // 假人豁免（1.7.5.8）：本地注入型连接（空/回环地址）不是真实外网玩家，
+ // 加入后踢出路径同样放行（与 onPlayerLogin 的 isLocalFakeLogin 同源）
+        if (isLocalFakeJoin(player)) return
         val playerName = player.name
         val playerUuid = player.uniqueId.toString()
         if (manager.isSkipped(playerName)) return

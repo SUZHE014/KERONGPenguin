@@ -351,6 +351,21 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
     }
 
     /**
+     * 按 OpenId 反查绑定的游戏玩家名（1.7.5.8 群消息转发显示名 player 模式）。
+     * 仅读不建档案；未绑定 / 档案缺失 / 任何异常返回 null（调用方回退群昵称）。
+     * 供转发链路异步线程调用（getQuuidByOpenid 未命中时会全量扫 QUUID 目录）。
+     */
+    fun getBoundPlayerNameByOpenid(openId: String?): String? {
+        if (openId.isNullOrEmpty()) return null
+        return try {
+            val quuid = getQuuidByOpenid(openId) ?: return null
+            readQuuidRecord(quuid)?.getString("playerName", null)?.takeIf { it.isNotEmpty() }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /**
      * 加锁更新单条 QUUID 主文件（读 → 改 → 原子写）。
      *
  * ，统计 / OpenId 昵称 / 签到 / 金币等多个写入方共用同一份

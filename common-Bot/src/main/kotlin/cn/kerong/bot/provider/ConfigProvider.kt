@@ -30,6 +30,14 @@ data class ChatFormat(
     val fromGroup: String,
     val postChat: Boolean,
     val startWith: String,
+    /**
+     * 群消息转发到游戏时显示的发送者名称来源（chat-format.group-sender-name，1.7.5.8）：
+     * - "group"（默认）：群昵称——消息事件返回的成员昵称（该成员在群内显示的名字；
+     *   QQ 官方机器人接口在群消息里只提供这一个昵称，群名片优先）；
+     * - "player"：绑定玩家名——该成员绑定的游戏玩家名，未绑定时回退群昵称。
+     * 其他取值一律按 group 处理（未知值不阻断转发）。
+     */
+    val groupSenderName: String = "group",
 )
 
 /** 服务器 MOTD 展示配置。 */
