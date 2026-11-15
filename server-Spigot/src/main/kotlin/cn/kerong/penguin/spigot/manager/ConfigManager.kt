@@ -339,6 +339,13 @@ class ConfigManager(private val plugin: JavaPlugin) {
     /** 多服务器集群：全部成员服务器名列表（各服必须一致；少于 2 个不启用）。 */
     fun clusterMembers(): List<String> = plugin.config.getStringList("bot.cluster.members")
 
+    /** 多服务器集群（1.7.6.2）：查在线 / 查性能是否同时显示多个服务器（默认关）。 */
+    fun clusterShowMultiCards(): Boolean = try {
+        plugin.config.getBoolean("bot.cluster.show-multi-cards", false)
+    } catch (_: Throwable) {
+        false
+    }
+
  // ---------- 服务器开关消息（引入；180 秒重启判定窗口 + 重启 / 普通开机文案分开） ----------
 
     fun isServerNotifyEnabled(): Boolean = plugin.config.getBoolean("server-notify.enabled", true)
@@ -663,7 +670,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 不再以 QQ 绑定为入口——没开绑定的服务器也能出榜）；
         // ③bot.groups 只写一对引号 ""（或纯空白）视为未填写（自动绑定与
         // 群白名单判定不再误判已配置）。
-        private const val CURRENT_CONFIG_VERSION = 55
+        private const val CURRENT_CONFIG_VERSION = 56
         // 升 55——1.7.6.1（用户口径「修复在线排行榜假人插件的假人时长也在
         // 排行榜里面的问题」+「查在线额外显示一个假人列表」）：①新键
         // online-list.show-fake-players（默认关，开启后 /查在线 主列表只显示

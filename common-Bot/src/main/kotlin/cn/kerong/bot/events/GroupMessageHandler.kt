@@ -16,6 +16,7 @@ import cn.kerong.bot.events.commands.PublicCommands
 import cn.kerong.bot.tools.QqText
 import cn.kerong.penguin.spigot.qqbind.AiAt
 import cn.kerong.penguin.spigot.qqbind.AiChat
+import cn.kerong.penguin.spigot.qqbind.AiMemeLibrary
 import cn.kerong.penguin.spigot.qqbind.GroupMsgSender
 import cn.kerong.penguin.spigot.qqbind.MessageTemplates
 import cn.kerong.penguin.spigot.qqbind.OpenIdDirectory
@@ -175,7 +176,25 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
         if (groupId != null) forwardFullGroupMessage(groupId, event)
     }
 
-    /** 是否为允许交互的群（空配置表示不限制）。 */
+    /**
+     * 多卡模式下放行的状态查询命令（1.7.6.2）：
+     * 剥去 / 前缀与空白后的首个词为 查在线 / 在线（别名）/ 查性能。
+     * 与 PublicCommands 的命令注册保持同口径（含别名），其余命令不受影响。
+     */
+    private fun isMultiCardQueryCommand(content: String): Boolean {
+        val text = content.trim()
+        if (text.isEmpty()) return false
+        val body = if (text.startsWith("/")) {
+            text.substring(1).trim()
+        } else text
+        if (body.isEmpty()) return false
+        val head = body.split(Regex("\\s+"), limit = 2)[0]
+        return head == "查在线" || head == "在线" || head == "查性能"
+    }
+
+    /**
+     * 是否为允许交互的群（空配置表示不限制）。
+     */
     private fun isAllowedGroup(groupId: String): Boolean {
         val allowed = plugin.groupOpenIdList()
         return allowed.isEmpty() || groupId in allowed
@@ -190,6 +209,13 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
     private fun filterByCluster(event: GroupMessageEvent, content: String, groupId: String?): Boolean {
         if (!ClusterState.isMultiServer) return true
         if (groupId.isNullOrEmpty()) return true
+        // 1.7.6.2：多卡开关（bot.cluster.show-multi-cards，默认关）开启时，
+        // /查在线（含别名 /在线）与 /查性能 对所有实例放行——每台服务器
+        // 各自渲染本服卡片（卡片状态栏已带本服名），群里同时显示多服务
+        // 器状态；不再弹选择按钮、无视群已选择
+        if (plugin.clusterShowMultiCards() && isMultiCardQueryCommand(content)) {
+            return true
+        }
         val selected = ClusterState.selectedServer(groupId)
         if (selected != null) {
             return selected == ClusterState.selfServerName
@@ -463,7 +489,10 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
             val preparedBody = body
             plugin.submitAsync {
                 try {
-                    var reply = AiChat.chat(preparedBody, manager, groupId, userId)
+                    // 1.7.6.2：chatWithOutcome —— 除文本外带回待发表情包文件
+                    // （含动态 GIF，字节直传）；游戏内路径继续用 chat() 纯文本
+                    val outcome = AiChat.chatWithOutcome(preparedBody, manager, groupId, userId)
+                    var reply = outcome.text
                     // 1.7.5.5 覆盖：AI 艾特接口出向——AI 回复中的 [at:昵称] 标记
                     // 在发送前渲染为 QQ 官方艾特 <@openid>（Markdown msg_type=2
                     // 解析；反查两级：本条 mentions → OpenIdDirectory 反向目录；
@@ -474,7 +503,7 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
                     }
                     val aiContent = "${manager.qqAiOutputPrefix} $reply"
  // AI 对话日志仅写入文件，不再上控制台（隐私泄露修复）
-                    QqBindManager.logVerbose("[AI对话] 回复内容长度=${aiContent.length} 准备发送")
+                    QqBindManager.logVerbose("[AI对话] 回复内容长度=${aiContent.length} 表情=${outcome.memeFiles.size} 抓页=${outcome.fetchedPages} 准备发送")
  // 发送方式（1.7.5.6 覆盖轮：AI 提醒方式三选一 ai.reminder-mode）：
  // - at：回复开头艾特发送人（<@openid>，用户收到 QQ 提醒），不引用
  // - quote：引用发送者的原消息（QQ 官方 MessageReference 协议，1.7.5.5
@@ -497,6 +526,34 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
                         GroupMsgSender.sendReply(event, outbound, quote = reminder == "quote")
                     } catch (replyError: Throwable) {
                         QqBindManager.logVerbose("[AI对话] 回复发送失败: ${replyError.message}")
+                    }
+ // 1.7.6.2：表情包发送——文字之后逐张图片消息（含动态 GIF，
+ // 字节 base64 直传不重编码）；失败仅记日志不影响文字；
+ // 与查在线多图连发同口径间隔 400ms 对频控友好
+                    if (outcome.memeFiles.isNotEmpty()) {
+                        try {
+                            Thread.sleep(400)
+                        } catch (_: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                        }
+                        for (file in outcome.memeFiles) {
+                            try {
+                                if (file.length() > AiMemeLibrary.MAX_IMAGE_BYTES) {
+                                    QqBindManager.logVerbose("[表情包] 图片 ${file.name} 大小异常（${file.length() / 1024}KB），跳过发送")
+                                    continue
+                                }
+                                val bytes = file.readBytes()
+                                val sent = cn.kerong.bot.QClient.replyWithImgBytes(event, bytes)
+                                QqBindManager.logVerbose("[表情包] ${if (sent) "已发送" else "发送失败"} ${file.name}（${bytes.size / 1024}KB）")
+                            } catch (memeError: Throwable) {
+                                QqBindManager.logVerbose("[表情包] 发送异常 ${file.name}: ${memeError.message}")
+                            }
+                            try {
+                                Thread.sleep(400)
+                            } catch (_: InterruptedException) {
+                                Thread.currentThread().interrupt()
+                            }
+                        }
                     }
                 } catch (t: Throwable) {
                     MessageTemplates.sendPlain(event, "ai-chat-error", mapOf("error" to (t.message ?: t.toString())))

@@ -1,0 +1,5 @@
+冒烟编译运行 classpath（1.7.6.2 轮）：
+  javac/java -cp "<repo>/build/dist/KERONGPenguin_Spigot-1.7.6.2.jar:<gradle缓存>/paper-api-1.20.4-R0.1-SNAPSHOT.jar" Test1762.java
+运行于沙盒 /home/z/my-project/opt/jdk（21.0.2）；结果 48/48 全绿。
+覆盖：表情包纯匹配/目录端到端（含 GIF 文件名）、知识库分段检索与注入门槛、
+爬虫 SSRF 七地址族、[表情]/[GET] 标记协议与思考剥离。

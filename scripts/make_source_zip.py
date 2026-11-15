@@ -12,7 +12,7 @@ import zipfile
 # 沙盒重置后仓库目录名可能变化，改为跟随脚本位置自适应）
 REPO = str(pathlib.Path(__file__).resolve().parent.parent)
 NAME = sys.argv[1] if len(sys.argv) > 1 else \
-    os.path.join(REPO, "build", "dist", "KERONGPenguin_v1.7.5.6_source.zip")
+    os.path.join(REPO, "build", "dist", "KERONGPenguin_v1.7.6.2_source.zip")
 
 
 def excluded(rel):
@@ -39,6 +39,8 @@ def excluded(rel):
     if rel.startswith("scripts/smoke176o4/out") or rel.startswith("scripts/smoke176o4/workdir"):
         return True
     if rel.startswith("scripts/smoke1761/out") or rel.startswith("scripts/smoke1761/workdir"):
+        return True
+    if rel.startswith("scripts/smoke1762/out") or rel.startswith("scripts/smoke1762/workdir"):
         return True
     if rel.startswith("scripts/smoke176/") and (rel.endswith(".class") or "/out/" in rel):
         return True

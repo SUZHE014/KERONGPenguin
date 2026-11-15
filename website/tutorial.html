@@ -722,6 +722,55 @@ coins-leaderboard:
 <p>1.7.6.1 新增，默认关。开启后 /查在线（图片与文字列表同口径）的主列表与人数只算真实玩家，底部额外列出当前在线的假人插件假人；关闭时全部混排与旧版一致。判定口径：登录连接为空 / 回环 / 内存连接（假人插件本地注入），或下方假人白名单名单命中。同口径的假人也不再计入在线排行榜（含下线假人的历史时长）。改完 <code>/hbkrg reload</code> 即时生效。</p>
 </div>
 
+<div class="cfg-item">
+<h4>AI 表情包 <span class="key">ai.memes.*</span></h4>
+<div class="config">
+<pre>ai:
+  memes:
+    enabled: true        # 表情包总开关
+    folder: "guaipng"    # 文件夹名（插件目录下）
+    max-per-reply: 1     # 每条回复最多发几张</pre>
+</div>
+<p>1.7.6.2 新增，默认开。把图片放进插件目录的 guaipng 文件夹（支持 png / jpg / jpeg / gif / webp / bmp，<b>动态 GIF 正常发送</b>），文件名 = 图片的含义（如「开心.png」「笑哭.gif」）；AI 觉得气氛合适时会在回复末尾输出 [表情] 文件名，插件把对应图片发到群里（发送失败仅记日志，不影响文字回复）。新增或删除图片立即生效，无需重启；建议单图 2MB 以内（最大 10MB），一个含义一张图。</p>
+</div>
+
+<div class="cfg-item">
+<h4>AI 知识库 <span class="key">ai.knowledge.*</span></h4>
+<div class="config">
+<pre>ai:
+  knowledge:
+    enabled: true       # 知识库开关
+    folder: "knowledge" # 文件夹名（插件目录下）
+    max-chars: 2000     # 单次注入上限</pre>
+</div>
+<p>1.7.6.2 新增，默认开。把 txt / md 文本文件放进插件目录的 knowledge 文件夹（UTF-8 编码，一段一个知识点，空行分段）；群里 @机器人 提问时，与问题最相关的段落会自动注入给 AI 作答依据（无关闲聊不会触发注入）。文件新增或修改立即生效，无需重启；空目录时零影响。适合放：服务器规则、FAQ、玩法说明、成员介绍等。</p>
+</div>
+
+<div class="cfg-item">
+<h4>AI 网页爬取（测试功能） <span class="key">ai.crawler.*</span></h4>
+<div class="config">
+<pre>ai:
+  crawler:
+    enabled: false        # ⚠ 测试功能，默认关
+    max-pages: 2          # 单次回答最多抓取页数
+    max-chars: 6000       # 单页正文提取上限
+    timeout-seconds: 10   # 抓取超时</pre>
+</div>
+<p>1.7.6.2 新增，<b>默认关闭（测试功能）</b>。开启后 AI 需要先看某个网页才能回答时，会输出 [GET] 网址标记，插件抓取网页正文回传给 AI 继续生成；仅允许 http/https 公网页，回环 / 内网地址被拒绝（防 SSRF），响应体最多读 2MB、仅接受文本类内容。⚠ 抓取质量与稳定性有限，仅供测试，<b>生产环境建议保持关闭</b>。</p>
+</div>
+
+<div class="cfg-item">
+<h4>集群查在线/查性能多服务器显示 <span class="key">bot.cluster.show-multi-cards</span></h4>
+<div class="config">
+<pre>bot:
+  cluster:
+    name: ""
+    members: []
+    show-multi-cards: false  # true = 查在线/查性能同时显示所有服务器</pre>
+</div>
+<p>1.7.6.2 新增，默认关，仅多服务器集群（members ≥ 2 且各服一致）生效。开启后 /查在线（含别名 /在线）与 /查性能 不再弹「选择服务器」按钮、也无视群已选择——每台服务器各自渲染本服的状态卡片（卡片自带本服名），群里同时显示全部服务器的在线 / 性能状态；关闭（默认）维持旧行为：弹选择按钮 → 显示所选服务器的单服卡片。改完 <code>/hbkrg reload</code> 即时生效。</p>
+</div>
+
 </div>
 
 <div class="tutorial-step">

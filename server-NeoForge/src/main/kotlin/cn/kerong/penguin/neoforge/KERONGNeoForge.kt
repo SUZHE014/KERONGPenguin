@@ -317,6 +317,9 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
 
     override fun clusterMembers(): List<String> = configManager.clusterMembers()
 
+    // 1.7.6.2：查在线 / 查性能多卡开关接线（开启后两条命令全实例放行）
+    override fun clusterShowMultiCards(): Boolean = configManager.clusterShowMultiCards()
+
  // 服务器开关消息配置接线（此前两端主类都未覆写这些
     // getter，运行时一直走 ConfigProvider 接口硬编码默认值——用户在
     // config.yml 里改 server-notify 段不生效；本轮补上两端委托，配置

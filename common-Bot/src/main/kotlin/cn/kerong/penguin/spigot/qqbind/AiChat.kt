@@ -3,39 +3,96 @@ package cn.kerong.penguin.spigot.qqbind
 import com.alibaba.fastjson.JSON
 import com.alibaba.fastjson.JSONArray
 import com.alibaba.fastjson.JSONObject
+import cn.kerong.bot.tools.PluginFileLog
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
+import java.io.File
 
 /**
- * QQ 群 AI 对话（@机器人触发，OpenAI 兼容接口）。
- * 支持可选的全局上下文（见 QqBindManager AI 上下文开关）。
+ * QQ 群 / 游戏内 AI 对话（@机器人触发，OpenAI 兼容接口）。
+ *
+ * 1.7.6.2 覆盖：在原有 API 对话基础上并入三大能力（口径与 0.3AI v0.5 一致）：
+ * - **表情包**：回复中「[表情] 文件名或关键词」标记解析为插件目录表情包
+ *   文件夹里的图片（含动态 GIF，字节直传不重编码），由群聊发送层
+ *   [GroupMessageHandler] 以图片消息逐张送达（[chatWithOutcome]）；
+ * - **网页爬取**：模型回复中出现「[GET] 网址」标记时自动抓取网页、把内容
+ *   回传给模型继续生成（防 SSRF 与体积约束见 [WebCrawler]）；
+ *   **默认关闭（ai.crawler.enabled，测试功能）**——能力段与 config.yml
+ *   都带测试功能警告；
+ * - **知识库**：插件目录 knowledge/ 文件夹的 txt/md 分段检索，把最相关
+ *   段落注入 system prompt（见 [AiKnowledgeLibrary]）；
+ * - DeepSeek-R1 类推理模型输出中的思考段（think 标签）会被剥离。
+ *
+ * 对外双入口：
+ * - [chat]：返回纯文本（游戏内 / 兼容旧调用点，标记已剥离）；
+ * - [chatWithOutcome]：返回 [Outcome]（群聊用，含表情文件与抓取计数）。
  */
 object AiChat {
 
+    /** 模型请求读取网页的标记（见系统提示词的协议约定）。 */
+    private const val GET_MARKER = "[GET]"
+
+    /** 解析回复中的 [GET] 网址（http(s) 开头，遇空白或常见收尾标点截止）。 */
+    private val GET_URL_REGEX = Regex("""\[GET]\s*(https?://[^\s【】"'<>]+)""")
+
+    /** 表情包标记（[表情] 开心 / [表情:鼓掌] / [表情：鼓掌]），内容为文件名或关键词；结尾可选闭括号一并剥离。 */
+    val MEME_MARKER_REGEX = Regex("""\[表情(\]\s*|\s*[:：]\s*)([^\[\]\n\s]{1,40})\]?""")
+
+    /** 发给 QQ 的单条回复软上限（超长截断，避免刷屏）。 */
+    private const val REPLY_MAX_CHARS = 2000
+
+    // DeepSeek-R1 思考段标签（字面量尖括号，避免转义序列被工具链损坏）
+    private const val THINK_OPEN = "<" + "think" + ">"
+    private const val THINK_CLOSE = "</" + "think" + ">"
+
     /**
-     * 执行一次 AI 对话。
-     * @param userMessage 用户输入（已去除 @ 片段）
-     * @param manager     绑定管理器（提供 AI 配置与上下文）
-     * @param groupId     群 OpenId
-     * @param userId      用户 OpenId
-     * @return AI 回复文本（失败时返回错误说明）
+     * 一次对话的完整产出（1.7.6.2）：
+     * @param text         发给用户的文字（标记已剥离、已截断）
+     * @param memeFiles    AI 指定发送的表情包文件（已匹配，可能为空）
+     * @param fetchedPages 本次实际抓取的网页数
+     */
+    class Outcome(
+        val text: String,
+        val memeFiles: List<File>,
+        val fetchedPages: Int,
+    ) {
+        companion object {
+            fun plain(text: String) = Outcome(text, emptyList(), 0)
+        }
+    }
+
+    // ---------- 对外入口 ----------
+
+    /**
+     * 执行一次 AI 对话（兼容入口，游戏内 / 旧调用点）。
+     * 返回纯文本：标记已剥离、思考段已剥离。
      */
     fun chat(userMessage: String, manager: QqBindManager?, groupId: String?, userId: String?): String {
-        if (manager == null) return "AI 对话未就绪。"
-        if (!manager.isAiEnabled) return "AI 对话未开启。"
+        return chatWithOutcome(userMessage, manager, groupId, userId).text
+    }
+
+    /**
+     * 执行一次 AI 对话（群聊入口，1.7.6.2）：
+     * 在原有链路（配置校验 → system prompt 组装 → 上下文注入 → 请求）
+     * 上并入 [GET] 网页阅读循环、知识库检索注入与 [表情] 标记解析。
+     */
+    fun chatWithOutcome(userMessage: String, manager: QqBindManager?, groupId: String?, userId: String?): Outcome {
+        if (manager == null) return Outcome.plain("AI 对话未就绪。")
+        if (!manager.isAiEnabled) return Outcome.plain("AI 对话未开启。")
         val baseUrl = manager.aiBaseUrl()
         val apiKey = manager.aiApiKey()
         val model = manager.aiModel()
-        // system prompt = 用户配置的角色设定 + 艾特接口附注（ai.at-enabled 开启时；
-        // 1.7.5.5 覆盖：AI 通过 [at:昵称] 标记调用艾特，见 [AiAt]）
+        // system prompt = 用户配置的角色设定 + 艾特接口附注 + 动态能力段 + 知识库检索段
         var systemPrompt = manager.aiSystemPrompt()
         if (manager.isAiAtEnabled) {
             systemPrompt += AiAt.systemPromptSuffix()
         }
-        if (baseUrl.isEmpty() || apiKey.isEmpty()) return "AI 对话未配置。"
+        systemPrompt += capabilitySection(manager)
+        systemPrompt += knowledgeSection(manager, userMessage)
+        if (baseUrl.isEmpty() || apiKey.isEmpty()) return Outcome.plain("AI 对话未配置。")
 
         val contextEnabled = manager.isAiContextEnabled(groupId, userId)
         QqBindManager.logVerbose("[AI对话] 输入: $userMessage 上下文=$contextEnabled")
@@ -46,53 +103,272 @@ object AiChat {
         }
 
         return try {
-            val body = JSONObject().apply {
-                put("model", model)
-                val messages = JSONArray()
-                messages.add(JSONObject().apply {
-                    put("role", "system")
-                    put("content", systemPrompt)
-                })
-                if (contextEnabled) {
-                    val history = manager.getAiContext(groupId, userId)
-                    if (history != null) {
-                        for (message in history) {
-                            messages.add(JSONObject().apply {
-                                put("role", message.role)
-                                put("content", message.content)
-                            })
-                        }
+            val working = ArrayList<JSONObject>()
+            working.add(JSONObject().apply {
+                put("role", "system")
+                put("content", systemPrompt)
+            })
+            if (contextEnabled) {
+                val history = manager.getAiContext(groupId, userId)
+                if (history != null) {
+                    for (message in history) {
+                        working.add(JSONObject().apply {
+                            put("role", message.role)
+                            put("content", message.content)
+                        })
                     }
                 }
-                messages.add(JSONObject().apply {
-                    put("role", "user")
-                    put("content", userMessage)
-                })
-                put("messages", messages)
+            }
+            working.add(JSONObject().apply {
+                put("role", "user")
+                put("content", userMessage)
+            })
+
+            // [GET] 网页阅读循环（1.7.6.2）：模型请求读网页时抓取回传继续生成
+            val conversation = runConversation(url, apiKey, model, manager, working)
+            val reply = conversation.first
+            val fetchedPages = conversation.second
+
+            val result = (reply?.trim() ?: "（AI 未返回内容）")
+            val stored = result
+            if (contextEnabled) {
+                manager.appendAiContext(groupId, userId, userMessage, stored)
+            }
+            // [表情] 标记解析（群聊发送层发图；游戏内调用点只拿剥离后的文本）
+            val memeFiles = resolveMemeFiles(manager, result)
+            Outcome(
+                text = capReply(stripReplyMarkers(stripThink(result))),
+                memeFiles = memeFiles,
+                fetchedPages = fetchedPages,
+            )
+        } catch (t: Throwable) {
+            Outcome.plain("AI 调用失败：${t.message}")
+        }
+    }
+
+    // ---------- 对话循环（[GET] 网页阅读） ----------
+
+    /**
+     * 完整对话循环（1.7.6.2）：
+     * 1. 组装消息调用接口；
+     * 2. 回复含 [GET] 网址且爬取开启未达上限 → 抓取网页、以 user 角色回传，
+     *    继续下一轮生成；
+     * 3. 无标记 / 爬取关闭 / 达上限 → 返回最终回复（残留标记剥离）。
+     * 中间轮不写入持久上下文。
+     * @return Pair(最终回复, 实际抓取页数)
+     */
+    private fun runConversation(
+        url: String,
+        apiKey: String,
+        model: String,
+        manager: QqBindManager?,
+        working: MutableList<JSONObject>,
+    ): Pair<String?, Int> {
+        val crawlerEnabled = manager?.isAiCrawlerEnabled == true
+        val maxFetch = if (crawlerEnabled) (manager.aiCrawlerMaxPages()).coerceAtLeast(0) else 0
+        var fetched = 0
+        // 轮次护栏：每抓一页至少多一轮生成，加余量防异常循环
+        val maxRounds = maxFetch + 3
+        var reply: String? = null
+
+        var round = 0
+        while (round < maxRounds) {
+            round++
+            val body = JSONObject().apply {
+                put("model", model)
+                put("messages", JSONArray(working.toList()))
                 put("temperature", 0.7)
             }
-
             QqBindManager.logVerbose("[AI对话] 请求 URL=$url 消息数=${body.getJSONArray("messages").size}")
             val response = doPost(url, apiKey, body.toJSONString())
             QqBindManager.logVerbose(
                 "[AI对话] 响应: " + (if (response.length > 300) response.substring(0, 300) + "..." else response)
             )
-            val json = JSON.parseObject(response) ?: return "AI 返回为空"
+            val json = JSON.parseObject(response)
+                ?: return Pair(stripGetMarkers(reply ?: "").ifBlank { null }, fetched)
             val choices: JSONArray? = json.getJSONArray("choices")
             if (choices == null || choices.isEmpty()) {
                 val error = json.getString("error")
-                return "AI 返回无 choices" + (if (error != null) ": $error" else "")
+                    ?: json.getJSONObject("error")?.getString("message")
+                throw IllegalStateException("AI 返回无 choices" + (if (error != null) ": $error" else ""))
             }
-            var result = choices.getJSONObject(0).getJSONObject("message").getString("content")
-            result = result?.trim() ?: "（AI 未返回内容）"
-            if (contextEnabled) {
-                manager.appendAiContext(groupId, userId, userMessage, result)
+            reply = choices.getJSONObject(0).getJSONObject("message")?.getString("content")?.trim()
+            if (reply.isNullOrEmpty()) {
+                throw IllegalStateException("AI 返回的回复内容为空")
             }
-            result
-        } catch (t: Throwable) {
-            "AI 调用失败：${t.message}"
+            val urls = parseGetUrls(reply)
+            // 无标记：最终回复
+            if (urls.isEmpty()) {
+                return Pair(reply, fetched)
+            }
+            // 爬取关闭 / 已达上限：剥离残留标记，避免把协议标记发给用户
+            if (maxFetch <= 0 || fetched >= maxFetch) {
+                val cleaned = stripGetMarkers(reply)
+                return Pair(
+                    cleaned.ifBlank { "（网页读取功能未开启或已达上限，本次未能读取网页）" },
+                    fetched
+                )
+            }
+            // 模型请求读网页：记录其回复，抓取后把内容回传
+            working.add(JSONObject().apply { put("role", "assistant"); put("content", reply) })
+            val take = urls.take(maxFetch - fetched)
+            val page = StringBuilder()
+            for (targetUrl in take) {
+                fetched++
+                PluginFileLog.write("[AI对话] 网页读取（${fetched}/$maxFetch）: $targetUrl")
+                page.append("[网页内容] $targetUrl\n")
+                    .append(
+                        WebCrawler.fetch(
+                            targetUrl,
+                            manager?.aiCrawlerTimeoutSeconds() ?: 10,
+                            manager?.aiCrawlerMaxChars() ?: 6000,
+                        )
+                    )
+                    .append("\n\n")
+            }
+            working.add(JSONObject().apply { put("role", "user"); put("content", page.toString().trim()) })
         }
+        // 超出轮次护栏：按最后一轮回复返回（剥离残留标记）
+        return Pair(stripGetMarkers(reply ?: "").ifBlank { null }, fetched)
     }
+
+    // ---------- 动态能力段与知识库段 ----------
+
+    /**
+     * 动态能力段（拼在角色设定之后）：协议标记说明。
+     * - 表情包：ai.memes.enabled 且文件夹有图时注入（含可用列表）；
+     * - 读网页：ai.crawler.enabled（默认关）时注入，**带测试功能警告**；
+     *   关闭时不注入，模型不会输出 [GET]。
+     */
+    fun capabilitySection(manager: QqBindManager?): String {
+        if (manager == null) return ""
+        val sb = StringBuilder()
+        sb.append("\n\n## 系统能力（以下标记由平台自动处理，不会显示给用户；按需使用，不用刻意使用）")
+        // 表情包
+        if (manager.isAiMemesEnabled) {
+            val dir = manager.memesFolder()
+            AiMemeLibrary.ensureFolder(dir)
+            val memeSection = AiMemeLibrary.renderPromptSection(dir)
+            if (memeSection.isNotEmpty()) {
+                sb.append("\n- 发表情包：气氛合适想发表情时，在回复末尾加 [表情] 文件名")
+                sb.append("（每次回复最多 ").append(manager.aiMemesMaxPerReply()).append(" 张）\n")
+                sb.append(memeSection)
+            }
+        }
+        // 网页爬取（默认关，测试功能）
+        if (manager.isAiCrawlerEnabled) {
+            sb.append("\n- 读网页（测试功能，结果可能不准）：需要先看某个网页才能回答时，")
+                .append("只回复一行 [GET] https://完整网址")
+            sb.append("（每次回答最多读 ").append(manager.aiCrawlerMaxPages()).append(" 页，能直接回答就不读；")
+            sb.append("该功能为测试功能，仅 http/https 公网页，内网地址会被拒绝）")
+        }
+        return sb.toString()
+    }
+
+    /** 知识库检索段（被动注入，模型无需输出标记）：无命中返回空串。 */
+    fun knowledgeSection(manager: QqBindManager?, query: String): String {
+        if (manager == null || !manager.isAiKnowledgeEnabled) return ""
+        val dir = manager.knowledgeFolder()
+        AiKnowledgeLibrary.ensureFolder(dir)
+        return AiKnowledgeLibrary.renderPromptSection(dir, query, manager.aiKnowledgeMaxChars())
+    }
+
+    // ---------- 标记解析（纯函数，冒烟直接验证） ----------
+
+    /** 解析回复中全部 [GET] 网址（去重、保序）。 */
+    fun parseGetUrls(text: String): List<String> {
+        return GET_URL_REGEX.findAll(text)
+            .map { it.groupValues[1].trimEnd(',', '.', '，', '。', ')', '）', ';', '；') }
+            .distinct()
+            .toList()
+    }
+
+    /** 剥离回复中残留的 [GET] 标记行（达抓取上限时兜底展示）。 */
+    fun stripGetMarkers(text: String): String {
+        if (!text.contains(GET_MARKER)) return text
+        return text.lineSequence()
+            .filter { line -> !line.trim().startsWith(GET_MARKER) }
+            .joinToString("\n")
+            .trim()
+    }
+
+    /** 解析回复中的表情包关键词（去重、保序、限量）。 */
+    fun parseMemeKeywords(text: String, max: Int): List<String> {
+        if (!text.contains("[表情")) return emptyList()
+        return MEME_MARKER_REGEX.findAll(text)
+            .map { it.groupValues[2].trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .take(max.coerceAtLeast(1))
+            .toList()
+    }
+
+    /**
+     * 解析并落图：把 [表情] 关键词解析为表情包文件夹里的图片文件。
+     * @return 待发送的图片文件列表（去重、限量；无匹配返回空）
+     */
+    fun resolveMemeFiles(manager: QqBindManager?, reply: String): List<File> {
+        if (manager == null || !manager.isAiMemesEnabled) return emptyList()
+        val dir = manager.memesFolder() ?: return emptyList()
+        if (!dir.isDirectory) return emptyList()
+        val keywords = parseMemeKeywords(reply, manager.aiMemesMaxPerReply())
+        if (keywords.isEmpty()) return emptyList()
+        val files = ArrayList<File>()
+        for (keyword in keywords) {
+            val file = AiMemeLibrary.resolve(dir, keyword)
+            if (file != null) {
+                files.add(file)
+                QqBindManager.logVerbose("[表情包] 命中 ${file.name}（关键词「$keyword」）")
+            } else {
+                PluginFileLog.write("[表情包] 未找到匹配「$keyword」的图片（群文件夹 ${dir.name}）")
+            }
+        }
+        return files
+    }
+
+    /**
+     * 剥离表情包标记：无标记时仅做首尾裁剪（保留原有段落结构）；
+     * 有标记时连同标记占用的空行一并清理（聊天场景空行无实义）。
+     */
+    fun stripReplyMarkers(text: String): String {
+        if (!MEME_MARKER_REGEX.containsMatchIn(text)) return text.trim()
+        val cleaned = MEME_MARKER_REGEX.replace(text, "")
+        return cleaned.split("\n")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString("\n")
+    }
+
+    /**
+     * 剥离推理模型思考段：成对标签取末段；未闭合的开放标签
+     * 视为仍在思考，只保留标签之前的文本；全为思考时给出可重试提示。
+     */
+    fun stripThink(text: String): String {
+        var result = text
+        while (true) {
+            val start = result.indexOf(THINK_OPEN)
+            if (start < 0) break
+            val end = result.indexOf(THINK_CLOSE, start)
+            if (end < 0) {
+                result = result.substring(0, start)
+                break
+            }
+            result = result.removeRange(start, end + THINK_CLOSE.length)
+        }
+        val trimmed = result.trim()
+        if (trimmed.isEmpty() && text.contains(THINK_OPEN)) {
+            return "（模型这次只输出了思考过程，没有给出正式回答，请重新提问试试）"
+        }
+        return trimmed
+    }
+
+    /** 发送前的软截断（超长回复截断并注明，防止 QQ 刷屏）。 */
+    fun capReply(reply: String): String {
+        return if (reply.length <= REPLY_MAX_CHARS) reply
+        else reply.substring(0, REPLY_MAX_CHARS) + "……（回复过长已截断）"
+    }
+
+    // ---------- HTTP ----------
 
     /** 执行 POST 请求。 */
     private fun doPost(url: String, apiKey: String, body: String): String {

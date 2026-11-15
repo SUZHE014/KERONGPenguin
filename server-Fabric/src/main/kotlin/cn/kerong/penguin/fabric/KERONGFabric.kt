@@ -251,6 +251,9 @@ class KERONGFabric : JavaPlugin(), KERONG, DedicatedServerModInitializer {
 
     override fun clusterMembers(): List<String> = configManager.clusterMembers()
 
+    // 1.7.6.2：查在线 / 查性能多卡开关接线（开启后两条命令全实例放行）
+    override fun clusterShowMultiCards(): Boolean = configManager.clusterShowMultiCards()
+
     // 1.7.4.1 覆盖版：服务器开关消息配置接线（双端主类委托，配置文件真正生效）
     override fun isServerNotifyEnabled(): Boolean = configManager.isServerNotifyEnabled()
 

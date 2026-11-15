@@ -568,6 +568,99 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             "[AI]"
         }
 
+    // ---------- 1.7.6.2：AI 表情包 / 知识库 / 网页爬取配置 ----------
+
+    /** 插件数据目录（表情包 / 知识库文件夹的父目录；未就绪返回 null）。 */
+    private fun dataFolder(): java.io.File? = try {
+        plugin.dataFolder
+    } catch (_: Throwable) {
+        null
+    }
+
+    /** 表情包功能开关（ai.memes.enabled，默认开；关闭后 AI 不知晓该能力）。 */
+    val isAiMemesEnabled: Boolean
+        get() = try {
+            plugin.config.getBoolean("ai.memes.enabled", true)
+        } catch (_: Throwable) {
+            true
+        }
+
+    /** 表情包文件夹（插件目录下，默认 guaipng；目录不存在时自动创建）。 */
+    fun memesFolder(): java.io.File? {
+        val base = dataFolder() ?: return null
+        val name = try {
+            plugin.config.getString("ai.memes.folder", "guaipng") ?: "guaipng"
+        } catch (_: Throwable) {
+            "guaipng"
+        }
+        return java.io.File(base, name.ifBlank { "guaipng" })
+    }
+
+    /** 每条 AI 回复最多发送几张表情包（ai.memes.max-per-reply，默认 1）。 */
+    fun aiMemesMaxPerReply(): Int = try {
+        plugin.config.getInt("ai.memes.max-per-reply", 1).coerceAtLeast(1)
+    } catch (_: Throwable) {
+        1
+    }
+
+    /** 知识库功能开关（ai.knowledge.enabled，默认开；空目录零注入）。 */
+    val isAiKnowledgeEnabled: Boolean
+        get() = try {
+            plugin.config.getBoolean("ai.knowledge.enabled", true)
+        } catch (_: Throwable) {
+            true
+        }
+
+    /** 知识库文件夹（插件目录下，默认 knowledge；目录不存在时自动创建）。 */
+    fun knowledgeFolder(): java.io.File? {
+        val base = dataFolder() ?: return null
+        val name = try {
+            plugin.config.getString("ai.knowledge.folder", "knowledge") ?: "knowledge"
+        } catch (_: Throwable) {
+            "knowledge"
+        }
+        return java.io.File(base, name.ifBlank { "knowledge" })
+    }
+
+    /** 知识库单次注入上限（ai.knowledge.max-chars，默认 2000）。 */
+    fun aiKnowledgeMaxChars(): Int = try {
+        plugin.config.getInt("ai.knowledge.max-chars", 2000).coerceAtLeast(200)
+    } catch (_: Throwable) {
+        2000
+    }
+
+    /**
+     * 网页爬取开关（ai.crawler.enabled，**默认关，测试功能**）。
+     * 开启后 AI 可通过 [GET] 标记请求读取网页（内网地址被拒绝，见 [WebCrawler]）。
+     */
+    val isAiCrawlerEnabled: Boolean
+        get() = try {
+            plugin.config.getBoolean("ai.crawler.enabled", false)
+        } catch (_: Throwable) {
+            false
+        }
+
+    /** 单次回答最多抓取页数（ai.crawler.max-pages，默认 2）。 */
+    fun aiCrawlerMaxPages(): Int = try {
+        plugin.config.getInt("ai.crawler.max-pages", 2).coerceAtLeast(0)
+    } catch (_: Throwable) {
+        2
+    }
+
+    /** 网页抓取超时秒数（ai.crawler.timeout-seconds，默认 10）。 */
+    fun aiCrawlerTimeoutSeconds(): Int = try {
+        plugin.config.getInt("ai.crawler.timeout-seconds", 10).coerceAtLeast(3)
+    } catch (_: Throwable) {
+        10
+    }
+
+    /** 单页正文提取上限（ai.crawler.max-chars，默认 6000）。 */
+    fun aiCrawlerMaxChars(): Int = try {
+        plugin.config.getInt("ai.crawler.max-chars", 6000).coerceAtLeast(500)
+    } catch (_: Throwable) {
+        6000
+    }
+
     /**
      * 踢出提示语（占位符 {code} {name} {expire}）。
      *
