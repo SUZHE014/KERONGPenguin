@@ -54,6 +54,20 @@ class FabricEvents(private val plugin: KERONGFabric) {
 
     /** 事件注册入口（KERONGFabric.onInitializeServer 后由主类调用一次）。 */
     fun registerAll() {
+ // 注入假人连接检测器（1.7.6.1）：/查在线 主线程快照与在线排行榜
+ // 快照对在线玩家实时判定「当前连接是否本地注入型」（内存连接 /
+ // 回环 / 空地址，FakePlayerExempt 同源 intermediary 反射——反射字符串
+ // 不受 tiny-remapper 重映射影响，两版通吃），供 FakePlayerRegistry
+ // 查在线假人分离与排行榜过滤用
+        cn.kerong.penguin.spigot.stats.FakePlayerRegistry.connectionDetector = { player ->
+            try {
+                (player as? FabricPlayer)?.handle?.let {
+                    FakePlayerExempt.isLocalFakePlayer(it)
+                } ?: false
+            } catch (_: Throwable) {
+                false
+            }
+        }
         ServerLifecycleEvents.SERVER_STARTING.register { server ->
             plugin.onServerAboutToStart(server)
         }
@@ -82,6 +96,18 @@ class FabricEvents(private val plugin: KERONGFabric) {
         ServerPlayConnectionEvents.JOIN.register { handler, _, _ ->
             val player = handler.player
             QClient.broadcastPlayerJoin(player.gameProfile.name)
+ // 假人登记（1.7.6.1）：本地注入型连接（FakePlayerExempt 同源判定）
+ // 或 fake-player-whitelist 名单命中 → 记入假人登记表（在线排行榜
+ // 不再计入其时长、/查在线 开启假人列表后划入假人小节）；
+ // 真实外网连接 → 自愈移除历史误登记
+            try {
+                cn.kerong.penguin.spigot.stats.FakePlayerRegistry.evaluateJoin(
+                    player.uuid,
+                    player.gameProfile.name,
+                    FakePlayerExempt.isLocalFakePlayer(player),
+                )
+            } catch (_: Throwable) {
+            }
             PlayerStatsManager.onJoin(FabricPlayer(player))
             // QQ 绑定建档（统计 / 后续绑定用）+ 1.7.5.9 未绑定限制启动
             // （[BindRestrict]：未绑定→限制互动+持续输出绑定码+超时踢出）

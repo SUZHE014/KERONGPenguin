@@ -91,6 +91,18 @@ class KERONGSpigot : JavaPlugin(), KERONG {
             }
         }
 
+ // 注入假人连接检测器（1.7.6.1）：/查在线 主线程快照与在线排行榜快照
+ // 对在线玩家实时判定「当前连接是否本地注入型」（地址为空 / 回环），
+ // 与 GameChat 绑定拦截豁免、PlayerEventsListener 假人登记同一口径；
+ // 兼容层端（NeoForge / Fabric）在各自启动钩子注入反射版检测器
+        cn.kerong.penguin.spigot.stats.FakePlayerRegistry.connectionDetector = { player ->
+            try {
+                isLocalFakeConnection(player)
+            } catch (_: Throwable) {
+                false
+            }
+        }
+
         // 注册统计记录器（/查信息 数据源）
         PlayerStatsManager.initialize()
 
@@ -467,6 +479,27 @@ class KERONGSpigot : JavaPlugin(), KERONG {
 
     override val onlineList: List<String>
         get() = server.onlinePlayers.map { it.name }
+
+    /**
+     * 假人连接判定（1.7.6.1，与 GameChat.isLocalFakeJoin 同源）：
+     * 地址为空（进程内注入，无网络通道）或回环（127.0.0.0/8）→ 本地
+     * 注入型假人；未解析地址（hostname 型，代理场景）按真实玩家处理。
+     * 供 [cn.kerong.penguin.spigot.stats.FakePlayerRegistry] 的
+     * connectionDetector 在线快照实时判定用。
+     */
+    private fun isLocalFakeConnection(player: org.bukkit.entity.Player): Boolean {
+        val socketAddress = try {
+            player.address
+        } catch (_: Throwable) {
+            null
+        } ?: return true
+        val address = try {
+            socketAddress.address
+        } catch (_: Throwable) {
+            null
+        } ?: return false
+        return address.isLoopbackAddress
+    }
 
     // ---------- 服务器自带白名单（QQ 绑定互斥检测，1.7.5.2） ----------
 

@@ -83,6 +83,23 @@ object RenderSettings {
     }
 
     /**
+     * /查在线 是否拆分假人列表（online-list.show-fake-players，1.7.6.1 新增，
+     * 默认关）。开启后：主列表只显示真实玩家，底部额外显示「假人在线」
+     * 小节（当前在线的假人插件假人）；关闭时与旧版一致（全部玩家混排，
+     * 无假人小节）。假人判定口径 = 连接为空 / 回环 / 内存连接，或
+     * qq-bind.fake-player-whitelist 名单命中（FakePlayerRegistry）。
+     * 实时读取（/hbkrg reload 后立即生效）。
+     */
+    fun onlineListShowFakePlayers(): Boolean {
+        return try {
+            (BotShared.instance as? JavaPlugin)?.config?.getBoolean("online-list.show-fake-players", false)
+                ?: false
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /**
      * 头像磁盘缓存有效期（小时，1.6.6.1 新增）。
      *
      * - 皮肤头像保存到 cache/avatars/ 目录，超过有效期自动删除

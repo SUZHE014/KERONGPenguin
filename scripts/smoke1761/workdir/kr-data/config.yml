@@ -1,0 +1,5 @@
+qq-bind:
+  fake-player-whitelist:
+    - BotAlpha
+online-list:
+  show-fake-players: true

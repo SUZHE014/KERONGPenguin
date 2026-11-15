@@ -20,12 +20,12 @@
 <section>
 <h2>下载</h2>
 <div class="dl-box">
-<p style="font-size:1.3em;font-weight:bold;color:#e8edf2;margin-bottom:5px">版本 1.7.6</p>
+<p style="font-size:1.3em;font-weight:bold;color:#e8edf2;margin-bottom:5px">版本 1.7.6.1</p>
 <p style="color:#7a848e;margin-bottom:20px">发布于 2026-11-15</p>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.6.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.6.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.6.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（1.20.4-1.21.x）</a>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.1-1.7.6.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（1.20.1）</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.6.1.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.6.1.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.6.1.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（1.20.4-1.21.x）</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.1-1.7.6.1.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（1.20.1）</a>
 <p style="color:#7a848e;font-size:0.92em;margin:-4px auto 14px;max-width:440px">Fabric 与主线同号同步发布；按钮括号只标安装包的目标版本，完整版本要求（Loader / Fabric API / 支持的 MC 范围）见下方兼容性卡片</p>
 <div class="dl-info">支持 MC 的版本请详见下方「支持的插件与兼容性 → 支持的服务端核心」</div>
 </div>
@@ -70,6 +70,10 @@
 <h2>历史版本</h2>
 <table>
 <tr><th>版本</th><th>发布日期</th><th>下载</th></tr>
+<tr><td>NeoForge 1.7.6.1</td><td>2026-11-15</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.6.1.jar">下载</a></td></tr>
+<tr><td>Spigot 1.7.6.1</td><td>2026-11-15</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.6.1.jar">下载</a></td></tr>
+<tr><td>Fabric 1.7.6.1（1.20.4 通用包）</td><td>2026-11-15</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.6.1.jar">下载</a></td></tr>
+<tr><td>Fabric 1.7.6.1（1.20.1 独立包）</td><td>2026-11-15</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.1-1.7.6.1.jar">下载</a></td></tr>
 <tr><td>NeoForge 1.7.6</td><td>2026-11-15</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.6.jar">下载</a></td></tr>
 <tr><td>Spigot 1.7.6</td><td>2026-11-15</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.6.jar">下载</a></td></tr>
 <tr><td>Fabric 1.7.6（1.20.4 通用包）</td><td>2026-11-15</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.6.jar">下载</a></td></tr>
@@ -124,6 +128,12 @@
 <section>
 <h2>更新日志</h2>
 <div class="changelog">
+<div class="version"><h3>v1.7.6.1</h3><span class="date">2026-11-15</span><ul>
+<li>修复：在线排行榜不再计入假人插件（minecraft-fakeplayer 等）假人的时长——本地注入连接（地址为空 / 回环 / 内存连接）自动识别登记，离线假人的历史时长同样排除；真人以真实外网连接进服自动恢复上榜；假人白名单（qq-bind.fake-player-whitelist）命中的同样生效</li>
+<li>新增：查在线假人列表开关 online-list.show-fake-players（默认关）——开启后主列表只显示真实玩家，底部额外显示「假人在线」小节列出当前在线的假人；文字列表模式同开关同口径（人数只算真实玩家 + 末尾假人摘要行）</li>
+<li>调整：假人白名单 qq-bind.fake-player-whitelist 全端生效——Fabric 端跳过未绑定限制照旧，所有端都用它识别假人</li>
+<li>配置版本 54 → 55，升级自动补新键（已改值不动）</li>
+</ul></div>
 <div class="version"><h3>v1.7.6</h3><span class="date">2026-11-15</span><ul>
 <li>① 在线排行榜「服务器存档数据」源改为直接枚举服务器自己的全部玩家数据——不再先经 QQ 绑定记录，没开 QQ 绑定的服务器也能出榜；usercache.json 全量玩家逐个读存档统计，usercache 条目被服务器清理但统计文件还在的老玩家用绑定记录补名字照常上榜；同名玩家（改名前的旧账号 / 多个同名）每个存档账号各占一行同时显示</li>
 <li>② 总在线时长获取源默认改为「服务器存档数据」（save-data）——玩家名片读取不到自动回退变量 → 插件统计；在线排行榜直接枚举服务器数据（不依赖 QQ 绑定）；旧配置升级自动收敛为存档源（自行选过插件统计 / 变量的不动），config-version 53 → 54</li>

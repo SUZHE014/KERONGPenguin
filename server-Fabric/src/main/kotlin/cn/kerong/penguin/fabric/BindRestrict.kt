@@ -442,8 +442,12 @@ object FakePlayerExempt {
     /**
      * 本地注入连接判定（与 NeoForge 版 isLocalFakeConnection 同逻辑）：
      * 连接对象为空 / 同进程内存连接 / 远端地址回环 → 假人。
+     *
+     * 1.7.6.1 起 public：除未绑定限制豁免外，[FabricEvents] 的假人登记
+     * （在线排行榜过滤 / 查在线假人列表）与 FakePlayerRegistry 的
+     * connectionDetector 在线快照判定同样走这里。
      */
-    private fun isLocalFakePlayer(player: ServerPlayer): Boolean {
+    fun isLocalFakePlayer(player: ServerPlayer): Boolean {
         return try {
             val handler = player.connection ?: return false
             val connection = connectionOf(handler) ?: return false

@@ -397,9 +397,29 @@ class PublicCommands : CommandSupport() {
             OnlineListService.handle(plugin, event, cooldownKey)
             return
         }
-        val online = plugin.onlineList
+        // 假人分流（1.7.6.1，online-list.show-fake-players 默认关，与图片版
+        // 同开关同口径）：开启后主名单与人数只算真实玩家，末尾追加一行
+        // 假人在线摘要；关闭时全部混排与旧版一致
+        val showFake = cn.kerong.penguin.spigot.render.RenderSettings.onlineListShowFakePlayers()
+        val all = plugin.onlineList
+        val online = if (showFake) {
+            all.filterNot { cn.kerong.penguin.spigot.stats.FakePlayerRegistry.isFakeName(it) }
+        } else {
+            all
+        }
+        val fakeOnline = if (showFake) {
+            all.filter { cn.kerong.penguin.spigot.stats.FakePlayerRegistry.isFakeName(it) }
+        } else {
+            emptyList()
+        }
         val motd = plugin.motd
-        val players = online.joinToString("\n") { "${online.indexOf(it) + 1}. **$it**" }
+        val players = buildString {
+            append(online.joinToString("\n") { "${online.indexOf(it) + 1}. **$it**" })
+            if (fakeOnline.isNotEmpty()) {
+                append("\n\n- **假人在线（${fakeOnline.size}）：** ")
+                append(fakeOnline.joinToString("、"))
+            }
+        }
         var imgUrl = motd.api
             .replace("{ip}", motd.serverIP)
             .replace("{port}", motd.serverPort.toString())

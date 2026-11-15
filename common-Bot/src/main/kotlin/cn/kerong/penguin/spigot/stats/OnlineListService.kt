@@ -35,6 +35,9 @@ import java.awt.image.BufferedImage
  *    控制内存占用；
  * 4. 分段发送：超过 [OnlineListRenderer.MAX_PLAYERS_PER_PAGE] 人自动
  *    切页多张发送 —— 第一张带标题，后续只画内容，相邻间隔 400ms 对频控友好；
+ *    1.7.6.1：online-list.show-fake-players 开启时主列表只画真实玩家，
+ *    末页底部额外画「假人在线」小节（当前在线的假人插件假人）；关闭时
+ *    与旧版一致全部混排（markdown 文字版同开关同口径）；
  * 5. 渲染走 [CardRenderPool]（硬编码 CPU 上限），完成后自动节流 GC；
  * 6. 结果缓存 20 秒（在线名单不变时重复查询秒回，整组图片复用），
  *    单用户冷却防刷屏（秒数可配置）。1.6.0：全部文本提示改走消息模板
@@ -55,10 +58,13 @@ object OnlineListService {
     /** 用户冷却记录：OpenId → 上次触发时间。 */
     private val lastQueryAt = ConcurrentHashMap<String, Long>()
 
-    /** 在线玩家快照（主线程捕获）：名字 / UUID。 */
+    /** 在线玩家快照（主线程捕获）：名字 / UUID / 是否假人（1.7.6.1）。 */
     private data class Snapshot(
-        val players: List<Pair<String, UUID?>>,
+        val players: List<PlayerInfo>,
     )
+
+    /** 单个在线玩家（快照条目；fake = 假人插件假人实时判定）。 */
+    private data class PlayerInfo(val name: String, val uuid: UUID?, val fake: Boolean)
 
     /** 渲染结果缓存条目（key = 在线名单哈希，名单变化自然失效；1.5.5 起存整组分页）。 */
     private data class CachedList(val pages: List<ByteArray>, val at: Long)
@@ -88,15 +94,31 @@ object OnlineListService {
             // 都在共享渲染池执行，消息线程不等待任何主线程或磁盘操作
             CardRenderPool.submit {
                 try {
-                    // 1. 主线程快照在线玩家（名字 / UUID / 皮肤 URL）
+                    // 1. 主线程快照在线玩家（名字 / UUID / 皮肤 URL / 假人判定）
                     val snapshot = snapshotOnlinePlayers()
                     if (snapshot == null) {
                         cn.kerong.penguin.spigot.qqbind.MessageTemplates.sendPlain(event, "online-data-unavailable")
                         return@submit
                     }
 
-                    // 2. 名单未变化且缓存新鲜：直接复用上次整组渲染结果秒回
-                    val cacheKey = snapshot.players.joinToString(",") { it.first }.hashCode()
+                    // 2. 假人分流（1.7.6.1，online-list.show-fake-players 默认关）：
+ //                    开启后主列表只画真实玩家，额外拼一个「假人在线」
+ //                    小节（当前在线的假人插件假人，FakePlayerRegistry
+ //                    同口径判定）；关闭时全部混排与旧版一致
+                    val showFake = cn.kerong.penguin.spigot.render.RenderSettings.onlineListShowFakePlayers()
+                    val realPlayers = if (showFake) snapshot.players.filter { !it.fake } else snapshot.players
+                    val fakePlayers = if (showFake) snapshot.players.filter { it.fake } else emptyList()
+
+                    // 3. 名单未变化且缓存新鲜：直接复用上次整组渲染结果秒回
+ //                    （缓存 key 含开关状态与两段名单——开关切换 / 假人上下线
+ //                    自然失效）
+                    val cacheKey = (
+                        if (showFake) {
+                            realPlayers.map { it.name } + listOf("#fake#") + fakePlayers.map { it.name }
+                        } else {
+                            realPlayers.map { it.name }
+                        }
+                        ).joinToString(",").hashCode()
                     val cached = resultCache[cacheKey]
                     if (cached != null && System.currentTimeMillis() - cached.at < RESULT_TTL_MILLIS) {
                         if (!sendPages(event, cached.pages)) {
@@ -105,14 +127,18 @@ object OnlineListService {
                         return@submit
                     }
 
-                    // 3. 并发预热头像（8 线程共享池 + 12 秒渲染等待预算：超预算的
-                    //    玩家本轮画占位块，但下载不中断，后台完成后进缓存）
+                    // 4. 并发预热头像（8 线程共享池 + 12 秒渲染等待预算：超预算的
+                    //    玩家本轮画占位块，但下载不中断，后台完成后进缓存；
+ //                    假人同样预热——拿不到皮肤画名字占位块）
                     val avatars = fetchAvatars(snapshot)
-                    val entries = snapshot.players.map {
-                        OnlineListRenderer.OnlineEntry(it.first, avatars[it.first])
+                    val entries = realPlayers.map {
+                        OnlineListRenderer.OnlineEntry(it.name, avatars[it.name])
+                    }
+                    val fakeEntries = fakePlayers.map {
+                        OnlineListRenderer.OnlineEntry(it.name, avatars[it.name])
                     }
 
- // 4. 背景与渲染（分段发送：人数过多自动切页多张，
+ // 5. 背景与渲染（分段发送：人数过多自动切页多张，
                     //    首页带标题、续页只画内容）；1.5.7 统一背景入口：
                     //    默认内置深灰底图（随 JAR 分发），开关关闭后随机用
                     //    img/ 目录图片，img 无可用图片时回退内置图；
@@ -135,6 +161,7 @@ object OnlineListService {
                             serverName = plugin.serverName,
                             updateTime = updateTime,
                             entries = entries,
+                            fakeEntries = fakeEntries,
                             backgroundProvider = { pageHeight ->
                                 InfoCardAssets.resolveBackground(
                                     dataDirectory,
@@ -146,7 +173,7 @@ object OnlineListService {
                         )
                     )
 
-                    // 5. 写入结果缓存（名单不变时 20 秒内重复查询复用整组）
+                    // 6. 写入结果缓存（名单不变时 20 秒内重复查询复用整组）
                     if (pages.isNotEmpty()) {
                         resultCache[cacheKey] = CachedList(pages, System.currentTimeMillis())
                         if (resultCache.size > RESULT_CACHE_MAX) {
@@ -155,7 +182,7 @@ object OnlineListService {
                         }
                     }
 
-                    // 6. 逐张发送（相邻间隔 400ms）
+                    // 7. 逐张发送（相邻间隔 400ms）
                     if (pages.isEmpty() || !sendPages(event, pages)) {
                         cn.kerong.penguin.spigot.qqbind.MessageTemplates.sendPlain(event, "image-send-failed")
                     }
@@ -177,12 +204,20 @@ object OnlineListService {
 
     /**
      * 主线程快照在线玩家（异步调用时自动切换；超时返回 null）。
+     * 1.7.6.1：快照内同步做假人实时判定（[FakePlayerRegistry.liveIsFake]，
+     * 名单命中或本地注入型连接——插件重载后对已在线玩家也能正确识别；
+     * 判定异常按真人，不影响名单）。
      */
     private fun snapshotOnlinePlayers(): Snapshot? {
         val snapshot: () -> Snapshot = {
             val players = try {
                 Bukkit.getOnlinePlayers().map { player ->
-                    player.name to player.uniqueId
+                    val fake = try {
+                        cn.kerong.penguin.spigot.stats.FakePlayerRegistry.liveIsFake(player)
+                    } catch (_: Throwable) {
+                        false
+                    }
+                    PlayerInfo(player.name, player.uniqueId, fake)
                 }
             } catch (_: Throwable) {
                 emptyList()
@@ -205,7 +240,7 @@ object OnlineListService {
         if (snapshot.players.isEmpty()) return emptyMap()
         return InfoCardAssets.fetchAvatarBatch(
             snapshot.players.map {
-                InfoCardAssets.AvatarRequest(uuid = it.second, playerName = it.first)
+                InfoCardAssets.AvatarRequest(uuid = it.uuid, playerName = it.name)
             }
         )
     }

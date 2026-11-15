@@ -1,6 +1,8 @@
 package cn.kerong.penguin.spigot.events
 
+import cn.kerong.penguin.spigot.stats.FakePlayerRegistry
 import cn.kerong.penguin.spigot.stats.PlayerStatsManager
+import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
@@ -31,6 +33,18 @@ class PlayerEventsListener : Listener {
     /** 进入：开启统计会话。 */
     @EventHandler(priority = EventPriority.MONITOR)
     fun onJoin(event: PlayerJoinEvent) {
+ // 假人登记（1.7.6.1）：本地注入型连接（地址为空 / 回环）或
+ // fake-player-whitelist 名单命中 → 记入假人登记表（在线排行榜不再
+ // 计入其时长、/查在线 开启假人列表后划入假人小节）；真实外网连接 →
+ // 自愈移除历史误登记（与 GameChat 绑定拦截豁免同一判定口径）
+        try {
+            FakePlayerRegistry.evaluateJoin(
+                event.player.uniqueId,
+                event.player.name,
+                isLocalFakeJoin(event.player),
+            )
+        } catch (_: Throwable) {
+        }
         PlayerStatsManager.onJoin(event.player)
     }
 
@@ -89,5 +103,27 @@ class PlayerEventsListener : Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onRaidTrigger(event: RaidTriggerEvent) {
         PlayerStatsManager.onRaidTrigger(event.player)
+    }
+
+    /**
+     * 加入阶段假人连接判定（1.7.6.1，与 GameChat.isLocalFakeJoin 同源）：
+     * 地址为空（进程内注入，无网络通道）或回环（127.0.0.0/8，
+     * minecraft-fakeplayer 的 FakeChannel 生成）→ 假人插件假人。
+     * 未解析地址（hostname 型，代理场景）按真实玩家处理（与绑定豁免口径
+     * 一致——真实玩家来自外网地址不会被误判，BungeeCord/Velocity 正确
+     * 开启 IP 透传时同样是真实外网 IP）。
+     */
+    private fun isLocalFakeJoin(player: Player): Boolean {
+        val socketAddress = try {
+            player.address
+        } catch (_: Throwable) {
+            null
+        } ?: return true
+        val address = try {
+            socketAddress.address
+        } catch (_: Throwable) {
+            null
+        } ?: return false
+        return address.isLoopbackAddress
     }
 }

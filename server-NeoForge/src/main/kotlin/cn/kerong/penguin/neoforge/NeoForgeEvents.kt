@@ -132,6 +132,17 @@ class NeoForgeEvents(private val plugin: KERONGNeoForge) {
         val player = event.entity as? ServerPlayer ?: return
         if (player.level().isClientSide) return
         QClient.broadcastPlayerJoin(player.gameProfile.name)
+ // 假人登记（1.7.6.1）：本地注入型连接（BindLoginGate 同源判定）或
+ // fake-player-whitelist 名单命中 → 记入假人登记表（在线排行榜不再计入
+ // 其时长、/查在线 开启假人列表后划入假人小节）；真实外网连接 → 自愈
+        try {
+            cn.kerong.penguin.spigot.stats.FakePlayerRegistry.evaluateJoin(
+                player.uuid,
+                player.gameProfile.name,
+                BindLoginGate.isLocalFakeConnection(player.connection),
+            )
+        } catch (_: Throwable) {
+        }
         PlayerStatsManager.onJoin(NeoPlayer(player))
         enforceLoginBinding(player)
     }

@@ -74,6 +74,9 @@ object OnlineListRenderer {
     /** 列表头与玩家网格间距。 */
     private const val LIST_HEADER_GAP = 14
 
+    /** 主网格与假人小节的间距（1.7.6.1，同状态栏间距 18）。 */
+    private const val FAKE_SECTION_GAP = 18
+
     /** 玩家卡片高度。 */
     private const val CELL_HEIGHT = 84
 
@@ -118,6 +121,13 @@ object OnlineListRenderer {
         /** 在线玩家（顺序即展示顺序）。 */
         val entries: List<OnlineEntry>,
         /**
+         * 假人小节（1.7.6.1，online-list.show-fake-players 开启时由调用方
+         * 传入当前在线的假人插件假人；空 = 不画小节，与旧版输出一致）。
+         * 画在末页主网格下方：独立小标题「假人在线」+ 「N 假人在线」胶囊
+         * + 同款 3 列头像网格。
+         */
+        val fakeEntries: List<OnlineEntry> = emptyList(),
+        /**
          * 预处理背景（含暗色遮罩；尺寸可与画布不一致，渲染时按 cover
          * 裁剪铺满，1.6.9.5 起不再拉伸）；null 表示无背景。
          */
@@ -133,22 +143,29 @@ object OnlineListRenderer {
     )
 
     /**
-     * 按本页玩家数计算画布高度：第一页含完整标题区，续页只含玩家网格。
+     * 按本页玩家数计算画布高度：第一页含完整标题区，续页只含玩家网格；
+     * 末页带假人小节时再加小节高度（1.7.6.1）。
      * 必须在取背景（尺寸相关）与渲染前调用，两者共用本结果。
      */
-    fun measurePageHeight(playerCount: Int, firstPage: Boolean): Int {
+    fun measurePageHeight(playerCount: Int, firstPage: Boolean, fakeCount: Int = 0): Int {
         val rows = if (playerCount <= 0) 0 else (playerCount + COLUMNS - 1) / COLUMNS
         val gridHeight = if (rows <= 0) {
             EMPTY_HEIGHT
         } else {
             rows * CELL_HEIGHT + (rows - 1) * CELL_GAP
         }
-        val total = if (firstPage) {
+        var total = if (firstPage) {
             MARGIN + HEADER_HEIGHT + HEADER_GAP + STATUS_HEIGHT + STATUS_GAP +
-                LIST_HEADER_HEIGHT + LIST_HEADER_GAP + gridHeight + BOTTOM_PAD
+                LIST_HEADER_HEIGHT + LIST_HEADER_GAP + gridHeight
         } else {
-            PAGE_TOP_PAD + gridHeight + BOTTOM_PAD
+            PAGE_TOP_PAD + gridHeight
         }
+        if (fakeCount > 0) {
+            val fakeRows = (fakeCount + COLUMNS - 1) / COLUMNS
+            total += FAKE_SECTION_GAP + LIST_HEADER_HEIGHT + LIST_HEADER_GAP +
+                fakeRows * CELL_HEIGHT + (fakeRows - 1) * CELL_GAP
+        }
+        total += BOTTOM_PAD
         return total.coerceAtLeast(if (firstPage) 640 else 200)
     }
 
@@ -167,15 +184,19 @@ object OnlineListRenderer {
      */
     fun renderPages(data: OnlineListData): List<ByteArray> {
         val all = data.entries
+        val fakes = data.fakeEntries
         if (all.size <= MAX_PLAYERS_PER_PAGE) {
-            val bytes = renderSingle(data, all, true)
+            val bytes = renderSingle(data, all, true, fakes)
             return if (bytes.isEmpty()) emptyList() else listOf(bytes)
         }
         val pages = ArrayList<ByteArray>(4)
         var start = 0
         while (start < all.size) {
             val end = minOf(start + MAX_PLAYERS_PER_PAGE, all.size)
-            val bytes = renderSingle(data, all.subList(start, end), start == 0)
+ // 假人小节只画在末页（主名单全部画完后）；
+            // 续页无小节时与旧版输出一致
+            val pageFakes = if (end == all.size) fakes else emptyList()
+            val bytes = renderSingle(data, all.subList(start, end), start == 0, pageFakes)
             if (bytes.isNotEmpty()) pages.add(bytes)
             start = end
         }
@@ -185,11 +206,11 @@ object OnlineListRenderer {
  /** 渲染单页（首页带标题区，续页只画玩家网格；首页副标题条
      * 第三格改「渲染耗时」——从开始渲染到本页全部面板绘制完成的毫秒数，
      * 绘制完成后补画；注意从开始渲染图片起算，不含接收指令后的取数 /
-     * 头像预热 / 排队环节）。 */
-    private fun renderSingle(data: OnlineListData, pageEntries: List<OnlineEntry>, firstPage: Boolean): ByteArray {
+     * 头像预热 / 排队环节；末页可带假人小节，1.7.6.1）。 */
+    private fun renderSingle(data: OnlineListData, pageEntries: List<OnlineEntry>, firstPage: Boolean, fakeEntries: List<OnlineEntry> = emptyList()): ByteArray {
  // 渲染耗时计时起点（全部面板绘制完成后补画进副标题条）
         val renderStart = System.nanoTime()
-        val height = measurePageHeight(pageEntries.size, firstPage)
+        val height = measurePageHeight(pageEntries.size, firstPage, fakeEntries.size)
         val image = BufferedImage(WIDTH, height, BufferedImage.TYPE_INT_RGB)
         val g = image.createGraphics()
         try {
@@ -209,7 +230,21 @@ object OnlineListRenderer {
                 drawStatusBar(g, backdrop, data.serverName, data.updateTime)
                 drawListHeader(g, data.entries.size)
             }
-            drawPlayerGrid(g, backdrop, pageEntries, firstPage)
+            val mainBottom = drawPlayerGrid(g, backdrop, pageEntries, firstPage)
+
+ // 假人小节（1.7.6.1，online-list.show-fake-players 开启且
+ // 当前有假人在线时由调用方传入；空时不画，输出与旧版一致）：
+ // 独立小标题 + 同款 3 列头像网格，接在主网格下方
+            if (fakeEntries.isNotEmpty()) {
+                val sectionTop = mainBottom + FAKE_SECTION_GAP
+                drawFakeListHeader(g, fakeEntries.size, sectionTop)
+                drawPlayerGrid(
+                    g, backdrop, fakeEntries,
+                    firstPage = true,
+                    topOverride = sectionTop + LIST_HEADER_HEIGHT + LIST_HEADER_GAP,
+                    emptyAllowed = false,
+                )
+            }
 
  // 补画渲染耗时（全部面板已画完；PNG 编码与发送不预先包含）
             if (firstPage) {
@@ -341,16 +376,50 @@ object OnlineListRenderer {
         g.drawString(badgeText, (badgeX + 22).toFloat(), top + 34f)
     }
 
+    /**
+     * 假人小节头（1.7.6.1）：标题「假人在线」+ 右侧「N 假人在线」胶囊，
+     * 与主列表头同款样式；top 由调用方传入（主网格底部 + [FAKE_SECTION_GAP]）。
+     */
+    private fun drawFakeListHeader(g: Graphics2D, fakeCount: Int, top: Int) {
+        val topF = top.toFloat()
+
+        g.font = InfoCardRenderer.font(34f, true)
+        g.color = COLOR_VALUE
+        g.drawString("假人在线", (MARGIN + 4).toFloat(), topF + 40f)
+
+        g.font = InfoCardRenderer.font(24f, false)
+        val badgeText = "$fakeCount 假人在线"
+        val badgeWidth = g.getFontMetrics().stringWidth(badgeText) + 44
+        val badgeX = WIDTH - MARGIN - badgeWidth
+        g.color = Color(0xFF, 0xFF, 0xFF, 30)
+        g.fill(RoundRectangle2D.Float(badgeX.toFloat(), topF + 6f, badgeWidth.toFloat(), 42f, 21f, 21f))
+        g.color = COLOR_BADGE
+        g.drawString(badgeText, (badgeX + 22).toFloat(), topF + 34f)
+    }
+
     /** 玩家网格：3 列，每格头像 + 玩家名；空列表画提示卡；网格整体套深色容器（与模板一致；
-     * 容器背后铺局部模糊，容器内的单元格不再重复模糊）。 */
-    private fun drawPlayerGrid(g: Graphics2D, backdrop: InfoCardAssets.CardBackdropContext?, entries: List<OnlineEntry>, firstPage: Boolean) {
-        val gridTop = if (firstPage) {
+     * 容器背后铺局部模糊，容器内的单元格不再重复模糊）。返回网格底部 Y 坐标
+     * （1.7.6.1：假人小节接着往下画需要）。[topOverride] ≥ 0 时网格顶从该值起画
+     * （假人小节网格不跟主列表布局走）；[emptyAllowed] = false 时空表直接
+     * 返回顶位置不画空态卡（假人小节恒非空，由调用方保证）。 */
+    private fun drawPlayerGrid(
+        g: Graphics2D,
+        backdrop: InfoCardAssets.CardBackdropContext?,
+        entries: List<OnlineEntry>,
+        firstPage: Boolean,
+        topOverride: Int = -1,
+        emptyAllowed: Boolean = true,
+    ): Int {
+        val gridTop = if (topOverride >= 0) {
+            topOverride
+        } else if (firstPage) {
             MARGIN + HEADER_HEIGHT + HEADER_GAP + STATUS_HEIGHT + STATUS_GAP +
                 LIST_HEADER_HEIGHT + LIST_HEADER_GAP
         } else {
             PAGE_TOP_PAD
         }
         if (entries.isEmpty()) {
+            if (!emptyAllowed) return gridTop
             val cardWidth = WIDTH - 2 * MARGIN
             backdrop?.paintCard(g, MARGIN.toFloat(), (gridTop - 14).toFloat(), cardWidth.toFloat(), (EMPTY_HEIGHT + 28).toFloat(), 18f)
             g.color = Color(0x00, 0x00, 0x00, RenderSettings.itemCardGray())
@@ -362,7 +431,7 @@ object OnlineListRenderer {
             val text = "当前没有玩家在线"
             val width = g.getFontMetrics().stringWidth(text)
             g.drawString(text, (MARGIN + (cardWidth - width) / 2).toFloat(), (gridTop + EMPTY_HEIGHT / 2 + 10).toFloat())
-            return
+            return gridTop + EMPTY_HEIGHT
         }
 
         val contentWidth = WIDTH - 2 * MARGIN
@@ -412,6 +481,7 @@ object OnlineListRenderer {
             val nameMaxWidth = cellWidth - 16 - AVATAR_SIZE - 16 - 12
             g.drawString(clip(g, entry.name, nameMaxWidth), (cellX + 16 + AVATAR_SIZE + 12).toFloat(), (cellY + CELL_HEIGHT / 2 + 10).toFloat())
         }
+        return gridTop + gridHeight
     }
 
     /** 截取不超给定宽度的最长前缀（复用个人信息卡片的截断策略）。 */

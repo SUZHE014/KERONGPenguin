@@ -398,9 +398,11 @@ class ConfigManager(private val plugin: JavaPlugin) {
         plugin.config.getInt("qq-bind.restrict-timeout-seconds", 120).coerceAtLeast(10)
 
     /**
-     * Fabric 端假人白名单（qq-bind.fake-player-whitelist，1.7.6；其余端不消费）：
-     * 玩家名列表（大小写不敏感判定在消费方），空白条目剔除；仅 Fabric 端
-     * 未绑定限制用它做豁免（与 Spigot / NeoForge 的连接自动豁免互补）。
+     * 假人白名单（qq-bind.fake-player-whitelist，1.7.6 Fabric 首发；
+     * 1.7.6.1 起全端生效）：玩家名列表（大小写不敏感判定在消费方），
+     * 空白条目剔除。Fabric 端未绑定限制用它做豁免（与连接自动豁免互补）；
+     * 1.7.6.1 起所有端的假人识别（在线排行榜过滤 / 查在线假人列表）
+     * 同样消费它。
      */
     fun fakePlayerWhitelist(): List<String> = try {
         plugin.config.getStringList("qq-bind.fake-player-whitelist")
@@ -661,7 +663,15 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 不再以 QQ 绑定为入口——没开绑定的服务器也能出榜）；
         // ③bot.groups 只写一对引号 ""（或纯空白）视为未填写（自动绑定与
         // 群白名单判定不再误判已配置）。
-        private const val CURRENT_CONFIG_VERSION = 54
+        private const val CURRENT_CONFIG_VERSION = 55
+        // 升 55——1.7.6.1（用户口径「修复在线排行榜假人插件的假人时长也在
+        // 排行榜里面的问题」+「查在线额外显示一个假人列表」）：①新键
+        // online-list.show-fake-players（默认关，开启后 /查在线 主列表只显示
+        // 真实玩家、底部额外显示「假人在线」小节）；②语义变更无新键：
+        // 假人插件假人不再计入在线排行榜（连接空/回环/内存连接或
+        // qq-bind.fake-player-whitelist 名单命中，登记于数据目录
+        // fake-players.json）；③qq-bind.fake-player-whitelist 语义扩展为
+        // 全端假人识别名单（Fabric 端未绑定限制豁免照旧）。只加新键不改旧值。
 
         /**
          * 历史路径搬家表（旧路径 → 新路径，1.6.0 版本 17 迁移；
@@ -870,8 +880,11 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "image-download.enabled" to true,
             "custom-commands" to emptyList<Any>(),
             "qq-bind.enabled" to false,
- // Fabric 端假人白名单（1.7.6）：与连接自动检测（内存 / 回环连接）
-            // 一并豁免未绑定限制；空列表 = 仅自动检测
+ // 假人白名单（1.7.6 Fabric 首发用于未绑定限制豁免；1.7.6.1 起全端
+ // 生效）：名单里的玩家名视为假人插件假人——Fabric 端跳过未绑定限制
+ // （内存 / 回环连接自动豁免，检测不到的手动填名，大小写不敏感），
+ // 所有端都不再计入在线排行榜、/查在线 开启假人列表后划入假人小节；
+ // 空列表 = 仅自动检测
             "qq-bind.fake-player-whitelist" to java.util.Collections.emptyList<String>(),
             "qq-bind.personal-info" to true,
             "qq-bind.code-expire-minutes" to 10,
@@ -936,6 +949,10 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 超出自动分多张图发送；旧版硬编码 15）
             "leaderboard.page-size" to 20,
             "leaderboard.builtin-background" to true,
+ // /查在线 假人列表开关（1.7.6.1，默认关）：开启后主列表只显示
+ // 真实玩家，底部额外显示「假人在线」小节（当前在线的假人插件假人；
+ // 同口径的假人也不再计入在线排行榜）；关闭时全部混排与旧版一致
+            "online-list.show-fake-players" to false,
  // 金币排行榜（配置与在线排行榜一致）
             "coins-leaderboard.top" to 15,
             "coins-leaderboard.builtin-background" to true,

@@ -96,6 +96,20 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         }
         // 共享实例注册 → 装载状态 → 异步启动 QQ 客户端（与 Spigot onEnable 同序）
         initializeRuntime()
+
+ // 注入假人连接检测器（1.7.6.1）：/查在线 主线程快照与在线排行榜快照
+ // 对在线玩家实时判定「当前连接是否本地注入型」（内存连接 / 回环 /
+ // 空地址，BindLoginGate.isLocalFakeConnection 同源反射），供
+ // FakePlayerRegistry 查在线假人分离与排行榜过滤用
+        cn.kerong.penguin.spigot.stats.FakePlayerRegistry.connectionDetector = { player ->
+            try {
+                (player as? org.bukkit.entity.NeoPlayer)?.handle?.let {
+                    BindLoginGate.isLocalFakeConnection(it.connection)
+                } ?: false
+            } catch (_: Throwable) {
+                false
+            }
+        }
  // QQ 绑定开启时自动关闭服务器自带白名单并提醒（1.7.5.2；
         // ServerStarted 时 playerList 已就绪，关闭发生在任何玩家登录之前）
         try {
@@ -541,7 +555,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             .resolve("kerongpenguin").toFile()
 
         /** 模组版本（与 neoforge.mods.toml 一致）。 */
-        private const val MOD_VERSION = "1.7.6"
+        private const val MOD_VERSION = "1.7.6.1"
 
         /** 当前模组实例（命令与事件层访问）。 */
         @Volatile

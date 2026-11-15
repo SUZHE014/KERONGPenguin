@@ -38,6 +38,14 @@ import java.awt.image.BufferedImage
  *   全部绑定玩家含离线；统计每 60 秒增量落盘，数值最多滞后一分钟）。
  * 行时长文本统一「X时X分」（与玩家名片三源同口径）。
  *
+ * 假人过滤（1.7.6.1，用户口径「修复在线排行榜假人插件的假人时长也在
+ * 排行榜里面的问题」）：[FakePlayerRegistry] 同口径识别的假人插件假人
+ * （登录连接为空/回环/内存连接，或 qq-bind.fake-player-whitelist 名单
+ * 命中）不再计入榜单——三路同拦：①快照时在线且实时判定为假人
+ * ②曾经以假人连接进服被登记（fake-players.json，离线假人的历史时长
+ * 同样排除；真人以真实外网连接进服自动自愈恢复上榜）③名单名命中。
+ * 两个收集源（存档直枚举 / 插件统计）都过滤，过滤计数写日志。
+ *
  * 命令开关：commands.在线排行榜（默认 true，关闭后群命令不再响应，
  * 快捷菜单按钮与 /菜单 里的按钮同步消失）；
  * 显示人数：leaderboard.top（起默认 15，自动夹逼 1..100）。
@@ -132,9 +140,6 @@ class LeaderboardCommands : CommandSupport() {
                         MessageTemplates.sendDirect(event, "leaderboard-no-data")
                         return@submit
                     }
-                    val totalPlayers = entries.size.toLong()
-                    val top = manager.leaderboardTop
-                    val topEntries = entries.take(top)
 
                     // 2. 缓存未过期且人数未变：直接复用整组图片
                     if (cachedPages.isNotEmpty() &&
@@ -144,16 +149,40 @@ class LeaderboardCommands : CommandSupport() {
                         return@submit
                     }
 
-                    // 3. 主线程快照在线玩家（头像实时皮肤增强）+ 并发预热头像；
- // 变量获取（玩家名 / 总在线时长，同一次主线程
-                    //    语义内解析，仅对展示的 top 条目）——时长变量仅在
+                    // 3. 主线程快照在线玩家（头像实时皮肤增强 + 假人实时判定）；
+ // 假人过滤（1.7.6.1）：在线假人 / 历史登记假人 / 名单命中
+ //                    三路同拦，两个收集源都过滤（过滤计数写日志）
+                    val onlineSnapshot = snapshotOnlinePlayers()
+                    val excluded = ArrayList<String>()
+                    val keptEntries = entries.filter { raw ->
+                        val fake = cn.kerong.penguin.spigot.stats.FakePlayerRegistry.isExcluded(
+                            raw.uuid, raw.name, onlineSnapshot.fakeUuids,
+                        )
+                        if (fake) excluded.add(raw.name)
+                        !fake
+                    }
+                    if (excluded.isNotEmpty()) {
+                        cn.kerong.bot.tools.PluginFileLog.write(
+                            "[在线排行榜] 假人过滤：排除 ${excluded.size} 名假人插件假人（${excluded.joinToString("、")}），剩余 ${keptEntries.size} 行"
+                        )
+                    }
+                    if (keptEntries.isEmpty()) {
+                        MessageTemplates.sendDirect(event, "leaderboard-no-data")
+                        return@submit
+                    }
+                    val totalPlayers = keptEntries.size.toLong()
+                    val top = manager.leaderboardTop
+                    val topEntries = keptEntries.take(top)
+
+                    // 4. 并发预热头像；变量获取（玩家名 / 总在线时长，同一次
+ //                    主线程语义内解析，仅对展示的 top 条目）——时长变量仅在
                     //    variable 源时解析（选了存档 / 插件统计源就展示该源数据）
-                    val onlineUuids = snapshotOnlineUuids()
+                    val onlineUuids = onlineSnapshot.players
                     val resolveValueOverride = source == cn.kerong.penguin.spigot.stats.PlaceholderVariableService.SOURCE_VARIABLE
                     val variableOverrides = snapshotVariableOverrides(topEntries, resolveValueOverride)
                     val avatars = fetchAvatars(topEntries, onlineUuids)
 
-                    // 4. 分页渲染（第一页带标题，续页只画行内容）
+                    // 5. 分页渲染（第一页带标题，续页只画行内容）
                     val updateTime = SimpleDateFormat("HH:mm").format(Date())
                     val dataDirectory = plugin.configFile?.parentFile
                     val useBuiltinBackground = manager.leaderboardBuiltinBackground
@@ -201,11 +230,11 @@ class LeaderboardCommands : CommandSupport() {
                         return@submit
                     }
 
-                    // 5. 写入结果缓存（60 秒内重复查询整组复用，含多页场景）
+                    // 6. 写入结果缓存（60 秒内重复查询整组复用，含多页场景）
                     cachedPages = pages
                     cachedAt = System.currentTimeMillis()
 
-                    // 6. 逐张发送（相邻间隔 400ms）
+                    // 7. 逐张发送（相邻间隔 400ms）
                     sendPages(event, pages)
                 } catch (error: Throwable) {
                     // 失败日志带堆栈前几帧，与 /查在线 / /查信息 一致可事后追溯
@@ -323,15 +352,36 @@ class LeaderboardCommands : CommandSupport() {
         return entries
     }
 
-    /** 主线程快照在线玩家（异步调用时自动切换；超时 / 失败返回空表，不影响流程）。 */
-    private fun snapshotOnlineUuids(): Map<String, UUID?> {
-        val snapshot: () -> Map<String, UUID?> = {
+    /** 在线玩家主线程快照：名字 → UUID（头像增强）+ 实时判定的假人 UUID 集（1.7.6.1）。 */
+    private data class OnlineSnapshot(
+        val players: Map<String, UUID?>,
+        val fakeUuids: Set<UUID>,
+    )
+
+    /**
+     * 主线程快照在线玩家（异步调用时自动切换；超时 / 失败返回空表，不影响流程）。
+     * 1.7.6.1：快照内同步对每个在线玩家做假人实时判定
+     * （[FakePlayerRegistry.liveIsFake]，名单命中或本地注入型连接），
+     * 供后续假人过滤；判定失败按真人（fail-open，不影响出榜）。
+     */
+    private fun snapshotOnlinePlayers(): OnlineSnapshot {
+        val snapshot: () -> OnlineSnapshot = {
             try {
-                Bukkit.getOnlinePlayers().associate { player ->
-                    player.name to player.uniqueId
+                val players = LinkedHashMap<String, UUID?>()
+                val fakeUuids = LinkedHashSet<UUID>()
+                for (player in Bukkit.getOnlinePlayers()) {
+                    players[player.name] = player.uniqueId
+                    try {
+                        if (cn.kerong.penguin.spigot.stats.FakePlayerRegistry.liveIsFake(player)) {
+                            fakeUuids.add(player.uniqueId)
+                        }
+                    } catch (_: Throwable) {
+                        // 判定异常按真人处理
+                    }
                 }
+                OnlineSnapshot(players, fakeUuids)
             } catch (_: Throwable) {
-                emptyMap()
+                OnlineSnapshot(emptyMap(), emptySet())
             }
         }
         if (Bukkit.isPrimaryThread()) return snapshot()
@@ -339,12 +389,13 @@ class LeaderboardCommands : CommandSupport() {
             Bukkit.getPluginManager().getPlugin("KERONGPenguin")
         } catch (_: Throwable) {
             null
-        } ?: return emptyMap()
+        } ?: return OnlineSnapshot(emptyMap(), emptySet())
  // 经 FoliaCompat 桥接（Folia 全局区域线程限时取值，超时回退空表）
         return try {
-            cn.kerong.penguin.spigot.scheduler.FoliaCompat.callSync(bukkitPlugin, 3L) { snapshot() } ?: emptyMap()
+            cn.kerong.penguin.spigot.scheduler.FoliaCompat.callSync(bukkitPlugin, 3L) { snapshot() }
+                ?: OnlineSnapshot(emptyMap(), emptySet())
         } catch (_: Exception) {
-            emptyMap()
+            OnlineSnapshot(emptyMap(), emptySet())
         }
     }
 
