@@ -14,16 +14,17 @@ import java.io.File
 /**
  * QQ 群 / 游戏内 AI 对话（@机器人触发，OpenAI 兼容接口）。
  *
- * 1.7.6.2 覆盖：在原有 API 对话基础上并入三大能力（口径与 0.3AI v0.5 一致）：
+ * 在原有 API 对话基础上并入三大能力：
  * - **表情包**：回复中「[表情] 文件名或关键词」标记解析为插件目录表情包
  *   文件夹里的图片（含动态 GIF，字节直传不重编码），由群聊发送层
  *   [GroupMessageHandler] 以图片消息逐张送达（[chatWithOutcome]）；
  * - **网页爬取**：模型回复中出现「[GET] 网址」标记时自动抓取网页、把内容
  *   回传给模型继续生成（防 SSRF 与体积约束见 [WebCrawler]）；
  *   **默认关闭（ai.crawler.enabled，测试功能）**——能力段与 config.yml
- *   都带测试功能警告；
- * - **知识库**：插件目录 knowledge/ 文件夹的 txt/md 分段检索，把最相关
- *   段落注入 system prompt（见 [AiKnowledgeLibrary]）；
+ *   都带测试功能警告；读取失败时回传统一失败文案与自然语言引导，
+ *   模型不会把错误码 / 技术原因复述给用户；
+ * - **提示词文件**：角色设定与专属知识写在插件目录的单个 .md 文件里
+ *   （默认 提示词.md，见 [AiPromptFile]），整份内容作为 system prompt；
  * - DeepSeek-R1 类推理模型输出中的思考段（think 标签）会被剥离。
  *
  * 对外双入口：
@@ -75,9 +76,9 @@ object AiChat {
     }
 
     /**
-     * 执行一次 AI 对话（群聊入口，1.7.6.2）：
+     * 执行一次 AI 对话（群聊入口）：
      * 在原有链路（配置校验 → system prompt 组装 → 上下文注入 → 请求）
-     * 上并入 [GET] 网页阅读循环、知识库检索注入与 [表情] 标记解析。
+     * 上并入 [GET] 网页阅读循环与 [表情] 标记解析。
      */
     fun chatWithOutcome(userMessage: String, manager: QqBindManager?, groupId: String?, userId: String?): Outcome {
         if (manager == null) return Outcome.plain("AI 对话未就绪。")
@@ -85,13 +86,12 @@ object AiChat {
         val baseUrl = manager.aiBaseUrl()
         val apiKey = manager.aiApiKey()
         val model = manager.aiModel()
-        // system prompt = 用户配置的角色设定 + 艾特接口附注 + 动态能力段 + 知识库检索段
+        // system prompt = 提示词文件（角色设定 + 专属知识）+ 艾特接口附注 + 动态能力段
         var systemPrompt = manager.aiSystemPrompt()
         if (manager.isAiAtEnabled) {
             systemPrompt += AiAt.systemPromptSuffix()
         }
         systemPrompt += capabilitySection(manager)
-        systemPrompt += knowledgeSection(manager, userMessage)
         if (baseUrl.isEmpty() || apiKey.isEmpty()) return Outcome.plain("AI 对话未配置。")
 
         val contextEnabled = manager.isAiContextEnabled(groupId, userId)
@@ -149,7 +149,7 @@ object AiChat {
     // ---------- 对话循环（[GET] 网页阅读） ----------
 
     /**
-     * 完整对话循环（1.7.6.2）：
+     * 完整对话循环：
      * 1. 组装消息调用接口；
      * 2. 回复含 [GET] 网址且爬取开启未达上限 → 抓取网页、以 user 角色回传，
      *    继续下一轮生成；
@@ -216,15 +216,16 @@ object AiChat {
             for (targetUrl in take) {
                 fetched++
                 PluginFileLog.write("[AI对话] 网页读取（${fetched}/$maxFetch）: $targetUrl")
-                page.append("[网页内容] $targetUrl\n")
-                    .append(
+                page.append(
+                    buildPageFeedback(
+                        targetUrl,
                         WebCrawler.fetch(
                             targetUrl,
                             manager?.aiCrawlerTimeoutSeconds() ?: 10,
                             manager?.aiCrawlerMaxChars() ?: 6000,
                         )
                     )
-                    .append("\n\n")
+                ).append("\n\n")
             }
             working.add(JSONObject().apply { put("role", "user"); put("content", page.toString().trim()) })
         }
@@ -232,10 +233,10 @@ object AiChat {
         return Pair(stripGetMarkers(reply ?: "").ifBlank { null }, fetched)
     }
 
-    // ---------- 动态能力段与知识库段 ----------
+    // ---------- 动态能力段 ----------
 
     /**
-     * 动态能力段（拼在角色设定之后）：协议标记说明。
+     * 动态能力段（拼在提示词文件之后）：协议标记说明。
      * - 表情包：ai.memes.enabled 且文件夹有图时注入（含可用列表）；
      * - 读网页：ai.crawler.enabled（默认关）时注入，**带测试功能警告**；
      *   关闭时不注入，模型不会输出 [GET]。
@@ -260,20 +261,28 @@ object AiChat {
             sb.append("\n- 读网页（测试功能，结果可能不准）：需要先看某个网页才能回答时，")
                 .append("只回复一行 [GET] https://完整网址")
             sb.append("（每次回答最多读 ").append(manager.aiCrawlerMaxPages()).append(" 页，能直接回答就不读；")
-            sb.append("该功能为测试功能，仅 http/https 公网页，内网地址会被拒绝）")
+            sb.append("该功能为测试功能，仅 http/https 公网页，内网地址会被拒绝；")
+            sb.append("网页读取失败时用自然语言告诉用户网页暂时打不开即可，不要输出错误码或技术原因）")
         }
         return sb.toString()
     }
 
-    /** 知识库检索段（被动注入，模型无需输出标记）：无命中返回空串。 */
-    fun knowledgeSection(manager: QqBindManager?, query: String): String {
-        if (manager == null || !manager.isAiKnowledgeEnabled) return ""
-        val dir = manager.knowledgeFolder()
-        AiKnowledgeLibrary.ensureFolder(dir)
-        return AiKnowledgeLibrary.renderPromptSection(dir, query, manager.aiKnowledgeMaxChars())
-    }
-
     // ---------- 标记解析（纯函数，冒烟直接验证） ----------
+
+    /**
+     * 网页读取结果回传给模型的反馈文本（纯函数，冒烟直接验证）：
+     * 读取成功 → 网址 + 正文；读取失败 → 统一失败文案 + 自然语言引导
+     *（不携带错误码 / 技术细节，避免模型把访问代码复述给用户）。
+     */
+    fun buildPageFeedback(targetUrl: String, fetched: String): String {
+        return if (fetched == WebCrawler.READ_FAILURE_MESSAGE) {
+            "[网页内容] $targetUrl\n$fetched\n" +
+                "（这个网页没读取成功：请直接用自然语言告诉用户网页暂时打不开，" +
+                "不要输出错误代码或技术原因，也可以基于已有知识回答）"
+        } else {
+            "[网页内容] $targetUrl\n$fetched"
+        }
+    }
 
     /** 解析回复中全部 [GET] 网址（去重、保序）。 */
     fun parseGetUrls(text: String): List<String> {

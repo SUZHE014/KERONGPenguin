@@ -1,0 +1,4 @@
+冒烟编译运行 classpath（1.7.6.2 覆盖轮）：
+  javac/java -cp "<repo>/build/dist/KERONGPenguin_Spigot-1.7.6.2.jar" Test1762o.java
+运行于沙盒 /home/z/my-project/opt/jdk（21.0.2）；结果 33/33 全绿。
+门禁 verify_jar_1762o.py 76/76（JAVAP=/home/z/my-project/opt/jdk/bin/javap）。

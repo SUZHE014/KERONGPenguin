@@ -6,8 +6,10 @@ import cn.kerong.bot.provider.ConfigUpgrader
 import cn.kerong.bot.provider.CustomCommandDetail
 import cn.kerong.bot.provider.Motd
 import cn.kerong.bot.provider.PlayerEventFormat
+import cn.kerong.penguin.spigot.qqbind.AiPromptFile
 import org.bukkit.configuration.ConfigurationSection
 import org.bukkit.configuration.file.FileConfiguration
+import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.plugin.java.JavaPlugin
 import java.io.File
 import java.util.LinkedHashMap
@@ -35,6 +37,14 @@ class ConfigManager(private val plugin: JavaPlugin) {
             ConfigBrokenRecovery.recoverIfBroken(plugin)
         } catch (_: Throwable) {
         }
+ // AI 提示词迁移：旧配置 ai.system-prompt（角色设定）并入提示词文件。
+ // 必须在配置重建（会删 ai.system-prompt 键）之前执行——读的是磁盘
+ // 旧文件，先迁移再删键，用户自定义的角色设定才不会丢；提示词文件
+ // 已存在（用户编辑过）则跳过；全新安装无 config.yml 不触发
+        try {
+            migrateSystemPromptToPromptFile()
+        } catch (_: Throwable) {
+        }
  // 磁盘 config-version 低于 JAR 内置时，以 JAR 新版
         // config.yml（注释完整）为底重建用户文件（保留自定义值；重建
         // 先校验后落盘，失败时旧文件不受影响）——修复旧版只追加裸键、
@@ -48,6 +58,29 @@ class ConfigManager(private val plugin: JavaPlugin) {
         )
         plugin.saveDefaultConfig()
         reload()
+    }
+
+    /**
+     * 升级迁移（必须在配置重建之前执行）：读磁盘旧配置的 ai.system-prompt
+     * 值，提示词文件不存在时以其值生成文件（作为「角色设定」段），
+     * 保住用户自定义内容；文件名优先读磁盘旧配置的 ai.prompt-file，
+     * 没有则用默认 提示词.md。
+     */
+    private fun migrateSystemPromptToPromptFile() {
+        val file = File(plugin.dataFolder, "config.yml")
+        if (!file.isFile) return
+        val disk = YamlConfiguration()
+        disk.load(file)
+        if (!disk.isSet("ai.system-prompt")) return
+        val oldRole = disk.getString("ai.system-prompt") ?: return
+        val rawName = disk.getString("ai.prompt-file")
+        val name = if (rawName.isNullOrBlank()) AiPromptFile.DEFAULT_FILE_NAME else rawName
+        val promptFile = File(plugin.dataFolder, name)
+        if (AiPromptFile.migrateFromSystemPrompt(promptFile, oldRole)) {
+            plugin.logger.info(
+                "配置升级：AI 角色设定已迁入提示词文件 $name（原 ai.system-prompt 配置项已移除；后续直接改文件，保存后下次对话自动生效）"
+            )
+        }
     }
 
     /** 重新加载配置（含损坏自动恢复、格式错误保护与缺失键补齐）。 */
@@ -670,7 +703,22 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 不再以 QQ 绑定为入口——没开绑定的服务器也能出榜）；
         // ③bot.groups 只写一对引号 ""（或纯空白）视为未填写（自动绑定与
         // 群白名单判定不再误判已配置）。
-        private const val CURRENT_CONFIG_VERSION = 56
+        private const val CURRENT_CONFIG_VERSION = 57
+        // 升 56——1.7.6.2：①ai.memes（表情包：enabled/folder/max-per-reply，
+        // 默认开/guaipng/1）；②ai.knowledge（知识库文件夹检索：enabled/
+        // folder/max-chars，默认开/knowledge/2000）；③ai.crawler（网页爬取：
+        // enabled/max-pages/max-chars/timeout-seconds，默认关/2/6000/10，
+        // 测试功能）；④bot.cluster.show-multi-cards（集群查在线/查性能多卡
+        // 显示开关，默认关）。
+        // 升 57——1.7.6.2 覆盖轮（同号重发）：①AI 知识库改为提示词单文件：
+        // ai.knowledge 整段废弃删键（knowledge 文件夹检索方案下线），
+        // 新键 ai.prompt-file（默认 提示词.md，插件目录单文件，角色设定与
+        // 专属知识都写在里面）；②ai.system-prompt（角色设定，历史一直存在）
+        // 同步废弃删键——旧值在配置重建前自动迁入提示词文件（见
+        // initialize 的 migrateSystemPromptToPromptFile，迁移先行保住用户
+        // 自定义内容）；③表情包文件夹 guaipng 与提示词文件改为启动即默认
+        // 生成（不再等首次 AI 对话）；④AI 网页读取失败时统一返回无技术
+        // 细节的失败文案（HTTP 状态码只写文件日志，不回传模型）。
         // 升 55——1.7.6.1（用户口径「修复在线排行榜假人插件的假人时长也在
         // 排行榜里面的问题」+「查在线额外显示一个假人列表」）：①新键
         // online-list.show-fake-players（默认关，开启后 /查在线 主列表只显示
@@ -720,6 +768,12 @@ class ConfigManager(private val plugin: JavaPlugin) {
  // 升 53：1.7.6 覆盖轮——真实玻璃渲染测试功能整体下线，
             // render.real-glass（升 52 新增）随源码一并移除，升级时直接删键
             "render.real-glass",
+ // 升 57：1.7.6.2 覆盖轮——①ai.system-prompt（角色设定）并入提示词
+            // 文件（迁移在配置重建之前执行，见 initialize；删键只清理配置本体）；
+            // ②ai.knowledge 整段废弃（知识库改为提示词单文件，knowledge 文件夹
+            // 检索方案下线；已放进去的 txt/md 不受影响，可把内容整理进提示词文件）
+            "ai.system-prompt",
+            "ai.knowledge",
             "render.performance.show-tps", "render.performance.show-mspt",
             "render.performance.show-memory", "render.performance.show-cpu",
             "render.performance.show-online",
@@ -991,7 +1045,6 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "ai.base-url" to "https://api.deepseek.com",
             "ai.api-key" to "",
             "ai.model" to "deepseek-chat",
-            "ai.system-prompt" to "你是一个友好的游戏群助手，请简洁回答。",
             "ai.url-auto-append" to true,
             "ai.context-limit" to 6,
             "ai.at-enabled" to true,

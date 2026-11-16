@@ -70,10 +70,10 @@
 <h2>历史版本</h2>
 <table>
 <tr><th>版本</th><th>发布日期</th><th>下载</th></tr>
-<tr><td>NeoForge 1.7.6.2</td><td>2026-11-15</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.6.2.jar">下载</a></td></tr>
-<tr><td>Spigot 1.7.6.2</td><td>2026-11-15</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.6.2.jar">下载</a></td></tr>
-<tr><td>Fabric 1.7.6.2（1.20.4 通用包）</td><td>2026-11-15</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.6.2.jar">下载</a></td></tr>
-<tr><td>Fabric 1.7.6.2（1.20.1 独立包）</td><td>2026-11-15</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.1-1.7.6.2.jar">下载</a></td></tr>
+<tr><td>NeoForge 1.7.6.2</td><td>2026-11-16</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.6.2.jar">下载</a></td></tr>
+<tr><td>Spigot 1.7.6.2</td><td>2026-11-16</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.6.2.jar">下载</a></td></tr>
+<tr><td>Fabric 1.7.6.2（1.20.4 通用包）</td><td>2026-11-16</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.6.2.jar">下载</a></td></tr>
+<tr><td>Fabric 1.7.6.2（1.20.1 独立包）</td><td>2026-11-16</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.1-1.7.6.2.jar">下载</a></td></tr>
 <tr><td>NeoForge 1.7.6.1</td><td>2026-11-15</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.6.1.jar">下载</a></td></tr>
 <tr><td>Spigot 1.7.6.1</td><td>2026-11-15</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.6.1.jar">下载</a></td></tr>
 <tr><td>Fabric 1.7.6.1（1.20.4 通用包）</td><td>2026-11-15</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.6.1.jar">下载</a></td></tr>
@@ -132,11 +132,12 @@
 <section>
 <h2>更新日志</h2>
 <div class="changelog">
-<div class="version"><h3>v1.7.6.2</h3><span class="date">2026-11-15</span><ul>
-<li>新增：AI 表情包——把图片放进插件目录 guaipng 文件夹（支持 png / jpg / jpeg / gif / webp / bmp，动态 GIF 正常发送），文件名 = 图片含义；AI 觉得气氛合适时在回复末尾加 [表情] 文件名，插件把图片发到群里（ai.memes.* 可调，文件增删即时生效）</li>
-<li>新增：AI 知识库——把 txt / md 文本文件放进插件目录 knowledge 文件夹（空行分段），群里 @机器人 提问时最相关的段落自动注入给 AI 作答依据（ai.knowledge.* 可调，文件增删即时生效，空目录零影响）</li>
-<li>新增：AI 网页爬取——默认关闭（测试功能）：开启后 AI 需要先看网页才能回答时可输出 [GET] 网址，插件抓取网页正文回传继续生成；仅 http/https 公网页，内网地址被拒绝（防 SSRF）；能力说明与配置注释均带测试功能警告，生产环境建议保持关闭</li>
+<div class="version"><h3>v1.7.6.2</h3><span class="date">2026-11-16</span><ul>
+<li>新增：AI 表情包——首次启动自动创建插件目录 guaipng 文件夹，把图片放进去即可（支持 png / jpg / jpeg / gif / webp / bmp，动态 GIF 正常发送），文件名 = 图片含义；AI 觉得气氛合适时在回复末尾加 [表情] 文件名，插件把图片发到群里（ai.memes.* 可调，文件增删即时生效）</li>
+<li>新增：AI 提示词（单文件）——机器人的角色设定与专属知识写在插件目录的一个文件里（默认 提示词.md，首次启动自动生成）：「角色设定」写身份与回复风格，「专属知识」写服务器规则、玩法、常见问题等资料；改完保存下次对话自动生效，无需重启。原配置项 ai.system-prompt 已并入该文件（升级自动迁移、配置项自动删除），knowledge 知识库文件夹方案由该文件取代</li>
+<li>新增：AI 网页爬取——默认关闭（测试功能）：开启后 AI 需要先看网页才能回答时可输出 [GET] 网址，插件抓取网页正文回传继续生成；仅 http/https 公网页，内网地址被拒绝（防 SSRF）；并修复网页读取失败时 AI 把访问代码 / 错误信息直接甩给用户的问题——失败统一按「网页暂时无法访问或没有返回内容」自然告知，技术原因只写日志；生产环境建议保持关闭</li>
 <li>新增：多服务器集群「查在线 / 查性能是否显示多个服务器」开关（bot.cluster.show-multi-cards，默认关）——开启后这两条命令（含别名 /在线）不再弹「选择服务器」按钮、无视群已选择，每台服务器各自渲染本服状态卡片，群里同时显示全部服务器的在线 / 性能状态</li>
+<li>调整：配置文件与官网教程清理版本号标注；表情包文件夹与提示词文件改为启动即自动生成；config-version 56 → 57（升级自动删废弃键，已改值不动）</li>
 </ul></div>
 <div class="version"><h3>v1.7.6.1</h3><span class="date">2026-11-15</span><ul>
 <li>修复：在线排行榜不再计入假人插件（minecraft-fakeplayer 等）假人的时长——本地注入连接（地址为空 / 回环 / 内存连接）自动识别登记，离线假人的历史时长同样排除；真人以真实外网连接进服自动恢复上榜；假人白名单（qq-bind.fake-player-whitelist）命中的同样生效</li>

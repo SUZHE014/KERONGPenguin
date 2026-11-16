@@ -119,6 +119,10 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         loadBlacklist()
         loadAiContext()
         val boundCount = buildReverseIndexes()
+ // 表情包文件夹与提示词文件默认生成（启动即建，三端一致；
+ // 已有的目录 / 文件一律不覆盖，删掉后会再次生成默认内容）
+        AiMemeLibrary.ensureFolder(memesFolder())
+        AiPromptFile.ensureFile(aiPromptFile())
  // 构造期 instance 尚未赋值（logQuiet 此时退到 println，NeoForge 下
         // 会以 [STDOUT/] 原始格式输出），构造期日志直接走 plugin.logger——
         // Spigot 为 Bukkit 插件日志器、NeoForge 为 JUL→SLF4J 桥接后的标准前缀
@@ -483,11 +487,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         "deepseek-chat"
     }
 
-    fun aiSystemPrompt(): String = try {
-        plugin.config.getString("ai.system-prompt", "你是一个友好的游戏群助手，请简洁回答。") ?: "你是一个友好的游戏群助手，请简洁回答。"
-    } catch (_: Throwable) {
-        "你是一个友好的游戏群助手，请简洁回答。"
-    }
+    fun aiSystemPrompt(): String = AiPromptFile.loadPrompt(aiPromptFile())
 
     fun aiContextLimit(): Int = try {
         plugin.config.getInt("ai.context-limit", 6)
@@ -568,9 +568,9 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             "[AI]"
         }
 
-    // ---------- 1.7.6.2：AI 表情包 / 知识库 / 网页爬取配置 ----------
+    // ---------- AI 表情包 / 提示词 / 网页爬取配置 ----------
 
-    /** 插件数据目录（表情包 / 知识库文件夹的父目录；未就绪返回 null）。 */
+    /** 插件数据目录（表情包文件夹 / 提示词文件的父目录；未就绪返回 null）。 */
     private fun dataFolder(): java.io.File? = try {
         plugin.dataFolder
     } catch (_: Throwable) {
@@ -603,34 +603,18 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         1
     }
 
-    /** 知识库功能开关（ai.knowledge.enabled，默认开；空目录零注入）。 */
-    val isAiKnowledgeEnabled: Boolean
-        get() = try {
-            plugin.config.getBoolean("ai.knowledge.enabled", true)
-        } catch (_: Throwable) {
-            true
-        }
-
-    /** 知识库文件夹（插件目录下，默认 knowledge；目录不存在时自动创建）。 */
-    fun knowledgeFolder(): java.io.File? {
+    /** 提示词文件（插件目录下，默认 提示词.md；不存在时自动生成默认内容）。 */
+    fun aiPromptFile(): java.io.File? {
         val base = dataFolder() ?: return null
         val name = try {
-            plugin.config.getString("ai.knowledge.folder", "knowledge") ?: "knowledge"
+            plugin.config.getString("ai.prompt-file", AiPromptFile.DEFAULT_FILE_NAME) ?: AiPromptFile.DEFAULT_FILE_NAME
         } catch (_: Throwable) {
-            "knowledge"
+            AiPromptFile.DEFAULT_FILE_NAME
         }
-        return java.io.File(base, name.ifBlank { "knowledge" })
+        return java.io.File(base, name.ifBlank { AiPromptFile.DEFAULT_FILE_NAME })
     }
 
-    /** 知识库单次注入上限（ai.knowledge.max-chars，默认 2000）。 */
-    fun aiKnowledgeMaxChars(): Int = try {
-        plugin.config.getInt("ai.knowledge.max-chars", 2000).coerceAtLeast(200)
-    } catch (_: Throwable) {
-        2000
-    }
-
-    /**
-     * 网页爬取开关（ai.crawler.enabled，**默认关，测试功能**）。
+    /** 网页爬取开关（ai.crawler.enabled，**默认关，测试功能**）。
      * 开启后 AI 可通过 [GET] 标记请求读取网页（内网地址被拒绝，见 [WebCrawler]）。
      */
     val isAiCrawlerEnabled: Boolean

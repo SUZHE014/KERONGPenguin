@@ -10,7 +10,7 @@ import java.net.URL
 import java.nio.charset.StandardCharsets
 
 /**
- * 网页爬取能力（v0.4）：AI 需要了解网页内容时（回复中输出
+ * 网页爬取能力：AI 需要了解网页内容时（回复中输出
  * 「[GET] 网址」标记），由本类抓取网页并提取正文文本回传给 AI。
  *
  * 安全约束（防 SSRF / 防滥用）：
@@ -20,6 +20,11 @@ import java.nio.charset.StandardCharsets
  * - 响应体最多读取 2MB；仅接受文本类内容（text 开头、json、xml），
  *   图片 / 二进制直接拒绝；
  * - 提取文本按配置截断（默认 6000 字符）。
+ *
+ * 失败口径：所有失败（HTTP 非 2xx / 内容类型不支持 / 响应为空 /
+ * 网络 / 解析异常）统一返回 [READ_FAILURE_MESSAGE]——不携带 HTTP
+ * 状态码、异常信息等技术细节，避免模型把「访问代码」原样复述给
+ * 用户；技术原因只写文件日志（PluginFileLog）供服主排查。
  */
 object WebCrawler {
 
@@ -29,8 +34,14 @@ object WebCrawler {
     /** 最大重定向跟随次数。 */
     private const val MAX_REDIRECTS = 3
 
+    /**
+     * 统一失败文案（不携带状态码 / 异常细节，防止模型向用户输出访问代码）。
+     * 回传给模型后由 [AiChat] 附带自然语言引导。
+     */
+    const val READ_FAILURE_MESSAGE = "[读取失败：网页暂时无法访问或没有返回内容]"
+
     private val USER_AGENT =
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) 0.3AI-Bot/0.4"
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) KERONGPenguin-Bot/1.7.6.2"
 
     private val ACCEPT = "text/html,text/plain,application/json,application/xml;q=0.9,*/*;q=0.5"
 
@@ -41,7 +52,8 @@ object WebCrawler {
 
     /**
      * 抓取网页并提取正文文本。
-     * @return 提取的文本（失败时返回「[读取失败：原因]」说明，同样回传给 AI）
+     * @return 提取的文本；失败时返回统一失败文案 [READ_FAILURE_MESSAGE]
+     *（技术原因写文件日志，不回传给模型）
      */
     fun fetch(urlText: String, timeoutSeconds: Int, maxChars: Int): String {
         var connection: HttpURLConnection? = null
@@ -56,7 +68,8 @@ object WebCrawler {
                 val location = conn.getHeaderField("Location")
                 conn.disconnect()
                 if (location.isNullOrBlank()) {
-                    return "[读取失败：HTTP $code 重定向缺少目标地址]"
+                    PluginFileLog.write("[爬虫] 读取失败 $urlText：HTTP $code 重定向缺少目标地址")
+                    return READ_FAILURE_MESSAGE
                 }
                 currentUrl = parseAndValidate(URL(currentUrl, location).toExternalForm())
                 redirects++
@@ -65,14 +78,24 @@ object WebCrawler {
                 code = conn.responseCode
             }
             if (code !in 200..299) {
-                return "[读取失败：HTTP $code]"
+                PluginFileLog.write("[爬虫] 读取失败 $urlText：HTTP $code")
+                return READ_FAILURE_MESSAGE
             }
             val contentType = conn.contentType ?: ""
             if (!isAllowedContentType(contentType)) {
-                return "[读取失败：内容类型 ${contentType.substringBefore(';')} 不支持读取，仅支持网页/文本类内容]"
+                PluginFileLog.write("[爬虫] 读取失败 $urlText：内容类型 ${contentType.substringBefore(';')} 不支持读取（仅支持网页/文本类内容）")
+                return READ_FAILURE_MESSAGE
             }
             val charset = parseCharset(contentType) ?: "UTF-8"
-            val raw = readBounded(conn, charset) ?: return "[读取失败：响应为空]"
+            val raw = readBounded(conn, charset)
+            if (raw == null) {
+                PluginFileLog.write("[爬虫] 读取失败 $urlText：响应为空")
+                return READ_FAILURE_MESSAGE
+            }
+            if (raw.isBlank()) {
+                PluginFileLog.write("[爬虫] 读取失败 $urlText：响应无正文内容")
+                return READ_FAILURE_MESSAGE
+            }
             if (contentType.contains("html", ignoreCase = true) || raw.trimStart().startsWith("<")) {
                 extractText(raw, maxChars)
             } else {
@@ -80,7 +103,7 @@ object WebCrawler {
             }
         } catch (t: Throwable) {
             PluginFileLog.write("[爬虫] 读取失败 $urlText：${t.message ?: t.toString()}")
-            "[读取失败：${t.message ?: t.toString()}]"
+            READ_FAILURE_MESSAGE
         } finally {
             connection?.disconnect()
         }

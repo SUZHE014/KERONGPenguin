@@ -32,7 +32,7 @@ object AiAt {
     private val MENTION_PLACEHOLDER = Regex("""<@!?([A-Za-z0-9_-]+)>""")
 
     /**
-     * system prompt 附注（开关开启时拼在 ai.system-prompt 之后）：
+     * system prompt 附注（开关开启时拼在提示词文件之后）：
      * 告知 AI 艾特接口的存在与用法。措辞克制——只说「确有需要时」使用，
      * 避免 AI 每句都带艾特刷屏。
      */

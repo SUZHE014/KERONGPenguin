@@ -1,9 +1,10 @@
 dependencyResolutionManagement {
     repositories {
+        maven { url = uri("https://maven.aliyun.com/repository/public/") }
+        maven { url = uri("https://maven.aliyun.com/repository/central/") }
         mavenCentral()
         maven { url = uri("https://repo.papermc.io/repository/maven-public/") }
         maven { url = uri("https://hub.spigotmc.org/nexus/content/repositories/snapshots/") }
-        maven { url = uri("https://maven.aliyun.com/repository/public/") }
     }
 }
 
