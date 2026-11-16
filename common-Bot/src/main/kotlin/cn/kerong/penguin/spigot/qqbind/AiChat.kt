@@ -18,10 +18,12 @@ import java.io.File
  * - **表情包**：回复中「[表情] 文件名或关键词」标记解析为插件目录表情包
  *   文件夹里的图片（含动态 GIF，字节直传不重编码），由群聊发送层
  *   [GroupMessageHandler] 以图片消息逐张送达（[chatWithOutcome]）；
- * - **网页爬取**：模型回复中出现「[GET] 网址」标记时自动抓取网页、把内容
- *   回传给模型继续生成（防 SSRF 与体积约束见 [WebCrawler]）；
- *   **默认关闭（ai.crawler.enabled，测试功能）**——能力段与 config.yml
- *   都带测试功能警告；读取失败时回传统一失败文案与自然语言引导，
+ * - **网页读取（正式功能）**：模型回复中出现「[GET] 网址」标记时自动
+ *   抓取网页、把内容回传给模型继续生成——支持多次多层读取（先读
+ *   入口页/搜索页，再继续读页面里的链接逐层深入；需要搜索时用必应
+ *   bing.com），防 SSRF 与体积约束见 [WebCrawler]；默认开启
+ *   （ai.crawler.enabled，读取次数上限 ai.crawler.max-pages）；
+ *   读取失败时回传统一失败文案与自然语言引导，
  *   模型不会把错误码 / 技术原因复述给用户；
  * - **提示词文件**：角色设定与专属知识写在插件目录的单个 .md 文件里
  *   （默认 提示词.md，见 [AiPromptFile]），整份内容作为 system prompt；
@@ -35,6 +37,9 @@ object AiChat {
 
     /** 模型请求读取网页的标记（见系统提示词的协议约定）。 */
     private const val GET_MARKER = "[GET]"
+
+    /** 每条 AI 回复最多发送几张表情包（1.7.6.3 起固定值，原配置调优键已删）。 */
+    const val MEME_MAX_PER_REPLY = 1
 
     /** 解析回复中的 [GET] 网址（http(s) 开头，遇空白或常见收尾标点截止）。 */
     private val GET_URL_REGEX = Regex("""\[GET]\s*(https?://[^\s【】"'<>]+)""")
@@ -221,8 +226,8 @@ object AiChat {
                         targetUrl,
                         WebCrawler.fetch(
                             targetUrl,
-                            manager?.aiCrawlerTimeoutSeconds() ?: 10,
-                            manager?.aiCrawlerMaxChars() ?: 6000,
+                            WebCrawler.DEFAULT_TIMEOUT_SECONDS,
+                            WebCrawler.DEFAULT_MAX_CHARS,
                         )
                     )
                 ).append("\n\n")
@@ -238,8 +243,8 @@ object AiChat {
     /**
      * 动态能力段（拼在提示词文件之后）：协议标记说明。
      * - 表情包：ai.memes.enabled 且文件夹有图时注入（含可用列表）；
-     * - 读网页：ai.crawler.enabled（默认关）时注入，**带测试功能警告**；
-     *   关闭时不注入，模型不会输出 [GET]。
+     * - 读网页（正式功能，默认开）：ai.crawler.enabled 开启时注入，
+     *   含多次多层读取与必应搜索指引；关闭时不注入，模型不会输出 [GET]。
      */
     fun capabilitySection(manager: QqBindManager?): String {
         if (manager == null) return ""
@@ -252,16 +257,18 @@ object AiChat {
             val memeSection = AiMemeLibrary.renderPromptSection(dir)
             if (memeSection.isNotEmpty()) {
                 sb.append("\n- 发表情包：气氛合适想发表情时，在回复末尾加 [表情] 文件名")
-                sb.append("（每次回复最多 ").append(manager.aiMemesMaxPerReply()).append(" 张）\n")
+                sb.append("（每次回复最多 ").append(MEME_MAX_PER_REPLY).append(" 张）\n")
                 sb.append(memeSection)
             }
         }
-        // 网页爬取（默认关，测试功能）
+        // 网页读取（正式功能，默认开；多次多层 + 必应搜索）
         if (manager.isAiCrawlerEnabled) {
-            sb.append("\n- 读网页（测试功能，结果可能不准）：需要先看某个网页才能回答时，")
-                .append("只回复一行 [GET] https://完整网址")
+            sb.append("\n- 读网页：需要先看某个网页或搜索资料才能回答时，输出一行 [GET] 网址")
+            sb.append("（一次回答也可以多行读多个网页，插件会把网页内容回传给你继续回答）")
             sb.append("（每次回答最多读 ").append(manager.aiCrawlerMaxPages()).append(" 页，能直接回答就不读；")
-            sb.append("该功能为测试功能，仅 http/https 公网页，内网地址会被拒绝；")
+            sb.append("需要搜索时用必应搜索引擎，如 [GET] https://www.bing.com/search?q=关键词；")
+            sb.append("回传的网页内容里带有链接（文字（网址）形式），需要深入时可以继续 [GET] 这些链接逐层阅读；")
+            sb.append("仅 http/https 公网页，内网地址会被拒绝；")
             sb.append("网页读取失败时用自然语言告诉用户网页暂时打不开即可，不要输出错误码或技术原因）")
         }
         return sb.toString()
@@ -320,7 +327,7 @@ object AiChat {
         if (manager == null || !manager.isAiMemesEnabled) return emptyList()
         val dir = manager.memesFolder() ?: return emptyList()
         if (!dir.isDirectory) return emptyList()
-        val keywords = parseMemeKeywords(reply, manager.aiMemesMaxPerReply())
+        val keywords = parseMemeKeywords(reply, MEME_MAX_PER_REPLY)
         if (keywords.isEmpty()) return emptyList()
         val files = ArrayList<File>()
         for (keyword in keywords) {

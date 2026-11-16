@@ -12,7 +12,7 @@ import zipfile
 # 沙盒重置后仓库目录名可能变化，改为跟随脚本位置自适应）
 REPO = str(pathlib.Path(__file__).resolve().parent.parent)
 NAME = sys.argv[1] if len(sys.argv) > 1 else \
-    os.path.join(REPO, "build", "dist", "KERONGPenguin_v1.7.6.2_source.zip")
+    os.path.join(REPO, "build", "dist", "KERONGPenguin_v1.7.6.3_source.zip")
 
 
 def excluded(rel):
@@ -41,6 +41,12 @@ def excluded(rel):
     if rel.startswith("scripts/smoke1761/out") or rel.startswith("scripts/smoke1761/workdir"):
         return True
     if rel.startswith("scripts/smoke1762/out") or rel.startswith("scripts/smoke1762/workdir"):
+        return True
+    if rel.startswith("scripts/smoke1762o/out") or rel.startswith("scripts/smoke1762o/workdir"):
+        return True
+    # 1.7.6.3：smoke1763 的 .class 编译产物直接在目录根（无 out/ 子目录），
+    # 排除 .class；FetchBing.java 为真实网络验证留档随包
+    if rel.startswith("scripts/smoke1763/") and rel.endswith(".class"):
         return True
     if rel.startswith("scripts/smoke176/") and (rel.endswith(".class") or "/out/" in rel):
         return True

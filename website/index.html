@@ -20,12 +20,12 @@
 <section>
 <h2>下载</h2>
 <div class="dl-box">
-<p style="font-size:1.3em;font-weight:bold;color:#e8edf2;margin-bottom:5px">版本 1.7.6.2</p>
-<p style="color:#7a848e;margin-bottom:20px">发布于 2026-11-15</p>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.6.2.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.6.2.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.6.2.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（1.20.4-1.21.x）</a>
-<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.1-1.7.6.2.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（1.20.1）</a>
+<p style="font-size:1.3em;font-weight:bold;color:#e8edf2;margin-bottom:5px">版本 1.7.6.3</p>
+<p style="color:#7a848e;margin-bottom:20px">发布于 2026-11-16</p>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.6.3.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Spigot 插件版</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.6.3.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ NeoForge 模组版</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.6.3.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（1.20.4-1.21.x）</a>
+<a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.1-1.7.6.3.jar" class="dl-btn" style="display:block;max-width:440px;margin:0 auto 12px;box-sizing:border-box">⬇ Fabric 模组版（1.20.1）</a>
 <p style="color:#7a848e;font-size:0.92em;margin:-4px auto 14px;max-width:440px">Fabric 与主线同号同步发布；按钮括号只标安装包的目标版本，完整版本要求（Loader / Fabric API / 支持的 MC 范围）见下方兼容性卡片</p>
 <div class="dl-info">支持 MC 的版本请详见下方「支持的插件与兼容性 → 支持的服务端核心」</div>
 </div>
@@ -70,6 +70,10 @@
 <h2>历史版本</h2>
 <table>
 <tr><th>版本</th><th>发布日期</th><th>下载</th></tr>
+<tr><td>NeoForge 1.7.6.3</td><td>2026-11-16</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.6.3.jar">下载</a></td></tr>
+<tr><td>Spigot 1.7.6.3</td><td>2026-11-16</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.6.3.jar">下载</a></td></tr>
+<tr><td>Fabric 1.7.6.3（1.20.4 通用包）</td><td>2026-11-16</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.6.3.jar">下载</a></td></tr>
+<tr><td>Fabric 1.7.6.3（1.20.1 独立包）</td><td>2026-11-16</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.1-1.7.6.3.jar">下载</a></td></tr>
 <tr><td>NeoForge 1.7.6.2</td><td>2026-11-16</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_NeoForge-1.20.4-1.7.6.2.jar">下载</a></td></tr>
 <tr><td>Spigot 1.7.6.2</td><td>2026-11-16</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Spigot-1.7.6.2.jar">下载</a></td></tr>
 <tr><td>Fabric 1.7.6.2（1.20.4 通用包）</td><td>2026-11-16</td><td><a href="https://kerong.xin/penguin/downloads/KERONGPenguin_Fabric-1.20.4-1.7.6.2.jar">下载</a></td></tr>
@@ -132,6 +136,13 @@
 <section>
 <h2>更新日志</h2>
 <div class="changelog">
+<div class="version"><h3>v1.7.6.3</h3><span class="date">2026-11-16</span><ul>
+<li>调整：AI 网页读取转为<b>正式功能</b>，默认开启（原测试期默认关闭，升级自动转为开启，不需要可在 ai.crawler.enabled 改回 false）；支持<b>多次多层读取</b>——AI 可先读搜索页 / 入口页，再继续读页面里的链接逐层深入，一次回答最多读 ai.crawler.max-pages（默认 3）页；需要搜索资料时 AI 会用<b>必应（bing.com）</b>搜索引擎，中文关键词自动编码</li>
+<li>提醒：AI 网页读取<b>会消耗额外 token</b>（每次读取的网页内容都计入对话，按 max-pages 页计），接口按 token 计费时请留意用量——配置注释与教程均已标明</li>
+<li>修复：升级后插件目录仍出现旧知识库文件夹的问题——旧版生成的 knowledge 文件夹新版不再创建、不再读取，启动时自动清理（空文件夹 / 只剩自动生成的说明文件直接删除；有自己放的文件则保留，提示整理进提示词文件后手动删除）</li>
+<li>调整：简化 AI 配置，删除四个调优键（升级自动删，行为固定为原默认值）——ai.memes.folder（表情包文件夹固定 guaipng，自定义过的启动时提示移入）、ai.memes.max-per-reply（每条回复最多 1 张）、ai.crawler.timeout-seconds（超时固定 10 秒）、ai.crawler.max-chars（单页正文固定 6000 字符）；AI 段保留 ai.memes.enabled / ai.prompt-file / ai.crawler.enabled / ai.crawler.max-pages 四键</li>
+<li>config-version 57 → 58（升级自动删废弃键并重建注释，已改值不动）</li>
+</ul></div>
 <div class="version"><h3>v1.7.6.2</h3><span class="date">2026-11-16</span><ul>
 <li>新增：AI 表情包——首次启动自动创建插件目录 guaipng 文件夹，把图片放进去即可（支持 png / jpg / jpeg / gif / webp / bmp，动态 GIF 正常发送），文件名 = 图片含义；AI 觉得气氛合适时在回复末尾加 [表情] 文件名，插件把图片发到群里（ai.memes.* 可调，文件增删即时生效）</li>
 <li>新增：AI 提示词（单文件）——机器人的角色设定与专属知识写在插件目录的一个文件里（默认 提示词.md，首次启动自动生成）：「角色设定」写身份与回复风格，「专属知识」写服务器规则、玩法、常见问题等资料；改完保存下次对话自动生效，无需重启。原配置项 ai.system-prompt 已并入该文件（升级自动迁移、配置项自动删除），knowledge 知识库文件夹方案由该文件取代</li>

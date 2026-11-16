@@ -11,7 +11,7 @@ import java.nio.charset.StandardCharsets
  * 与 0.3AI 版的差异：本类纯库化——文件夹由调用方（[QqBindManager.memesFolder]）
  * 构造后传入，库内不依赖插件实例，检索与匹配函数可直接冒烟。
  *
- * - 文件夹默认为插件目录 guaipng（配置 ai.memes.folder），支持
+ * - 文件夹固定为插件目录 guaipng（1.7.6.3 起不再走配置改名），支持
  *   png / jpg / jpeg / gif / webp / bmp；
  * - 文件名即含义（如「开心.png」「鼓掌.gif」）：可用列表注入 AI 提示词，
  *   AI 回复中输出 [表情] 文件名或关键词，由本库匹配后把图片发到群里；
@@ -22,6 +22,9 @@ import java.nio.charset.StandardCharsets
  * - 文件增删即时生效（每次解析都读目录，无需重启）。
  */
 object AiMemeLibrary {
+
+    /** 表情包文件夹名（插件目录下，1.7.6.3 起固定值，原配置键已删）。 */
+    const val FOLDER_NAME = "guaipng"
 
     /** 支持的图片扩展名（小写）。GIF 动图按字节直传，动画保留。 */
     val IMAGE_EXTENSIONS = listOf("png", "jpg", "jpeg", "gif", "webp", "bmp")

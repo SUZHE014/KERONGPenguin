@@ -6,6 +6,7 @@ import cn.kerong.bot.provider.ConfigUpgrader
 import cn.kerong.bot.provider.CustomCommandDetail
 import cn.kerong.bot.provider.Motd
 import cn.kerong.bot.provider.PlayerEventFormat
+import cn.kerong.penguin.spigot.qqbind.AiMemeLibrary
 import cn.kerong.penguin.spigot.qqbind.AiPromptFile
 import org.bukkit.configuration.ConfigurationSection
 import org.bukkit.configuration.file.FileConfiguration
@@ -45,6 +46,13 @@ class ConfigManager(private val plugin: JavaPlugin) {
             migrateSystemPromptToPromptFile()
         } catch (_: Throwable) {
         }
+ // 1.7.6.3：清理旧知识库文件夹残留 + 表情包文件夹改固定名提示。
+ // 同样必须在配置重建之前执行——读磁盘旧配置的 ai.knowledge.folder /
+ // ai.memes.folder 自定义值（重建删键后就读不到了）
+        try {
+            cleanupLegacyFolders()
+        } catch (_: Throwable) {
+        }
  // 磁盘 config-version 低于 JAR 内置时，以 JAR 新版
         // config.yml（注释完整）为底重建用户文件（保留自定义值；重建
         // 先校验后落盘，失败时旧文件不受影响）——修复旧版只追加裸键、
@@ -80,6 +88,41 @@ class ConfigManager(private val plugin: JavaPlugin) {
             plugin.logger.info(
                 "配置升级：AI 角色设定已迁入提示词文件 $name（原 ai.system-prompt 配置项已移除；后续直接改文件，保存后下次对话自动生效）"
             )
+        }
+    }
+
+    /**
+     * 1.7.6.3 升级清理（必须在配置重建之前执行，读的是磁盘旧配置）：
+     * - 旧知识库文件夹（1.7.6.2 首发轮及更早自动创建的 knowledge 目录，
+     *   或用户自定义的 ai.knowledge.folder 名）：空 / 只剩旧说明文件自动
+     *   删除，有用户文件保留并提示整理进提示词文件——修复「升级后
+     *   还会看到知识库文件夹」的困惑（新版已不再创建也不再读取）；
+     * - ai.memes.folder 自定义过文件夹名（≠ guaipng）且该文件夹里有图片：
+     *   提示把图片移入 guaipng（文件夹名已固定，不再走配置）。
+     */
+    private fun cleanupLegacyFolders() {
+        val file = File(plugin.dataFolder, "config.yml")
+        if (!file.isFile) return
+        val disk = YamlConfiguration()
+        disk.load(file)
+        // ①旧知识库文件夹清理（自定义名 + 默认名都查）
+        val knowledgeNames = linkedSetOf("knowledge")
+        disk.getString("ai.knowledge.folder")?.takeIf { it.isNotBlank() }?.let { knowledgeNames.add(it) }
+        for (name in knowledgeNames) {
+            AiPromptFile.cleanupLegacyKnowledgeFolder(File(plugin.dataFolder, name))
+        }
+        // ②表情包文件夹改固定名提示
+        val memeFolderName = disk.getString("ai.memes.folder")?.trim().orEmpty()
+        if (memeFolderName.isNotBlank() && memeFolderName != AiMemeLibrary.FOLDER_NAME) {
+            val oldDir = File(plugin.dataFolder, memeFolderName)
+            val hasImages = oldDir.isDirectory && oldDir.listFiles()
+                ?.any { it.isFile && it.extension.lowercase() in AiMemeLibrary.IMAGE_EXTENSIONS } == true
+            if (hasImages) {
+                plugin.logger.warning(
+                    "配置升级：表情包文件夹已固定为 ${AiMemeLibrary.FOLDER_NAME}（ai.memes.folder 配置项已移除）；" +
+                        "检测到旧文件夹 $memeFolderName 里有图片，请把它们移入 ${AiMemeLibrary.FOLDER_NAME} 文件夹后删除旧文件夹"
+                )
+            }
         }
     }
 
@@ -703,12 +746,23 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 不再以 QQ 绑定为入口——没开绑定的服务器也能出榜）；
         // ③bot.groups 只写一对引号 ""（或纯空白）视为未填写（自动绑定与
         // 群白名单判定不再误判已配置）。
-        private const val CURRENT_CONFIG_VERSION = 57
+        private const val CURRENT_CONFIG_VERSION = 58
+        // 升 58——1.7.6.3（用户口径「把AI网页抓取功能变为正式版」+「简化最近新增的配置文件」）：
+        // ①AI 网页读取转正式功能：ai.crawler.enabled 默认关→开（旧测试期的
+        // 关闭默认是插件写入而非用户意图，升级自动收敛为开，自行改过的不动；
+        // 不需要的服主可在配置里改回 false）；ai.crawler.max-pages 默认 2→3
+        //（支持多次多层读取：搜索页 + 逐层深入）；②配置简化删四个调优键
+        //（升级自动删键，行为固定为原默认值）：ai.memes.folder（表情包文件夹
+        // 固定 guaipng）/ ai.memes.max-per-reply（每条回复最多 1 张）/
+        // ai.crawler.timeout-seconds（超时固定 10 秒）/ ai.crawler.max-chars
+        //（单页正文固定 6000 字符）；③旧知识库文件夹自动清理（1.7.6.2 首发
+        // 轮及更早生成的 knowledge 文件夹：空/只剩说明文件自动删，有用户
+        // 文件保留提示——见 initialize 的 cleanupLegacyKnowledgeFolders）。
         // 升 56——1.7.6.2：①ai.memes（表情包：enabled/folder/max-per-reply，
         // 默认开/guaipng/1）；②ai.knowledge（知识库文件夹检索：enabled/
-        // folder/max-chars，默认开/knowledge/2000）；③ai.crawler（网页爬取：
+        // folder/max-chars，默认开/knowledge/2000，升 57 已删）；③ai.crawler（网页爬取：
         // enabled/max-pages/max-chars/timeout-seconds，默认关/2/6000/10，
-        // 测试功能）；④bot.cluster.show-multi-cards（集群查在线/查性能多卡
+        // 测试功能，升 58 转正式）；④bot.cluster.show-multi-cards（集群查在线/查性能多卡
         // 显示开关，默认关）。
         // 升 57——1.7.6.2 覆盖轮（同号重发）：①AI 知识库改为提示词单文件：
         // ai.knowledge 整段废弃删键（knowledge 文件夹检索方案下线），
@@ -774,6 +828,15 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 检索方案下线；已放进去的 txt/md 不受影响，可把内容整理进提示词文件）
             "ai.system-prompt",
             "ai.knowledge",
+ // 升 58：1.7.6.3——配置简化删四个调优键（行为固定为原默认值）：
+ // ai.memes.folder（表情包文件夹固定 guaipng，自定义过文件夹名的服主
+ // 启动时日志提示把图片移入 guaipng）/ ai.memes.max-per-reply（每条 AI
+ // 回复最多 1 张表情包）/ ai.crawler.timeout-seconds（抓取超时固定 10 秒）/
+ // ai.crawler.max-chars（单页正文固定 6000 字符）
+            "ai.memes.folder",
+            "ai.memes.max-per-reply",
+            "ai.crawler.timeout-seconds",
+            "ai.crawler.max-chars",
             "render.performance.show-tps", "render.performance.show-mspt",
             "render.performance.show-memory", "render.performance.show-cpu",
             "render.performance.show-online",

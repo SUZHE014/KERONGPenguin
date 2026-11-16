@@ -106,4 +106,60 @@ object AiPromptFile {
             false
         }
     }
+
+    /**
+     * 清理旧知识库文件夹残留（1.7.6.3）：1.7.6.2 首发轮及更早版本会在
+     * 插件目录自动创建 knowledge 文件夹（知识库检索方案，1.7.6.2 覆盖轮
+     * 已下线），新版不再创建也不读取，但旧文件夹会留在磁盘上让用户
+     * 误以为还在生成——启动时自动清理：
+     * - 文件夹不存在 / 不是目录 → 无事发生；
+     * - 只含旧版自动生成的说明文件（或为空）→ 整个文件夹删除；
+     * - 有用户自己放的文件 → 保留不动，写日志提示把内容整理进提示词
+     *   文件后手动删除。
+     *
+     * @return 清理结果（冒烟直接断言）
+     */
+    fun cleanupLegacyKnowledgeFolder(dir: File?): CleanupResult {
+        if (dir == null || !dir.isDirectory) return CleanupResult.ABSENT
+        return try {
+            val files = dir.listFiles()?.toList() ?: emptyList()
+            val legacyReadme = files.filter { it.name == LEGACY_KNOWLEDGE_README }
+            val userFiles = files.filter { it.name != LEGACY_KNOWLEDGE_README }
+            if (userFiles.isEmpty()) {
+                // 空目录或只有旧说明文件：自动删除整个文件夹
+                legacyReadme.forEach { it.delete() }
+                val deleted = dir.delete()
+                PluginFileLog.write(
+                    "[提示词] 已清理废弃的知识库文件夹 ${dir.name}" +
+                        "（知识库已并入提示词文件，不再使用文件夹）"
+                )
+                if (deleted) CleanupResult.REMOVED else CleanupResult.KEPT
+            } else {
+                PluginFileLog.write(
+                    "[提示词] 检测到旧知识库文件夹 ${dir.name}（内有 ${userFiles.size} 个文件）；" +
+                        "知识库文件夹方案已下线，这些文件不会被读取，" +
+                        "可把有用内容整理进提示词文件后手动删除该文件夹"
+                )
+                CleanupResult.KEPT
+            }
+        } catch (t: Throwable) {
+            PluginFileLog.write("[提示词] 清理旧知识库文件夹失败（${t.message}）")
+            CleanupResult.KEPT
+        }
+    }
+
+    /** 旧版知识库文件夹里自动生成的说明文件名（用于识别“无用户内容”）。 */
+    const val LEGACY_KNOWLEDGE_README = "说明-把知识文件放进这里.txt"
+
+    /** [cleanupLegacyKnowledgeFolder] 的清理结果。 */
+    enum class CleanupResult {
+        /** 文件夹不存在，无需清理。 */
+        ABSENT,
+
+        /** 空文件夹 / 只有旧说明文件，已自动删除。 */
+        REMOVED,
+
+        /** 有用户文件（保留不动）或删除失败。 */
+        KEPT,
+    }
 }

@@ -153,6 +153,14 @@ internal object ConfigFileRebuilder {
             ))
         }
 
+ // AI 网页读取转正式功能（1.7.6.3，用户口径「把AI网页抓取功能变为正式版」）
+        // ——ai.crawler.enabled 默认关→开：测试期（1.7.6.2 首发）的 false 是
+        // 默认写入而非用户意图，升级自动收敛为开；自行开启过的配置不受影响
+        //（已是 true）；不想要的服主可在配置里改回 false
+        if (!disk.getBoolean("ai.crawler.enabled", true)) {
+            disk.set("ai.crawler.enabled", true)
+        }
+
  // 总在线时长获取源默认改存档（1.7.6 三次覆盖轮，用户口径「总在线时长
         // 信息源默认改为服务器存档」）——variable 是 1.7.6 首发 fillMissing
         // 写入的默认而非用户意图，升级时自动收敛为新默认 save-data；自行选

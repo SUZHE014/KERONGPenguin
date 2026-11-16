@@ -585,22 +585,10 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             true
         }
 
-    /** 表情包文件夹（插件目录下，默认 guaipng；目录不存在时自动创建）。 */
+    /** 表情包文件夹（插件目录下，固定 guaipng；1.7.6.3 起不再走配置改名，目录不存在时自动创建）。 */
     fun memesFolder(): java.io.File? {
         val base = dataFolder() ?: return null
-        val name = try {
-            plugin.config.getString("ai.memes.folder", "guaipng") ?: "guaipng"
-        } catch (_: Throwable) {
-            "guaipng"
-        }
-        return java.io.File(base, name.ifBlank { "guaipng" })
-    }
-
-    /** 每条 AI 回复最多发送几张表情包（ai.memes.max-per-reply，默认 1）。 */
-    fun aiMemesMaxPerReply(): Int = try {
-        plugin.config.getInt("ai.memes.max-per-reply", 1).coerceAtLeast(1)
-    } catch (_: Throwable) {
-        1
+        return java.io.File(base, AiMemeLibrary.FOLDER_NAME)
     }
 
     /** 提示词文件（插件目录下，默认 提示词.md；不存在时自动生成默认内容）。 */
@@ -614,35 +602,21 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         return java.io.File(base, name.ifBlank { AiPromptFile.DEFAULT_FILE_NAME })
     }
 
-    /** 网页爬取开关（ai.crawler.enabled，**默认关，测试功能**）。
-     * 开启后 AI 可通过 [GET] 标记请求读取网页（内网地址被拒绝，见 [WebCrawler]）。
+    /** 网页读取开关（ai.crawler.enabled，**默认开，正式功能**；1.7.6.3 起转正式版）。
+     * 开启后 AI 可通过 [GET] 标记请求读取网页（多次多层，内网地址被拒绝，见 [WebCrawler]）。
      */
     val isAiCrawlerEnabled: Boolean
         get() = try {
-            plugin.config.getBoolean("ai.crawler.enabled", false)
+            plugin.config.getBoolean("ai.crawler.enabled", true)
         } catch (_: Throwable) {
-            false
+            true
         }
 
-    /** 单次回答最多抓取页数（ai.crawler.max-pages，默认 2）。 */
+    /** 单次回答最多读取页数（ai.crawler.max-pages，默认 3：支持搜索页 + 逐层深入）。 */
     fun aiCrawlerMaxPages(): Int = try {
-        plugin.config.getInt("ai.crawler.max-pages", 2).coerceAtLeast(0)
+        plugin.config.getInt("ai.crawler.max-pages", 3).coerceAtLeast(0)
     } catch (_: Throwable) {
-        2
-    }
-
-    /** 网页抓取超时秒数（ai.crawler.timeout-seconds，默认 10）。 */
-    fun aiCrawlerTimeoutSeconds(): Int = try {
-        plugin.config.getInt("ai.crawler.timeout-seconds", 10).coerceAtLeast(3)
-    } catch (_: Throwable) {
-        10
-    }
-
-    /** 单页正文提取上限（ai.crawler.max-chars，默认 6000）。 */
-    fun aiCrawlerMaxChars(): Int = try {
-        plugin.config.getInt("ai.crawler.max-chars", 6000).coerceAtLeast(500)
-    } catch (_: Throwable) {
-        6000
+        3
     }
 
     /**

@@ -1,0 +1,6 @@
+冒烟编译运行 classpath（1.7.6.3）：
+  javac/java -cp "<repo>/build/dist/KERONGPenguin_Spigot-1.7.6.3.jar" Test1763.java
+运行于沙盒 /home/z/my-project/tooling/jdk21（21.0.13）；结果 29/29 全绿。
+门禁 verify_jar_1763.py 110/110（JAVAP=/home/z/my-project/tooling/jdk21/bin/javap）。
+FetchBing.java：真实网络端到端验证（必应中文搜索 URL 编码→重定向→搜索结果提取→链接保留），
+实际抓取成功（结果存 /tmp/bing_fetch_result.txt），随源码留档不进冒烟断言（网络依赖）。

@@ -723,28 +723,24 @@ coins-leaderboard:
 </div>
 
 <div class="cfg-item">
-<h4>AI 表情包 <span class="key">ai.memes.*</span></h4>
+<h4>AI 表情包 <span class="key">ai.memes.enabled</span></h4>
 <div class="config">
 <pre>ai:
   memes:
-    enabled: true        # 表情包总开关
-    folder: "guaipng"    # 文件夹名（插件目录下）
-    max-per-reply: 1     # 每条回复最多发几张</pre>
+    enabled: true   # 表情包开关（关闭后 AI 不知晓该能力）</pre>
 </div>
-<p>默认开。插件首次启动会自动创建插件目录的 guaipng 文件夹，把图片放进去（支持 png / jpg / jpeg / gif / webp / bmp，<b>动态 GIF 正常发送</b>），文件名 = 图片的含义（如「开心.png」「笑哭.gif」）；AI 觉得气氛合适时会在回复末尾输出 [表情] 文件名，插件把对应图片发到群里（发送失败仅记日志，不影响文字回复）。新增或删除图片立即生效，无需重启；建议单图 2MB 以内（最大 10MB），一个含义一张图。</p>
+<p>默认开。插件首次启动会自动创建插件目录的 guaipng 文件夹，把图片放进去（支持 png / jpg / jpeg / gif / webp / bmp，<b>动态 GIF 正常发送</b>），文件名 = 图片的含义（如「开心.png」「笑哭.gif」）；AI 觉得气氛合适时会在回复末尾输出 [表情] 文件名，插件把对应图片发到群里（每条回复最多 1 张，发送失败仅记日志，不影响文字回复）。新增或删除图片立即生效，无需重启；建议单图 2MB 以内（最大 10MB），一个含义一张图。文件夹名固定为 guaipng。</p>
 </div>
 
 <div class="cfg-item">
-<h4>AI 网页爬取（测试功能） <span class="key">ai.crawler.*</span></h4>
+<h4>AI 网页读取（正式功能） <span class="key">ai.crawler.*</span></h4>
 <div class="config">
 <pre>ai:
   crawler:
-    enabled: false        # ⚠ 测试功能，默认关
-    max-pages: 2          # 单次回答最多抓取页数
-    max-chars: 6000       # 单页正文提取上限
-    timeout-seconds: 10   # 抓取超时</pre>
+    enabled: true    # 正式功能，默认开；改 false 关闭
+    max-pages: 3     # 单次回答最多读取页数（多层深入也受此上限约束）</pre>
 </div>
-<p><b>默认关闭（测试功能）</b>。开启后 AI 需要先看某个网页才能回答时，会输出 [GET] 网址标记，插件抓取网页正文回传给 AI 继续生成；网页读取失败时 AI 会用自然语言告知（不会把错误码等技术细节甩给用户）；仅允许 http/https 公网页，回环 / 内网地址被拒绝（防 SSRF），响应体最多读 2MB、仅接受文本类内容。⚠ 抓取质量与稳定性有限，仅供测试，<b>生产环境建议保持关闭</b>。</p>
+<p><b>默认开启</b>。AI 需要看网页或搜索资料才能回答时，会输出 [GET] 网址标记，插件抓取网页正文回传给 AI 继续生成。<b>支持多次多层读取</b>：AI 可以先读搜索页 / 入口页，再继续读页面里的链接逐层深入；需要搜索时 AI 会用<b>必应（bing.com）</b>搜索引擎。网页读取失败时 AI 会用自然语言告知（不会把错误码等技术细节甩给用户）；仅允许 http/https 公网页，回环 / 内网地址被拒绝（防 SSRF），响应体最多读 2MB、仅接受文本类内容。⚠ <b>每次读取的网页内容都会消耗额外 token</b>（按 max-pages 页计），接口按 token 计费时请留意用量；不想要可改回 false。</p>
 </div>
 
 <div class="cfg-item">
