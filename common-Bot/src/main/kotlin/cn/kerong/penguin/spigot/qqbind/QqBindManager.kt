@@ -623,11 +623,20 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             true
         }
 
-    /** 单次回答最多读取页数（ai.crawler.max-pages，默认 3：搜索页+逐层深入；多层爬取上限）。 */
+    /** 单次回答最多读取的网页总数（ai.crawler.max-pages，默认 8：各层累计含搜索页；
+     * 1.7.6.3 二次覆盖轮拆分出多层层数上限后默认 3→8，见 aiCrawlerMaxLayers）。 */
     fun aiCrawlerMaxPages(): Int = try {
-        plugin.config.getInt("ai.crawler.max-pages", 3).coerceAtLeast(0)
+        plugin.config.getInt("ai.crawler.max-pages", 8).coerceAtLeast(0)
     } catch (_: Throwable) {
-        3
+        8
+    }
+
+    /** 多层深入的最大层数（ai.crawler.max-layers，默认 4：第 1 层 = 入口/搜索页，
+     * 之后每深入一层 +1；1.7.6.3 二次覆盖轮新增，与页数上限分开两个键）。 */
+    fun aiCrawlerMaxLayers(): Int = try {
+        plugin.config.getInt("ai.crawler.max-layers", 4).coerceAtLeast(1)
+    } catch (_: Throwable) {
+        4
     }
 
     /** 网页读取超时秒数（ai.crawler.timeout-seconds，默认 10；1.7.6.3 覆盖轮恢复）。 */

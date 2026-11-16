@@ -353,6 +353,20 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 触发的 Full GC 停顿伤 tick，内存释放改为确定性 flush，见 CardRenderPool）
  // 移除 render.idle-gc-hint（空闲 GC 提示——Full GC 全停顿
         // 可能落在玩家游玩时刻造成卡顿，内存归还交给 JVM 自然节奏）
+ // 单次回答读取上限 3→8（1.7.6.3 二次覆盖轮，用户口径「单次网页爬取
+        // 上限改为8次」）——历史默认 2（1.7.6.2 首发）/ 3（1.7.6.3 首发）是
+        // 默认写入而非用户意图，升级自动收敛为新默认 8；自行改过（如改成 5）
+        // 的不动；新键 ai.crawler.max-layers 由 fillMissing 补入（默认 4）
+        //（ConfigFileRebuilder 内同款收敛是文本级重建主路径，此处是
+        // 重建失败兑底路径的双保险）
+        if (oldVersion in 1 until 60) {
+            val oldPages = config.getInt("ai.crawler.max-pages", -1)
+            if (oldPages == 2 || oldPages == 3) {
+                config.set("ai.crawler.max-pages", 8)
+                plugin.logger.info("AI 网页读取：单次回答读取上限已升级为新默认 8 页（旧默认 2/3 自动收敛，自定义值不受影响）")
+                changed = true
+            }
+        }
  // 移除 render.performance.show-*（查性能卡片指标固定四项
         // TPS / MSPT / 内存 / CPU，不再提供单项显隐；在线人数卡已删）
         for (removed in REMOVED_CONFIG_KEYS) {
@@ -753,7 +767,17 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 不再以 QQ 绑定为入口——没开绑定的服务器也能出榜）；
         // ③bot.groups 只写一对引号 ""（或纯空白）视为未填写（自动绑定与
         // 群白名单判定不再误判已配置）。
-        private const val CURRENT_CONFIG_VERSION = 59
+        private const val CURRENT_CONFIG_VERSION = 60
+        // 升 60——1.7.6.3 二次覆盖轮（用户口径「单次网页爬取上限改为8次，
+        // 多层爬取上限默认改为4次」+「确保每个配置都有注释」）：
+        // ①两个上限拆成两个键分开配置：ai.crawler.max-pages 语义明确为
+        // 「单次回答最多读取的网页总数（各层累计）」默认 3→8；新增
+        // ai.crawler.max-layers（多层深入的最大层数，第 1 层 = 入口/搜索页，
+        // 默认 4）；②对话循环达上限（页数/层数任一先到）时不再直接断路：
+        // 追加一轮「预算用尽」反馈让模型基于已读内容把回答说完（旧版多层
+        // 深入中途达上限时用户只能拿到一句死路提示，见 AiChat.runConversation
+        // 与 AiChat.exhaustedFeedback）；③三端 config.yml 全键注释覆盖
+        // （每个配置键都有注释，无注释键补齐）。
         // 升 59——1.7.6.3 覆盖轮（用户口径「简化是注释简化」+「恢复三个键」+「多层爬取上限可配置」+「重构插件文件夹结构」）：
         // ①注释简化：最近新增配置段（AI 表情包/提示词/网页读取、集群多卡、
         // 假人白名单、假人列表、总在线时长源等）注释精简为每段一两行、
@@ -1127,12 +1151,14 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "ai.at-enabled" to true,
             "ai.reminder-mode" to "",
  // 1.7.6.3 覆盖轮恢复的三键（升 58 曾随"配置简化"删除，用户口径恢复；
- // 默认值与历史版本一致）
+ // 默认值与历史版本一致）；二次覆盖轮：max-pages 默认 3→8 +
+ // 新增 max-layers（多层层数上限，默认 4，与页数上限分开两个键）
             "ai.memes.enabled" to true,
             "ai.memes.max-per-reply" to 1,
             "ai.prompt-file" to AiPromptFile.DEFAULT_FILE_NAME,
             "ai.crawler.enabled" to true,
-            "ai.crawler.max-pages" to 3,
+            "ai.crawler.max-pages" to 8,
+            "ai.crawler.max-layers" to 4,
             "ai.crawler.timeout-seconds" to 10,
             "ai.crawler.max-chars" to 6000,
         ).apply {

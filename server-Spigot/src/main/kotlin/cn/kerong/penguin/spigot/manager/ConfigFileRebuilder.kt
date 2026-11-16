@@ -161,6 +161,17 @@ internal object ConfigFileRebuilder {
             disk.set("ai.crawler.enabled", true)
         }
 
+ // 单次回答读取上限 3→8（1.7.6.3 二次覆盖轮，用户口径「单次网页爬取
+        // 上限改为8次」）——历史默认 2（1.7.6.2 首发 fillMissing）/ 3
+        //（1.7.6.3 首发轮）都是默认写入而非用户意图，升级自动收敛为新
+        // 默认 8；自行改过（如改成 5）的不动；新键 ai.crawler.max-layers
+        //（默认 4）由缺键回填路径补入（reload 内同款收敛是重建失败
+        // 兑底路径的双保险）
+        val oldPages = disk.getInt("ai.crawler.max-pages", -1)
+        if (oldPages == 2 || oldPages == 3) {
+            disk.set("ai.crawler.max-pages", 8)
+        }
+
  // 总在线时长获取源默认改存档（1.7.6 三次覆盖轮，用户口径「总在线时长
         // 信息源默认改为服务器存档」）——variable 是 1.7.6 首发 fillMissing
         // 写入的默认而非用户意图，升级时自动收敛为新默认 save-data；自行选

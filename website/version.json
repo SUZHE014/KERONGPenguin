@@ -2,10 +2,10 @@
   "version": "1.7.6.3",
   "url": "https://kerong.xin/penguin/",
   "changelog": [
-    "① AI 网页读取转正式功能（默认开，支持多层深入，搜索走必应；每页消耗额外 token）",
+    "① AI 网页读取正式功能（多层深入 + 必应搜索）；两个上限分开配置：单次回答读取网页总数 max-pages（默认 3→8）+ 多层层数 max-layers（新增，默认 4）；达到上限后 AI 基于已读内容直接作答，不再中断",
     "② 表情包缩小：静态图发送前自动缩到表情大小（约 240px 转 GIF），动图原样",
-    "③ 重构插件文件夹：根目录只留 config.yml / 提示词 / 表情包 guaipng / 背景图 img，其余（绑定数据、日志、模板、缓存）自动迁入 globalconfig/ 文件夹",
-    "④ 配置注释精简；恢复 ai.memes.max-per-reply / ai.crawler.timeout-seconds / ai.crawler.max-chars 三键，多层爬取上限 ai.crawler.max-pages（默认 3）可配置",
-    "⑤ config-version 57 → 59，升级自动迁移，已改值不动"
+    "③ 重构插件文件夹：根目录只留 config.yml / 提示词 / 表情包 guaipng / 背景图 img，其余自动迁入 globalconfig/ 文件夹",
+    "④ 恢复 ai.memes.max-per-reply / ai.crawler.timeout-seconds / ai.crawler.max-chars 三键；配置全键注释覆盖（每个键都有注释）",
+    "⑤ config-version 59 → 60，升级自动收敛（读取上限旧默认 2/3 自动升 8，自定义值不动）"
   ]
 }

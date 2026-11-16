@@ -22,7 +22,11 @@ import java.io.File
  *   抓取网页、把内容回传给模型继续生成——支持多次多层读取（先读
  *   入口页/搜索页，再继续读页面里的链接逐层深入；需要搜索时用必应
  *   bing.com），防 SSRF 与体积约束见 [WebCrawler]；默认开启
- *   （ai.crawler.enabled，读取次数上限 ai.crawler.max-pages）；
+ *   （ai.crawler.enabled）；两个上限分开配置：单次回答读取的网页
+ *   总数 ai.crawler.max-pages（默认 8，各层累计）与多层深入的层数
+ *   ai.crawler.max-layers（默认 4，第 1 层 = 入口/搜索页）；
+ *   达到任一上限时不再直接断路——追加一轮「预算用尽」反馈
+ *   （见 [exhaustedFeedback]），让模型基于已读内容把回答说完；
  *   读取失败时回传统一失败文案与自然语言引导，
  *   模型不会把错误码 / 技术原因复述给用户；
  * - **提示词文件**：角色设定与专属知识写在插件目录的单个 .md 文件里
@@ -160,6 +164,10 @@ object AiChat {
      *    继续下一轮生成；
      * 3. 无标记 / 爬取关闭 / 达上限 → 返回最终回复（残留标记剥离）。
      * 中间轮不写入持久上下文。
+     * 达上限（页数 max-pages 或层数 max-layers 任一先到）时先追加一轮
+     * 「预算用尽」反馈（exhaustedFeedback，只追加一次）让模型基于已读
+     * 内容直接作答——旧版在这里断路，多层深入中途达上限时用户只能拿到
+     * 一句死路提示；反馈后仍要读才按兜底文案返回。
      * @return Pair(最终回复, 实际抓取页数)
      */
     private fun runConversation(
@@ -170,10 +178,15 @@ object AiChat {
         working: MutableList<JSONObject>,
     ): Pair<String?, Int> {
         val crawlerEnabled = manager?.isAiCrawlerEnabled == true
-        val maxFetch = if (crawlerEnabled) (manager.aiCrawlerMaxPages()).coerceAtLeast(0) else 0
+        val maxPages = if (crawlerEnabled) (manager.aiCrawlerMaxPages()).coerceAtLeast(0) else 0
+        // 多层层数上限（开启读取时至少允许一层；关闭读取时为 0 不参与判定）
+        val maxLayers = if (maxPages > 0) (manager?.aiCrawlerMaxLayers() ?: 4).coerceAtLeast(1) else 0
         var fetched = 0
-        // 轮次护栏：每抓一页至少多一轮生成，加余量防异常循环
-        val maxRounds = maxFetch + 3
+        var layers = 0
+        // 是否已发过「预算用尽」反馈（只发一次，防模型反复要读无限拉长对话）
+        var exhaustedNotified = false
+        // 轮次护栏：每页/每层至少多一轮生成，加收尾余量防异常循环
+        val maxRounds = maxPages + maxLayers + 4
         var reply: String? = null
 
         var round = 0
@@ -206,8 +219,18 @@ object AiChat {
             if (urls.isEmpty()) {
                 return Pair(reply, fetched)
             }
-            // 爬取关闭 / 已达上限：剥离残留标记，避免把协议标记发给用户
-            if (maxFetch <= 0 || fetched >= maxFetch) {
+            // 达到页数/层数上限：先追加一轮「预算用尽」反馈（只追加一次）
+            // 让模型把回答说完；已反馈过仍要读 → 剥离标记按兜底文案返回
+            if (maxPages <= 0 || fetched >= maxPages || layers >= maxLayers) {
+                if (maxPages > 0 && !exhaustedNotified) {
+                    exhaustedNotified = true
+                    working.add(JSONObject().apply { put("role", "assistant"); put("content", reply) })
+                    working.add(JSONObject().apply {
+                        put("role", "user")
+                        put("content", exhaustedFeedback(maxPages, maxLayers))
+                    })
+                    continue
+                }
                 val cleaned = stripGetMarkers(reply)
                 return Pair(
                     cleaned.ifBlank { "（网页读取功能未开启或已达上限，本次未能读取网页）" },
@@ -216,11 +239,11 @@ object AiChat {
             }
             // 模型请求读网页：记录其回复，抓取后把内容回传
             working.add(JSONObject().apply { put("role", "assistant"); put("content", reply) })
-            val take = urls.take(maxFetch - fetched)
+            val take = urls.take(maxPages - fetched)
             val page = StringBuilder()
             for (targetUrl in take) {
                 fetched++
-                PluginFileLog.write("[AI对话] 网页读取（${fetched}/$maxFetch）: $targetUrl")
+                PluginFileLog.write("[AI对话] 网页读取（第 ${layers + 1} 层，${fetched}/$maxPages 页）: $targetUrl")
                 page.append(
                     buildPageFeedback(
                         targetUrl,
@@ -232,6 +255,7 @@ object AiChat {
                     )
                 ).append("\n\n")
             }
+            layers++
             working.add(JSONObject().apply { put("role", "user"); put("content", page.toString().trim()) })
         }
         // 超出轮次护栏：按最后一轮回复返回（剥离残留标记）
@@ -265,7 +289,9 @@ object AiChat {
         if (manager.isAiCrawlerEnabled) {
             sb.append("\n- 读网页：需要先看某个网页或搜索资料才能回答时，输出一行 [GET] 网址")
             sb.append("（一次回答也可以多行读多个网页，插件会把网页内容回传给你继续回答）")
-            sb.append("（每次回答最多读 ").append(manager.aiCrawlerMaxPages()).append(" 页，能直接回答就不读；")
+            sb.append("（每次回答最多读 ").append(manager.aiCrawlerMaxPages()).append(" 页、最多深入 ")
+                .append(manager.aiCrawlerMaxLayers()).append(" 层，能直接回答就不读；")
+            sb.append("达到上限后直接基于已读内容回答，不要再输出标记；")
             sb.append("需要搜索时用必应搜索引擎，如 [GET] https://www.bing.com/search?q=关键词；")
             sb.append("回传的网页内容里带有链接（文字（网址）形式），需要深入时可以继续 [GET] 这些链接逐层阅读；")
             sb.append("仅 http/https 公网页，内网地址会被拒绝；")
@@ -289,6 +315,18 @@ object AiChat {
         } else {
             "[网页内容] $targetUrl\n$fetched"
         }
+    }
+
+    /**
+     * 达到读取上限（页数 / 层数任一先到）时回传给模型的收尾反馈
+     * （纯函数，冒烟直接验证）：让模型基于已读内容直接作答，不再输出 [GET]。
+     * 旧版在这里直接断路——多层深入中途达上限时，用户的提问只剩一句
+     * 死路提示；现在改为追加一轮反馈把回答说完（只追加一次）。
+     */
+    fun exhaustedFeedback(maxPages: Int, maxLayers: Int): String {
+        return "（已达到网页读取上限：最多 $maxPages 页 / $maxLayers 层。）" +
+            "请不要再输出 [GET]，现在直接基于已读到的网页内容回答用户；" +
+            "信息不足时基于已有知识回答，并向用户说明这部分可能不够准确。"
     }
 
     /** 解析回复中全部 [GET] 网址（去重、保序）。 */

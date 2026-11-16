@@ -10,10 +10,11 @@
 # ============================================================
 
 # 配置文件版本号（插件自动维护，勿改）
-config-version: 59
+config-version: 60
 
 # 启动后自动联网检查新版本（改这里需重启才生效）
 update-check:
+  # 检查开关（false = 不联网检查）
   enabled: true
   # mirror-url: "off"   # 官网不可达时的备用镜像（off = 关闭回退）
 
@@ -26,6 +27,7 @@ bot:
   # 机器人的 AppID 与密钥（QQ 开放平台获取，教程见官网；密钥注意保密）
   # ⚠ 改这两项后必须重启服务器
   app-id: ""
+  # 密钥（QQ 开放平台获取，与 AppID 同段；⚠ 改后必须重启）
   secret: ""
   # 机器人名称（仅用于显示）
   name: "KERONGPenguin"
@@ -40,6 +42,7 @@ bot:
   # 时各服配置 name（本服显示名）与 members（全部成员名，各服一致）；
   # 配置后群里命令先弹「选择服务器」按钮，由所选服处理
   cluster:
+    # 本服显示名（单服留空 = 用 serverName）
     name: ""
     # 示例（去掉行首 # 生效）：members: ["生存服", "创造服"]
     members: []
@@ -68,16 +71,23 @@ player-events:
   # 玩家进服 / 离服 / 死亡是否向群播报（只发给 bot.groups 里的群）
   # 文案可用：{name} 玩家名、{server} 服务器名、{platform} 平台
   join:
+    # 进服播报开关
     enabled: true
+    # 进服播报文案
     format: "[游戏] {name} 加入了服务器"
+  # 离服播报（与进服同结构）
   quit:
+    # 离服播报开关
     enabled: true
+    # 离服播报文案
     format: "[游戏] {name} 离开了服务器"
   # 死亡播报（默认关闭，开启后玩家死亡向群播报）
   # 除通用占位符外还可用：{message} 自动生成的中文死亡描述（如
   # 「Steve 被苦力怕杀死了」）、{killer} 击杀者名（环境死亡时为「未知」）
   death:
+    # 死亡播报开关（默认关）
     enabled: false
+    # 死亡播报文案（{message} 自动中文死亡描述）
     format: "[游戏] {message}"
 
 # ---------------- 服务器开关消息 ----------------
@@ -90,21 +100,29 @@ server-notify:
   # 发 restart 重启文案；超过这个时长再开机按普通开机处理，发 start 开机文案；
   # 0 = 不判定重启，一律按普通开机播报
   restart-window: 180
+  # 正常关闭时发送
   shutdown:
+    # 发送开关
     enabled: true
     # 可用占位符：{server}、{platform}
     message: "[状态]\n服务器已正常关闭"
+  # 判定为重启时发送
   restart:
+    # 发送开关
     enabled: true
     # 上次正常关闭后在 restart-window 秒内再次开机时发送（判定为重启）
     # 可用占位符：{server}、{platform}
     message: "[状态]\n服务器重启完毕，已正常运行(o‿∩)"
+  # 普通开机时发送
   start:
+    # 发送开关
     enabled: true
     # 上次正常关闭后超过 restart-window 秒再开机时发送（普通开机）；首次安装不发送
     # 可用占位符：{server}、{platform}
     message: "[状态]\n服务器已开启！！(≧∇≦)/"
+  # 上次未正常关闭时发送
   crash:
+    # 发送开关
     enabled: true
     # 上次运行没有正常关闭（崩溃、kill -9、断电等）时，下次启动后发送
     # 可用占位符：{server}、{platform}
@@ -129,6 +147,7 @@ command-sender: "Auto"
 motd:
   # 服务器公网 IP 与端口（供下方 api 地址里的 {ip} {port} 替换）
   server-ip: ""
+  # 公网端口（与 server-ip 配套，供状态图 api 占位符替换）
   server-port: 0
   # 服务器状态图 API（{ip} {port} 自动替换；不需要状态图可留空）
   api: "http://motd.txssb.cn/api/app_img?ip={ip}&port={port}&dark=true&lang=zh-CN"
@@ -169,6 +188,7 @@ render:
   command-cooldown-seconds: 5
   # 各卡片是否用内置背景图（false = 用 img/ 文件夹随机图，无图自动回退）
   info-card-builtin-background: true
+  # 查在线列表卡片内置背景（false = 用 img/ 随机图）
   online-list-builtin-background: true
   # 查性能卡片（固定五项：TPS / MSPT / 内存 / CPU / 在线人数）
   performance:
@@ -186,6 +206,7 @@ render:
 # /hbkrg bpng（图片包列表 / 下载）总开关；关闭后命令只回复
 # 「管理员已关闭图片下载功能」；/hbkrg bpngsz 切换背景不受影响
 image-download:
+  # 图片下载总开关
   enabled: true
 
 # ---------------- 背景图说明（无需配置） ----------------
@@ -280,6 +301,7 @@ qq-bind:
     - "&7（绑定码 {expire} 分钟内有效）"
   # 绑定码有效期（分钟）与位数（4-8）
   code-expire-minutes: 10
+  # 绑定码位数（4-8）
   code-length: 5
   # 【Fabric 版】未绑定玩家的限制策略：进入服务器后限制全部互动
   # 未绑定玩家的限制超时踢出秒数（Fabric 版；Spigot/NeoForge 为登录期拦截无此阶段）
@@ -292,7 +314,9 @@ qq-bind:
   max-players-per-qq: 1
   # 每日签到（群里发 /签到）
   checkin:
+    # 签到开关（默认关）
     enabled: false
+    # 签到回复前缀
     prefix: "[签到]"
     # 金币奖励（经 Vault 发放；未装 Vault 但装了 CoinsEngine 时改走它；
     # 都没装时签到照常累计天数不发放）
@@ -406,6 +430,7 @@ filter-regex: []
 # qq/both 下管理类按钮仅群主/群管理员可点；config 模式按钮改为点击
 # 填入输入栏手动发送，按名单判定（增删立即生效）
 admin:
+  # 管理员判定模式（qq / both / config）
   mode: qq
   # 管理员名单（填 OpenId，群里发 /查信息 获取；每项加双引号）
   openids: []
@@ -455,6 +480,7 @@ ai:
   server-prefix: "ai"
   # AI 回复显示前缀（游戏内 / 群内）
   server-output-prefix: "[AI]"
+  # QQ 群里回复的前缀
   qq-output-prefix: "[AI]"
   # 接口地址（DeepSeek：https://api.deepseek.com；OpenAI 记得加 /v1）
   base-url: "https://api.deepseek.com"
@@ -476,6 +502,7 @@ ai:
   # 图片放插件目录 guaipng 文件夹（支持 png/jpg/jpeg/gif/webp/bmp），
   # 文件名 = 图片含义；发送时自动缩到表情大小，文件增删即时生效
   memes:
+    # 表情包开关（关闭后 AI 不发表情）
     enabled: true
     # 每条回复最多发几张
     max-per-reply: 1
@@ -484,11 +511,14 @@ ai:
   prompt-file: "提示词.md"
   # ---------- AI 网页读取（正式功能，默认开） ----------
   # AI 需要时自动读网页（可多层深入），搜索走必应（bing.com）；
-  # ⚠ 每次读取的网页内容都会消耗额外 token（按 max-pages 页计）
+  # ⚠ 每次读取的网页内容都会消耗额外 token（按读取页数计）
   crawler:
+    # 网页读取开关
     enabled: true
-    # 单次回答最多读取页数（多层爬取上限）
-    max-pages: 3
+    # 单次回答最多读取的网页总数（各层累计，含搜索页）
+    max-pages: 8
+    # 多层深入的最大层数（第 1 层 = 入口/搜索页，逐层 +1）
+    max-layers: 4
     # 单页正文提取上限（字符）
     max-chars: 6000
     # 读取超时秒数
