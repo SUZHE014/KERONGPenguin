@@ -45,8 +45,12 @@ def excluded(rel):
     if rel.startswith("scripts/smoke1762o/out") or rel.startswith("scripts/smoke1762o/workdir"):
         return True
     # 1.7.6.3：smoke1763 的 .class 编译产物直接在目录根（无 out/ 子目录），
-    # 排除 .class；FetchBing.java 为真实网络验证留档随包
+    # 排除 .class；FetchBing.java 为真实网络验证留档随包；
+    # 1.7.6.3 覆盖轮：smoke1763o 同口径（注意 startswith 需含尾部斜杠，
+    # 否则 smoke1763/ 不会匹配 smoke1763o/——两目录都要各自列出）
     if rel.startswith("scripts/smoke1763/") and rel.endswith(".class"):
+        return True
+    if rel.startswith("scripts/smoke1763o/") and rel.endswith(".class"):
         return True
     if rel.startswith("scripts/smoke176/") and (rel.endswith(".class") or "/out/" in rel):
         return True
