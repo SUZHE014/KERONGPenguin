@@ -2,10 +2,10 @@
   "version": "1.7.6.3",
   "url": "https://kerong.xin/penguin/",
   "changelog": [
-    "① AI 网页读取转为正式功能：默认开启（原测试期默认关闭，升级自动转为开启，不需要可在 ai.crawler.enabled 改回 false）；支持多次多层读取——AI 可先读搜索页 / 入口页，再继续读页面里的链接逐层深入（回传的网页内容带链接），一次回答最多读 ai.crawler.max-pages（默认 3）页；需要搜索资料时 AI 会用必应（bing.com）搜索引擎，中文关键词自动编码",
-    "② AI 网页读取注明 token 消耗：每次读取的网页内容都会消耗额外 token（按 max-pages 页计），接口按 token 计费时请留意用量（配置注释与官网教程均已标明）",
-    "③ 修复升级后插件目录仍出现旧知识库文件夹的问题：旧版（知识库文件夹方案）生成的 knowledge 文件夹新版已不再创建、不再读取，升级后启动时自动清理——空文件夹 / 只剩自动生成的说明文件直接删除，有自己放的文件则保留并提示整理进提示词文件",
-    "④ 简化 AI 配置：删除四个调优键（升级自动删，行为固定为原默认值）——ai.memes.folder（表情包文件夹固定 guaipng，自定义过文件夹名的启动时提示移入）、ai.memes.max-per-reply（每条回复最多 1 张）、ai.crawler.timeout-seconds（超时固定 10 秒）、ai.crawler.max-chars（单页正文固定 6000 字符）；AI 段保留 ai.memes.enabled / ai.prompt-file / ai.crawler.enabled / ai.crawler.max-pages 四键",
-    "⑤ config-version 57 → 58（升级自动删废弃键并重建注释，已改值不动）"
+    "① AI 网页读取转正式功能（默认开，支持多层深入，搜索走必应；每页消耗额外 token）",
+    "② 表情包缩小：静态图发送前自动缩到表情大小（约 240px 转 GIF），动图原样",
+    "③ 重构插件文件夹：根目录只留 config.yml / 提示词 / 表情包 guaipng / 背景图 img，其余（绑定数据、日志、模板、缓存）自动迁入 globalconfig/ 文件夹",
+    "④ 配置注释精简；恢复 ai.memes.max-per-reply / ai.crawler.timeout-seconds / ai.crawler.max-chars 三键，多层爬取上限 ai.crawler.max-pages（默认 3）可配置",
+    "⑤ config-version 57 → 59，升级自动迁移，已改值不动"
   ]
 }

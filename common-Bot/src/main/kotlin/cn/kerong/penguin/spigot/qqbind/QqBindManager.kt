@@ -107,12 +107,16 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
     init {
         val dataFolder = plugin.dataFolder
         if (!dataFolder.exists()) dataFolder.mkdirs()
-        quuidFolder = File(dataFolder, "QUUID")
+ // 数据目录重构（1.7.6.3 覆盖轮）：绑定数据/日志/AI 上下文等杂项
+ // 全部位于 globalconfig/ 子目录（迁移见 DataLayout，在 ConfigManager
+ // 初始化最早阶段已执行）；根目录只留 config.yml/提示词/guaipng/img
+        val global = File(cn.kerong.penguin.spigot.manager.DataLayout.globalDir(dataFolder), "")
+        quuidFolder = File(global, "QUUID")
         if (!quuidFolder.exists()) quuidFolder.mkdirs()
         indexFile = File(quuidFolder, "index.yml")
         skipFile = File(quuidFolder, "skip.yml")
-        logFile = File(dataFolder, "logs/qq/qq-bind.log")
-        contextFile = File(dataFolder, "ai-context.yml")
+        logFile = File(global, "logs/qq/qq-bind.log")
+        contextFile = File(global, "ai-context.yml")
         blacklistFile = File(quuidFolder, "blacklist.yml")
         loadIndex()
         loadSkip()
@@ -591,6 +595,13 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         return java.io.File(base, AiMemeLibrary.FOLDER_NAME)
     }
 
+    /** 每条 AI 回复最多发送几张表情包（ai.memes.max-per-reply，默认 1；1.7.6.3 覆盖轮恢复）。 */
+    fun aiMemesMaxPerReply(): Int = try {
+        plugin.config.getInt("ai.memes.max-per-reply", AiChat.MEME_MAX_PER_REPLY).coerceAtLeast(1)
+    } catch (_: Throwable) {
+        AiChat.MEME_MAX_PER_REPLY
+    }
+
     /** 提示词文件（插件目录下，默认 提示词.md；不存在时自动生成默认内容）。 */
     fun aiPromptFile(): java.io.File? {
         val base = dataFolder() ?: return null
@@ -612,11 +623,25 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             true
         }
 
-    /** 单次回答最多读取页数（ai.crawler.max-pages，默认 3：支持搜索页 + 逐层深入）。 */
+    /** 单次回答最多读取页数（ai.crawler.max-pages，默认 3：搜索页+逐层深入；多层爬取上限）。 */
     fun aiCrawlerMaxPages(): Int = try {
         plugin.config.getInt("ai.crawler.max-pages", 3).coerceAtLeast(0)
     } catch (_: Throwable) {
         3
+    }
+
+    /** 网页读取超时秒数（ai.crawler.timeout-seconds，默认 10；1.7.6.3 覆盖轮恢复）。 */
+    fun aiCrawlerTimeoutSeconds(): Int = try {
+        plugin.config.getInt("ai.crawler.timeout-seconds", WebCrawler.DEFAULT_TIMEOUT_SECONDS).coerceAtLeast(3)
+    } catch (_: Throwable) {
+        WebCrawler.DEFAULT_TIMEOUT_SECONDS
+    }
+
+    /** 单页正文提取上限（ai.crawler.max-chars，默认 6000；1.7.6.3 覆盖轮恢复）。 */
+    fun aiCrawlerMaxChars(): Int = try {
+        plugin.config.getInt("ai.crawler.max-chars", WebCrawler.DEFAULT_MAX_CHARS).coerceAtLeast(500)
+    } catch (_: Throwable) {
+        WebCrawler.DEFAULT_MAX_CHARS
     }
 
     /**

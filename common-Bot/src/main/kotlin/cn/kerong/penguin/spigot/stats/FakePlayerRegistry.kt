@@ -75,11 +75,11 @@ object FakePlayerRegistry {
     /** 文件保存互斥（join 主线程串行调用，双保险）。 */
     private val saveLock = Any()
 
-    /** 登记文件所在目录（数据目录；null = 未就绪，全部判定退化为仅名单判定）。 */
+    /** 登记文件所在目录（数据目录 globalconfig/，1.7.6.3 覆盖轮重构；null = 未就绪，全部判定退化为仅名单判定）。 */
     private fun dataDirectory(): File? =
-        (BotShared.instance as? JavaPlugin)?.dataFolder
+        (BotShared.instance as? JavaPlugin)?.dataFolder?.resolve("globalconfig")
 
-    /** 登记文件（数据目录/fake-players.json）。 */
+    /** 登记文件（globalconfig/fake-players.json）。 */
     private fun registryFile(): File? = dataDirectory()?.resolve("fake-players.json")
 
     /**

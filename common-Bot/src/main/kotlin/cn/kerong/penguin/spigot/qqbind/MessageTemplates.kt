@@ -297,8 +297,8 @@ object MessageTemplates {
         null
     }
 
-    /** 模板目录（数据目录下 Markdown/）。 */
-    private fun directory(): File? = plugin()?.dataFolder?.resolve(DIRECTORY)
+    /** 模板目录（数据目录 globalconfig/Markdown/，1.7.6.3 覆盖轮重构）。 */
+    private fun directory(): File? = plugin()?.dataFolder?.resolve("globalconfig/$DIRECTORY")
 
     /**
      * 从 messages 配置段读取模板 ID 对应的文件名（缺省 = <ID>.md）。

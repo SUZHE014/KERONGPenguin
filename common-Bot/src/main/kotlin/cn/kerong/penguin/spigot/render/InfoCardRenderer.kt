@@ -1596,12 +1596,12 @@ object InfoCardAssets {
         }
     }
 
-    /** 磁盘缓存目录（plugins/KERONGPenguin/cache/avatars/）。 */
+    /** 磁盘缓存目录（数据目录 globalconfig/cache/avatars/，1.7.6.3 覆盖轮重构）。 */
     private fun avatarDiskDir(): File? {
         return try {
             val pluginDir = cn.kerong.bot.provider.BotShared.instance
                 ?.configFile?.parentFile ?: return null
-            val dir = pluginDir.resolve("cache/avatars")
+            val dir = pluginDir.resolve("globalconfig/cache/avatars")
             if (!dir.exists() && !dir.mkdirs()) return null
             dir
         } catch (_: Throwable) {

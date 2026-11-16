@@ -226,8 +226,8 @@ object AiChat {
                         targetUrl,
                         WebCrawler.fetch(
                             targetUrl,
-                            WebCrawler.DEFAULT_TIMEOUT_SECONDS,
-                            WebCrawler.DEFAULT_MAX_CHARS,
+                            manager?.aiCrawlerTimeoutSeconds() ?: WebCrawler.DEFAULT_TIMEOUT_SECONDS,
+                            manager?.aiCrawlerMaxChars() ?: WebCrawler.DEFAULT_MAX_CHARS,
                         )
                     )
                 ).append("\n\n")
@@ -257,7 +257,7 @@ object AiChat {
             val memeSection = AiMemeLibrary.renderPromptSection(dir)
             if (memeSection.isNotEmpty()) {
                 sb.append("\n- 发表情包：气氛合适想发表情时，在回复末尾加 [表情] 文件名")
-                sb.append("（每次回复最多 ").append(MEME_MAX_PER_REPLY).append(" 张）\n")
+                sb.append("（每次回复最多 ").append(manager.aiMemesMaxPerReply()).append(" 张）\n")
                 sb.append(memeSection)
             }
         }
@@ -327,7 +327,7 @@ object AiChat {
         if (manager == null || !manager.isAiMemesEnabled) return emptyList()
         val dir = manager.memesFolder() ?: return emptyList()
         if (!dir.isDirectory) return emptyList()
-        val keywords = parseMemeKeywords(reply, MEME_MAX_PER_REPLY)
+        val keywords = parseMemeKeywords(reply, manager.aiMemesMaxPerReply())
         if (keywords.isEmpty()) return emptyList()
         val files = ArrayList<File>()
         for (keyword in keywords) {

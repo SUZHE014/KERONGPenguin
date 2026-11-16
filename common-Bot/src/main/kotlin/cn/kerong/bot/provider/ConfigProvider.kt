@@ -184,7 +184,8 @@ interface ConfigProvider {
         val fileName = markdownFiles()[key]?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         val configDir = configFile?.absoluteFile?.parentFile ?: return null
         return try {
-            val markdownDirectory = configDir.resolve("Markdown").canonicalFile
+            // 1.7.6.3 覆盖轮：模板目录移入 globalconfig/ 子目录
+            val markdownDirectory = configDir.resolve("globalconfig/Markdown").canonicalFile
             val markdownFile = markdownDirectory.resolve(fileName).canonicalFile
             if (markdownFile.toPath().startsWith(markdownDirectory.toPath()) && markdownFile.isFile) {
                 markdownFile.readText(Charsets.UTF_8)

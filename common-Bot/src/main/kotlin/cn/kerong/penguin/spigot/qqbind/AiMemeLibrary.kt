@@ -1,8 +1,14 @@
 package cn.kerong.penguin.spigot.qqbind
 
 import cn.kerong.bot.tools.PluginFileLog
+import java.awt.Graphics2D
+import java.awt.RenderingHints
+import java.awt.image.BufferedImage
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.charset.StandardCharsets
+import javax.imageio.ImageIO
 
 /**
  * 表情包库（1.7.6.2，主线三端版）：AI 可按「文件名代表的含义」从表情包
@@ -25,6 +31,74 @@ object AiMemeLibrary {
 
     /** 表情包文件夹名（插件目录下，1.7.6.3 起固定值，原配置键已删）。 */
     const val FOLDER_NAME = "guaipng"
+
+    /**
+     * 静态表情包发送前的目标边长（像素，1.7.6.3 覆盖轮）：静态图
+     * 缩到最长边 ≤ 240px 再发送，观感接近 QQ 表情；动图 GIF 不缩放
+     * （QQ 已按表情尺寸渲染，用户实测）。
+     */
+    const val SEND_MAX_SIDE = 240
+
+    /**
+     * 发送前观感优化（1.7.6.3 覆盖轮，纯函数可冒烟）：静态图（png/jpg/
+     * jpeg/webp/bmp）发送前缩放到最长边 [SEND_MAX_SIDE] 并转为单帧 GIF
+     * ——QQ 对 GIF 按表情尺寸渲染（动图实测是表情包大小），静态大图
+     * 直接发会占半屏不像表情包；动图 GIF 原样返回（字节直传，动画保留）。
+     *
+     * 降级链：读不了（webp 等不支持格式）/ 缩放或编码异常 → 原样返回
+     * （发送不因优化失败而失败）。
+     * @return 实际发送的字节（可能等于原字节）
+     */
+    fun shrinkForSend(bytes: ByteArray): ByteArray {
+        // 动图 GIF：QQ 已按表情尺寸渲染，原样直传（字节不动，动画保留）
+        if (bytes.size >= 3 && bytes[0] == 'G'.code.toByte()
+            && bytes[1] == 'I'.code.toByte() && bytes[2] == 'F'.code.toByte()
+        ) {
+            return bytes
+        }
+        return try {
+            val source = ImageIO.read(ByteArrayInputStream(bytes)) ?: return bytes
+            var image = source
+            val longest = maxOf(source.width, source.height)
+            if (longest > SEND_MAX_SIDE) {
+                image = scaleDown(source, SEND_MAX_SIDE)
+            }
+            encodeGif(image) ?: bytes
+        } catch (_: Throwable) {
+            bytes
+        }
+    }
+
+    /** 等比缩小到最长边 ≤ [maxSide]（双线性插值；透明通道保留）。 */
+    private fun scaleDown(source: BufferedImage, maxSide: Int): BufferedImage {
+        val longest = maxOf(source.width, source.height).coerceAtLeast(1)
+        val ratio = maxSide.toDouble() / longest
+        val w = (source.width * ratio).toInt().coerceAtLeast(1)
+        val h = (source.height * ratio).toInt().coerceAtLeast(1)
+        val target = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
+        val g = target.createGraphics() as Graphics2D
+        try {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+            g.drawImage(source, 0, 0, w, h, null)
+        } finally {
+            g.dispose()
+        }
+        return target
+    }
+
+    /** 编码为单帧 GIF（QQ 按 GIF 表情尺寸渲染）；失败返回 null。 */
+    private fun encodeGif(image: BufferedImage): ByteArray? {
+        return try {
+            val out = ByteArrayOutputStream()
+            ImageIO.write(image, "gif", out)
+            val bytes = out.toByteArray()
+            if (bytes.isEmpty()) null else bytes
+        } catch (_: Throwable) {
+            null
+        }
+    }
 
     /** 支持的图片扩展名（小写）。GIF 动图按字节直传，动画保留。 */
     val IMAGE_EXTENSIONS = listOf("png", "jpg", "jpeg", "gif", "webp", "bmp")

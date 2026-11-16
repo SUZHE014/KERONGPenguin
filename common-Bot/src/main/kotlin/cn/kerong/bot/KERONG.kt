@@ -58,7 +58,8 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
     /** QQ 机器人日志文件名模板（位于插件数据目录），null 表示不落盘。 */
     fun qqBotLogFilePattern(): String? {
         val configDirectory = configFile?.parentFile ?: return null
-        return configDirectory.resolve("logs/Bot-%s.log").path
+        // 1.7.6.3 覆盖轮：日志移入 globalconfig/ 子目录
+        return configDirectory.resolve("globalconfig/logs/Bot-%s.log").path
     }
 
     /**
@@ -220,7 +221,8 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
             log_warning("无法确定插件配置目录，未初始化 Markdown 模板")
             return
         }
-        val markdownDirectory = configDirectory.resolve("Markdown")
+        // 1.7.6.3 覆盖轮：模板目录移入 globalconfig/ 子目录（旧目录启动时自动迁移）
+        val markdownDirectory = configDirectory.resolve("globalconfig/Markdown")
         if (!markdownDirectory.isDirectory && !markdownDirectory.mkdirs()) {
             log_warning("无法创建 Markdown 目录: ${markdownDirectory.path}")
             return

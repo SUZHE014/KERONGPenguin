@@ -68,7 +68,8 @@ object PluginFileLog {
      */
     private fun currentFile(): File? {
         return try {
-            val folder = plugin.configFile?.parentFile?.resolve("logs/qq") ?: return null
+            // 1.7.6.3 覆盖轮：日志移入 globalconfig/ 子目录（旧日志启动时自动迁移）
+            val folder = plugin.configFile?.parentFile?.resolve("globalconfig/logs/qq") ?: return null
             if (!folder.exists() && !folder.mkdirs()) return null
             resolveRotated(folder, "qq-bind-${SimpleDateFormat("yyyy-MM-dd").format(Date())}")
         } catch (_: Throwable) {

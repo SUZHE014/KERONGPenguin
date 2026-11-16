@@ -463,7 +463,8 @@ object PlayerStatsManager {
     /** 迁移老版 stats.yml（全部玩家合一）→ 各自 QUUID 主文件；返回迁移条数。 */
     private fun migrateLegacyStatsYml(manager: QqBindManager): Int {
         try {
-            val dataFolder = plugin.configFile?.parentFile ?: return 0
+            // 1.7.6.3 覆盖轮：旧 stats.yml 迁移后位于 globalconfig/（DataLayout 启动时已从根目录挪入）
+            val dataFolder = plugin.configFile?.parentFile?.resolve("globalconfig") ?: return 0
             val legacy = File(dataFolder, "stats.yml")
             if (!legacy.isFile) return 0
             val section = YamlConfiguration.loadConfiguration(legacy).getConfigurationSection("players")
@@ -526,8 +527,10 @@ object PlayerStatsManager {
      */
     private fun migrateInterimStatsFolder(manager: QqBindManager): Int {
         try {
-            val dataFolder = plugin.configFile?.parentFile ?: return 0
-            val folder = File(dataFolder, "QUUID/stats")
+            // 1.7.6.3 覆盖轮：QUUID 已整体位于 globalconfig/ 下
+            val folder = cn.kerong.penguin.spigot.manager.DataLayout.resolve(
+                plugin.configFile?.parentFile, "QUUID/stats"
+            ) ?: return 0
             if (!folder.isDirectory) return 0
             val files = folder.listFiles { f -> f.isFile && f.name.endsWith(".yml") } ?: return 0
             var migrated = 0

@@ -31,6 +31,13 @@ class ConfigManager(private val plugin: JavaPlugin) {
 
     /** 初始化：版本升级时先以 JAR 新版重建，再释放默认配置并装载。 */
     fun initialize() {
+ // 数据目录重构迁移（1.7.6.3 覆盖轮）：旧版散在根目录的绑定数据/日志/
+ // 模板/缓存等自动挪入 globalconfig/ 子目录——必须在任何数据文件读写
+ // 之前执行（QUUID 装载、日志写入、模板释放都发生在此之后）
+        try {
+            DataLayout.migrateToGlobalLayout(plugin)
+        } catch (_: Throwable) {
+        }
  // 先恢复损坏的配置文件（语法错误 → 轻量修复或备份重建默认，
         // 修复旧版「解析失败 → 空配置 → 机器人不启动」的死胡同，
         // 见 ConfigBrokenRecovery KDoc）
@@ -746,7 +753,19 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 不再以 QQ 绑定为入口——没开绑定的服务器也能出榜）；
         // ③bot.groups 只写一对引号 ""（或纯空白）视为未填写（自动绑定与
         // 群白名单判定不再误判已配置）。
-        private const val CURRENT_CONFIG_VERSION = 58
+        private const val CURRENT_CONFIG_VERSION = 59
+        // 升 59——1.7.6.3 覆盖轮（用户口径「简化是注释简化」+「恢复三个键」+「多层爬取上限可配置」+「重构插件文件夹结构」）：
+        // ①注释简化：最近新增配置段（AI 表情包/提示词/网页读取、集群多卡、
+        // 假人白名单、假人列表、总在线时长源等）注释精简为每段一两行、
+        // 每键一行（键与行为不变）；②恢复三个键（升 58 误删，用户口径
+        // 「恢复以下删除的键」）：ai.memes.max-per-reply（默认 1）/
+        // ai.crawler.timeout-seconds（默认 10）/ai.crawler.max-chars
+        //（默认 6000）——ai.memes.folder 不恢复（表情包文件夹固定 guaipng）；
+        // ③ai.crawler.max-pages 为多层爬取上限（默认 3，明确注释）；
+        // ④插件数据目录重构：根目录只留 config.yml/提示词/guaipng/img，
+        // 其余（QUUID/logs/Markdown/cache/ai-context.yml/fake-players.json/
+        // stats.yml/openids.yml）自动迁入 globalconfig/ 子目录（迁移在
+        // initialize 最早阶段执行，见 DataLayout）。
         // 升 58——1.7.6.3（用户口径「把AI网页抓取功能变为正式版」+「简化最近新增的配置文件」）：
         // ①AI 网页读取转正式功能：ai.crawler.enabled 默认关→开（旧测试期的
         // 关闭默认是插件写入而非用户意图，升级自动收敛为开，自行改过的不动；
@@ -828,15 +847,10 @@ class ConfigManager(private val plugin: JavaPlugin) {
             // 检索方案下线；已放进去的 txt/md 不受影响，可把内容整理进提示词文件）
             "ai.system-prompt",
             "ai.knowledge",
- // 升 58：1.7.6.3——配置简化删四个调优键（行为固定为原默认值）：
- // ai.memes.folder（表情包文件夹固定 guaipng，自定义过文件夹名的服主
- // 启动时日志提示把图片移入 guaipng）/ ai.memes.max-per-reply（每条 AI
- // 回复最多 1 张表情包）/ ai.crawler.timeout-seconds（抓取超时固定 10 秒）/
- // ai.crawler.max-chars（单页正文固定 6000 字符）
+ // 升 58：1.7.6.3——配置简化删四个调优键（升 59 已恢复其中三个，
+ // 仅 ai.memes.folder 保持删除：表情包文件夹固定 guaipng，自定义过
+ // 文件夹名的服主启动时日志提示把图片移入 guaipng）
             "ai.memes.folder",
-            "ai.memes.max-per-reply",
-            "ai.crawler.timeout-seconds",
-            "ai.crawler.max-chars",
             "render.performance.show-tps", "render.performance.show-mspt",
             "render.performance.show-memory", "render.performance.show-cpu",
             "render.performance.show-online",
@@ -1112,6 +1126,15 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "ai.context-limit" to 6,
             "ai.at-enabled" to true,
             "ai.reminder-mode" to "",
+ // 1.7.6.3 覆盖轮恢复的三键（升 58 曾随"配置简化"删除，用户口径恢复；
+ // 默认值与历史版本一致）
+            "ai.memes.enabled" to true,
+            "ai.memes.max-per-reply" to 1,
+            "ai.prompt-file" to AiPromptFile.DEFAULT_FILE_NAME,
+            "ai.crawler.enabled" to true,
+            "ai.crawler.max-pages" to 3,
+            "ai.crawler.timeout-seconds" to 10,
+            "ai.crawler.max-chars" to 6000,
         ).apply {
  // 消息模板映射（每条回复 → Markdown 模板文件名，详见 config.yml 注释）
             for (id in MESSAGE_TEMPLATE_IDS) {

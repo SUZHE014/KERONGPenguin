@@ -161,9 +161,9 @@ object OpenIdDirectory {
 
  // ---------- 持久化（写入各自 QUUID 主文件） ----------
 
-    /** 数据目录（插件根目录）。 */
+    /** 数据目录（globalconfig/ 子目录，1.7.6.3 覆盖轮重构；旧文件已由 DataLayout 迁入）。 */
     private fun dataFolder(): File? = try {
-        cn.kerong.bot.provider.plugin.configFile?.parentFile
+        cn.kerong.bot.provider.plugin.configFile?.parentFile?.resolve("globalconfig")
     } catch (_: Throwable) {
         null
     }

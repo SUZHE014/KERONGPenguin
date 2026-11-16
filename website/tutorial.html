@@ -573,7 +573,7 @@ coins-leaderboard:
   menu: "menu.md"                          # /菜单 按钮菜单的头部文案（占位符 {page}/{pages} 页码、{version} 版本）
   # …… 其余各项见 config.yml（每项注释标明对应回复与可用变量）</pre>
 </div>
-<p>机器人在群里发的<b>每条文本回复</b>都对应数据目录 <code>Markdown/</code> 下的一个 .md 模板文件（首次启动自动释放）。改文案直接编辑对应文件；删掉文件重启可恢复默认。</p>
+<p>机器人在群里发的<b>每条文本回复</b>都对应数据目录 <code>globalconfig/Markdown/</code> 下的一个 .md 模板文件（首次启动自动释放）。改文案直接编辑对应文件；删掉文件重启可恢复默认。</p>
 <p>模板里的变量会被替换成实际值，每个模板能用哪些变量是固定的，完整清单见 config.yml 的 messages 段注释。常用变量：</p>
 </div>
 <table style="width:100%;border-collapse:collapse;font-size:0.92em;margin:8px 0">
@@ -710,7 +710,7 @@ coins-leaderboard:
 <pre>markdown:
   queryOnline: "online.md"  # 查在线文字列表的模板文件名</pre>
 </div>
-<p>模板在数据目录 Markdown/ 下，改文案直接编辑文件。</p>
+<p>模板在数据目录 globalconfig/Markdown/ 下，改文案直接编辑文件。</p>
 </div>
 
 <div class="cfg-item">
@@ -723,13 +723,14 @@ coins-leaderboard:
 </div>
 
 <div class="cfg-item">
-<h4>AI 表情包 <span class="key">ai.memes.enabled</span></h4>
+<h4>AI 表情包 <span class="key">ai.memes.*</span></h4>
 <div class="config">
 <pre>ai:
   memes:
-    enabled: true   # 表情包开关（关闭后 AI 不知晓该能力）</pre>
+    enabled: true        # 表情包开关（关闭后 AI 不知晓该能力）
+    max-per-reply: 1     # 每条回复最多发几张</pre>
 </div>
-<p>默认开。插件首次启动会自动创建插件目录的 guaipng 文件夹，把图片放进去（支持 png / jpg / jpeg / gif / webp / bmp，<b>动态 GIF 正常发送</b>），文件名 = 图片的含义（如「开心.png」「笑哭.gif」）；AI 觉得气氛合适时会在回复末尾输出 [表情] 文件名，插件把对应图片发到群里（每条回复最多 1 张，发送失败仅记日志，不影响文字回复）。新增或删除图片立即生效，无需重启；建议单图 2MB 以内（最大 10MB），一个含义一张图。文件夹名固定为 guaipng。</p>
+<p>默认开。把图片放进插件目录的 guaipng 文件夹（支持 png / jpg / jpeg / gif / webp / bmp，<b>动态 GIF 正常发送</b>），文件名 = 图片的含义（如「开心.png」「笑哭.gif」）；AI 觉得气氛合适时会在回复末尾输出 [表情] 文件名，插件把对应图片发到群里。<b>静态图片发送前会自动缩到表情大小</b>（约 240px 并转为 GIF，QQ 按表情尺寸渲染，和动图表情包一样大）；动态 GIF 原样发送。新增或删除图片立即生效；建议单图 2MB 以内（最大 10MB），一个含义一张图。</p>
 </div>
 
 <div class="cfg-item">
@@ -737,10 +738,12 @@ coins-leaderboard:
 <div class="config">
 <pre>ai:
   crawler:
-    enabled: true    # 正式功能，默认开；改 false 关闭
-    max-pages: 3     # 单次回答最多读取页数（多层深入也受此上限约束）</pre>
+    enabled: true           # 正式功能，默认开；改 false 关闭
+    max-pages: 3            # 单次回答最多读取页数（多层爬取上限）
+    max-chars: 6000         # 单页正文提取上限（字符）
+    timeout-seconds: 10     # 读取超时秒数</pre>
 </div>
-<p><b>默认开启</b>。AI 需要看网页或搜索资料才能回答时，会输出 [GET] 网址标记，插件抓取网页正文回传给 AI 继续生成。<b>支持多次多层读取</b>：AI 可以先读搜索页 / 入口页，再继续读页面里的链接逐层深入；需要搜索时 AI 会用<b>必应（bing.com）</b>搜索引擎。网页读取失败时 AI 会用自然语言告知（不会把错误码等技术细节甩给用户）；仅允许 http/https 公网页，回环 / 内网地址被拒绝（防 SSRF），响应体最多读 2MB、仅接受文本类内容。⚠ <b>每次读取的网页内容都会消耗额外 token</b>（按 max-pages 页计），接口按 token 计费时请留意用量；不想要可改回 false。</p>
+<p><b>默认开启</b>。AI 需要看网页或搜索资料时自动读网页（输出 [GET] 网址，插件抓正文回传继续生成）；<b>支持多次多层读取</b>：先读搜索页 / 入口页，再继续读页面里的链接逐层深入；需要搜索时用<b>必应（bing.com）</b>，中文关键词自动编码。网页读取失败时 AI 用自然语言告知（不会输出错误码）；仅 http/https 公网页，内网地址拒绝（防 SSRF）。⚠ <b>每次读取的网页内容都会消耗额外 token</b>（按 max-pages 页计），接口按 token 计费请留意用量。</p>
 </div>
 
 <div class="cfg-item">
@@ -753,6 +756,23 @@ coins-leaderboard:
     show-multi-cards: false  # true = 查在线/查性能同时显示所有服务器</pre>
 </div>
 <p>默认关，仅多服务器集群（members ≥ 2 且各服一致）生效。开启后 /查在线（含别名 /在线）与 /查性能 不再弹「选择服务器」按钮、也无视群已选择——每台服务器各自渲染本服的状态卡片（卡片自带本服名），群里同时显示全部服务器的在线 / 性能状态；关闭（默认）维持旧行为：弹选择按钮 → 显示所选服务器的单服卡片。改完 <code>/hbkrg reload</code> 即时生效。</p>
+</div>
+
+<div class="cfg-item">
+<h4>插件数据目录结构</h4>
+<div class="config">
+<pre>插件文件夹/            插件版 plugins/KERONGPenguin/，模组版 kerongpenguin/
+├── config.yml         配置文件
+├── 提示词.md           AI 提示词（角色设定 + 专属知识）
+├── guaipng/           AI 表情包文件夹（文件名 = 图片含义）
+├── img/               背景图文件夹（自定义卡片背景）
+└── globalconfig/      其余所有内容
+    ├── QUUID/         QQ 绑定数据（一人一文件）
+    ├── Markdown/      回复文案模板
+    ├── logs/          插件日志
+    └── cache/         磁盘缓存（头像等）</pre>
+</div>
+<p>根目录只留常用四样：配置文件、提示词、表情包、背景图；绑定数据 / 日志 / 模板 / 缓存等全部在 <code>globalconfig/</code> 里。从旧版本升级时这些内容会<b>自动迁移</b>（无需手动搬运），旧位置的数据自动挪入 globalconfig/。</p>
 </div>
 
 </div>

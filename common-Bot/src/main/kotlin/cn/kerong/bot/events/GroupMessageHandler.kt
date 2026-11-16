@@ -542,7 +542,9 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
                                     QqBindManager.logVerbose("[表情包] 图片 ${file.name} 大小异常（${file.length() / 1024}KB），跳过发送")
                                     continue
                                 }
-                                val bytes = file.readBytes()
+                                // 1.7.6.3 覆盖轮：静态图发送前缩小+转 GIF（QQ 按表情尺寸渲染），
+                                // 动图 GIF 原样直传（见 AiMemeLibrary.shrinkForSend）
+                                val bytes = AiMemeLibrary.shrinkForSend(file.readBytes())
                                 val sent = cn.kerong.bot.QClient.replyWithImgBytes(event, bytes)
                                 QqBindManager.logVerbose("[表情包] ${if (sent) "已发送" else "发送失败"} ${file.name}（${bytes.size / 1024}KB）")
                             } catch (memeError: Throwable) {

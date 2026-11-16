@@ -1,0 +1,5 @@
+冒烟编译运行 classpath（1.7.6.3 覆盖轮）：
+  javac/java -cp "<repo>/build/dist/KERONGPenguin_Spigot-1.7.6.3.jar" Test1763o.java
+运行于沙盒 /home/z/my-project/tooling/jdk21（21.0.13）；结果 29/29 全绿
+（L 组 DataLayout.migrate 端到端 12 断言 + M 组 shrinkForSend 像素验证 9 断言 + R 组回归 8 断言）。
+门禁 verify_jar_1763o.py 77/77（JAVAP=/home/z/my-project/tooling/jdk21/bin/javap）。
