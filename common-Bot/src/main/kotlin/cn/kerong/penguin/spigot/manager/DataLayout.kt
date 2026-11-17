@@ -19,11 +19,19 @@ import java.io.File
  *     ├── cache/          磁盘缓存（头像等）
  *     ├── ai-context.yml  AI 对话上下文
  *     ├── fake-players.json 假人登记
+ *     ├── cluster-selection.yml 多服务器群选择状态
+ *     ├── command-state.ini 群命令运行状态（旧版 command-state.properties）
+ *     ├── server-notify-state.properties 服务器开关消息状态
  *     └── openids.yml(.migrated) 旧版 OpenId 目录数据
  * ```
  *
  * 根目录只留用户常碰的四样（配置 / 提示词 / 表情包 / 背景图），
  * 其余全部收进 globalconfig/ 子目录。
+ *
+ * 1.7.6.4：三个运行状态散文件（cluster-selection.yml / command-state.ini
+ * 与旧版 command-state.properties / server-notify-state.properties）
+ * 补入迁移名单——1.7.6.3 首轮只迁了目录与数据文件，这三个状态文件
+ * 漏掉了，会一直留在根目录；读写点同步改接 [resolve]。
  *
  * 升级迁移（[migrateToGlobalLayout]，幂等）：旧版散在根目录的上述
  * 数据在启动时自动挪入 globalconfig/——目录整名 rename（目标不存在
@@ -45,6 +53,10 @@ object DataLayout {
     private val MOVE_FILES = listOf(
         "ai-context.yml", "fake-players.json", "stats.yml", "stats.yml.migrated",
         "openids.yml", "openids.yml.migrated",
+        // 1.7.6.4 补迁：运行状态散文件（1.7.6.3 首轮漏迁，一直留在根目录）
+        "cluster-selection.yml",
+        "command-state.ini", "command-state.properties",
+        "server-notify-state.properties",
     )
 
     /** 杂项数据根目录（插件数据目录下的 globalconfig/）。 */

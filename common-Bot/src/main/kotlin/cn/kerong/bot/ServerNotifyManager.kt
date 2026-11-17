@@ -3,6 +3,7 @@ package cn.kerong.bot
 import cn.kerong.bot.provider.BotShared
 import cn.kerong.bot.provider.plugin
 import cn.kerong.bot.tools.PluginFileLog
+import cn.kerong.penguin.spigot.manager.DataLayout
 import com.alibaba.fastjson.JSON
 import com.alibaba.fastjson.JSONObject
 import io.github.kloping.qqbot.entities.qqpd.Channel
@@ -45,7 +46,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 object ServerNotifyManager {
 
-    /** 状态文件名（位于插件数据目录）。 */
+    /** 状态文件名（位于 globalconfig/ 子目录，1.7.6.4 起随状态散文件迁入）。 */
     private const val STATE_FILE_NAME = "server-notify-state.properties"
 
     /** 轮询 QQ 就绪的间隔（毫秒）。 */
@@ -67,7 +68,7 @@ object ServerNotifyManager {
     /** 同一 JVM 内是否已执行过启动检查（防重复 onEnable）。 */
     private val startedOnce = AtomicBoolean(false)
 
-    /** 状态文件（无数据目录的平台返回 null，功能自动退化为只发关服消息）。 */
+    /** 状态文件（globalconfig/ 下；无数据目录的平台返回 null，功能自动退化为只发关服消息）。 */
     private fun stateFile(): File? {
         // 插件实例未就绪（理论不会发生）或无配置文件的平台：返回 null，
         // 功能退化为只发关服消息、不做跨进程状态判定
@@ -76,7 +77,7 @@ object ServerNotifyManager {
         } catch (_: Throwable) {
             return null
         }
-        return configDir.resolve(STATE_FILE_NAME)
+        return DataLayout.resolve(configDir, STATE_FILE_NAME)
     }
 
     /** 服务器启动完成、QQ 客户端已开始异步连接后调用（双端各一次）。 */

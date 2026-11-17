@@ -2,6 +2,7 @@ package cn.kerong.bot
 
 import cn.kerong.bot.provider.plugin
 import cn.kerong.bot.tools.PluginFileLog
+import cn.kerong.penguin.spigot.manager.DataLayout
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
@@ -40,12 +41,13 @@ import java.util.concurrent.ConcurrentHashMap
  * - 各服务器的 `bot.cluster.members` **必须完全一致**，否则路由错乱；
  * - 未配置（或成员少于 2 个）时**全部集群逻辑旁路**，行为与单服
  *   版本完全一致（零开销）；
- * - 选择状态持久化在 `cluster-selection.yml`（群 OpenId → 服务器名），
- *   重启不丢；`/hbkrg reload` 重新加载。
+ * - 选择状态持久化在 `globalconfig/cluster-selection.yml`（群 OpenId →
+ *   服务器名，1.7.6.4 起随其余状态文件移入 globalconfig/，旧根目录文件
+ *   启动时自动迁移），重启不丢；`/hbkrg reload` 重新加载。
  */
 object ClusterState {
 
-    /** 选择状态文件名（位于插件数据目录）。 */
+    /** 选择状态文件名（位于 globalconfig/ 子目录，1.7.6.4 起）。 */
     private const val SELECTION_FILE = "cluster-selection.yml"
 
     /** 群级选择记录：群 OpenId → 服务器名。 */
@@ -190,10 +192,10 @@ object ClusterState {
 
     // ---------- 持久化 ----------
 
-    /** 选择状态文件（数据目录下；无数据目录的平台返回 null，仅内存态）。 */
+    /** 选择状态文件（globalconfig/ 下；无数据目录的平台返回 null，仅内存态）。 */
     private fun selectionFile(): File? {
         val configDir = plugin.configFile?.absoluteFile?.parentFile ?: return null
-        return configDir.resolve(SELECTION_FILE)
+        return DataLayout.resolve(configDir, SELECTION_FILE)
     }
 
     private fun loadSelectionFile() {

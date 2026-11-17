@@ -11,56 +11,36 @@ import java.util.concurrent.ConcurrentHashMap
  * 消息模板系统：机器人在 QQ 发出的每一条文本回复都对应一个
  * Markdown 模板文件，可在配置文件 messages 段改写「这条回复用哪个 .md 文件」。
  *
- * - 模板文件位于数据目录 Markdown/ 下（插件版 plugins/KERONGPenguin/Markdown/，
- *   模组版 kerongpenguin/Markdown/），首次启动自动释放默认模板（不覆盖已有文件）；
+ * - 模板文件位于数据目录 globalconfig/Markdown/ 下（插件版
+ *   plugins/KERONGPenguin/globalconfig/Markdown/，模组版同理；旧版
+ *   位于插件根目录 Markdown/，1.7.6.3 起启动时自动迁移），首次启动
+ *   自动释放默认模板；
  * - 模板为 .md（Markdown）格式，机器人经 QQ Markdown 渲染发送，失败回退纯文本；
  * - 占位符形如 {player} / {error}（各模板可用变量见配置文件 messages 段注释），
  *   未提供的占位符原样保留；
- * - 模板渲染出口统一应用经济别名（economy-alias，见 [EconomyName]）；
- * - 默认模板内容与 1.5.7.3 及之前版本硬编码的回复一字不差（升级零变化）。
+ * - 模板渲染出口统一应用经济别名（economy-alias，见 [EconomyName]）。
  *
  * /查在线 的 Markdown 模板沿用 1.5.1 的 markdown.queryOnline（online.md），
  * 不在本系统内（该模板带独立占位符体系，见 motd 段说明）。
  *
- * 模板升级路径（1.7.5.6 覆盖轮：升级 = 完整替换，全模板通用；
- * 1.7.5.9 菜单模板比对口径按用户指令显式化）：
- * - 首次释放后不覆盖用户修改；
- * - 磁盘内容仍是某一版**未自改的默认**（含 BOM / 空白 / 换行差异）时，
- *   自动**删除该文件并重新释放当前 JAR 内置最新默认**（1.7.5.9 起为
- *   「先 delete 再 writeBytes」两步——按用户口径「直接删掉重新生成本版
- *   默认」，替换是全新文件，绝不追加，旧文案零残留）；
- * - 「未自改的默认」的判定有三条，命中任意一条即删除重建：
- *   ① 磁盘内容 == 当前内置默认（无需动作，只补指纹）；
- *   ② 释放记录（.release-record.json）里记着本文件上次的默认指纹且
- *      磁盘内容仍与该指纹一致——上一次写入/确认后用户没动过，属于
- *      旧版默认，跨任意历史版本自动收敛（不再逐版手抄旧默认表）；
- *   ③ [DEFAULT_CONTENT_UPGRADES] 历代旧默认逐版精确比对
- *      （无释放记录的老安装的兜底判定，表已收录的形态继续有效）。
- * - 自己改过的内容一律不动（三条都不命中）——与所有历史默认都不一致
- *   = 用户改过，保留原文件，切记不得误删。
+ * ## 模板更新机制（1.7.6.4 重写，用户口径「默认改为全部删掉替换为插件
+ * ## 内置，配置文件可添加白名单，白名单内的模板文件不会更新替换任何内容」）
  *
- * ## 1.7.6 覆盖轮两处收紧（用户指令：菜单模板可靠输出 + 已改过的不被更新）
+ * - **默认：全部替换为插件内置**——每次启动 / 重载时，不在白名单里的
+ *   模板文件只要内容与当前 JAR 内置默认不一致（含被手改过），一律
+ *   删除重建为内置最新默认（先 delete 再 writeBytes，全新文件零追加）；
+ *   想保留自己改过的模板：把它的文件名加进 messages.keep-files 白名单；
+ * - **白名单（messages.keep-files）**：模板文件名列表（带不带 .md 后缀
+ *   都认），命中的文件不释放、不替换，原样保留——自己改的优先级
+ *   高于插件内置；
+ * - 自定义文件名（messages.<ID> 改名）同样参与：改名后的文件不在
+ *   白名单时按默认规则替换为内置默认；
+ * - 删除某个模板文件（且不在白名单）→ 下次启动重新释放内置默认，
+ *   相当于「重置为默认」。
  *
- * - **升级判定只做逐版精确比对**：旧版的「默认特征匹配」兜底
- *   （内容只要包含某特征词即判为旧默认）已删除——用户改过内容但
- *   保留了默认标题 / 开头特征的模板会被误判成旧默认而遭删除重建，
- *   改动丢失；现在只要与所有历史默认不完全一致就是用户内容，永不动。
- *   代价是极端老安装（无释放记录且中间态默认未入表）少升级一次，
- *   可接受（少升级好过误删）。
- * - **自定义文件名的模板同样释放默认**：messages.<ID> 改成自定义
- *   文件名（如 help/menu.md）时，旧版完全不释放也不提示——文件不
- *   存在则永远回退内置默认，用户改配置无效果；现在文件不存在时
- *   同样释放默认内容作为起点（不覆盖已有文件），升级链同样生效。
- *
- * 历史注：1.7.5.1 曾把 menu 设为「系统 UI 模板」无条件重置（每次启动
- * 强制覆盖为默认），目的是收敛线上历史残留形态；但该机制会把用户
- * 自定义的菜单一并覆盖，且实际验证发现原地覆写在部分环境未生效。
- * 1.7.5.2 移除强制重置，回到升级表路径；但升级表只覆盖了 5 个模板，
- * 其余模板的默认文案变更后老安装永远拿不到新默认（用户实测「内容
- * 更新了但『帮助』等旧文字没被删除，手动删掉重载才恢复」即此类残留），
- * 故 1.7.5.6 覆盖轮改为「释放记录」机制：每个模板释放/确认时都记下
- * 默认内容指纹，升级后指纹仍匹配 = 未自改的旧默认 → 整体替换为最新默认；
- * 手改过的文件指纹不再匹配 → 永不动。升级表保留作为无记录老安装的兜底。
+ * 历史注：1.7.5.6–1.7.6.3 的「释放记录指纹」升级机制（未自改的旧默认
+ * 自动替换、手改的永不动）已随本轮语义重写整体下线，旧版留下的
+ * .release-record.json 记录文件启动时自动清理（机制已删，文件无意义）。
  */
 object MessageTemplates {
 
@@ -165,130 +145,35 @@ object MessageTemplates {
     private val cache = ConcurrentHashMap<String, Pair<Long, String>>()
 
     /**
-     * 单条默认内容升级规则（1.7.5.6 覆盖轮起仅作为释放记录缺失时的兜底
-     * 判定；替换内容一律取当前 JAR 内置资源，本表 newContent 字段不再
-     * 单独使用，保留用于历史对照与 [shouldUpgrade] 决策）。
-     *
-     * 1.7.6 覆盖轮：特征匹配兜底已删除（用户改过但保留默认开头特征的
-     * 模板会被误判升级，改动丢失）——只做历代旧默认的逐版精确比对。
-     *
-     * @property olds 历代旧默认内容（normalize 后精确比对，覆盖已知的每一版）
-     * @property newContent 新默认内容（历史对照用；实际写入以 JAR 内置资源为准）
+     * 去除全部空白字符（空格 / 制表 / 换行 / 回车）与 BOM 后的比对形态
+     * （容忍带 BOM 释放的默认文件与任意换行风格差异；白名单外的文件
+     * 内容与内置默认一致时不重写，mtime 不变）。
      */
-    private class UpgradeSpec(
-        val olds: List<String>,
-        val newContent: String,
-    ) {
-        /** 当前磁盘内容是否应升级到新默认（幂等：已等于新默认返回 false）。 */
-        fun shouldUpgrade(current: String): Boolean {
-            val normalizedCurrent = normalize(current)
-            if (normalizedCurrent == normalize(newContent)) return false
-            return olds.any { normalize(it) == normalizedCurrent }
-        }
-    }
-
-    /** 去除全部空白字符（空格 / 制表 / 换行 / 回车）与 BOM 后的比对形态（1.7.5.2：
-     * 容忍历史上带 BOM 释放的默认文件，以及任意换行风格差异）。 */
     private fun normalize(text: String): String = text.replace(Regex("[\\s\\uFEFF]"), "")
 
     /**
-     * 内容指纹（1.7.5.6 覆盖轮）：normalize 后取 SHA-256，用于释放记录——
-     * 空白 / 换行 / BOM 差异不影响判定，与磁盘实际内容严格对应。
+     * 白名单（messages.keep-files，1.7.6.4 新键）：其中的模板文件不会被
+     * 更新或替换，保留原样（用户自定义优先于插件内置）。条目为模板
+     * 文件名（带不带 .md 后缀都认，比对前自动补齐）；配置缺失 / 读取
+     * 异常按空名单处理（全部按默认规则替换为内置）。
      */
-    private fun fingerprint(text: String): String {
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
-        return digest.digest(normalize(text).toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
+    fun keepFileNames(): Set<String> = try {
+        val raw = plugin()?.config?.getConfigurationSection("messages")?.getStringList("keep-files")
+            ?: emptyList()
+        raw.asSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .map { if (it.endsWith(".md", ignoreCase = true)) it else "$it.md" }
+            .toSet()
+    } catch (_: Throwable) {
+        emptySet()
     }
 
     /**
-     * 释放记录文件名（位于模板目录内，隐藏文件）：模板文件名 → 该文件
-     * 上一次由插件释放 / 确认为默认内容时的指纹。作用见类头「模板升级路径」②。
+     * 旧版释放记录文件名（1.7.5.6–1.7.6.3 机制的遗留）：机制已下线，
+     * 启动时自动删除清理（含写入中途的 .tmp 残留）。
      */
-    private const val RELEASE_RECORD_FILE = ".release-record.json"
-
-    /** 读取释放记录（文件缺失 / 损坏一律回空表，不阻断模板流程）。 */
-    private fun loadReleaseRecord(dir: File): MutableMap<String, String> {
-        val file = dir.resolve(RELEASE_RECORD_FILE)
-        val result = mutableMapOf<String, String>()
-        if (!file.isFile) return result
-        try {
-            val text = file.readText(Charsets.UTF_8)
-            val parsed = com.alibaba.fastjson.JSON.parseObject(text) ?: return result
-            for (entry in parsed.entries) {
-                val name = entry.key ?: continue
-                val fp = entry.value as? String ?: continue
-                if (fp.isNotEmpty()) result[name] = fp
-            }
-        } catch (_: Throwable) {
-        }
-        return result
-    }
-
-    /** 原子写入释放记录（临时文件 + rename；失败仅告警，不影响模板流程）。 */
-    private fun saveReleaseRecord(dir: File, record: Map<String, String>) {
-        try {
-            val file = dir.resolve(RELEASE_RECORD_FILE)
-            val tmp = dir.resolve("$RELEASE_RECORD_FILE.tmp")
-            tmp.writeText(com.alibaba.fastjson.JSON.toJSONString(record), Charsets.UTF_8)
-            if (!tmp.renameTo(file)) {
-                file.writeText(com.alibaba.fastjson.JSON.toJSONString(record), Charsets.UTF_8)
-                tmp.delete()
-            }
-        } catch (error: Throwable) {
-            BotShared.instance?.log_warning("写入释放记录失败: ${error.message}")
-        }
-    }
-
-    /**
-     * 默认模板内容升级表：历代旧默认内容 → 新默认内容。
-     *
-     * 1.7.5.6 覆盖轮起本表降级为释放记录缺失（老安装首次升级）时的
-     * 兜底判定：命中 [UpgradeSpec.shouldUpgrade]（历代旧默认逐版比对 +
-     * 默认特征）即整体替换为当前 JAR 内置默认。日常发版改默认文案不再
-     * 需要往本表逐版抄旧默认——释放记录会自动覆盖。
-     */
-    private val DEFAULT_CONTENT_UPGRADES: Map<String, UpgradeSpec> = mapOf(
- // OpenId 行改为 {openidPart}（管理员查询才显示）
-        "openid-lookup" to UpgradeSpec(listOf(
-            "【OpenID 反查】\nOpenId: {openid}\n群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}",
-        ), "【OpenID 反查】\n{openidPart}群昵称: {nickname}{lastSeenPart}\n绑定玩家: {player}"),
- // menu 回到升级表（1.7.5.2：系统模板强制重置机制移除）：
-        // 菜单模板与历史各版本内置默认值逐一比对（1.7.5.9 用户口径）——
-        // 命中任一旧版默认（= 用户没改过）→ 删除磁盘文件重新生成本版默认；
-        // 与所有历史默认都不一致（= 用户改过）→ 保留不动，不得误删。
-        // 历代默认值考据（menu.md 于 1.7.5 引入 MessageTemplates 时首发，
-        // 1.7.4 及以前不存在菜单模板文件——1.7.4 时代菜单文案硬编码在
-        // 发送处，无磁盘残留；下表即 git 历史上 menu.md 的全部中间形态，
-        // 加当前默认共 4 形态，无遗漏）：
-        //   ① 1.7.5 引入版（olds[0]）；② 1.7.5 覆盖第二轮（olds[1]）；
-        //   ③ 1.7.5 覆盖第三轮 = 1.7.5.2 收录同形态（olds[2]）；
-        //   ④ 1.7.5.4 起为现默认（①路径幂等，无需收录）。
-        // 兜底特征「### 指令菜单」收敛表未收录的中间态。
-        // 1.7.5.4 排版改版：版本号从标题下方的粗体行移到模板末尾、非粗体
-        // 小字（QQ Markdown 子集无字号标记，用普通文本行实现「字体放小」）
-        "menu" to UpgradeSpec(listOf(
-            "### 指令菜单\n\n点击下方按钮即可执行；带参数的指令（绑定 / 发信息 / 执行命令等）点击后复制到输入框，补全内容再发送。\n\n---\n**当前插件版本：v{version}**",
-            "### 指令菜单（{page}/{pages}）",
-            "### 指令菜单（{page}/{pages}）\n\n**当前插件版本：v{version}**",
-        ), "### 指令菜单（{page}/{pages}）\n\n---\nv{version}"),
- // AI 管理合并：旧命令名版本与旧提示句版本收敛为纯状态行（操作都在按钮里）
-        "ai-context-usage" to UpgradeSpec(listOf(
-            "用法: /AI对话上下文 开|关\n当前状态: {status}",
-            "当前 AI 上下文状态：{status}\n\n可发送 /AI管理 开|关|清除，或点击下方按钮选择操作：",
-        ), "当前 AI 上下文状态：{status}"),
- // 解除黑名单清单：历代旧默认收敛到「命令在前、按钮在后」口径（用户口径
-        // 「先 /解除黑名单 @对应的人」；1.7.5 覆盖第三轮调序）
-        "unblacklist-list" to UpgradeSpec(listOf(
-            "黑名单列表（{count} 个）：\n{list}\n\n解除请发送: /解除黑名单 @QQ",
-            "黑名单列表（{count} 个）：\n{list}\n\n点击下方按钮即可解除对应条目（也可发送 /解除黑名单 @QQ）",
-            "黑名单列表（{count} 个）：\n{list}\n\n可以按下对应的按钮，或者艾特对方发送 /解除黑名单 解除",
-        ), "黑名单列表（{count} 个）：\n{list}\n\n发送 /解除黑名单 @对应的人 解除；也可以点击下方对应的按钮解除"),
- // 全量转发改为总开关口径（群级独立开关删除，1.7.5 覆盖第三轮）
-        "full-amount-toggled" to UpgradeSpec(listOf(
-            "本群全量转发已{state}",
-        ), "全量转发已{state}（总开关，全部配置群统一生效{writeResult}）"),
-    )
+    private const val LEGACY_RELEASE_RECORD_FILE = ".release-record.json"
 
     /** 平台插件实例（Spigot / NeoForge 适配器均为 JavaPlugin 子类）。 */
     private fun plugin(): JavaPlugin? = try {
@@ -314,10 +199,14 @@ object MessageTemplates {
     }
 
     /**
-     * 释放全部默认模板到数据目录 Markdown/（已存在的文件不覆盖；
-     * 自定义文件名的模板不在此释放，读取时回退内置默认内容），并把仍是
-     * 未自改旧默认的模板整体替换为当前内置默认（用户改过的不动）。
-     * 由运行时初始化（reloadRuntimeConfig）在启动与 /hbkrg reload 时调用。
+     * 初始化消息模板（启动与 /hbkrg reload 时调用）：
+     *
+     * 1.7.6.4 更新机制——默认全部替换为插件内置，白名单保留：
+     * - messages.keep-files 白名单里的文件名：完全不碰（不释放 / 不
+     *   替换，原样保留，自己改的优先）；
+     * - 其余模板：文件缺失 → 释放内置默认；内容与内置默认不一致
+     *   （含被手改过 / 旧版默认）→ 删除重建为内置最新默认；
+     * - 旧版释放记录文件（.release-record.json 与 .tmp 残留）自动删除。
      */
     fun initialize() {
         val dir = directory() ?: run {
@@ -328,16 +217,17 @@ object MessageTemplates {
             BotShared.instance?.log_warning("无法创建消息模板目录: ${dir.path}")
             return
         }
-        val record = loadReleaseRecord(dir)
-        var recordDirty = false
+        val keep = keepFileNames()
         var released = 0
-        var upgraded = 0
+        var replaced = 0
+        var keptCount = 0
         for (id in TEMPLATE_IDS) {
             val fileName = fileNameOf(id)
-            // 1.7.6 覆盖轮：自定义文件名（如 help/menu.md）同样释放默认
-            // 内容作为起点（不覆盖已有文件）——旧版不释放也不提示，文件
-            // 不存在时永远回退内置默认，用户改配置无效果
             val bundled = bundledResource(id) ?: continue
+            if (fileName in keep) {
+                keptCount++
+                continue
+            }
             val target = dir.resolve(fileName)
             target.parentFile?.let { parent ->
                 if (!parent.isDirectory) parent.mkdirs()
@@ -349,56 +239,15 @@ object MessageTemplates {
             }
             try {
                 if (current == null) {
-                    // 首次释放（不覆盖已有文件；bundled 与 JAR 内置资源同源）
+                    // 文件缺失：释放内置默认（删除文件后重启 / 重载即恢复默认）
                     target.writeBytes(bundled.toByteArray(Charsets.UTF_8))
-                    if (fileName != "$id.md") {
-                        BotShared.instance?.log_info(
-                            "消息模板 $id 使用自定义文件 $fileName：已释放默认内容作为起点（可自行编辑，删除后重启恢复默认）"
-                        )
-                    }
                     released++
-                    if (record[fileName] != fingerprint(bundled)) {
-                        record[fileName] = fingerprint(bundled)
-                        recordDirty = true
-                    }
-                    continue
-                }
-                val currentFp = fingerprint(current)
-                when {
-                    // ① 已是当前默认：无需动作，补齐指纹
-                    normalize(current) == normalize(bundled) -> {
-                        if (record[fileName] != currentFp) {
-                            record[fileName] = currentFp
-                            recordDirty = true
-                        }
-                    }
-                    // ② 释放记录指纹仍匹配：上一次释放/确认后用户没动过——
-                    //    属于旧版默认，删除后重新释放当前默认（1.7.5.9 起
-                    //    「先 delete 再 writeBytes」两步，全新文件零追加）
-                    record[fileName] != null && record[fileName] == currentFp -> {
-                        applyReplacement(dir, target, bundled)
-                        cache.remove(target.path)
-                        upgraded++
-                        record[fileName] = fingerprint(bundled)
-                        recordDirty = true
-                        BotShared.instance?.log_info(
-                            "消息模板 $fileName 已升级到新默认内容（删除重建；自定义过的模板不受影响）"
-                        )
-                    }
-                    // ③ 升级表兜底（无释放记录的老安装）：历代旧默认逐版比对
-                    //    + 默认特征匹配，命中同样删除重建
-                    DEFAULT_CONTENT_UPGRADES[id]?.shouldUpgrade(current) == true -> {
-                        applyReplacement(dir, target, bundled)
-                        cache.remove(target.path)
-                        upgraded++
-                        record[fileName] = fingerprint(bundled)
-                        recordDirty = true
-                        BotShared.instance?.log_info(
-                            "消息模板 $fileName 已升级到新默认内容（删除重建；自定义过的模板不受影响）"
-                        )
-                    }
-                    // 其余：用户自改——不动、不记录（手改文件永不收敛，
-                    // 直到自行删除恢复默认；删除后重载即重新释放最新默认）
+                } else if (normalize(current) != normalize(bundled)) {
+                    // 1.7.6.4：默认全部替换为插件内置——白名单外的文件
+                    // 与内置默认不一致（手改过 / 旧版默认）一律删除重建
+                    applyReplacement(dir, target, bundled)
+                    cache.remove(target.path)
+                    replaced++
                 }
             } catch (_: java.nio.file.FileAlreadyExistsException) {
                 // 并发初始化时忽略
@@ -406,23 +255,21 @@ object MessageTemplates {
                 BotShared.instance?.log_warning("初始化消息模板 $fileName 失败: ${error.message}")
             }
         }
-        if (recordDirty) {
-            saveReleaseRecord(dir, record)
+        // 旧版释放记录清理（机制已删，记录文件无意义；含写入中途的 .tmp 残留）
+        try {
+            dir.resolve(LEGACY_RELEASE_RECORD_FILE).let { if (it.isFile) it.delete() }
+            dir.resolve("$LEGACY_RELEASE_RECORD_FILE.tmp").let { if (it.isFile) it.delete() }
+        } catch (_: Throwable) {
         }
         if (released > 0) {
-            BotShared.instance?.log_info("已释放 $released 个默认消息模板到 ${dir.path}（可自行编辑，删除后重启恢复默认）")
+            BotShared.instance?.log_info("已释放 $released 个默认消息模板到 ${dir.path}（想保留自己改过的模板，把文件名加进配置 messages.keep-files 白名单即可）")
         }
-        if (upgraded > 0) {
-            BotShared.instance?.log_info("$upgraded 个仍是旧默认的消息模板已删除重建到新默认（自定义过的模板不受影响）")
+        if (replaced > 0) {
+            BotShared.instance?.log_info("$replaced 个消息模板已替换为插件内置默认（不在 messages.keep-files 白名单里的模板每次启动都会重置为内置最新默认）")
         }
-    }
-
-    /**
-     * （1.7.5.6 覆盖轮起本方法不再单独调用——判定已并入 [initialize] 的
-     * 三路径流程；保留空实现防旧编译产物链接失败。）
-     */
-    private fun upgradedDefaultContents(dir: File) {
-        // 已并入 initialize()
+        if (keptCount > 0) {
+            BotShared.instance?.log_info("$keptCount 个消息模板在白名单里，已保留原样不更新（messages.keep-files）")
+        }
     }
 
     /**

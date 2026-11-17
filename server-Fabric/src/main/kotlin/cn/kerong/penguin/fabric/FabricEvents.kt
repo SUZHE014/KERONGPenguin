@@ -82,15 +82,19 @@ class FabricEvents(private val plugin: KERONGFabric) {
             plugin.onServerStopped()
         }
 
-        // 聊天：ALLOW 阶段先做服务器内 AI 前缀判定（命中拦截并异步回复）；
+        // 聊天：ALLOW 阶段判定服务器内 AI 前缀（命中异步回复；1.7.6.4 覆盖轮
+        // 起消息照常广播，不再吞掉玩家发言）；
         // 1.7.5.9：未绑定限制玩家在此拦截（不广播 / 不转发 QQ 群）
         ServerMessageEvents.ALLOW_CHAT_MESSAGE.register { message, sender, _ ->
             if (!BindRestrictInteractions.onChat(sender)) return@register false
             handleAllowChat(message.signedContent(), sender)
         }
-        // 聊天：CHARGE 阶段转发到 QQ 群（AI 命中已在 ALLOW 阶段返回 false 不会到达这里）
+        // 聊天：CHARGE 阶段转发到 QQ 群（AI 触发消息不转发——与 Spigot /
+        // NeoForge 的早退行为一致，1.7.6.4 覆盖轮 ALLOW 放行后在此补拦）
         ServerMessageEvents.CHAT_MESSAGE.register { message, sender, _ ->
-            QClient.broadcastGameMessage(sender.gameProfile.name, message.signedContent())
+            if (serverAiTriggerContent(message.signedContent()) == null) {
+                QClient.broadcastGameMessage(sender.gameProfile.name, message.signedContent())
+            }
         }
 
         ServerPlayConnectionEvents.JOIN.register { handler, _, _ ->
@@ -176,23 +180,21 @@ class FabricEvents(private val plugin: KERONGFabric) {
     // ---------- 聊天：服务器内 AI 前缀触发 ----------
 
     /**
-     * ALLOW_CHAT 阶段：前缀命中返回 false（消息不广播）并异步 AI 回复；
-     * 否则返回 true 放行（后续 CHAT_MESSAGE 阶段转发到 QQ 群）。
+     * ALLOW_CHAT 阶段：AI 前缀命中时异步触发回复，返回 true 放行广播
+     * （1.7.6.4 覆盖轮：不再吞掉玩家消息——AI 正常回复且玩家发言照常
+     * 显示在聊天栏）；未命中同样放行（后续 CHAT_MESSAGE 阶段转发到
+     * QQ 群，AI 触发消息除外）。
+     * 返回 false 仅用于未绑定限制拦截（BindRestrictInteractions.onChat）。
      */
     private fun handleAllowChat(message: String, sender: ServerPlayer): Boolean {
-        if (message.isEmpty()) return true
-        val manager = try {
-            QqBindManager.getInstance()
-        } catch (_: Throwable) {
-            null
-        } ?: return true
-        if (!manager.isServerAiEnabled || !manager.isAiEnabled) return true
-        val prefix = manager.serverAiPrefix()
-        if (prefix.isEmpty() || !message.lowercase().startsWith("$prefix ")) return true
-        val content = message.substring(prefix.length + 1).trim()
-        if (content.isEmpty()) return true
+        val content = serverAiTriggerContent(message) ?: return true
         val playerName = sender.gameProfile.name
         plugin.submitAsync {
+            val manager = try {
+                QqBindManager.getInstance()
+            } catch (_: Throwable) {
+                return@submitAsync
+            }
             try {
                 val reply = AiChat.chat(content, manager, "server", playerName)
                 val outputPrefix = manager.serverAiOutputPrefix()
@@ -203,7 +205,25 @@ class FabricEvents(private val plugin: KERONGFabric) {
                 plugin.broadcastMessage("$outputPrefix AI 对话失败: ${t.message}")
             }
         }
-        return false
+        return true
+    }
+
+    /**
+     * AI 前缀触发判定（ALLOW / CHAT_MESSAGE 两阶段共用，纯判定无副作用）：
+     * 命中返回去前缀后的对话内容，未命中（AI 关闭 / 前缀不匹配 / 内容为空）返回 null。
+     */
+    private fun serverAiTriggerContent(message: String): String? {
+        if (message.isEmpty()) return null
+        val manager = try {
+            QqBindManager.getInstance()
+        } catch (_: Throwable) {
+            null
+        } ?: return null
+        if (!manager.isServerAiEnabled || !manager.isAiEnabled) return null
+        val prefix = manager.serverAiPrefix()
+        if (prefix.isEmpty() || !message.lowercase().startsWith("$prefix ")) return null
+        val content = message.substring(prefix.length + 1).trim()
+        return content.ifEmpty { null }
     }
 
     // ---------- 玩家进出 ----------
@@ -229,9 +249,11 @@ class FabricEvents(private val plugin: KERONGFabric) {
         val killer = source.entity as? ServerPlayer
         if (entity is ServerPlayer) {
             PlayerStatsManager.onPlayerDeath(FabricPlayer(entity))
+ // 1.7.6.4 覆盖轮：custom-causes 开关（默认开）关闭时只展示内置原版
+            // 死因表，其余统一「死了」（player-events.death.custom-causes）
             QClient.broadcastPlayerDeath(
                 entity.gameProfile.name,
-                DeathMessageFabric.describe(entity, source),
+                DeathMessageFabric.describe(entity, source, plugin.playerEventFormat().deathCustomCauses),
                 DeathMessageFabric.killerOf(entity, source),
             )
         }

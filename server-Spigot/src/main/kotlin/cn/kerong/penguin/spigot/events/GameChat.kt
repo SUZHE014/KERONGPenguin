@@ -159,12 +159,15 @@ class GameChat : Listener {
             null
         }
         // 服务器内 AI 对话（前缀触发）
+        // 1.7.6.4 覆盖轮：不再取消聊天事件——旧版 event.isCancelled = true
+        // 直接吞掉玩家消息（AI 正常回复，但玩家的话在聊天栏看不到）；现在
+        // 玩家消息照常显示，异步取回 AI 回复后追加广播。AI 触发消息同样
+        // 不转发 QQ 群（行为与旧版一致）。
         if (manager != null && manager.isServerAiEnabled && manager.isAiEnabled) {
             val prefix = manager.serverAiPrefix()
             if (prefix.isNotEmpty() && message.lowercase().startsWith("$prefix ")) {
                 val content = message.substring(prefix.length + 1).trim()
                 if (content.isNotEmpty()) {
-                    event.isCancelled = true
                     val bukkitPlugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin")
                         ?: return
                     FoliaCompat.runAsync(bukkitPlugin) {

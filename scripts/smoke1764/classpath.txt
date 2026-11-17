@@ -1,0 +1,10 @@
+冒烟编译运行 classpath（1.7.6.4）：
+  javac/java -cp "<repo>/build/dist/KERONGPenguin_NeoForge-1.20.4-1.7.6.4.jar" Test1764.java
+  java -cp "<repo>/build/dist/KERONGPenguin_NeoForge-1.20.4-1.7.6.4.jar:." Test1764
+运行于 /home/z/my-project/opt/jdk（JDK 21）；结果 24/24 全绿。
+⚠ 用 NeoForge 分发 JAR（DataLayout 签名引用 org.bukkit.plugin.java.JavaPlugin，
+  类解析需要 bukkit 可解析——NeoForge 分发包自带兼容层；Spigot 分发包不带 bukkit
+  类会 NoClassDefFoundError，坑表 1.7.6 三次覆盖轮同款）。
+⚠ 首轮 K9/K15 曾 2 红：Kotlin String.lines() 对末尾 "\n" 会多产一个尾部空元素
+  （与 Java String.lines() 不同），applySkillSection 把 skillSection 展开成行时
+  多拼一个空行——修复 trimEnd('\n') 后再切行；此坑已写进 AiPromptFile 源码注释。

@@ -1,0 +1,11 @@
+冒烟编译运行 classpath（1.7.6.4 覆盖轮）：
+  javac -cp "<repo>/build/dist/KERONGPenguin_NeoForge-1.20.4-1.7.6.4.jar" Test1764o.java
+  java -cp "<repo>/build/dist/KERONGPenguin_NeoForge-1.20.4-1.7.6.4.jar:<repo>/scripts/slf4j-api-2.0.13.jar:<repo>/scripts/slf4j-nop-2.0.13.jar:." Test1764o
+运行于 /home/z/my-project/opt/jdk（JDK 21）。
+⚠ 用 NeoForge 分发 JAR（compat JavaPlugin / ConfigFileRebuilder / ConfigManager
+  均在其中；Spigot events 类不在 NF 包里，聊天吞消息修复由门禁字节码断言覆盖）。
+⚠ slf4j：NF 分发包剔除 org.slf4j（与 NeoForge 运行时去重），冒烟 JVM 里
+  ConfigFileRebuilder 成功路径经 plugin.logger（JUL→SLF4J 桥）打日志，须补
+  slf4j-api + slf4j-nop 两枚（repo/scripts/ 下有留档）。
+⚠ U 组走真实 JAR 内置 config.yml 模板（getResource("config.yml")），先重建
+  JAR 再跑冒烟，否则模板还是 cv61。

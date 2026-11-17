@@ -2,6 +2,7 @@ package cn.kerong.bot.state
 
 import cn.kerong.bot.datapack.AdministratorAccessMode
 import cn.kerong.bot.datapack.StoredCommandSettings
+import cn.kerong.penguin.spigot.manager.DataLayout
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileInputStream
@@ -33,7 +34,8 @@ class HumanReadableStateFile {
     private var target: File? = null
 
     /**
-     * 初始化：优先读取 command-state.ini，
+     * 初始化：优先读取 globalconfig/ 下的 command-state.ini（1.7.6.4 起
+     * 随状态散文件迁入，旧根目录文件启动时自动迁移），
      * 兼容旧版 command-state.properties（读取后迁移保存为 ini）。
      */
     fun initialize(dataDirectory: File?): StoredCommandSettings {
@@ -41,9 +43,14 @@ class HumanReadableStateFile {
             target = null
             return StoredCommandSettings()
         }
-        val iniFile = dataDirectory.resolve("command-state.ini").also { target = it }
+        val iniFile = DataLayout.resolve(dataDirectory, "command-state.ini")
+        if (iniFile == null) {
+            target = null
+            return StoredCommandSettings()
+        }
+        iniFile.also { target = it }
         if (iniFile.isFile) return readIni(iniFile)
-        val legacyFile = dataDirectory.resolve("command-state.properties")
+        val legacyFile = DataLayout.resolve(dataDirectory, "command-state.properties") ?: return StoredCommandSettings()
         if (!legacyFile.isFile) return StoredCommandSettings()
         val migrated = readLegacyProperties(legacyFile)
         save(migrated)

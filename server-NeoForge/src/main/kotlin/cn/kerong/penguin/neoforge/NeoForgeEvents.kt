@@ -96,6 +96,10 @@ class NeoForgeEvents(private val plugin: KERONGNeoForge) {
         val playerName = player.gameProfile.name
 
         // 服务器内 AI 对话（前缀触发，与 GameChat.onChat 一致）
+        // 1.7.6.4 覆盖轮：不再取消聊天事件——旧版 event.isCanceled = true
+        // 直接吞掉玩家消息（AI 正常回复，但玩家的话在聊天栏看不到）；现在
+        // 玩家消息照常显示，异步取回 AI 回复后追加广播。AI 触发消息同样
+        // 不转发 QQ 群（行为与旧版一致）。
         val manager = try {
             QqBindManager.getInstance()
         } catch (_: Throwable) {
@@ -106,7 +110,6 @@ class NeoForgeEvents(private val plugin: KERONGNeoForge) {
             if (prefix.isNotEmpty() && message.lowercase().startsWith("$prefix ")) {
                 val content = message.substring(prefix.length + 1).trim()
                 if (content.isNotEmpty()) {
-                    event.isCanceled = true
                     plugin.submitAsync {
                         try {
                             val reply = AiChat.chat(content, manager, "server", playerName)
@@ -208,10 +211,11 @@ class NeoForgeEvents(private val plugin: KERONGNeoForge) {
         if (dying is ServerPlayer) {
             PlayerStatsManager.onPlayerDeath(NeoPlayer(dying))
             // 死亡播报（player-events.death.enabled，默认 false；占位符口径与
-            // HuHoBot 一致，中文描述生成见 [DeathMessageNeo]）
+            // HuHoBot 一致，中文描述生成见 [DeathMessageNeo]）；1.7.6.4 覆盖轮：
+            // custom-causes 开关（默认开）关闭时只展示内置原版死因表，其余统一「死了」
             QClient.broadcastPlayerDeath(
                 dying.gameProfile.name,
-                DeathMessageNeo.describe(event),
+                DeathMessageNeo.describe(event, plugin.playerEventFormat().deathCustomCauses),
                 DeathMessageNeo.killerOf(event),
             )
         }

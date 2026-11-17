@@ -374,6 +374,19 @@ class ConfigManager(private val plugin: JavaPlugin) {
                 changed = true
             }
         }
+ // 死亡播报默认文案昵称与死因分开（1.7.6.4 覆盖轮，用户口径「修改死亡
+        // 播报玩家昵称和死亡原因分开（配置记得升级修改）」）——旧默认
+        // [游戏] {message} 是默认写入而非用户意图，升级自动收敛为新默认
+        // [游戏] {name} {message}（昵称与死因中间一个空格）；自改过文案的
+        // 配置不受影响（重建器内同款收敛是文本级重建主路径，此处是重建
+        // 失败兜底路径的双保险）
+        if (oldVersion in 1 until 62 &&
+            "[游戏] {message}" == config.getString("player-events.death.format")
+        ) {
+            config.set("player-events.death.format", "[游戏] {name} {message}")
+            plugin.logger.info("死亡播报：默认文案已升级为昵称与死因分开（[游戏] {name} {message}，可自行修改）")
+            changed = true
+        }
  // 移除 render.performance.show-*（查性能卡片指标固定四项
         // TPS / MSPT / 内存 / CPU，不再提供单项显隐；在线人数卡已删）
         for (removed in REMOVED_CONFIG_KEYS) {
@@ -527,9 +540,12 @@ class ConfigManager(private val plugin: JavaPlugin) {
         plugin.config.getString("player-events.join.format", "[游戏] {name} 加入了服务器") ?: "[游戏] {name} 加入了服务器",
         plugin.config.getBoolean("player-events.quit.enabled", true),
         plugin.config.getString("player-events.quit.format", "[游戏] {name} 离开了服务器") ?: "[游戏] {name} 离开了服务器",
- // 死亡播报（参考 HuHoBot，配置键与其一致；默认关闭）
+ // 死亡播报（参考 HuHoBot，配置键与其一致；默认关闭）；1.7.6.4 覆盖轮
+ // 默认文案改为昵称与死因分开（{name} + 空格 + {message}），新增
+ // custom-causes 自定义死因开关（默认开，关闭时只用内置原版死因表）
         plugin.config.getBoolean("player-events.death.enabled", false),
-        plugin.config.getString("player-events.death.format", "[游戏] {message}") ?: "[游戏] {message}",
+        plugin.config.getString("player-events.death.format", "[游戏] {name} {message}") ?: "[游戏] {name} {message}",
+        plugin.config.getBoolean("player-events.death.custom-causes", true),
     )
 
     fun markdownFiles(): Map<String, String> {
@@ -774,7 +790,31 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 不再以 QQ 绑定为入口——没开绑定的服务器也能出榜）；
         // ③bot.groups 只写一对引号 ""（或纯空白）视为未填写（自动绑定与
         // 群白名单判定不再误判已配置）。
-        private const val CURRENT_CONFIG_VERSION = 60
+        // 升 61——1.7.6.4（用户口径「消息模板更新机制修改：默认改为全部
+        // 删掉替换为插件内置，配置文件可添加白名单」）：
+        // ①新键 messages.keep-files（模板白名单，默认空）：名单里的模板
+        // 文件不更新不替换保留原样，名单外的模板每次启动 / 重载重置为
+        // 插件内置最新默认（MessageTemplates.initialize 机制重写，旧版
+        // 释放记录指纹机制整体下线，.release-record.json 自动清理）；
+        // ②无键变更：三个状态散文件（cluster-selection.yml / command-state
+        // 及旧版 command-state.properties / server-notify-state.properties）
+        // 补入 DataLayout 迁移名单移入 globalconfig/（读写点同步改接）；
+        // 死亡播报 {message} 自动带玩家名 + 插件/模组自定义死亡文案优先
+        // （无新键）；AI 网页读取开启时提示词自动补搜索引导 + 插件更新
+        // 替换时「技能」段自动刷新为本版内置（globalconfig/.prompt-skill-
+        // version 版本记录，无新键）。
+        // 升 62——1.7.6.4 覆盖轮（用户口径「修改死亡播报玩家昵称和死亡原因
+        // 分开（配置记得升级修改）」「死亡播报添加一个配置开关（默认开），
+        // 当关闭时，死亡原因只展示插件内置的原版死亡原因，其他死亡原因统一
+        // 显示“死了”」「玩家昵称和死亡原因中间有一个空格」）：
+        // ①新键 player-events.death.custom-causes（默认 true）：开启时其他
+        // 插件 / 模组改写的死亡文案优先原样采用（行为与 1.7.6.4 首发轮一致）；
+        // 关闭时只用内置的原版死亡原因表，其余统一「死了」；
+        // ②默认文案 player-events.death.format 由「[游戏] {message}」改为
+        // 「[游戏] {name} {message}」——昵称与死因分开、中间一个空格，
+        // {message} 不再自动拼玩家名（出口改为剥除自定义文案开头的死者名）；
+        // 升级时旧默认值自动收敛为新默认，自改过文案的不动。
+        private const val CURRENT_CONFIG_VERSION = 62
         // 升 60——1.7.6.3 二次覆盖轮（用户口径「单次网页爬取上限改为8次，
         // 多层爬取上限默认改为4次」+「确保每个配置都有注释」）：
         // ①两个上限拆成两个键分开配置：ai.crawler.max-pages 语义明确为
@@ -1031,6 +1071,12 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "player-events.join.format" to "[游戏] {name} 加入了服务器",
             "player-events.quit.enabled" to true,
             "player-events.quit.format" to "[游戏] {name} 离开了服务器",
+ // 死亡播报三键（1.7.6.4 覆盖轮补入 DEFAULT_VALUES：此前仅靠模板 / 重建
+ // 器写入，重建失败兜底路径缺键补齐时同样能补入）；enabled 默认关、
+ // format 默认昵称与死因分开、custom-causes 默认开
+            "player-events.death.enabled" to false,
+            "player-events.death.format" to "[游戏] {name} {message}",
+            "player-events.death.custom-causes" to true,
             "markdown.queryOnline" to "online.md",
  // query-online.image-output 已移除（markdown 关闭时自动启用图片输出）
             // 默认 Auto：自动检测混合端，纯 Spigot/Paper 不再误提示“已启用混合控制台”
@@ -1179,6 +1225,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
             for (id in MESSAGE_TEMPLATE_IDS) {
                 put("messages.$id", "$id.md")
             }
+ // 1.7.6.4 模板白名单：名单里的模板文件不更新不替换保留原样，
+ // 名单外每次启动 / 重载重置为内置最新默认（见 MessageTemplates.initialize）
+            put("messages.keep-files", emptyList<Any>())
             for (name in COMMAND_NAMES) {
                 put("commands.$name", true)
             }

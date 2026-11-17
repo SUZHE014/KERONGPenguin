@@ -51,7 +51,13 @@ data class PlayerEventFormat(
  /** 死亡播报开关（参考 HuHoBot；默认关闭）。 */
     val deathEnabled: Boolean = false,
     /** 死亡播报格式（占位符与 HuHoBot 一致：{name}/{player}/{server}/{platform}/{message}/{killer}）。 */
-    val deathFormat: String = "[游戏] {message}",
+    val deathFormat: String = "[游戏] {name} {message}",
+    /**
+     * 自定义死亡原因开关（player-events.death.custom-causes，1.7.6.4 覆盖轮，默认开）：
+     * 开启时其他插件 / 模组改写的死亡文案优先原样采用；关闭时死亡原因
+     * 只展示插件内置的原版死亡原因表，其余（插件 / 模组自定义）统一「死了」。
+     */
+    val deathCustomCauses: Boolean = true,
 )
 
 /** 自定义命令详情（QQ 群触发 → 服务器执行）。 */
@@ -108,7 +114,8 @@ interface ConfigProvider {
         quitEnabled = true,
         quitFormat = "[游戏] {name} 离开了服务器",
         deathEnabled = false,
-        deathFormat = "[游戏] {message}",
+        deathFormat = "[游戏] {name} {message}",
+        deathCustomCauses = true,
     )
 
     /** 配置文件路径（用于定位 Markdown / 敏感词目录），无配置文件的平台返回 null。 */
@@ -152,14 +159,39 @@ interface ConfigProvider {
     /**
  * 玩家死亡播报（占位符与 HuHoBot 对齐）。
      *
+     * 1.7.6.4 覆盖轮：玩家昵称与死亡原因**分开**——{name} 只替换玩家名，
+     * {message} 只替换纯死亡原因（不再自动拼玩家名），默认文案
+     * 「[游戏] {name} {message}」两者中间一个空格。插件 / 模组自定义
+     * 死亡文案通常以死者名开头，出口剥掉开头重复的名字（名字在句中的
+     * 保留，不重复拼）。
+     *
      * @param name 死者玩家名
-     * @param deathMessage 自动生成的中文死亡描述（如「Steve 被苦力怕杀死了」，不含死者名）
+     * @param deathMessage 中文死亡描述（如「从高处摔落而死」，不含死者名）
+     *   或其他插件 / 模组给出的完整死亡文案（开头通常带玩家名，出口剥除）
      * @param killerName 击杀者名（环境死亡时为 null，输出为「未知」）
      */
     fun formatPlayerDeathMessage(name: String, deathMessage: String?, killerName: String?): String =
         formatPlayerEventMessage(playerEventFormat().deathFormat, name)
-            .replace("{message}", deathMessage ?: "死了")
+            .replace("{message}", deathCause(name, deathMessage))
             .replace("{killer}", killerName ?: "未知")
+
+    /**
+     * 纯死亡原因（{message} 的内容，1.7.6.4 覆盖轮起不含玩家名）：
+     * - 内置中文描述（不含名）原样使用；
+     * - 插件 / 模组自定义文案以死者名开头 → 剥掉开头名字（含紧随的空白），
+     *   与模板 {name} 分开不重复；名字出现在句中 / 结尾的保留不动；
+     * - 描述缺失 / 剥完为空 → 回退「死了」。
+     */
+    private fun deathCause(name: String, deathMessage: String?): String {
+        if (deathMessage.isNullOrBlank()) return "死了"
+        val text = deathMessage.trim()
+        if (name.isNotEmpty() && text.startsWith(name, ignoreCase = true)) {
+            return text.substring(name.length)
+                .trim(' ', '\u3000', '\t')
+                .ifEmpty { "死了" }
+        }
+        return text
+    }
 
     /** 应用占位符后的事件播报文本。 */
     fun formatPlayerEventMessage(format: String, name: String): String = format

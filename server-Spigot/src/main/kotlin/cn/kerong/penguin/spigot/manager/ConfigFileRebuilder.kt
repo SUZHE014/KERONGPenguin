@@ -181,6 +181,17 @@ internal object ConfigFileRebuilder {
             disk.set("variable-fetch.total-playtime-source", "save-data")
         }
 
+ // 死亡播报默认文案昵称与死因分开（1.7.6.4 覆盖轮，用户口径「修改死亡
+        // 播报玩家昵称和死亡原因分开（配置记得升级修改）」）——旧默认
+        // [游戏] {message} 是默认写入而非用户意图，升级自动收敛为新默认
+        // [游戏] {name} {message}（昵称与死因中间一个空格，{message} 不再
+        // 自动拼玩家名）；自改过文案的配置不受影响（reload 内同款收敛是
+        // 重建失败兜底路径的双保险）；新键 player-events.death.custom-causes
+        // 由模板重建 / 缺键回填路径补入（默认 true）
+        if (disk.getString("player-events.death.format") == "[游戏] {message}") {
+            disk.set("player-events.death.format", "[游戏] {name} {message}")
+        }
+
  // 旧默认值→新默认值的升级收敛已移除（用户要求）——
         // 用户文件里已有的值一律原样回填保留，不做「等于旧默认则换成
         // 新默认」的识别（历史上有 from-group / idle-release-minutes /

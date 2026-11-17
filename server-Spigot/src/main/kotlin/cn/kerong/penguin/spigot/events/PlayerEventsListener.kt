@@ -1,5 +1,6 @@
 package cn.kerong.penguin.spigot.events
 
+import cn.kerong.penguin.spigot.KERONGSpigot
 import cn.kerong.penguin.spigot.stats.FakePlayerRegistry
 import cn.kerong.penguin.spigot.stats.PlayerStatsManager
 import org.bukkit.entity.Player
@@ -28,7 +29,7 @@ import org.bukkit.event.raid.RaidTriggerEvent
  * motd 展示值改由 [cn.kerong.penguin.spigot.stats.MotdDisplayTracker]
  * 本机 SLP 自查询捕获，不再依赖事件。
  */
-class PlayerEventsListener : Listener {
+class PlayerEventsListener(private val plugin: KERONGSpigot) : Listener {
 
     /** 进入：开启统计会话。 */
     @EventHandler(priority = EventPriority.MONITOR)
@@ -74,10 +75,12 @@ class PlayerEventsListener : Listener {
         val player = event.entity.player ?: return
         PlayerStatsManager.onPlayerDeath(player)
         // 死亡播报（player-events.death.enabled，默认 false；文案与占位符口径
-        // 参考 HuHoBot，描述生成见 [DeathMessage]）
+        // 参考 HuHoBot，描述生成见 [DeathMessage]）；1.7.6.4 覆盖轮：custom-causes
+        // 开关（默认开）关闭时只展示内置原版死因表，其余统一「死了」
+        val format = plugin.playerEventFormat()
         cn.kerong.bot.QClient.broadcastPlayerDeath(
             event.entity.name,
-            DeathMessage.describe(event),
+            DeathMessage.describe(event, format.deathCustomCauses),
             DeathMessage.killerOf(event),
         )
     }

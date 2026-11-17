@@ -129,6 +129,21 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
  // 写入「遇到不会的可以搜索」引导——关闭时默认模板不带搜索技能）
         AiMemeLibrary.ensureFolder(memesFolder())
         AiPromptFile.ensureFile(aiPromptFile(), isAiCrawlerEnabled)
+ // 1.7.6.4（本轮）：插件更新替换时「技能」段自动刷新为本版内置内容
+ // （用户口径「修复提示词.md在安装新插件时没有更新技能字段的问题
+ //（仅插件更新替换时更新）」——版本记录 globalconfig/.prompt-skill-version，
+ // 同版本重启 / reload 不触发，只有 jar 被换过才刷新；开关变化的补行走
+ // 下方 syncCrawlerGuidance，两机制互不干扰）
+        val skillSyncVersion = try {
+            cn.kerong.bot.provider.BotShared.instance?.pluginVersion ?: ""
+        } catch (_: Throwable) {
+            ""
+        }
+        AiPromptFile.syncSkillSection(aiPromptFile(), isAiCrawlerEnabled, skillSyncVersion)
+ // 1.7.6.4：爬取开关开启时给已有提示词文件自动补上搜索引导（幂等，
+ // 已有引导 / 开关关闭零写入；关闭时生成的旧文件重新开启后在这里补齐；
+ // 插件更新场景技能段已按当前开关整段刷新，这里自然无事可做）
+        AiPromptFile.syncCrawlerGuidance(aiPromptFile(), isAiCrawlerEnabled)
  // 构造期 instance 尚未赋值（logQuiet 此时退到 println，NeoForge 下
         // 会以 [STDOUT/] 原始格式输出），构造期日志直接走 plugin.logger——
         // Spigot 为 Bukkit 插件日志器、NeoForge 为 JUL→SLF4J 桥接后的标准前缀

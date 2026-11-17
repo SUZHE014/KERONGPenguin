@@ -1,6 +1,7 @@
 package cn.kerong.penguin.spigot.qqbind
 
 import cn.kerong.bot.tools.PluginFileLog
+import cn.kerong.penguin.spigot.manager.DataLayout
 import java.io.File
 import java.nio.charset.StandardCharsets
 
@@ -45,15 +46,23 @@ object AiPromptFile {
     fun defaultContent(role: String, crawlerEnabled: Boolean): String = buildString {
         append("# 角色设定\n\n")
         append(role.trim().ifEmpty { DEFAULT_ROLE })
-        append("\n\n# 技能（你拥有的技能，系统自动注入，不用手动维护）\n\n")
-        append("- 发表情包：气氛合适时在回复末尾加 [表情] 文件名；\n")
-        if (crawlerEnabled) {
-            append("- 读网页与搜索：遇到不会、没把握或时效性的问题（新闻、新版本、价格等），")
-            append("先搜索再回答，不要凭记忆猜测，也不要直接说不知道；\n")
-        }
-        append("- 技能是否可用以系统注入的「系统技能」段为准。\n")
+        append("\n\n")
+        append(skillSection(crawlerEnabled))
         append("\n# 专属知识（服务器规则、玩法说明、常见问题等，写在这里 AI 对话时会参考）\n\n")
         append("（在这里补充内容，可删除本行）\n")
+    }
+
+    /**
+     * 「技能」段内容（含标题行与全部技能行，纯函数）：[defaultContent] /
+     * [applySkillSection] / [applyCrawlerGuidance] 共用同源内容，杜绝
+     * 多处手抄漂移。1.7.6.4 抽出（插件更新时技能段刷新机制，见
+     * [syncSkillSection]）。
+     */
+    fun skillSection(crawlerEnabled: Boolean): String = buildString {
+        append("# 技能（你拥有的技能，系统自动注入，不用手动维护）\n\n")
+        append("- 发表情包：气氛合适时在回复末尾加 [表情] 文件名；\n")
+        if (crawlerEnabled) append(CRAWLER_GUIDANCE_LINE).append('\n')
+        append("- 技能是否可用以系统注入的「系统技能」段为准。\n")
     }
 
     /**
@@ -79,6 +88,160 @@ object AiPromptFile {
             PluginFileLog.write("[提示词] 创建文件失败（${t.message}）")
             null
         }
+    }
+
+    /**
+     * 爬取开启时自动补写搜索引导（1.7.6.4，用户口径「确保当 AI 网页爬取
+     * 功能开启的时候，已有的提示词.md将自动更新（仅在配置关闭时重新
+     * 开启配置才更新）」）：
+     *
+     * - [crawlerEnabled] = true 且文件已存在但缺少搜索引导行（关闭状态下
+     *   生成的旧文件 / 老版本升级）→ 把「- 读网页与搜索：……」一行插入
+     *   「技能」段（找不到段落时追加到文件末尾），其余内容原样保留；
+     * - 已有引导 / 开关关闭 / 文件不存在 → 不动（幂等，开关一直是开时
+     *   每次启动零写入）；
+     * - 插入内容与 [defaultContent] 的搜索引导一字不差。
+     */
+    fun syncCrawlerGuidance(file: File?, crawlerEnabled: Boolean) {
+        if (file == null || !crawlerEnabled) return
+        try {
+            if (!file.isFile) return
+            val text = file.readText(StandardCharsets.UTF_8)
+            if (CRAWLER_GUIDANCE_MARKER in text) return
+            val updated = applyCrawlerGuidance(text)
+            if (updated != text) {
+                file.writeText(updated, StandardCharsets.UTF_8)
+                PluginFileLog.write(
+                    "[提示词] AI 网页读取已开启：已自动补上「读网页与搜索」技能引导" +
+                        "（其余内容不变；不想要这行可自行删掉，下次开关重新开启时会再补上）"
+                )
+            }
+        } catch (t: Throwable) {
+            PluginFileLog.write("[提示词] 补写搜索引导失败（${t.message}）")
+        }
+    }
+
+    /** 搜索引导行的识别标记（defaultContent 与补写内容共用）。 */
+    const val CRAWLER_GUIDANCE_MARKER = "读网页与搜索"
+
+    /**
+     * 往提示词内容里插入搜索引导行（纯函数，冒烟直接验证）：
+     * ① 已有引导 → 原样返回；②「- 发表情包」行后插入；③ 找不到表情行
+     * 时「# 技能」标题行后插入；④ 连技能段都没有 → 文件末尾追加完整
+     * 技能段（与默认模板同结构）。
+     */
+    fun applyCrawlerGuidance(content: String): String {
+        if (CRAWLER_GUIDANCE_MARKER in content) return content
+        val lines = content.lines().toMutableList()
+        // ② 插在「发表情包」技能行之后
+        val memeIndex = lines.indexOfFirst { it.trimStart().startsWith("- 发表情包") }
+        if (memeIndex >= 0) {
+            lines.add(memeIndex + 1, CRAWLER_GUIDANCE_LINE)
+            return lines.joinToString("\n")
+        }
+        // ③ 插在「# 技能」标题行之后
+        val skillIndex = lines.indexOfFirst { it.trimStart().startsWith("# 技能") }
+        if (skillIndex >= 0) {
+            lines.add(skillIndex + 1, CRAWLER_GUIDANCE_LINE)
+            return lines.joinToString("\n")
+        }
+        // ④ 末尾追加完整技能段（与默认模板同结构）
+        val builder = StringBuilder(content.trimEnd())
+        if (builder.isNotEmpty()) builder.append("\n\n")
+        builder.append("# 技能（你拥有的技能，系统自动注入，不用手动维护）\n\n")
+        builder.append(CRAWLER_GUIDANCE_LINE).append('\n')
+        return builder.toString()
+    }
+
+    /** 搜索引导行（[skillSection] 与 [applyCrawlerGuidance] 共用同源内容）。 */
+    private const val CRAWLER_GUIDANCE_LINE =
+        "- 读网页与搜索：遇到不会、没把握或时效性的问题（新闻、新版本、价格等），" +
+            "先搜索再回答，不要凭记忆猜测，也不要直接说不知道；"
+
+    /**
+     * 插件更新替换时刷新技能段（1.7.6.4，用户口径「修复提示词.md在安装
+     * 新插件时没有更新技能字段的问题（仅插件更新替换时更新）」）：
+     *
+     * - 版本记录（globalconfig/ 下的 [SKILL_VERSION_FILE]）存着上次同步
+     *   技能段时的插件版本——与当前 [pluginVersion] 一致 = 同版本重启 /
+     *   reload（jar 没换过），不是更新替换，直接跳过（零写入）；
+     * - 记录缺失（老版本升级上来）或版本不同（jar 被替换 = 安装了新
+     *   插件）→ 把文件里的「技能」段整段替换为当前内置技能段（按
+     *   [crawlerEnabled] 生成，见 [applySkillSection]），角色设定与
+     *   专属知识原样保留；内容实际有变化才写文件（如 1.7.6.3 生成的
+     *   技能段与本版一致时零打扰，只补记录）；
+     * - 全新安装（默认文件刚生成，技能段本就是最新）同样只记版本不写
+     *   文件；开关关→开的补行走 [syncCrawlerGuidance]，与本机制互不
+     *   干扰（版本刷新按当前开关生成，开着就自带搜索行）。
+     */
+    fun syncSkillSection(file: File?, crawlerEnabled: Boolean, pluginVersion: String) {
+        if (file == null || pluginVersion.isBlank()) return
+        try {
+            val record = DataLayout.resolve(file.parentFile, SKILL_VERSION_FILE)
+            if (record != null && record.isFile) {
+                val last = record.readText(StandardCharsets.UTF_8).trim()
+                if (last == pluginVersion) return
+            }
+            var changed = false
+            if (file.isFile) {
+                val text = file.readText(StandardCharsets.UTF_8)
+                val updated = applySkillSection(text, crawlerEnabled)
+                if (updated != text) {
+                    file.writeText(updated, StandardCharsets.UTF_8)
+                    changed = true
+                }
+            }
+            if (record != null) record.writeText(pluginVersion, StandardCharsets.UTF_8)
+            if (changed) {
+                PluginFileLog.write(
+                    "[提示词] 检测到插件更新（v$pluginVersion）：「技能」段已更新为本版内置内容" +
+                        "（角色设定与专属知识原样保留；这段由系统维护，想自定义可手动改，" +
+                        "下次插件更新时会再刷新）"
+                )
+            }
+        } catch (t: Throwable) {
+            PluginFileLog.write("[提示词] 技能段更新失败（${t.message}）")
+        }
+    }
+
+    /** 技能段版本记录文件名（globalconfig/ 下，内容 = 上次同步技能段时的插件版本号）。 */
+    const val SKILL_VERSION_FILE = ".prompt-skill-version"
+
+    /**
+     * 把提示词内容的「技能」段整段替换为当前内置技能段（纯函数，冒烟
+     * 直接验证）：
+     * ① 找到「# 技能」标题行 → 从该行到下一个一级标题（# 开头）之前
+     *    整段替换（段间规整为一个空行）；
+     * ② 没有技能段（1.7.6.2 及更早生成的文件）→ 末尾追加完整技能段
+     *    （与 [applyCrawlerGuidance] 的追加分支同口径）；
+     * ③ 角色设定 / 专属知识等其他内容原样保留；幂等（重复应用零变化）。
+     */
+    fun applySkillSection(content: String, crawlerEnabled: Boolean): String {
+        val lines = content.lines()
+        val start = lines.indexOfFirst { it.trimStart().startsWith("# 技能") }
+        if (start < 0) {
+            val base = content.trimEnd()
+            return if (base.isEmpty()) skillSection(crawlerEnabled)
+            else base + "\n\n" + skillSection(crawlerEnabled)
+        }
+        var end = lines.size
+        for (i in start + 1 until lines.size) {
+            val t = lines[i].trimStart()
+            if (t.startsWith("# ") && !t.startsWith("# 技能")) {
+                end = i
+                break
+            }
+        }
+        val result = lines.subList(0, start).toMutableList()
+        // trimEnd('\n')：Kotlin lines() 对末尾换行会多产一个空元素（与
+        // Java String.lines() 不同），技能段以 \n 收尾，不剥掉会多拼一个空行
+        result.addAll(skillSection(crawlerEnabled).trimEnd('\n').lines())
+        if (end < lines.size) {
+            result.add("")
+            result.addAll(lines.subList(end, lines.size))
+        }
+        val joined = result.joinToString("\n")
+        return if (content.endsWith("\n") && !joined.endsWith("\n")) joined + "\n" else joined
     }
 
     /**

@@ -70,7 +70,9 @@ class KERONGSpigot : JavaPlugin(), KERONG {
 
         // 注册游戏事件监听（GameChat 构造时会初始化 QqBindManager，需在共享实例注册后）
         server.pluginManager.registerEvents(GameChat(), this)
-        server.pluginManager.registerEvents(PlayerEventsListener(), this)
+ // PlayerEventsListener 持插件引用（1.7.6.4 覆盖轮：死亡播报读
+        // player-events.death.custom-causes 开关）
+        server.pluginManager.registerEvents(PlayerEventsListener(this), this)
 
  // QQ 绑定开启时自动关闭服务器自带白名单并提醒（1.7.5.2；
         // QqBindManager 已随 GameChat 构造就绪，白名单状态在插件启用阶段

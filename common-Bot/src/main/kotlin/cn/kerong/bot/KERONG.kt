@@ -211,6 +211,27 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
         } catch (error: Throwable) {
             log_warning("消息模板初始化失败: ${error.message}")
         }
+ // 1.7.6.4：AI 网页读取开启时给已有提示词文件自动补上搜索引导
+ //（/hbkrg reload 把 ai.crawler.enabled 关→开时在这里生效；幂等，
+ //  开关一直是开且文件已有引导时零写入。启动路径另有 QqBindManager
+ //  初始化后的一道钩子，两处互为兜底）
+        try {
+            val configDirectory = configFile?.absoluteFile?.parentFile
+            val javaPlugin = this as? org.bukkit.plugin.java.JavaPlugin
+            if (configDirectory != null && javaPlugin != null) {
+                val rawName = javaPlugin.config.getString("ai.prompt-file")
+                    ?: cn.kerong.penguin.spigot.qqbind.AiPromptFile.DEFAULT_FILE_NAME
+                val promptFile = java.io.File(
+                    configDirectory,
+                    rawName.ifBlank { cn.kerong.penguin.spigot.qqbind.AiPromptFile.DEFAULT_FILE_NAME },
+                )
+                cn.kerong.penguin.spigot.qqbind.AiPromptFile.syncCrawlerGuidance(
+                    promptFile,
+                    javaPlugin.config.getBoolean("ai.crawler.enabled", false),
+                )
+            }
+        } catch (_: Throwable) {
+        }
         CustomCommandRegistry.replace(customCommands())
     }
 

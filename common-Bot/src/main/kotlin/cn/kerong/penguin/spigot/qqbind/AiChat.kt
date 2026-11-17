@@ -79,11 +79,12 @@ object AiChat {
     /**
      * 执行一次 AI 对话（兼容入口，游戏内 / 旧调用点）。
      * 返回纯文本：标记已剥离、思考段已剥离；AI 只输出了表情包标记时
-     * （游戏内没有发图层）返回兜底文案，不再广播一条只有前缀的空白。
+     * （游戏内没有发图层）返回兜底文案（1.7.6.4 覆盖轮口径），不再广播
+     * 一条只有前缀的空白。
      */
     fun chat(userMessage: String, manager: QqBindManager?, groupId: String?, userId: String?): String {
         return chatWithOutcome(userMessage, manager, groupId, userId)
-            .text.ifBlank { "（AI 本次只想发个表情包，游戏内无法显示图片）" }
+            .text.ifBlank { "（只想发个表情，可奈何游戏不允许）" }
     }
 
     /**
