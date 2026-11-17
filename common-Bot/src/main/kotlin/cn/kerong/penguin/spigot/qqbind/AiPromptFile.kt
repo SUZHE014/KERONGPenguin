@@ -39,8 +39,9 @@ object AiPromptFile {
      * 使用引导（1.7.6.3 三次覆盖轮新增——遇到不会 / 没把握 / 时效性
      * 的问题可以搜索，具体技能与开关状态以系统注入的「系统技能」段
      * 为准；四次覆盖轮：搜索引导仅在 [crawlerEnabled]（ai.crawler.enabled
-     * 开启）时写入——关闭时不引导 AI 去用它用不了的功能；已生成的
-     * 旧文件一律不动，不做自动清理）；「专属知识」段写给 AI 的资料
+     * 开启）时写入——关闭时不引导 AI 去用它用不了的功能；1.7.6.5 起
+     * 爬取默认改开，新装默认模板自带搜索引导；已生成的旧文件一律不动，
+     * 不做自动清理）；「专属知识」段写给 AI 的资料
      * （服务器规则、玩法说明、常见问题等）。
      */
     fun defaultContent(role: String, crawlerEnabled: Boolean): String = buildString {
@@ -271,7 +272,8 @@ object AiPromptFile {
      * 升级迁移：把旧配置 ai.system-prompt 的值并入提示词文件
      * （文件已存在时不动——用户可能已手工编辑过）。
      * @param crawlerEnabled 生成默认内容时是否写入搜索引导（读磁盘旧
-     * 配置的 ai.crawler.enabled；旧版本无此键按关，与升级后新默认一致）
+     * 配置的 ai.crawler.enabled；1.7.6.5 起旧版本无此键**按开**，与
+     * 升级后新默认一致——缺键由 fillMissing 按新默认 true 补入）
      * @return true = 已生成迁移文件；false = 无需迁移 / 文件已存在 / 失败
      */
     fun migrateFromSystemPrompt(file: File?, oldRole: String?, crawlerEnabled: Boolean): Boolean {

@@ -91,12 +91,15 @@ class ConfigManager(private val plugin: JavaPlugin) {
         val rawName = disk.getString("ai.prompt-file")
         val name = if (rawName.isNullOrBlank()) AiPromptFile.DEFAULT_FILE_NAME else rawName
         val promptFile = File(plugin.dataFolder, name)
-        // 四次覆盖轮：迁移生成的默认提示词按磁盘旧配置的 ai.crawler.enabled
-        // 决定是否写入搜索引导（旧版本无此键按关，与升级后新默认一致）
+        // 1.7.6.5：迁移生成的默认提示词按磁盘旧配置的 ai.crawler.enabled
+        // 决定是否写入搜索引导（旧版本无此键**按开**——与升级后新默认一致：
+        // 缺键由 fillMissing 按新默认 true 补入；1.7.6.3~1.7.6.4 期间缺省
+        // 曾按关，1.7.6.5 默认改开后同步翻转，这就是提示词模板技能升级
+        // 机制的同步修改点）
         val crawlerEnabled = try {
-            disk.getBoolean("ai.crawler.enabled", false)
+            disk.getBoolean("ai.crawler.enabled", true)
         } catch (_: Throwable) {
-            false
+            true
         }
         if (AiPromptFile.migrateFromSystemPrompt(promptFile, oldRole, crawlerEnabled)) {
             plugin.logger.info(
@@ -814,7 +817,24 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 「[游戏] {name} {message}」——昵称与死因分开、中间一个空格，
         // {message} 不再自动拼玩家名（出口改为剥除自定义文案开头的死者名）；
         // 升级时旧默认值自动收敛为新默认，自改过文案的不动。
-        private const val CURRENT_CONFIG_VERSION = 62
+        // 升 63——1.7.6.5（用户口径「表情文案：游戏内兜底文案改为（只想
+        // 发个表情，奈何游戏不允许），可通过配置文件修改」+「把AI网页爬取
+        // 功能默认改为开（已有关的不自动修改）」）：
+        // ①新键 ai.memes.game-fallback-text（游戏内表情兜底文案，默认
+        // 「（只想发个表情，奈何游戏不允许）」——1.7.6.4 的「可奈何」去
+        // 「可」字）：AI 只输出了表情包标记时游戏内无法显示图片，回复
+        // 这条文案代替空白（QQ 群正常发图不受影响）；
+        // ②ai.crawler.enabled 默认 false→true（1.7.6.3 四次覆盖轮至
+        // 1.7.6.4 期间默认关，1.7.6.5 改回默认开）——**不做任何旧值收敛**：
+        // 磁盘里已写 false 的服务器保持关闭不受影响，缺键（新装 / 老版本
+        // 升级）按新默认 true 补入（fillMissing 只补缺不覆盖）；
+        // ③同轮无键变化：游戏内 AI 唤醒消息兼容格式化聊天模组/插件
+        // （三端监听器拆分，见 GameChat/NeoForgeEvents/FabricEvents）、
+        // 网页爬取安全机制加固（不下载任何东西/防注入/SSRF 收紧，见
+        // WebCrawler）、提示词迁移的缺键爬虫默认同步改开（旧版本无
+        // ai.crawler.enabled 键按开，与升级后新默认一致，见
+        // migrateSystemPromptToPromptFile）。
+        private const val CURRENT_CONFIG_VERSION = 63
         // 升 60——1.7.6.3 二次覆盖轮（用户口径「单次网页爬取上限改为8次，
         // 多层爬取上限默认改为4次」+「确保每个配置都有注释」）：
         // ①两个上限拆成两个键分开配置：ai.crawler.max-pages 语义明确为
@@ -1212,10 +1232,15 @@ class ConfigManager(private val plugin: JavaPlugin) {
  // 改为关」；不升 config-version、不做旧值收敛——已开的服务器保持
  // 开启，自行关闭即可；升 58 的 false→true 收敛块已同步移除，
  // 老版本升级不再被强制打开）
+ // 1.7.6.5：crawler.enabled 默认 关→开（用户口径「把AI网页爬取功能默认
+ // 改为开（已有关的不自动修改）」；不做旧值收敛——磁盘写了 false 的
+ // 保持关闭，缺键 / 新装按新默认 true 补入）；新增
+ // memes.game-fallback-text（游戏内表情兜底文案可配置，1.7.6.5）
             "ai.memes.enabled" to true,
             "ai.memes.max-per-reply" to 1,
+            "ai.memes.game-fallback-text" to "（只想发个表情，奈何游戏不允许）",
             "ai.prompt-file" to AiPromptFile.DEFAULT_FILE_NAME,
-            "ai.crawler.enabled" to false,
+            "ai.crawler.enabled" to true,
             "ai.crawler.max-pages" to 8,
             "ai.crawler.max-layers" to 4,
             "ai.crawler.timeout-seconds" to 10,

@@ -619,6 +619,22 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         AiChat.MEME_MAX_PER_REPLY
     }
 
+    /**
+     * 游戏内表情兜底文案（ai.memes.game-fallback-text，1.7.6.5 新键）：
+     * AI 只输出了表情包标记时游戏内聊天栏无法显示图片，回复这条文案
+     * 代替空白（QQ 群里正常发图不受影响）；留空 / 缺省 / 取值异常时
+     * 回退内置默认文案（AiChat.DEFAULT_GAME_MEME_FALLBACK）。
+     */
+    fun aiMemesGameFallbackText(): String {
+        val raw = try {
+            plugin.config.getString("ai.memes.game-fallback-text", AiChat.DEFAULT_GAME_MEME_FALLBACK)
+                ?: AiChat.DEFAULT_GAME_MEME_FALLBACK
+        } catch (_: Throwable) {
+            AiChat.DEFAULT_GAME_MEME_FALLBACK
+        }
+        return raw.trim().ifEmpty { AiChat.DEFAULT_GAME_MEME_FALLBACK }
+    }
+
     /** 提示词文件（插件目录下，默认 提示词.md；不存在时自动生成默认内容）。 */
     fun aiPromptFile(): java.io.File? {
         val base = dataFolder() ?: return null
@@ -630,17 +646,22 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         return java.io.File(base, name.ifBlank { AiPromptFile.DEFAULT_FILE_NAME })
     }
 
-    /** 网页读取开关（ai.crawler.enabled，**默认关**；1.7.6.3 四次覆盖轮起默认改回关，
-     * 不升 config-version、不做旧值收敛——已开的服务器保持开启，自行关闭即可；
-     * 三次覆盖轮及更早默认为开，升 58 收敛块已同步移除）。
-     * 开启后 AI 可通过 [GET] 标记请求读取网页（多次多层，内网地址被拒绝，见 [WebCrawler]），
-     * 提示词动态「系统技能」段也仅在开启时注入读网页与搜索条目。
+    /**
+     * 网页读取开关（ai.crawler.enabled，**1.7.6.5 起默认开**）：
+     * - 1.7.6.3 四次覆盖轮至 1.7.6.4 期间曾默认关，1.7.6.5 改回默认开
+     *  （用户口径「把AI网页爬取功能默认改为开」）；
+     * - **已有关的服务器不自动修改**——升级不做任何旧值收敛，磁盘里
+     *  写了 false 的保持关闭，自行改开即可；缺键（新装 / 老版本升级）
+     *  按新默认 true 补入；
+     * - 开启后 AI 可通过 [GET] 标记请求读取网页（多次多层，安全约束见
+     *  [WebCrawler]：仅公网页、不下载任何文件、防注入），提示词动态
+     *  「系统技能」段也仅在开启时注入读网页与搜索条目。
      */
     val isAiCrawlerEnabled: Boolean
         get() = try {
-            plugin.config.getBoolean("ai.crawler.enabled", false)
+            plugin.config.getBoolean("ai.crawler.enabled", true)
         } catch (_: Throwable) {
-            false
+            true
         }
 
     /** 单次回答最多读取的网页总数（ai.crawler.max-pages，默认 8：各层累计含搜索页；

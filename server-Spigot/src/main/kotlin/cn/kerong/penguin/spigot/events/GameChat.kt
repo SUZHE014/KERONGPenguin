@@ -148,8 +148,71 @@ class GameChat : Listener {
         }
     }
 
-    /** 群聊转发 + 服务器内 AI 对话。 */
-    @EventHandler(ignoreCancelled = true)
+    /**
+     * 判定消息是否命中游戏内 AI 前缀触发（唤醒）：命中返回去前缀后的
+     * 对话内容，未命中（AI 关闭 / 前缀不匹配 / 内容为空）返回 null。
+     *
+     * 纯判定无副作用——[onChatAiWake] 与 [onChat] 两个监听共用同一条件
+     *（同一条消息在两个监听里判定结果必然一致，AI 触发消息不会漏进
+     * 转发、普通消息不会误触发 AI）。
+     */
+    internal fun serverAiTriggerContent(message: String, manager: QqBindManager): String? {
+        if (!manager.isServerAiEnabled || !manager.isAiEnabled) return null
+        val prefix = manager.serverAiPrefix()
+        if (prefix.isEmpty() || !message.lowercase().startsWith("$prefix ")) return null
+        val content = message.substring(prefix.length + 1).trim()
+        return content.ifEmpty { null }
+    }
+
+    /**
+     * 游戏内 AI 唤醒监听（1.7.6.5 起独立拆出）：
+     *
+     * - **最早优先级（LOWEST）+ 不忽略已取消事件**——服务器装了格式化
+     *   聊天插件 / 模组（CMI、VentureChat、Chatty 等会取消原生聊天事件、
+     *   再自行广播格式化后的消息）时，旧版 `ignoreCancelled = true` 的
+     *   单监听根本收不到事件，AI 唤醒消息识别不到；现在本监听在一切
+     *   格式化插件动手之前拿到**原始消息**做前缀判定，被取消也能触发；
+     * - 1.7.6.4 覆盖轮起不再取消聊天事件（玩家消息照常显示，异步取回
+     *   AI 回复后追加广播），本监听只读不写不取消；
+     * - 被其他插件取消（拦截发言）的消息仍会触发 AI——格式化插件的
+     *   取消不代表消息没显示（它们取消后自行广播），拦截型插件取消
+     *   的唤醒消息触发 AI 属可接受的边缘行为；
+     * - AI 触发消息不转发 QQ 群（由 [onChat] 按同一判定跳过）。
+     */
+    @EventHandler(priority = EventPriority.LOWEST)
+    fun onChatAiWake(event: AsyncPlayerChatEvent) {
+        val manager = try {
+            QqBindManager.getInstance()
+        } catch (_: Throwable) {
+            null
+        } ?: return
+        val content = serverAiTriggerContent(event.message, manager) ?: return
+        val playerName = event.player.name
+        val bukkitPlugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin") ?: return
+        FoliaCompat.runAsync(bukkitPlugin) {
+            try {
+                val reply = AiChat.chat(content, manager, "server", playerName)
+                val outputPrefix = manager.serverAiOutputPrefix()
+                FoliaCompat.runSync(bukkitPlugin) {
+                    Bukkit.broadcastMessage("$outputPrefix $reply")
+                }
+            } catch (t: Throwable) {
+                QqBindManager.logVerbose("[AI对话] 服务器调用失败: ${t.message}")
+                val outputPrefix = manager.serverAiOutputPrefix()
+                FoliaCompat.runSync(bukkitPlugin) {
+                    Bukkit.broadcastMessage("$outputPrefix AI 对话失败: ${t.message}")
+                }
+            }
+        }
+    }
+
+    /**
+     * 聊天转发到 QQ 群（MONITOR 优先级 = 事件最终状态）：只在事件最终
+     * 未被取消时转发（格式化插件取消后自行广播的消息维持 1.7.6.4 起的
+     * 既有口径——不重复转发）；AI 触发消息不转发（与 [onChatAiWake]
+     * 共用同一判定，见 [serverAiTriggerContent]）。
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onChat(event: AsyncPlayerChatEvent) {
         val message = event.message
         val playerName = event.player.name
@@ -158,37 +221,7 @@ class GameChat : Listener {
         } catch (_: Throwable) {
             null
         }
-        // 服务器内 AI 对话（前缀触发）
-        // 1.7.6.4 覆盖轮：不再取消聊天事件——旧版 event.isCancelled = true
-        // 直接吞掉玩家消息（AI 正常回复，但玩家的话在聊天栏看不到）；现在
-        // 玩家消息照常显示，异步取回 AI 回复后追加广播。AI 触发消息同样
-        // 不转发 QQ 群（行为与旧版一致）。
-        if (manager != null && manager.isServerAiEnabled && manager.isAiEnabled) {
-            val prefix = manager.serverAiPrefix()
-            if (prefix.isNotEmpty() && message.lowercase().startsWith("$prefix ")) {
-                val content = message.substring(prefix.length + 1).trim()
-                if (content.isNotEmpty()) {
-                    val bukkitPlugin = Bukkit.getPluginManager().getPlugin("KERONGPenguin")
-                        ?: return
-                    FoliaCompat.runAsync(bukkitPlugin) {
-                        try {
-                            val reply = AiChat.chat(content, manager, "server", playerName)
-                            val outputPrefix = manager.serverAiOutputPrefix()
-                            FoliaCompat.runSync(bukkitPlugin) {
-                                Bukkit.broadcastMessage("$outputPrefix $reply")
-                            }
-                        } catch (t: Throwable) {
-                            QqBindManager.logVerbose("[AI对话] 服务器调用失败: ${t.message}")
-                            val outputPrefix = manager.serverAiOutputPrefix()
-                            FoliaCompat.runSync(bukkitPlugin) {
-                                Bukkit.broadcastMessage("$outputPrefix AI 对话失败: ${t.message}")
-                            }
-                        }
-                    }
-                    return
-                }
-            }
-        }
+        if (manager != null && serverAiTriggerContent(message, manager) != null) return
         QClient.broadcastGameMessage(playerName, message)
     }
 

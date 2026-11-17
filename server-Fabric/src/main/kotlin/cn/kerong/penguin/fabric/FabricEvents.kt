@@ -84,6 +84,10 @@ class FabricEvents(private val plugin: KERONGFabric) {
 
         // 聊天：ALLOW 阶段判定服务器内 AI 前缀（命中异步回复；1.7.6.4 覆盖轮
         // 起消息照常广播，不再吞掉玩家发言）；
+        // 1.7.6.5：ALLOW 阶段在消息广播管线最前、读的是玩家原始输入
+        //（signedContent），格式化聊天模组只改展示层（装饰文本）不影响
+        // 本判定——装了格式化模组 AI 唤醒消息也能正常识别（与 Spigot
+        // LOWEST / NeoForge HIGHEST+接收取消 两监听同口径）；
         // 1.7.5.9：未绑定限制玩家在此拦截（不广播 / 不转发 QQ 群）
         ServerMessageEvents.ALLOW_CHAT_MESSAGE.register { message, sender, _ ->
             if (!BindRestrictInteractions.onChat(sender)) return@register false
