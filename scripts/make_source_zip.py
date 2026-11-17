@@ -56,6 +56,10 @@ def excluded(rel):
     # Test1763p.java + classpath.txt 随包）
     if rel.startswith("scripts/smoke1763p/") and rel.endswith(".class"):
         return True
+    # 1.7.6.3 四次覆盖轮：smoke1763r 同口径（.class 在目录根，排除；
+    # Test1763r.java + classpath.txt 随包）
+    if rel.startswith("scripts/smoke1763r/") and rel.endswith(".class"):
+        return True
     if rel.startswith("scripts/smoke176/") and (rel.endswith(".class") or "/out/" in rel):
         return True
     if "build" in parts[:-1]:

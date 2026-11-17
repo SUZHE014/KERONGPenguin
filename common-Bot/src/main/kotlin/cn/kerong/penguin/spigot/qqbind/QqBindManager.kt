@@ -124,9 +124,11 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         loadAiContext()
         val boundCount = buildReverseIndexes()
  // 表情包文件夹与提示词文件默认生成（启动即建，三端一致；
- // 已有的目录 / 文件一律不覆盖，删掉后会再次生成默认内容）
+ // 已有的目录 / 文件一律不覆盖，删掉后会再次生成默认内容；
+ // 四次覆盖轮：首次生成默认提示词时按 ai.crawler.enabled 决定是否
+ // 写入「遇到不会的可以搜索」引导——关闭时默认模板不带搜索技能）
         AiMemeLibrary.ensureFolder(memesFolder())
-        AiPromptFile.ensureFile(aiPromptFile())
+        AiPromptFile.ensureFile(aiPromptFile(), isAiCrawlerEnabled)
  // 构造期 instance 尚未赋值（logQuiet 此时退到 println，NeoForge 下
         // 会以 [STDOUT/] 原始格式输出），构造期日志直接走 plugin.logger——
         // Spigot 为 Bukkit 插件日志器、NeoForge 为 JUL→SLF4J 桥接后的标准前缀
@@ -613,14 +615,17 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
         return java.io.File(base, name.ifBlank { AiPromptFile.DEFAULT_FILE_NAME })
     }
 
-    /** 网页读取开关（ai.crawler.enabled，**默认开，正式功能**；1.7.6.3 起转正式版）。
-     * 开启后 AI 可通过 [GET] 标记请求读取网页（多次多层，内网地址被拒绝，见 [WebCrawler]）。
+    /** 网页读取开关（ai.crawler.enabled，**默认关**；1.7.6.3 四次覆盖轮起默认改回关，
+     * 不升 config-version、不做旧值收敛——已开的服务器保持开启，自行关闭即可；
+     * 三次覆盖轮及更早默认为开，升 58 收敛块已同步移除）。
+     * 开启后 AI 可通过 [GET] 标记请求读取网页（多次多层，内网地址被拒绝，见 [WebCrawler]），
+     * 提示词动态「系统技能」段也仅在开启时注入读网页与搜索条目。
      */
     val isAiCrawlerEnabled: Boolean
         get() = try {
-            plugin.config.getBoolean("ai.crawler.enabled", true)
+            plugin.config.getBoolean("ai.crawler.enabled", false)
         } catch (_: Throwable) {
-            true
+            false
         }
 
     /** 单次回答最多读取的网页总数（ai.crawler.max-pages，默认 8：各层累计含搜索页；

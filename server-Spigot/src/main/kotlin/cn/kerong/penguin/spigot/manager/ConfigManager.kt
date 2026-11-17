@@ -91,7 +91,14 @@ class ConfigManager(private val plugin: JavaPlugin) {
         val rawName = disk.getString("ai.prompt-file")
         val name = if (rawName.isNullOrBlank()) AiPromptFile.DEFAULT_FILE_NAME else rawName
         val promptFile = File(plugin.dataFolder, name)
-        if (AiPromptFile.migrateFromSystemPrompt(promptFile, oldRole)) {
+        // 四次覆盖轮：迁移生成的默认提示词按磁盘旧配置的 ai.crawler.enabled
+        // 决定是否写入搜索引导（旧版本无此键按关，与升级后新默认一致）
+        val crawlerEnabled = try {
+            disk.getBoolean("ai.crawler.enabled", false)
+        } catch (_: Throwable) {
+            false
+        }
+        if (AiPromptFile.migrateFromSystemPrompt(promptFile, oldRole, crawlerEnabled)) {
             plugin.logger.info(
                 "配置升级：AI 角色设定已迁入提示词文件 $name（原 ai.system-prompt 配置项已移除；后续直接改文件，保存后下次对话自动生效）"
             )
@@ -793,7 +800,9 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 升 58——1.7.6.3（用户口径「把AI网页抓取功能变为正式版」+「简化最近新增的配置文件」）：
         // ①AI 网页读取转正式功能：ai.crawler.enabled 默认关→开（旧测试期的
         // 关闭默认是插件写入而非用户意图，升级自动收敛为开，自行改过的不动；
-        // 不需要的服主可在配置里改回 false）；ai.crawler.max-pages 默认 2→3
+        // 不需要的服主可在配置里改回 false）——**四次覆盖轮已把默认改回关并
+        // 移除该收敛块**（见 DEFAULT_VALUES 注与 ConfigFileRebuilder），老版本
+        // 升级不再被强制打开；ai.crawler.max-pages 默认 2→3
         //（支持多次多层读取：搜索页 + 逐层深入）；②配置简化删四个调优键
         //（升级自动删键，行为固定为原默认值）：ai.memes.folder（表情包文件夹
         // 固定 guaipng）/ ai.memes.max-per-reply（每条回复最多 1 张）/
@@ -1152,11 +1161,15 @@ class ConfigManager(private val plugin: JavaPlugin) {
             "ai.reminder-mode" to "",
  // 1.7.6.3 覆盖轮恢复的三键（升 58 曾随"配置简化"删除，用户口径恢复；
  // 默认值与历史版本一致）；二次覆盖轮：max-pages 默认 3→8 +
- // 新增 max-layers（多层层数上限，默认 4，与页数上限分开两个键）
+ // 新增 max-layers（多层层数上限，默认 4，与页数上限分开两个键）；
+ // 四次覆盖轮：crawler.enabled 默认 开→关（用户口径「AI搜索默认配置
+ // 改为关」；不升 config-version、不做旧值收敛——已开的服务器保持
+ // 开启，自行关闭即可；升 58 的 false→true 收敛块已同步移除，
+ // 老版本升级不再被强制打开）
             "ai.memes.enabled" to true,
             "ai.memes.max-per-reply" to 1,
             "ai.prompt-file" to AiPromptFile.DEFAULT_FILE_NAME,
-            "ai.crawler.enabled" to true,
+            "ai.crawler.enabled" to false,
             "ai.crawler.max-pages" to 8,
             "ai.crawler.max-layers" to 4,
             "ai.crawler.timeout-seconds" to 10,

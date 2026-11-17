@@ -27,8 +27,11 @@ import java.io.File
  *
  * 升级迁移（[migrateToGlobalLayout]，幂等）：旧版散在根目录的上述
  * 数据在启动时自动挪入 globalconfig/——目录整名 rename（目标不存在
- * 时原子完成）；目标已存在（极少见的重复迁移）则逐项合并、同名跳过。
- * 全新安装无事发生。
+ * 时原子完成）；目标已存在（重复迁移/降级后重新升级）则逐项合并，
+ * 同名冲突按修改时间取较新内容，另一份删除（1.7.6.3 四次覆盖轮
+ * 修复：旧版同名直接跳过，旧文件与旧目录永久残留）。rename 失败
+ * （Windows 文件占用等）时退化为复制后删除，复制/删除都失败才保留
+ * 旧位置，下次启动重试（幂等自愈）。全新安装无事发生。
  */
 object DataLayout {
 
@@ -80,13 +83,28 @@ object DataLayout {
             } catch (_: Throwable) {
             }
         }
+        // 迁移后根目录残留提示（同名冲突删除失败 / 复制失败等）：
+        // 提示用户有旧数据没能自动清掉，下次启动会自动重试
+        try {
+            val residual = (MOVE_DIRS + MOVE_FILES)
+                .filter { File(root, it).exists() }
+            if (residual.isNotEmpty()) {
+                plugin.logger.warning(
+                    "数据目录迁移后有残留（${residual.joinToString(", ")}）：" +
+                        "可能是文件被占用，旧数据保留在原位置未删除，重启后会自动重试；" +
+                        "确认 globalconfig/ 数据完整后也可手动删除这些旧项"
+                )
+            }
+        } catch (_: Throwable) {
+        }
         return moved
     }
 
     /**
      * 迁移核心（纯函数，冒烟直接验证）：把根目录下的旧数据（[MOVE_DIRS]
      * 目录与 [MOVE_FILES] 散文件）挪入 globalconfig/ 子目录。
-     * 幂等：目标已存在则目录逐项合并（同名跳过）、文件保留新位置。
+     * 幂等：目标已存在则目录逐项合并（同名按修改时间取新，另一份删除）、
+     * 文件同名同样取新；迁移后根目录不再残留旧数据。
      */
     fun migrate(root: File): Boolean {
         if (!root.isDirectory) return false
@@ -99,15 +117,14 @@ object DataLayout {
                 if (!global.isDirectory) global.mkdirs()
                 val target = File(global, name)
                 if (!target.exists()) {
-                    if (old.renameTo(target)) moved = true
+                    if (moveWithFallback(old, target)) moved = true
                     continue
                 }
-                // 目标已存在：目录逐项合并（同名跳过），文件保留新位置
+                // 目标已存在：逐项合并（同名取新，另一份删除）
                 if (old.isDirectory) {
                     if (mergeDirInto(old, target)) moved = true
                 } else {
-                    // 罕见：两边都有同名文件，保留 globalconfig 里的
-                    if (old.delete()) moved = true
+                    if (resolveSameName(old, target)) moved = true
                 }
             }
         } catch (_: Throwable) {
@@ -116,14 +133,63 @@ object DataLayout {
         return moved
     }
 
-    /** 把 source 目录里的项逐个挪入 target（同名跳过），完成后删除空源目录。 */
+    /**
+     * 挪动单个文件 / 目录，renameTo 失败（Windows 文件被占用 / 杀毒扫描
+     * 等）时退化为复制后删除——修复旧版 rename 失败即静默放弃，旧文件
+     * 永久残留在根目录的问题。
+     * @return true = 旧位置已清掉（rename 或复制+删除成功）
+     */
+    private fun moveWithFallback(old: File, target: File): Boolean {
+        if (old.renameTo(target)) return true
+        return try {
+            if (old.isDirectory) {
+                old.copyRecursively(target, overwrite = false)
+                old.deleteRecursively()
+            } else {
+                old.copyTo(target, overwrite = false)
+                old.delete()
+            }
+        } catch (_: Throwable) {
+            // 数据安全优先：复制失败保留旧位置，下次启动重试（幂等）
+            false
+        }
+    }
+
+    /**
+     * 同名冲突（旧位置与 globalconfig 都有同名文件 / 目录）：按修改时间
+     * 取较新内容——旧位置较新（降级期间写入的数据）先覆盖到新位置，
+     * 然后删除旧位置；新位置较新或相等直接删旧位置。删除失败保留
+     * （下次启动重试；覆盖后的新文件 mtime 为当下，重试时自然走删除分支）。
+     * 旧版在这里直接跳过：同名文件永久留在根目录，目录也删不掉。
+     * @return true = 旧位置已清掉
+     */
+    private fun resolveSameName(old: File, target: File): Boolean {
+        return try {
+            if (old.lastModified() > target.lastModified()) {
+                if (old.isDirectory) {
+                    old.copyRecursively(target, overwrite = true)
+                } else {
+                    old.copyTo(target, overwrite = true)
+                }
+            }
+            if (old.isDirectory) old.deleteRecursively() else old.delete()
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /** 把 source 目录里的项逐个挪入 target（同名取新，另一份删除），完成后删除空源目录。 */
     private fun mergeDirInto(source: File, target: File): Boolean {
         var movedAny = false
         val items = source.listFiles() ?: return false
         for (item in items) {
             val dest = File(target, item.name)
-            if (dest.exists()) continue
-            if (item.renameTo(dest)) movedAny = true
+            if (!dest.exists()) {
+                if (moveWithFallback(item, dest)) movedAny = true
+            } else {
+                // 同名冲突：按修改时间取新（旧版跳过导致残留，四次覆盖轮修复）
+                if (resolveSameName(item, dest)) movedAny = true
+            }
         }
         val remaining = source.listFiles()?.size ?: 0
         if (remaining == 0) source.delete()

@@ -37,16 +37,20 @@ object AiPromptFile {
      * 「角色设定」段为身份与回复风格；「技能」段写 AI 拥有的技能与
      * 使用引导（1.7.6.3 三次覆盖轮新增——遇到不会 / 没把握 / 时效性
      * 的问题可以搜索，具体技能与开关状态以系统注入的「系统技能」段
-     * 为准）；「专属知识」段写给 AI 的资料（服务器规则、玩法说明、
-     * 常见问题等）。
+     * 为准；四次覆盖轮：搜索引导仅在 [crawlerEnabled]（ai.crawler.enabled
+     * 开启）时写入——关闭时不引导 AI 去用它用不了的功能；已生成的
+     * 旧文件一律不动，不做自动清理）；「专属知识」段写给 AI 的资料
+     * （服务器规则、玩法说明、常见问题等）。
      */
-    fun defaultContent(role: String): String = buildString {
+    fun defaultContent(role: String, crawlerEnabled: Boolean): String = buildString {
         append("# 角色设定\n\n")
         append(role.trim().ifEmpty { DEFAULT_ROLE })
         append("\n\n# 技能（你拥有的技能，系统自动注入，不用手动维护）\n\n")
         append("- 发表情包：气氛合适时在回复末尾加 [表情] 文件名；\n")
-        append("- 读网页与搜索：遇到不会、没把握或时效性的问题（新闻、新版本、价格等），")
-        append("先搜索再回答，不要凭记忆猜测，也不要直接说不知道；\n")
+        if (crawlerEnabled) {
+            append("- 读网页与搜索：遇到不会、没把握或时效性的问题（新闻、新版本、价格等），")
+            append("先搜索再回答，不要凭记忆猜测，也不要直接说不知道；\n")
+        }
         append("- 技能是否可用以系统注入的「系统技能」段为准。\n")
         append("\n# 专属知识（服务器规则、玩法说明、常见问题等，写在这里 AI 对话时会参考）\n\n")
         append("（在这里补充内容，可删除本行）\n")
@@ -55,13 +59,16 @@ object AiPromptFile {
     /**
      * 确保提示词文件存在（不存在时写入默认内容；已有文件一律不动）。
      * @param file 插件数据目录下的提示词文件（null = 未就绪，跳过）
+     * @param crawlerEnabled 首次生成默认内容时是否写入搜索引导
+     * （ai.crawler.enabled 当前值；只影响首次生成，已生成的文件不随
+     * 开关变化重写，服主可参考新默认模板自行增删）
      */
-    fun ensureFile(file: File?): File? {
+    fun ensureFile(file: File?, crawlerEnabled: Boolean): File? {
         if (file == null) return null
         return try {
             if (!file.isFile) {
                 file.parentFile?.mkdirs()
-                file.writeText(defaultContent(DEFAULT_ROLE), StandardCharsets.UTF_8)
+                file.writeText(defaultContent(DEFAULT_ROLE, crawlerEnabled), StandardCharsets.UTF_8)
                 PluginFileLog.write(
                     "[提示词] 已生成默认提示词文件 ${file.name}" +
                         "（角色设定与专属知识都写在这个文件里，改完保存下次对话自动生效）"
@@ -100,14 +107,16 @@ object AiPromptFile {
     /**
      * 升级迁移：把旧配置 ai.system-prompt 的值并入提示词文件
      * （文件已存在时不动——用户可能已手工编辑过）。
+     * @param crawlerEnabled 生成默认内容时是否写入搜索引导（读磁盘旧
+     * 配置的 ai.crawler.enabled；旧版本无此键按关，与升级后新默认一致）
      * @return true = 已生成迁移文件；false = 无需迁移 / 文件已存在 / 失败
      */
-    fun migrateFromSystemPrompt(file: File?, oldRole: String?): Boolean {
+    fun migrateFromSystemPrompt(file: File?, oldRole: String?, crawlerEnabled: Boolean): Boolean {
         if (file == null || oldRole.isNullOrBlank()) return false
         return try {
             if (file.isFile) return false
             file.parentFile?.mkdirs()
-            file.writeText(defaultContent(oldRole), StandardCharsets.UTF_8)
+            file.writeText(defaultContent(oldRole, crawlerEnabled), StandardCharsets.UTF_8)
             true
         } catch (t: Throwable) {
             PluginFileLog.write("[提示词] 迁移旧角色设定失败（${t.message}），将生成默认文件")
