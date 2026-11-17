@@ -166,7 +166,7 @@ internal object ConfigFileRebuilder {
         //（1.7.6.3 首发轮）都是默认写入而非用户意图，升级自动收敛为新
         // 默认 8；自行改过（如改成 5）的不动；新键 ai.crawler.max-layers
         //（默认 4）由缺键回填路径补入（reload 内同款收敛是重建失败
-        // 兑底路径的双保险）
+        // 兜底路径的双保险）
         val oldPages = disk.getInt("ai.crawler.max-pages", -1)
         if (oldPages == 2 || oldPages == 3) {
             disk.set("ai.crawler.max-pages", 8)
@@ -176,7 +176,7 @@ internal object ConfigFileRebuilder {
         // 信息源默认改为服务器存档」）——variable 是 1.7.6 首发 fillMissing
         // 写入的默认而非用户意图，升级时自动收敛为新默认 save-data；自行选
         // 过 plugin 或存档的配置不受影响（重建仅在磁盘版本低于 54 时触发；
-        // reload 内同款收敛是重建失败兑底路径的双保险）
+        // reload 内同款收敛是重建失败兜底路径的双保险）
         if (disk.getString("variable-fetch.total-playtime-source") == "variable") {
             disk.set("variable-fetch.total-playtime-source", "save-data")
         }

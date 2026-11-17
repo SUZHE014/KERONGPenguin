@@ -209,7 +209,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
         markDisabled()
     }
 
-    /** 服务器完全停止（ServerStoppedEvent）：解除引用并兑底退出进程。 */
+    /** 服务器完全停止（ServerStoppedEvent）：解除引用并兜底退出进程。 */
     internal fun onServerStopped() {
         val dedicated = try {
             NeoServerRef.server?.isDedicatedServer
@@ -224,13 +224,13 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
     }
 
     /**
- * 关服兑底退出（仅专用服）：
+ * 关服兜底退出（仅专用服）：
      *
      * NeoForge 主线程结束后，JVM 须等所有非 daemon 线程结束才退出；
      * 尽管 SptCompat 已回收已知非 daemon 池，仍不排除残留线程
      * （Pterodactyl 等面板表现为“服务器已停止但进程挂着”，只能强制结束）。
      * 此处起一个守护线程：若 5 秒后进程仍未自然退出则 halt(0)，
-     * 兑底保证 stop 始终能关掉；若 JVM 已自然退出则该线程随之消失，无副作用。
+     * 兜底保证 stop 始终能关掉；若 JVM 已自然退出则该线程随之消失，无副作用。
      * 单人游戏（集成服务器的 ServerStoppedEvent）不受影响。
      */
     private fun ensureProcessExit(dedicated: Boolean) {
@@ -241,7 +241,7 @@ class KERONGNeoForge : JavaPlugin(), KERONG {
             } catch (_: InterruptedException) {
                 return@Thread
             }
-            modLogger.info("[关服兑底] 服务器已完全停止 5 秒，进程仍未退出，强制退出")
+            modLogger.info("[关服兜底] 服务器已完全停止 5 秒，进程仍未退出，强制退出")
             Runtime.getRuntime().halt(0)
         }, "KERONGPenguin-Exit")
         guard.isDaemon = true

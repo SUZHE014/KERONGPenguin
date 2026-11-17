@@ -191,7 +191,7 @@ abstract class JavaPlugin : Plugin {
  */
 private object ConfigCommentSaver {
 
-    /** 差分合并保存；成功返回 true，失败返回 false（调用方走 dump 兑底）。 */
+    /** 差分合并保存；成功返回 true，失败返回 false（调用方走 dump 兜底）。 */
     fun savePreservingComments(file: File, yaml: org.bukkit.configuration.file.YamlConfiguration): Boolean {
         val raw = try {
             if (!file.isFile) return false
@@ -276,7 +276,7 @@ private object ConfigCommentSaver {
     /**
      * 宽松等值（校验用）：数字按 double 比较（1 与 1.0 同值）；字符串 /
      * 布尔精确；列表逐项；映射按键逐值。类型不可比一律判不等（保守落
-     * 到 dump 兑底，数据不丢）。
+     * 到 dump 兜底，数据不丢）。
      */
     private fun valuesEqual(a: Any?, b: Any?): Boolean = when {
         a == null && b == null -> true

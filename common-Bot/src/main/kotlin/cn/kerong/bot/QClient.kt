@@ -30,7 +30,7 @@ object QClient {
 
     private var groupMessageHandler: GroupMessageHandler? = null
 
-    /** 是否处于主动停机（插件卸载 / 服务器关服），看门狗与兑底重连停止工作。 */
+    /** 是否处于主动停机（插件卸载 / 服务器关服），看门狗与兜底重连停止工作。 */
     @Volatile
     private var shuttingDown = false
 
@@ -76,7 +76,7 @@ object QClient {
      *    文件，重连风暴不再刷屏），连续 5 次失败暂停自动重连
      *    （提示可用 /hbkrg chs 手动重试，30 分钟后自动再试，最多 3 轮）；
      * 2. 新增常驻连接看门狗：连接持续断开超过约 2 分钟（SDK 自身重连卡死时）
-     *    由插件兑底触发重连，并写入日志文件。
+     *    由插件兜底触发重连，并写入日志文件。
      *
  * 连接诊断与自愈（钩子为纯观察者，放行 SDK 全部协议处理）：
      * - Starter.Config.webSocketListener 挂载 [WssDiagnostics]，SDK 每帧收发/连接事件都会回调；
@@ -166,7 +166,7 @@ object QClient {
 
             // 异步轮询 WebSocket 连接状态，输出明确的连接成功/失败日志
             watchConnectionState(currentPlugin)
- // 常驻看门狗：检测长时断线并兑底重连
+ // 常驻看门狗：检测长时断线并兜底重连
             startConnectionWatchdog(currentPlugin)
         } catch (error: Exception) {
             PluginFileLog.errorAndKeep("QQ 机器人启动异常: ${error.message}")
@@ -209,10 +209,10 @@ object QClient {
      * SDK 的 anyCloseReconnect 已开启时会自行在 3 秒后重连；本看门狗只处理
      * SDK 自身重连链路卡死的极端情况——连接断开持续超过约 2 分钟时：
      * - 记录错误日志（控制台 + 文件），事后可追溯；
-     * - 对当前 socket 调用非阻塞 reconnect() 兑底触发重连，
+     * - 对当前 socket 调用非阻塞 reconnect() 兜底触发重连，
      *   连接成功后服务端会重新下发 Hello，SDK 将自动重新鉴权。
      *
-     * 注意：只在“曾经连接成功过”的情况下兑底（从未连上属启动失败，另有日志），
+     * 注意：只在“曾经连接成功过”的情况下兜底（从未连上属启动失败，另有日志），
      * 插件停机（shuttingDown）时立即退出，不与正常关服流程叠加。
      */
     private fun startConnectionWatchdog(currentPlugin: cn.kerong.bot.KERONG) {
@@ -238,15 +238,15 @@ object QClient {
                 closedChecks++
                 // 首次发现断开先等待下一轮：给 SDK 自身 3 秒重连留出足够窗口
                 if (closedChecks < 2 || lastOpenAt == 0L) continue
- // 重连超时挂起期间（等待 30 分钟退避或 /hbkrg chs）不兑底重连
+ // 重连超时挂起期间（等待 30 分钟退避或 /hbkrg chs）不兜底重连
                 if (ReconnectManager.isSuspended()) continue
                 PluginFileLog.errorAndKeep(
-                    "检测到 QQ 机器人连接已持续断开超过 1 分钟，尝试兑底重连…"
+                    "检测到 QQ 机器人连接已持续断开超过 1 分钟，尝试兜底重连…"
                 )
                 try {
                     socket?.reconnect()
                 } catch (error: Throwable) {
-                    PluginFileLog.errorAndKeep("QQ 机器人兑底重连异常: ${error.message}")
+                    PluginFileLog.errorAndKeep("QQ 机器人兜底重连异常: ${error.message}")
                 }
             }
         }

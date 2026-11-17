@@ -218,7 +218,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
             }
         }
  // 性能数据缓存默认 5 → 60（仍是旧默认 5 的配置升级；
-        // 用户自定义值不动；配置重建器内同款收敛，这里是重建失败兑底路径的
+        // 用户自定义值不动；配置重建器内同款收敛，这里是重建失败兜底路径的
         // 双保险）
         if (oldVersion in 1 until 21 &&
             config.isSet("render.performance.cache-seconds") &&
@@ -230,7 +230,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
  // 标题框接线改版（四张卡片顶部标题区从硬编码改接
         // render.title-card-gray，默认 96 → 80）——升级时旧默认 96 自动收敛
         // 为新默认 80；自行改过该值的配置不受影响（重建器内同款收敛，
-        // 这里是重建失败兑底路径的双保险）
+        // 这里是重建失败兜底路径的双保险）
         if (oldVersion in 1 until 30 &&
             config.isSet("render.title-card-gray") &&
             config.getInt("render.title-card-gray", -1) == 96
@@ -242,7 +242,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 副标题灰度改为 106（用户口径「副标题灰度默认值改为 106」，106
         // 与项目卡 item-card-gray 相同）——升级时历史默认 40 / 56 / 80 自动
         // 收敛为新默认 106；自行改过该值的配置不受影响（重建器内同款
-        // 收敛，这里是重建失败兑底路径的双保险）
+        // 收敛，这里是重建失败兜底路径的双保险）
         if (oldVersion in 1 until 37 &&
             config.isSet("render.subtitle-card-gray")
         ) {
@@ -257,7 +257,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 分开）——历史默认文案（第三轮初始版 / 第六轮带表情版 / 第六轮误写版 /
         // 第七轮颜文字修正版）都是默认写入而非用户意图，升级时自动收敛为新
         // 默认；自行改过文案的配置不受影响（重建器内同款收敛，这里是重建失败
-        // 兑底路径的双保险）
+        // 兜底路径的双保险）
         if (oldVersion in 1 until 40) {
             var notifyTextUpdated = false
             val shutdownText = config.getString("server-notify.shutdown.message")
@@ -358,7 +358,7 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // 默认写入而非用户意图，升级自动收敛为新默认 8；自行改过（如改成 5）
         // 的不动；新键 ai.crawler.max-layers 由 fillMissing 补入（默认 4）
         //（ConfigFileRebuilder 内同款收敛是文本级重建主路径，此处是
-        // 重建失败兑底路径的双保险）
+        // 重建失败兜底路径的双保险）
         if (oldVersion in 1 until 60) {
             val oldPages = config.getInt("ai.crawler.max-pages", -1)
             if (oldPages == 2 || oldPages == 3) {

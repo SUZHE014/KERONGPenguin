@@ -280,7 +280,7 @@ object ReconnectManager {
      * 挂起连接：关闭 SDK 自动重连并断开当前 socket。
      *
      * - anyCloseReconnect=false → SDK 不再自行重连（未归类关闭码）；
-     * - 主动断开 socket → 看门狗/兑底重连均凭 [isSuspended] 停连。
+     * - 主动断开 socket → 看门狗/兜底重连均凭 [isSuspended] 停连。
      */
     private fun suspendConnection() {
         try {

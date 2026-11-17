@@ -237,7 +237,7 @@ object MenuButtons {
      *    平台已验身（[ACMD_PREFIX] 回调携带这一事实），分发时把
      *    member_role=admin 与 krg_btn_admin 验身标记写进合成事件，与
      *    手打命令判定完全一致；
-     * 2. **插件门禁（兑底）**——命令分发链路内的 requireAdmin 原样生效：
+     * 2. **插件门禁（兜底）**——命令分发链路内的 requireAdmin 原样生效：
      *    admin.mode=config 下按钮人人可点，由 [CommandSupport.isAdmin]
      *    按 admin.openids 名单实时判定（名单增删立即生效，无缓存）；
      *    平台门禁下发的旧菜单在群模式切换后点击，同样由命令链路按

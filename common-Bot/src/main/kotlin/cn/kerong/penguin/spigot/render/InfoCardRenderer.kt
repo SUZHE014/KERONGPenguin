@@ -2302,7 +2302,7 @@ object InfoCardAssets {
             }
             return null
         }
-        // 无图兑底：纯黑底 + 极淡纵向渐变光晕（与各渲染器旧版兑底一致）
+        // 无图兜底：纯黑底 + 极淡纵向渐变光晕（与各渲染器旧版兜底一致）
         g.color = Color(0x05, 0x05, 0x08)
         g.fillRect(0, 0, canvasWidth, canvasHeight)
         val gradient = java.awt.GradientPaint(

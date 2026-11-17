@@ -653,7 +653,7 @@ object PlayerStatsManager {
 
     /**
  * 北京当前日期：优先异步网络校时缓存（与签到同一时间基准）；
-     * 缓存未就绪（启动初期 / 断网）时本地 Asia/Shanghai 时钟兑底，
+     * 缓存未就绪（启动初期 / 断网）时本地 Asia/Shanghai 时钟兜底，
      * 主线程调用零网络开销、零阻塞。
      */
     private fun beijingToday(): String {
@@ -665,7 +665,7 @@ object PlayerStatsManager {
     }
 
     /**
- * 后台异步刷新北京日期缓存。网络失败保留旧值（读取方本地兑底），
+ * 后台异步刷新北京日期缓存。网络失败保留旧值（读取方本地兜底），
      * 跨天时写一行日志便于事后核对。
      */
     private fun refreshBeijingTodayAsync() {

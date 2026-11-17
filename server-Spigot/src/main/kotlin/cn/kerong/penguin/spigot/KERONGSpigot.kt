@@ -129,7 +129,7 @@ class KERONGSpigot : JavaPlugin(), KERONG {
 
  // 自采样刻监视器（每 tick 一次轻量采样）——Folia 多线程核心
         // 上反射链读不到 / 读到的全局区域值忽高忽低，自采样窗口均值是
-        // MSPT / TPS 的稳定数据源（非 Folia 核心作反射链的兑底）
+        // MSPT / TPS 的稳定数据源（非 Folia 核心作反射链的兜底）
         try {
             TickMonitor.start(this)
         } catch (_: Throwable) {

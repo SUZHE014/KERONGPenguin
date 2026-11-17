@@ -311,7 +311,7 @@ object QueryInfoService {
                 }
             }
         } catch (_: Throwable) {
-            // 理论上不会触发（队列无上限），兑底防止线程池异常时静默丢消息
+            // 理论上不会触发（队列无上限），兜底防止线程池异常时静默丢消息
             cn.kerong.penguin.spigot.qqbind.MessageTemplates.sendPlain(event, "server-busy")
         }
     }
@@ -517,7 +517,7 @@ object QueryInfoService {
     }
 
     /**
-     * 主线程繁忙（超时/不可调度）时的兑底快照：字段保留“暂无”并注明原因。
+     * 主线程繁忙（超时/不可调度）时的兜底快照：字段保留“暂无”并注明原因。
  * 依赖标记置 true（沿用旧版展示“暂无”的行为，避免超时时误隐藏项）。
      */
     private fun timeoutSnapshot(): MainThreadSnapshot = MainThreadSnapshot(

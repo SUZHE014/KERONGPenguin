@@ -5,7 +5,7 @@ import io.github.kloping.qqbot.api.event.InterActionEvent
 import io.github.kloping.qqbot.impl.ListenerHost
 
 /**
- * QQ 消息按钮互动（INTERACTION_CREATE）监听（兑底路径）。
+ * QQ 消息按钮互动（INTERACTION_CREATE）监听（兜底路径）。
  *
  * 注册于 QQ 客户端启动时（与群消息监听并列的第二个 ListenerHost），
  * 把按钮点击分派给各按钮流程：
@@ -16,7 +16,7 @@ import io.github.kloping.qqbot.impl.ListenerHost
  *   实例处理其余两类按钮，天然去重）
  * - [MenuButtons]（菜单命令/翻页按钮，前缀 krg:cmd: / krg:acmd: / krg:menu:）
  *
- * 本监听走 SDK 的共享线程池分发，作为**兑底路径**保留：本插件按钮的
+ * 本监听走 SDK 的共享线程池分发，作为**兜底路径**保留：本插件按钮的
  * 互动帧优先由 [InteractionFastPath] 在 WSS 帧层接管并即时回应（官方
  * 要求 3 秒内回应，排队易被命令处理拖超），仅在帧层未接管（依赖未就绪 /
  * 解析失败）时落到本监听。
@@ -69,7 +69,7 @@ class InterActionListener : ListenerHost() {
         ) {
             tryRespond(event, 2)
             try {
-                PluginFileLog.write("[按钮互动] 已限频（冷却内，兑底路径）user=$userOpenId button=$buttonData")
+                PluginFileLog.write("[按钮互动] 已限频（冷却内，兜底路径）user=$userOpenId button=$buttonData")
             } catch (_: Throwable) {
             }
             return

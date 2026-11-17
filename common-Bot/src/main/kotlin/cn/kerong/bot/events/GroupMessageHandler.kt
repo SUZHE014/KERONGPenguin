@@ -501,9 +501,17 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
                     if (manager.isAiAtEnabled) {
                         reply = AiAt.renderOutgoing(reply, event)
                     }
-                    val aiContent = "${manager.qqAiOutputPrefix} $reply"
+                    // 1.7.6.3 三次覆盖轮：AI 只发一个表情包（文本剥完标记为空）时
+                    // 不再先发一条只有前缀的空白消息——有表情包待发就跳过
+                    // 文本直接发图；连图都没匹配到时发一句说明兜底
+                    val textBlank = reply.isBlank()
+                    val aiContent: String? = when {
+                        !textBlank -> "${manager.qqAiOutputPrefix} $reply"
+                        outcome.memeFiles.isNotEmpty() -> null
+                        else -> "${manager.qqAiOutputPrefix} AI 想发个表情包，但没有匹配到图片（可检查表情包文件夹）"
+                    }
  // AI 对话日志仅写入文件，不再上控制台（隐私泄露修复）
-                    QqBindManager.logVerbose("[AI对话] 回复内容长度=${aiContent.length} 表情=${outcome.memeFiles.size} 抓页=${outcome.fetchedPages} 准备发送")
+                    QqBindManager.logVerbose("[AI对话] 回复内容长度=${reply.length} 表情=${outcome.memeFiles.size} 抓页=${outcome.fetchedPages}" + (if (textBlank) " 纯表情包跳过文本" else "") + " 准备发送")
  // 发送方式（1.7.5.6 覆盖轮：AI 提醒方式三选一 ai.reminder-mode）：
  // - at：回复开头艾特发送人（<@openid>，用户收到 QQ 提醒），不引用
  // - quote：引用发送者的原消息（QQ 官方 MessageReference 协议，1.7.5.5
@@ -521,21 +529,26 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
                     val mentionPrefix = if (reminder == "at" && !senderId.isNullOrEmpty()) {
                         "<@$senderId>\n"
                     } else null
-                    val outbound = if (mentionPrefix != null) "$mentionPrefix$aiContent" else aiContent
-                    try {
-                        GroupMsgSender.sendReply(event, outbound, quote = reminder == "quote")
-                    } catch (replyError: Throwable) {
-                        QqBindManager.logVerbose("[AI对话] 回复发送失败: ${replyError.message}")
+                    if (aiContent != null) {
+                        val outbound = if (mentionPrefix != null) "$mentionPrefix$aiContent" else aiContent
+                        try {
+                            GroupMsgSender.sendReply(event, outbound, quote = reminder == "quote")
+                        } catch (replyError: Throwable) {
+                            QqBindManager.logVerbose("[AI对话] 回复发送失败: ${replyError.message}")
+                        }
                     }
  // 1.7.6.2：表情包发送——文字之后逐张图片消息（含动态 GIF，
  // 字节 base64 直传不重编码）；失败仅记日志不影响文字；
- // 与查在线多图连发同口径间隔 400ms 对频控友好
+ // 与查在线多图连发同口径间隔 400ms 对频控友好；
+ // 1.7.6.3 三次覆盖轮：纯表情包（跳过了文本）且一张都没发出去时
+ // 补发一条文字兜底，避免用户完全收不到任何回复
                     if (outcome.memeFiles.isNotEmpty()) {
                         try {
                             Thread.sleep(400)
                         } catch (_: InterruptedException) {
                             Thread.currentThread().interrupt()
                         }
+                        var memeSentCount = 0
                         for (file in outcome.memeFiles) {
                             try {
                                 if (file.length() > AiMemeLibrary.MAX_IMAGE_BYTES) {
@@ -546,6 +559,7 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
                                 // 动图 GIF 原样直传（见 AiMemeLibrary.shrinkForSend）
                                 val bytes = AiMemeLibrary.shrinkForSend(file.readBytes())
                                 val sent = cn.kerong.bot.QClient.replyWithImgBytes(event, bytes)
+                                if (sent) memeSentCount++
                                 QqBindManager.logVerbose("[表情包] ${if (sent) "已发送" else "发送失败"} ${file.name}（${bytes.size / 1024}KB）")
                             } catch (memeError: Throwable) {
                                 QqBindManager.logVerbose("[表情包] 发送异常 ${file.name}: ${memeError.message}")
@@ -554,6 +568,12 @@ class GroupMessageHandler(private val plugin: KERONG) : ListenerHost() {
                                 Thread.sleep(400)
                             } catch (_: InterruptedException) {
                                 Thread.currentThread().interrupt()
+                            }
+                        }
+                        if (aiContent == null && memeSentCount == 0) {
+                            try {
+                                GroupMsgSender.sendReply(event, "${manager.qqAiOutputPrefix} AI 想发个表情包，但图片发送失败了", quote = false)
+                            } catch (_: Throwable) {
                             }
                         }
                     }

@@ -151,7 +151,7 @@ class KERONGFabric : JavaPlugin(), KERONG, DedicatedServerModInitializer {
         markDisabled()
     }
 
-    /** 服务器完全停止（SERVER_STOPPED）：解除引用并兑底退出进程。 */
+    /** 服务器完全停止（SERVER_STOPPED）：解除引用并兜底退出进程。 */
     internal fun onServerStopped() {
         val dedicated = try {
             FabricServerRef.server?.isDedicatedServer
@@ -165,7 +165,7 @@ class KERONGFabric : JavaPlugin(), KERONG, DedicatedServerModInitializer {
         ensureProcessExit(dedicated == true)
     }
 
-    /** 关服兑底退出（与 NeoForge 版同机制：残留非 daemon 线程防进程悬挂）。 */
+    /** 关服兜底退出（与 NeoForge 版同机制：残留非 daemon 线程防进程悬挂）。 */
     private fun ensureProcessExit(dedicated: Boolean) {
         if (!dedicated) return
         val guard = Thread({
@@ -174,7 +174,7 @@ class KERONGFabric : JavaPlugin(), KERONG, DedicatedServerModInitializer {
             } catch (_: InterruptedException) {
                 return@Thread
             }
-            modLogger.info("[关服兑底] 服务器已完全停止 5 秒，进程仍未退出，强制退出")
+            modLogger.info("[关服兜底] 服务器已完全停止 5 秒，进程仍未退出，强制退出")
             Runtime.getRuntime().halt(0)
         }, "KERONGPenguin-Exit")
         guard.isDaemon = true

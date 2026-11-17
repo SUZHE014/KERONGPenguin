@@ -78,10 +78,12 @@ object AiChat {
 
     /**
      * 执行一次 AI 对话（兼容入口，游戏内 / 旧调用点）。
-     * 返回纯文本：标记已剥离、思考段已剥离。
+     * 返回纯文本：标记已剥离、思考段已剥离；AI 只输出了表情包标记时
+     * （游戏内没有发图层）返回兜底文案，不再广播一条只有前缀的空白。
      */
     fun chat(userMessage: String, manager: QqBindManager?, groupId: String?, userId: String?): String {
-        return chatWithOutcome(userMessage, manager, groupId, userId).text
+        return chatWithOutcome(userMessage, manager, groupId, userId)
+            .text.ifBlank { "（AI 本次只想发个表情包，游戏内无法显示图片）" }
     }
 
     /**
@@ -262,42 +264,51 @@ object AiChat {
         return Pair(stripGetMarkers(reply ?: "").ifBlank { null }, fetched)
     }
 
-    // ---------- 动态能力段 ----------
+    // ---------- 动态技能段 ----------
 
     /**
-     * 动态能力段（拼在提示词文件之后）：协议标记说明。
+     * 动态技能段（拼在提示词文件之后）：AI 拥有的技能与协议标记说明
+     * （1.7.6.3 三次覆盖轮：技能列表化 + 「遇到不会的先搜索」引导）。
      * - 表情包：ai.memes.enabled 且文件夹有图时注入（含可用列表）；
-     * - 读网页（正式功能，默认开）：ai.crawler.enabled 开启时注入，
-     *   含多次多层读取与必应搜索指引；关闭时不注入，模型不会输出 [GET]。
+     * - 读网页与搜索（正式功能，默认开）：ai.crawler.enabled 开启时注入，
+     *   含多次多层读取与必应搜索指引，并写明遇到不会 / 没把握 / 时效性
+     *   的问题先搜索再回答（不要凭记忆猜测、不要直接说不知道）；
+     * - 两个技能都不可用时不注入整段（AI 不会看到空的技能列表）。
      */
     fun capabilitySection(manager: QqBindManager?): String {
         if (manager == null) return ""
-        val sb = StringBuilder()
-        sb.append("\n\n## 系统能力（以下标记由平台自动处理，不会显示给用户；按需使用，不用刻意使用）")
+        val skills = StringBuilder()
         // 表情包
         if (manager.isAiMemesEnabled) {
             val dir = manager.memesFolder()
             AiMemeLibrary.ensureFolder(dir)
             val memeSection = AiMemeLibrary.renderPromptSection(dir)
             if (memeSection.isNotEmpty()) {
-                sb.append("\n- 发表情包：气氛合适想发表情时，在回复末尾加 [表情] 文件名")
-                sb.append("（每次回复最多 ").append(manager.aiMemesMaxPerReply()).append(" 张）\n")
-                sb.append(memeSection)
+                skills.append("\n- 发表情包：气氛合适想发表情时，在回复末尾加 [表情] 文件名")
+                skills.append("（每次回复最多 ").append(manager.aiMemesMaxPerReply()).append(" 张）\n")
+                skills.append(memeSection)
             }
         }
-        // 网页读取（正式功能，默认开；多次多层 + 必应搜索）
+        // 读网页与搜索（正式功能，默认开；多次多层 + 必应搜索）
         if (manager.isAiCrawlerEnabled) {
-            sb.append("\n- 读网页：需要先看某个网页或搜索资料才能回答时，输出一行 [GET] 网址")
-            sb.append("（一次回答也可以多行读多个网页，插件会把网页内容回传给你继续回答）")
-            sb.append("（每次回答最多读 ").append(manager.aiCrawlerMaxPages()).append(" 页、最多深入 ")
+            skills.append("\n- 读网页与搜索：遇到不会、没把握或时效性的问题（新闻、新版本、价格等），")
+            skills.append("先搜索再回答，不要凭记忆猜测，也不要直接说不知道；")
+            skills.append("需要先看某个网页或搜索资料才能回答时，输出一行 [GET] 网址")
+            skills.append("（一次回答也可以多行读多个网页，插件会把网页内容回传给你继续回答）")
+            skills.append("（每次回答最多读 ").append(manager.aiCrawlerMaxPages()).append(" 页、最多深入 ")
                 .append(manager.aiCrawlerMaxLayers()).append(" 层，能直接回答就不读；")
-            sb.append("达到上限后直接基于已读内容回答，不要再输出标记；")
-            sb.append("需要搜索时用必应搜索引擎，如 [GET] https://www.bing.com/search?q=关键词；")
-            sb.append("回传的网页内容里带有链接（文字（网址）形式），需要深入时可以继续 [GET] 这些链接逐层阅读；")
-            sb.append("仅 http/https 公网页，内网地址会被拒绝；")
-            sb.append("网页读取失败时用自然语言告诉用户网页暂时打不开即可，不要输出错误码或技术原因）")
+            skills.append("达到上限后直接基于已读内容回答，不要再输出标记；")
+            skills.append("需要搜索时用必应搜索引擎，如 [GET] https://www.bing.com/search?q=关键词；")
+            skills.append("回传的网页内容里带有链接（文字（网址）形式），需要深入时可以继续 [GET] 这些链接逐层阅读；")
+            skills.append("仅 http/https 公网页，内网地址会被拒绝；")
+            skills.append("网页读取失败时用自然语言告诉用户网页暂时打不开即可，不要输出错误码或技术原因）")
         }
-        return sb.toString()
+        if (skills.isEmpty()) return ""
+        return buildString {
+            append("\n\n## 系统技能（你拥有的技能如下，按需使用，不用刻意使用；")
+            append("以下标记由平台自动处理，不会显示给用户）")
+            append(skills)
+        }
     }
 
     // ---------- 标记解析（纯函数，冒烟直接验证） ----------

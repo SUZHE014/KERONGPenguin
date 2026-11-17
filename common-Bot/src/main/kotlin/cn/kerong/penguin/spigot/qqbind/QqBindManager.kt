@@ -163,7 +163,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
  * instance 未就绪（构造期/静态初始化早期）时不再退到 println——
          * 绕过日志器的输出会以裸 [STDOUT/] 格式出现在控制台（与插件日志格式
          * 割裂）；改从 BotShared 拿插件实例走标准 logger（NeoForge 为
-         * JUL→SLF4J 桥接的标准前缀），仅完全无插件实例时才 println 兑底。
+         * JUL→SLF4J 桥接的标准前缀），仅完全无插件实例时才 println 兜底。
          */
         @JvmStatic
         fun logQuiet(message: String) {
@@ -320,7 +320,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
 
     /**
      * 通过玩家 UUID 获取 QUUID（不创建）：同名玩家 UUID 不同即不同人。
-     * O(1) 内存索引命中；未命中时兑底扫描索引键 “玩家名[UUID]” 并回填。
+     * O(1) 内存索引命中；未命中时兜底扫描索引键 “玩家名[UUID]” 并回填。
      */
     fun getQuuidByPlayerUuid(playerUuid: String?): String? {
         if (playerUuid.isNullOrEmpty()) return null
@@ -336,7 +336,7 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
 
     /**
      * 通过 QQ OpenId 获取 QUUID（不创建）：O(1) 内存索引命中；
-     * 未命中时兑底逐文件扫描一次并回填（启动扫描前的极端时序保险）。
+     * 未命中时兜底逐文件扫描一次并回填（启动扫描前的极端时序保险）。
      */
     fun getQuuidByOpenid(openId: String?): String? {
         if (openId.isNullOrEmpty()) return null
