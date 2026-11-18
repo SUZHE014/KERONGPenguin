@@ -129,6 +129,18 @@ public class Test1765 {
         check("M1 兜底文案新句式（无「可」字）",
                 "（只想发个表情，奈何游戏不允许）".equals(fallback) && !fallback.contains("可奈何"));
 
+        System.out.println("== PM 组：PerformanceSnapshot 内存口径（含预留，2026-11-18 覆盖轮）==");
+        cn.kerong.bot.PerformanceSnapshot snap =
+                cn.kerong.bot.PerformanceSnapshot.capture(null, null);
+        Runtime rt = Runtime.getRuntime();
+        long committed = rt.totalMemory() / (1024L * 1024L);
+        check("PM1 committedMemoryMb = totalMemory/MB（含预留口径）",
+                snap.getCommittedMemoryMb() == committed);
+        check("PM2 maxMemoryMb = maxMemory/MB", snap.getMaxMemoryMb() == rt.maxMemory() / (1024L * 1024L));
+        long live = (rt.totalMemory() - rt.freeMemory()) / (1024L * 1024L);
+        check("PM3 含预留 ≥ 存活口径（total - free）", snap.getCommittedMemoryMb() >= live);
+        check("PM4 已提交 ≤ 上限（Xmx）", snap.getCommittedMemoryMb() <= snap.getMaxMemoryMb());
+
         System.out.println("===== smoke1765: " + pass + " PASS / " + fail + " FAIL =====");
         if (fail > 0) {
             for (String f : fails) System.out.println("  FAIL 项: " + f);

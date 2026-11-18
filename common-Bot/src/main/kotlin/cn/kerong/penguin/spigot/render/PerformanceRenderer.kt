@@ -293,9 +293,10 @@ object PerformanceRenderer {
             )
         }
 
-        // 内存：JVM 堆已用 / 上限；>90% 接近上限 / >75% 偏高 / 其余正常
+        // 内存：含预留的 JVM 已提交堆 / 上限（1.7.6.5 起口径 = totalMemory，
+        // 与 MC 面板显示的内存占用一致）；>90% 接近上限 / >75% 偏高 / 其余正常
         run {
-            val used = snapshot.usedMemoryMb
+            val used = snapshot.committedMemoryMb
             val max = snapshot.maxMemoryMb
             val ratio = if (max > 0) used.toDouble() / max.toDouble() else 0.0
             val color = when {
@@ -306,7 +307,7 @@ object PerformanceRenderer {
             }
             cards.add(
                 MetricCard(
-                    label = "内存占用（JVM 堆）",
+                    label = "内存占用（含预留）",
                     valueText = "${formatGb(used)} GB / ${formatGb(max)} GB",
                     statusText = when {
                         max <= 0 -> "暂不可读"
@@ -317,7 +318,7 @@ object PerformanceRenderer {
                     statusColor = color,
                     progress = ratio.coerceIn(0.0, 1.0),
                     barColor = color,
-                    note = "已用 ${formatGb(used)} GB · 占 ${String.format("%.0f", ratio * 100)}%",
+                    note = "已提交 ${formatGb(used)} GB · 占 ${String.format("%.0f", ratio * 100)}%（含 JVM 预留）",
                 )
             )
         }
@@ -447,10 +448,10 @@ object PerformanceRenderer {
                 else -> 2
             }
         )
-        // 内存（JVM 堆占用比）
+        // 内存（含预留的已提交堆占用比；口径与指标卡一致）
         val max = snapshot.maxMemoryMb
         if (max > 0) {
-            val ratio = snapshot.usedMemoryMb.toDouble() / max.toDouble()
+            val ratio = snapshot.committedMemoryMb.toDouble() / max.toDouble()
             grade(
                 when {
                     ratio > 0.90 -> 2

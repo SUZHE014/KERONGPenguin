@@ -375,9 +375,10 @@ data class PerformanceSnapshot(
     val tps: Double?,
     /** 平均每 tick 耗时（毫秒；核心不支持读取时为 null）。 */
     val mspt: Double?,
-    /** JVM 堆已用（MB）。 */
-    val usedMemoryMb: Long,
-    /** JVM 堆上限（MB）。 */
+    /** JVM 堆内存占用（含预留，MB）——已提交 totalMemory，与 MC 面板显示的
+ * 内存占用同口径；存活口径（total - free）见 /hbkrg mem 诊断。 */
+    val committedMemoryMb: Long,
+    /** JVM 堆上限（Xmx，MB）。 */
     val maxMemoryMb: Long,
  /** 本进程 CPU 占用（~ 1.0；读取失败时为 null）。 */
     val cpuLoad: Double?,
@@ -407,8 +408,9 @@ data class PerformanceSnapshot(
          * - CPU 用进程级占用（getProcessCpuLoad，即任务管理器里本进程
          *   的 CPU 列；首次调用 JVM 可能返回 -1 表示暂不可用 → null；
  * 起无 spark 覆盖时经 EWMA 平滑，见 [smoothedCpu]）；
-         * - 堆内存为 totalMemory - freeMemory（存活 + 待回收的堆占用，
-         *   与面板上 JVM 已提交内存不是一回事，见 /hbkrg mem）。
+         * - 堆内存为 totalMemory（JVM 已提交，含预留未用部分；1.7.6.5 起
+         *   与 MC 面板显示的内存占用同口径——面板数值即 JVM 预留量；
+         *   存活口径 total - free 仍在 /hbkrg mem 诊断里输出）。
          */
         @JvmStatic
         fun capture(
@@ -451,7 +453,9 @@ data class PerformanceSnapshot(
             // 以固定速率满速运行）
             val safeTps = tps?.coerceAtMost(20.0)
             val runtime = Runtime.getRuntime()
-            val usedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L)
+            // 内存占用口径：JVM 已提交堆（含预留未用部分）——即 MC 面板上
+            // 显示的内存占用；存活口径见 /hbkrg mem。
+            val committedMb = runtime.totalMemory() / (1024L * 1024L)
             val maxMb = runtime.maxMemory() / (1024L * 1024L)
             val cpu: Double?
             if (cpuOverride != null) {
@@ -477,7 +481,7 @@ data class PerformanceSnapshot(
                     }
                 }
             }
-            return PerformanceSnapshot(safeTps, mspt, usedMb, maxMb, cpu, onlinePlayers, maxPlayers)
+            return PerformanceSnapshot(safeTps, mspt, committedMb, maxMb, cpu, onlinePlayers, maxPlayers)
         }
 
         // ---------- 核心指标分层读取（1.6.7.1：修复 TPS/MSPT 读不到） ----------
