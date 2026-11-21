@@ -10,7 +10,10 @@ import org.bukkit.command.TabExecutor
 import java.util.Locale
 
 /**
- * /hbkrg 主命令：reload / info / chs / mem / bpng / bpngsz / qr / help。
+ * /hbkrg 主命令：reload / info / chs / mem / bpng / bpngsz / qr / qifx / help。
+ *
+ * qifx：管理员群发消息——让机器人向所有配置的 QQ 群（bot.groups）发送
+ * 指定内容（1.7.6.7 新增；游戏内与控制台均可执行，内容支持空格）。
  *
  * qr：发起 / 重显 QQ 官方扫码登录。凭据未配置时用于首次
  * 绑定；已配置时也可手动发起，扫码成功后**替换**现有 bot.app-id /
@@ -113,6 +116,10 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
                 sender.sendMessage("${ChatColor.YELLOW}请在服务器控制台查看二维码与扫码链接（也支持手动复制链接到手机 QQ 打开）。")
                 return true
             }
+            "qifx" -> {
+                handleQifx(sender, args)
+                return true
+            }
         }
         sendHelp(sender, label)
         return true
@@ -153,6 +160,47 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
             }
         } catch (t: Throwable) {
             listOf("${ChatColor.RED}QQ 快捷面板同步异常: ${t.message}")
+        }
+    }
+
+ // ---------- 管理员群发消息 ----------
+
+    /**
+     * /hbkrg qifx <内容>：让机器人向所有配置的 QQ 群（bot.groups）发送
+     * 这条消息（1.7.6.7，管理员专用；游戏内与控制台均可执行）。
+     *
+     * 逐群 HTTP 发送全在异步线程进行（发送完毕回主线程反馈成败统计）；
+     * 未连接 / 未配置群 / 内容为空 / 超长均直接提示不发。
+     */
+    private fun handleQifx(sender: CommandSender, args: Array<out String>) {
+        val content = args.drop(1).joinToString(" ").trim()
+        if (content.isEmpty()) {
+            sender.sendMessage("${ChatColor.RED}用法: /hbkrg qifx <内容> —— 让机器人向所有配置的 QQ 群发送这条消息")
+            return
+        }
+        if (content.length > QIFX_MAX_LENGTH) {
+            sender.sendMessage("${ChatColor.RED}内容过长（${content.length} 字，上限 $QIFX_MAX_LENGTH 字），请精简后重试")
+            return
+        }
+        val groups = plugin.groupOpenIdList()
+        if (groups.isEmpty()) {
+            sender.sendMessage("${ChatColor.RED}未配置 QQ 群（bot.groups 为空），没有可发送的目标")
+            return
+        }
+        if (QClient.starter == null) {
+            sender.sendMessage("${ChatColor.RED}QQ 机器人未连接，无法发送（可先用 /hbkrg chs 重试连接）")
+            return
+        }
+        sender.sendMessage("${ChatColor.YELLOW}正在向 ${groups.size} 个 QQ 群发送（异步）…")
+        plugin.submitAsync {
+            val (ok, fail) = QClient.broadcastAdminNotice(content)
+            plugin.submit {
+                if (fail == 0) {
+                    sender.sendMessage("${ChatColor.GREEN}群发完成：已发送到 $ok 个群。")
+                } else {
+                    sender.sendMessage("${ChatColor.YELLOW}群发完成：成功 $ok 个群，失败 $fail 个群（失败原因见 logs/qq 日志）。")
+                }
+            }
         }
     }
 
@@ -261,9 +309,13 @@ class KERONGCommand(private val plugin: KERONGSpigot) : TabExecutor {
         sender.sendMessage("${ChatColor.YELLOW}/$label bpng${ChatColor.WHITE} - 查看可下载的背景图片包；/$label bpng <包ID> 下载到 img/（下载中可再执行一次中断）")
         sender.sendMessage("${ChatColor.YELLOW}/$label bpngsz yes|no${ChatColor.WHITE} - 一键切换全部卡片是否使用 img/ 自定义背景图")
         sender.sendMessage("${ChatColor.YELLOW}/$label qr${ChatColor.WHITE} - 发起 QQ 机器人扫码登录（未配置时首次绑定；已配置时扫码替换现有凭据并重连；自动刷新上限 3 次后需重新执行）")
+        sender.sendMessage("${ChatColor.YELLOW}/$label qifx <内容>${ChatColor.WHITE} - 让机器人向所有配置的 QQ 群发送这条消息（群发公告用）")
     }
 
     companion object {
-        private val SUBCOMMANDS = listOf("reload", "info", "chs", "mem", "bpng", "bpngsz", "qr", "help")
+        private val SUBCOMMANDS = listOf("reload", "info", "chs", "mem", "bpng", "bpngsz", "qr", "qifx", "help")
+
+        /** /hbkrg qifx 单条群发内容的长度上限（超出直接拒绝；QQ 单条文本消息有字节上限，中文 3 字节） */
+        private const val QIFX_MAX_LENGTH = 1200
     }
 }

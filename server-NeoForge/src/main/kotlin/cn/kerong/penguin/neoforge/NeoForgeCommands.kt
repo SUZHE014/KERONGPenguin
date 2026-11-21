@@ -35,6 +35,9 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
     /** 主命令注册名（/hbkrg；旧名已移除不兼容）。 */
     private val MAIN_COMMAND_LABELS = listOf("hbkrg")
 
+    /** /hbkrg qifx 单条群发内容的长度上限（超出直接拒绝；QQ 单条文本消息有字节上限，中文 3 字节） */
+    private val qifxMaxLength = 1200
+
     @SubscribeEvent
     fun onRegisterCommands(event: RegisterCommandsEvent) {
         registerKerong(event)
@@ -149,6 +152,17 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
                 )
                 1
             },
+        )
+ // 管理员群发消息（1.7.6.7：向所有配置的 QQ 群发送一条文本；greedyString 吃完整内容含空格）
+        builder.then(
+            Commands.literal("qifx")
+                .requires { it.hasPermission(2) }
+                .then(
+                    Commands.argument("内容", StringArgumentType.greedyString()).executes { context ->
+                        handleQifx(context.source, StringArgumentType.getString(context, "内容").trim())
+                        1
+                    },
+                ),
         )
  // 背景图片包（无参列表 / stop 中断 / 包 ID 下载）
         builder.then(
@@ -313,6 +327,49 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
         }
     }
 
+    /**
+     * /hbkrg qifx <内容>（1.7.6.7）：让机器人向所有配置的 QQ 群发送这条
+     * 消息（管理员专用；游戏内与控制台均可执行）。
+     *
+     * 逐群 HTTP 发送全在异步线程进行（发送完毕回服务器线程反馈成败统计）；
+     * 未连接 / 未配置群 / 内容为空 / 超长均直接提示不发。
+     */
+    private fun handleQifx(source: net.minecraft.commands.CommandSourceStack, contentRaw: String) {
+        val content = contentRaw.trim()
+        fun fail(text: String) = source.sendFailure(Component.literal(text))
+        if (content.isEmpty()) {
+            fail("§c用法: /hbkrg qifx <内容> —— 让机器人向所有配置的 QQ 群发送这条消息")
+            return
+        }
+        if (content.length > qifxMaxLength) {
+            fail("§c内容过长（${content.length} 字，上限 $qifxMaxLength 字），请精简后重试")
+            return
+        }
+        val groups = plugin.groupOpenIdList()
+        if (groups.isEmpty()) {
+            fail("§c未配置 QQ 群（bot.groups 为空），没有可发送的目标")
+            return
+        }
+        if (cn.kerong.bot.QClient.starter == null) {
+            fail("§cQQ 机器人未连接，无法发送（可先用 /hbkrg chs 重试连接）")
+            return
+        }
+        source.sendSuccess({ Component.literal("§e正在向 ${groups.size} 个 QQ 群发送（异步）…") }, false)
+        plugin.submitAsync {
+            val (ok, failCount) = cn.kerong.bot.QClient.broadcastAdminNotice(content)
+            plugin.submit {
+                if (failCount == 0) {
+                    source.sendSuccess({ Component.literal("§a群发完成：已发送到 $ok 个群。") }, false)
+                } else {
+                    source.sendSuccess(
+                        { Component.literal("§e群发完成：成功 $ok 个群，失败 $failCount 个群（失败原因见 logs/qq 日志）。") },
+                        false,
+                    )
+                }
+            }
+        }
+    }
+
     private fun sendHelp(source: net.minecraft.commands.CommandSourceStack, label: String) {
         fun line(text: String) = source.sendSuccess({ Component.literal(text) }, false)
         line("§6===== /$label 命令帮助 =====")
@@ -324,6 +381,7 @@ class NeoForgeCommands(private val plugin: KERONGNeoForge) {
         line("§e/$label bpng§f - 查看可下载的背景图片包；/$label bpng <包ID> 下载到 img/（下载中可再执行一次中断）")
         line("§e/$label bpngsz yes|no§f - 一键切换全部卡片是否使用 img/ 自定义背景图")
         line("§e/$label qr§f - 未配置凭据时发起 QQ 机器人扫码登录（控制台扫码，授权后自动连接）")
+        line("§e/$label qifx <内容>§f - 让机器人向所有配置的 QQ 群发送这条消息（群发公告用）")
     }
 
     // ---------- 更名说明（/hbkrg） ----------

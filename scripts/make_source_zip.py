@@ -12,7 +12,7 @@ import zipfile
 # 沙盒重置后仓库目录名可能变化，改为跟随脚本位置自适应）
 REPO = str(pathlib.Path(__file__).resolve().parent.parent)
 NAME = sys.argv[1] if len(sys.argv) > 1 else \
-    os.path.join(REPO, "build", "dist", "KERONGPenguin_v1.7.6.4_source.zip")
+    os.path.join(REPO, "build", "dist", "KERONGPenguin_v1.7.6.7_source.zip")
 
 
 def excluded(rel):
@@ -71,6 +71,10 @@ def excluded(rel):
     # 1.7.6.5：smoke1765 同口径（.class 在目录根，排除；
     # Test1765.java + classpath.txt 随包）
     if rel.startswith("scripts/smoke1765/") and rel.endswith(".class"):
+        return True
+    # 1.7.6.7：smoke1767 同口径（.class 在目录根，排除；
+    # Test1767.java 随包）
+    if rel.startswith("scripts/smoke1767/") and rel.endswith(".class"):
         return True
     if rel.startswith("scripts/smoke176/") and (rel.endswith(".class") or "/out/" in rel):
         return True

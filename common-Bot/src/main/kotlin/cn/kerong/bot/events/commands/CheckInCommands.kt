@@ -16,6 +16,8 @@ import org.bukkit.Bukkit
  * 奖励通道（全部余额差值校验，未到账回失败提示）：
  * - 金币：Vault 经济优先；Vault 缺失但 CoinsEngine 可用时改走 CoinsEngine；
  *   都没有 → 沿用 1.5.5 的「无经济」分支（照常累计天数不发放）；
+ *   数额支持固定（reward: 100.0）或随机区间（reward: 0~100，1.7.6.7 起
+ *   每次签到随机抽取，见 [CheckinRewardSpec]）；
  * - 点券：qq-bind.checkin.points-reward > 0 且 PlayerPoints 可用时发放
  *   （按 UUID 持久，离线也能发）；插件未装 / 数额为 0 时优雅跳过；
  * - 任一通道发放后校验余额差值，未到账 → 部分失败时提示失败项，
@@ -124,9 +126,13 @@ class CheckInCommands : CommandSupport() {
             return
         }
 
-        val reward = manager.checkinReward
-        val hasCoinsReward = (vaultReady || coinsEngineReady) && reward > 0
-        if (reward <= 0 && !pointsReady) {
+ // 金币奖励配置（1.7.6.7：固定 / 随机区间双写法，见 CheckinRewardSpec）：
+        // 随机模式（如 0~100）每次签到都在这里重新抽取本次数额；
+        // 金币是否启用按区间上界判定（0~100 视为启用，reward: 0 / 0~0 视为关闭）
+        val rewardSpec = manager.checkinRewardSpec
+        val reward = rewardSpec.roll()
+        val hasCoinsReward = (vaultReady || coinsEngineReady) && rewardSpec.maxAmount > 0
+        if (rewardSpec.maxAmount <= 0 && !pointsReady) {
             MessageTemplates.sendDirect(event, "checkin-reward-invalid", mapOf("prefix" to prefix))
             return
         }
@@ -157,14 +163,14 @@ class CheckInCommands : CommandSupport() {
                     EconomyRewardService.giveCoinsEngineVerified(playerName, playerUuid?.let { runCatching { java.util.UUID.fromString(it) }.getOrNull() }, reward)
                 }
                 if (credited) {
-                    rewardParts.add("${EconomyName.current()} ${formatMoney(reward)}")
+                    rewardParts.add("${EconomyName.current()} ${formatMoney(reward)}${randomNote(rewardSpec)}")
                 } else {
-                    failedParts.add("${EconomyName.current()} ${formatMoney(reward)}（未到账）")
+                    failedParts.add("${EconomyName.current()} ${formatMoney(reward)}${randomNote(rewardSpec)}（未到账）")
                     QqBindManager.logQuiet("[签到] 金币入账校验失败 玩家=$playerName 数额=$reward（Vault=$vaultReady CoinsEngine=$coinsEngineReady）")
                 }
             } else {
                 manager.addPendingCoins(quuid, reward)
-                rewardParts.add("${EconomyName.current()} ${formatMoney(reward)}（离线记账，上线补发）")
+                rewardParts.add("${EconomyName.current()} ${formatMoney(reward)}${randomNote(rewardSpec)}（离线记账，上线补发）")
             }
         }
 
@@ -252,4 +258,14 @@ class CheckInCommands : CommandSupport() {
     /** 金额显示（整数去掉小数点）。 */
     fun formatMoney(amount: Double): String =
         if (amount == amount.toLong().toDouble()) amount.toLong().toString() else amount.toString()
+
+    /**
+     * 随机模式标注（1.7.6.7）：随机区间模式下在数额后附「（随机 0~100）」
+     * 让群友看得出奖励是抽的；固定模式返回空串与旧版输出一字不差。
+     */
+    private fun randomNote(spec: cn.kerong.penguin.spigot.qqbind.CheckinRewardSpec): String =
+        when (spec) {
+            is cn.kerong.penguin.spigot.qqbind.CheckinRewardSpec.Fixed -> ""
+            is cn.kerong.penguin.spigot.qqbind.CheckinRewardSpec.Range -> "（随机 ${spec.displayText()}）"
+        }
 }

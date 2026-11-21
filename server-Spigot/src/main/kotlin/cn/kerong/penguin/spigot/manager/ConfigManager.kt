@@ -834,7 +834,19 @@ class ConfigManager(private val plugin: JavaPlugin) {
         // WebCrawler）、提示词迁移的缺键爬虫默认同步改开（旧版本无
         // ai.crawler.enabled 键按开，与升级后新默认一致，见
         // migrateSystemPromptToPromptFile）。
-        private const val CURRENT_CONFIG_VERSION = 63
+        // 升 64——1.7.6.7（用户口径「添加签到获得的经济可以设置成随机的
+        // （如：0~100）」+「添加指令 /hbkrg qifx <内容> 让机器人在填写的群
+        // 中都发送这条消息（管理员）」）：
+        // ①qq-bind.checkin.reward 支持随机区间写法：固定数额 reward: 100.0
+        // （旧写法，行为不变）之外新增随机区间 reward: 0~100（每次签到在
+        // 区间内随机发放，含两端；两端都是整数时抽整数）——无新键，纯解析
+        // 升级（CheckinRewardSpec），已写数字的服务器行为零变化；写错的值
+        // 回退默认 100.0 并记文件日志；金币奖励是否启用按区间上界判定
+        // （0~100 视为启用；reward: 0 / 0~0 视为关闭）；
+        // ②无键变更：/hbkrg qifx <内容> 管理员群发消息指令（三端命令层 +
+        // QClient.broadcastAdminNotice，游戏内与控制台均可执行，内容上限
+        // 1200 字，超长 / 未连接 / 未配置群直接提示不发）。
+        private const val CURRENT_CONFIG_VERSION = 64
         // 升 60——1.7.6.3 二次覆盖轮（用户口径「单次网页爬取上限改为8次，
         // 多层爬取上限默认改为4次」+「确保每个配置都有注释」）：
         // ①两个上限拆成两个键分开配置：ai.crawler.max-pages 语义明确为

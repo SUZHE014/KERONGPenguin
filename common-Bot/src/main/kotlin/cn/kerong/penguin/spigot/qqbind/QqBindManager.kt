@@ -749,9 +749,34 @@ class QqBindManager private constructor(private val plugin: JavaPlugin) {
             "[签到]"
         }
 
+    /**
+     * 签到金币奖励配置（1.7.6.7 起）：固定数额或随机区间双写法。
+     *
+     * - `reward: 100.0` → [CheckinRewardSpec.Fixed]（与旧版行为完全一致）；
+     * - `reward: 0~100` → [CheckinRewardSpec.Range]（每次签到在区间内
+     *   随机发放，含两端；两端都是整数时抽出整数）。
+     *
+     * 写错 / 缺键回退默认 100.0（解析细节与回退日志见
+     * [CheckinRewardSpec.parse]）；实时读取，reload 即生效。
+     */
+    val checkinRewardSpec: CheckinRewardSpec
+        get() = try {
+            CheckinRewardSpec.parse(plugin.config.get("qq-bind.checkin.reward"))
+        } catch (_: Throwable) {
+            CheckinRewardSpec.Fixed(CheckinRewardSpec.DEFAULT_FIXED)
+        }
+
+    /**
+     * 签到金币奖励数额（兼容旧口径）：固定模式返回固定值；
+     * 随机模式返回区间中点（旧签名只能返回单一 Double，中点为最接近的
+     * 概率期望值；需要精确配置请用 [checkinRewardSpec]）。
+     */
     val checkinReward: Double
         get() = try {
-            plugin.config.getDouble("qq-bind.checkin.reward", 100.0)
+            when (val spec = checkinRewardSpec) {
+                is CheckinRewardSpec.Fixed -> spec.amount
+                is CheckinRewardSpec.Range -> (spec.min + spec.max) / 2.0
+            }
         } catch (_: Throwable) {
             100.0
         }

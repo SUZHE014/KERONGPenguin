@@ -345,6 +345,34 @@ object QClient {
         }
     }
 
+    /**
+     * 管理员群发消息（1.7.6.7，/hbkrg qifx <内容>）：让机器人把一条
+     * 文本发送到配置的全部 QQ 群（bot.groups；集群环境下只发本实例
+     * 归属的群，与聊天转发同一路由规则）。
+     *
+     * 逐群同步发送并统计成败（含具体群与失败原因的文件日志），返回
+     * (成功群数, 失败群数)。发送走 HTTP，含网络 IO——调用方必须放在
+     * 异步上下文（三端命令层已统一 submitAsync 后调用）。
+     */
+    fun broadcastAdminNotice(content: String): Pair<Int, Int> {
+        if (starter == null || content.isBlank()) return 0 to 0
+        val currentPlugin = plugin
+        val payloadJson = JSON.toJSONString(V2MsgData().setContent(content))
+        var ok = 0
+        var fail = 0
+        for (groupId in currentPlugin.groupOpenIdList()) {
+            if (!ClusterState.shouldServeGroup(groupId)) continue
+            try {
+                starter?.bot?.groupBaseV2?.send(groupId, payloadJson, Channel.SEND_MESSAGE_HEADERS)
+                ok++
+            } catch (e: Exception) {
+                fail++
+                currentPlugin.log_error("向QQ群 $groupId 群发消息失败: ${e.message}")
+            }
+        }
+        return ok to fail
+    }
+
     /** 向所有配置的群发送 Markdown（可带按钮键盘）。 */
     fun sendMarkdown(markdownContent: String, keyboard: Keyboard? = null) {
         val currentPlugin = plugin

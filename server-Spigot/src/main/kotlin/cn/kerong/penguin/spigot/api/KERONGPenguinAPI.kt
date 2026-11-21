@@ -101,10 +101,32 @@ object KERONGPenguinAPI {
         return manager()?.isCheckinEnabled == true
     }
 
-    /** 签到奖励金额。 */
+    /**
+     * 签到金币奖励金额（兼容旧口径）：固定模式（reward: 100.0）返回固定值；
+     * 随机区间模式（reward: 0~100，1.7.6.7 起）返回区间中点（旧签名只能
+     * 返回单一数值）——需要精确配置 / 实际随机结果请用 [getCheckinRewardSpec]。
+     */
     @JvmStatic
     fun getCheckinReward(): Double {
         if (!ready()) return 0.0
         return manager()?.checkinReward ?: 0.0
+    }
+
+    /**
+     * 签到金币奖励配置（1.7.6.7）：固定数额或随机区间的完整配置对象——
+     * [cn.kerong.penguin.spigot.qqbind.CheckinRewardSpec.Fixed] /
+     * [cn.kerong.penguin.spigot.qqbind.CheckinRewardSpec.Range]。
+     */
+    @JvmStatic
+    fun getCheckinRewardSpec(): cn.kerong.penguin.spigot.qqbind.CheckinRewardSpec? {
+        if (!ready()) return null
+        return manager()?.checkinRewardSpec
+    }
+
+    /** 签到金币奖励配置文本（「100」/「0~100」，供面板 / 脚本展示）。 */
+    @JvmStatic
+    fun getCheckinRewardText(): String? {
+        if (!ready()) return null
+        return manager()?.checkinRewardSpec?.displayText()
     }
 }

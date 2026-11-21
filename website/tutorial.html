@@ -69,6 +69,7 @@
 <tr><td><code>/hbkrg bpng</code></td><td>列出官网可下载的背景图片包；/hbkrg bpng &lt;包名&gt; 下载指定图片包；/hbkrg bpng stop 中断进行中的下载</td></tr>
 <tr><td><code>/hbkrg bpngsz yes|no</code></td><td>一键开关统计卡片的随机背景图（yes 开 / no 关，自动写回配置）</td></tr>
 <tr><td><code>/hbkrg qr</code></td><td>发起 QQ 机器人扫码登录（控制台二维码 + 扫码链接，扫码后凭据自动写入并连接；每次执行都会取消旧会话并输出全新二维码，二维码过期自动刷新重发、每次会话上限 3 次，超过后重新执行本命令即可）；凭据已配置时同样可用，扫码成功后替换现有凭据并以新凭据重连</td></tr>
+<tr><td><code>/hbkrg qifx &lt;内容&gt;</code><span class="alias">管理员</span></td><td>群发消息——让机器人把这条消息发送到配置的全部 QQ 群（bot.groups）；游戏内与服务器控制台均可执行，内容支持空格（上限 1200 字）；发送异步进行，完成后反馈成功 / 失败群数；未连接机器人或未配置群时直接提示不发（1.7.6.7 新增）</td></tr>
 <tr><td><code>/qq rebind</code></td><td>玩家在游戏内自助解除自己的绑定，下次进服重新获取验证码</td></tr>
 <tr><td><code>/qq qxqq &lt;玩家名&gt;</code></td><td>管理员强制解除指定玩家的绑定</td></tr>
 <tr><td><code>/qq skip &lt;玩家名&gt;</code></td><td>把玩家加入跳过绑定名单（不再要求其绑定 QQ）</td></tr>
@@ -302,9 +303,10 @@
 <div class="config">
 <pre>qq-bind:
   checkin:
-    reward: 100.0  # 每次签到奖励的金币数</pre>
+    reward: 100.0  # 固定：每次签到发 100
+    # reward: 0~100 # 随机：每次在 0~100 内随机发放</pre>
 </div>
-<p>经 Vault 发放；未装 Vault 但装了 CoinsEngine 时改走 CoinsEngine。发放后按「前后余额差」校验到账，没到账会在回复里提示，不会悄悄吞掉。</p>
+<p>两种写法：固定数额填数字（如 100.0）；随机区间填「最小~最大」（如 0~100，每次签到在区间内随机发放，含两端，两端都是整数时抽整数——签到回复会带「随机 0~100」标注）。写错的值自动回退默认 100.0 并记文件日志。经 Vault 发放；未装 Vault 但装了 CoinsEngine 时改走 CoinsEngine。发放后按「前后余额差」校验到账，没到账会在回复里提示，不会悄悄吞掉（1.7.6.7 起支持随机写法）。</p>
 </div>
 
 <div class="cfg-item">
