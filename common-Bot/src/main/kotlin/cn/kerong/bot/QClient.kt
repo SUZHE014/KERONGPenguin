@@ -168,7 +168,11 @@ object QClient {
             watchConnectionState(currentPlugin)
  // 常驻看门狗：检测长时断线并兜底重连
             startConnectionWatchdog(currentPlugin)
-        } catch (error: Exception) {
+        } catch (error: Throwable) {
+ // 1.7.6.7 Arclight 覆盖轮：Exception → Throwable——混合端（Arclight 等）
+ // 类加载冲突抛的是 NoSuchMethodError 这类 Error（jansi 版本冲突曾在此
+ // 静默逃逸成调度器「generated an exception while executing task」WARN，
+ // 真实原因（机器人无法启动）反而不可见），必须一并捕获并醒目报错
             PluginFileLog.errorAndKeep("QQ 机器人启动异常: ${error.message}")
             throw error
         }

@@ -304,7 +304,10 @@ interface KERONG : LoggerProvider, ConfigProvider, CommandProvider, SchedulerPro
         submitAsync {
             try {
                 QClient.launchClient(appId, secret, qqBotLogFilePattern())
-            } catch (error: Exception) {
+            } catch (error: Throwable) {
+ // 1.7.6.7 Arclight 覆盖轮：Exception → Throwable——Error（如混合端类加载
+ // 冲突的 NoSuchMethodError）不再静默逃逸成调度器 WARN，统一按启动失败
+ // 输出原因与堆栈（可排查）
                 PluginFileLog.errorAndKeep("QQ 机器人启动失败: ${error.message}")
                 PluginFileLog.errorAndKeep("启动失败堆栈: ${error.stackTraceToString().lineSequence().take(6).joinToString("\n")}")
                 PluginFileLog.warnAndKeep("QQ 命令将无法响应，请检查网络连接与机器人凭据（bot.app-id / bot.secret）")

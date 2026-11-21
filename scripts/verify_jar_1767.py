@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""1.7.6.7 门禁（2026-11-22：签到经济随机奖励 + /hbkrg qifx 群发指令）。
+"""1.7.6.7 门禁（2026-11-22：签到经济随机奖励 + /hbkrg qifx 群发指令；
+同日 Arclight 覆盖轮补 AJ 组：jansi 重定位修复）。
 
 A 组 CheckinRewardSpec（四端 JAR 新类在位与语义）
   A1 四端 JAR 均含 CheckinRewardSpec.class + $Companion + Fixed + Range 四条目
@@ -22,6 +23,19 @@ C 组 qifx 群发指令（四端）
   C4 QClient.broadcastAdminNotice 方法在位（四端；NF/Fa 重定位后类名前缀变化，
      按 entry 名 glob 找 QClient）
   C5 帮助文案：三端命令类字节含「群发公告」
+
+AJ 组 Arclight-forge 1.20.1 兼容修复（覆盖轮新增）
+  AJ1 四端 JAR 均含 cn/kerong/bot/compat/AnsiCompat.class + $Companion
+  AJ2 AnsiCompat API 面：@JvmStatic ansi() + fgRgb(I) + a(String/Object/int)
+     + reset() 描述符精确（ASM 重写调用点的前提）
+  AJ3 四端 5 个 SDK 类（两套 LoggerImpl / HttpClientConfig /
+     HttpClientManagerImpl+$Invoker）jansi 引用全部重定位到 AnsiCompat
+     （字节含 AnsiCompat 且不含 org/fusesource/jansi/Ansi）
+  AJ4 shaded jansi 2.x 原样保留（自身类在位且含 fgRgb；仅 SDK 引用改道）
+  AJ5 QClient.launchClient 异常表 Throwable（Error 不再静默逃逸）
+  AJ6 KERONG.launchQqClient$lambda$4 异常表 Throwable
+  AJ7 修复源码四件在位（AnsiCompat.kt / tools/JansiRelocate.java /
+     scripts/patch_base_jansi.py / 两处 catch Throwable 源码）
 
 D 组 配置与版本
   D1 三端 JAR 内 config.yml：config-version: 64
@@ -180,6 +194,84 @@ def main():
             data = read_entry(jar, qc[0])
             ok = b"broadcastAdminNotice" in data
         check(f"C4 {label} QClient.broadcastAdminNotice 在位", ok)
+
+    print("== AJ 组：Arclight jansi 重定位修复（覆盖轮）==")
+    for label, jar in JARS.items():
+        with zipfile.ZipFile(jar) as zf:
+            names = zf.namelist()
+            ok1 = "cn/kerong/bot/compat/AnsiCompat.class" in names and \
+                  "cn/kerong/bot/compat/AnsiCompat$Companion.class" in names
+        check(f"AJ1 {label} AnsiCompat 类在位", ok1)
+
+    # AJ2 API 面（Spigot 端 javap，四端同源）
+    jv_ac = javap_text(JARS["Spigot"], "cn/kerong/bot/compat/AnsiCompat.class")
+    jv_flat = " ".join(jv_ac.split())
+    check("AJ2 AnsiCompat API 面（ansi 静态 + fgRgb/a×3/reset 链式描述符）",
+          "static final cn.kerong.bot.compat.AnsiCompat ansi();" in jv_flat
+          and "cn.kerong.bot.compat.AnsiCompat fgRgb(int);" in jv_flat
+          and "cn.kerong.bot.compat.AnsiCompat a(java.lang.String);" in jv_flat
+          and "cn.kerong.bot.compat.AnsiCompat a(java.lang.Object);" in jv_flat
+          and "cn.kerong.bot.compat.AnsiCompat a(int);" in jv_flat
+          and "cn.kerong.bot.compat.AnsiCompat reset();" in jv_flat)
+
+    # AJ3 五个 SDK 类重定位（同名 LoggerImpl 两个包各自校验）
+    for label, jar in JARS.items():
+        with zipfile.ZipFile(jar) as zf:
+            names = zf.namelist()
+        remap_targets = [
+            n for n in names
+            if n in (
+                "io/github/kloping/qqbot/utils/LoggerImpl.class",
+                "io/github/kloping/spt/impls/LoggerImpl.class",
+                "io/github/kloping/qqbot/HttpClientConfig.class",
+                "io/github/kloping/spt/impls/HttpClientManagerImpl.class",
+                "io/github/kloping/spt/impls/HttpClientManagerImpl$Invoker.class",
+            )
+        ]
+        ok_all = len(remap_targets) == 5
+        for entry in remap_targets:
+            data = read_entry(jar, entry)
+            if b"cn/kerong/bot/compat/AnsiCompat" not in data or b"org/fusesource/jansi/Ansi" in data:
+                ok_all = False
+        check(f"AJ3 {label} 五个 SDK 类 jansi→AnsiCompat 重定位完整", ok_all)
+
+    # AJ4 shaded jansi 2.x 保留（自身含 fgRgb；仅 SDK 引用改道）
+    for label, jar in [("Spigot", JARS["Spigot"]), ("NeoForge", JARS["NeoForge"]),
+                       ("Fabric-1204", JARS["Fabric-1204"]), ("Fabric-1201", JARS["Fabric-1201"])]:
+        ok = entry_exists(jar, "org/fusesource/jansi/Ansi.class") and \
+            b"fgRgb" in read_entry(jar, "org/fusesource/jansi/Ansi.class")
+        check(f"AJ4 {label} shaded jansi 2.x 保留", ok)
+
+    # AJ5/AJ6 异常表 Throwable（javap -c 抽取方法段；截取异常表到下一方法签名）
+    def exception_table_of(javap_all: str, method_marker: str) -> str:
+        section = javap_all[javap_all.find(method_marker):]
+        et = section.find("Exception table")
+        if et < 0:
+            return ""
+        end = section.find("public", et)
+        return section[et:end if end > 0 else et + 400]
+
+    jv_qc = javap_text(JARS["Spigot"], find_class(JARS["Spigot"], "QClient"), ("-p", "-c"))
+    table = exception_table_of(jv_qc, "launchClient")
+    check("AJ5 QClient.launchClient catch Throwable",
+          "java/lang/Throwable" in table and "java/lang/Exception" not in table)
+
+    jv_kr = javap_text(JARS["Spigot"], find_class(JARS["Spigot"], "KERONG"), ("-p", "-c"))
+    table2 = exception_table_of(jv_kr, "launchQqClient$lambda")
+    check("AJ6 KERONG.launchQqClient lambda catch Throwable",
+          "java/lang/Throwable" in table2 and "java/lang/Exception" not in table2)
+
+    # AJ7 修复源码四件在位
+    ansi_src = os.path.join(REPO, "common-Bot/src/main/kotlin/cn/kerong/bot/compat/AnsiCompat.kt")
+    tool_src = os.path.join(REPO, "tools/JansiRelocate.java")
+    patch_script = os.path.join(REPO, "scripts/patch_base_jansi.py")
+    ok7 = all(os.path.isfile(p) for p in (ansi_src, tool_src, patch_script))
+    if ok7:
+        qc_src = open(os.path.join(REPO, "common-Bot/src/main/kotlin/cn/kerong/bot/QClient.kt"), encoding="utf-8").read()
+        kr_src = open(os.path.join(REPO, "common-Bot/src/main/kotlin/cn/kerong/bot/KERONG.kt"), encoding="utf-8").read()
+        ok7 = "catch (error: Throwable)" in qc_src and "catch (error: Throwable)" in kr_src \
+              and "fgRgb" in open(ansi_src, encoding="utf-8").read()
+    check("AJ7 修复源码四件在位 + 两处 catch Throwable", ok7)
 
     print("== D 组：配置与版本 ==")
     cfg_jars = {"Spigot": JARS["Spigot"], "NeoForge": JARS["NeoForge"], "Fabric-1204": JARS["Fabric-1204"]}
